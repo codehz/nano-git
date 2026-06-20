@@ -1,11 +1,14 @@
 /**
- * Smart HTTP Fetch 传输层类型定义
+ * Smart HTTP 传输层类型定义
  *
  * 定义了远程 Git 仓库交互所需的核心类型：
  * - RemoteRef：远程引用信息
  * - RefAdvertisement：服务端引用广告（含能力声明）
  * - FetchOptions：fetch 操作选项
  * - FetchResult：fetch 操作结果
+ * - PushOptions：push 操作选项
+ * - PushResult：push 操作结果
+ * - PushRefUpdate：单条引用更新结果
  */
 
 import type { SHA1 } from "../core/types.ts";
@@ -99,4 +102,75 @@ export interface FetchResult {
   fetchedRefs: Map<string, SHA1>;
   /** 获取的对象数量 */
   objectCount: number;
+}
+
+// ============================================================================
+// Push 操作类型
+// ============================================================================
+
+/**
+ * Push 操作选项
+ *
+ * 控制 push 行为。
+ */
+export interface PushOptions {
+  /**
+   * refspec 列表，格式如 "refs/heads/main:refs/heads/main"
+   * 默认为 ["HEAD:refs/heads/main"]
+   */
+  refSpecs?: string[];
+
+  /**
+   * 认证 Token
+   *
+   * 设置后在所有请求中添加 `Authorization: Bearer <token>` 头。
+   * 与 headers 同时设置时，token 优先转换为 Authorization 头，
+   * 然后再合并 headers 中的其他字段。
+   */
+  token?: string;
+
+  /**
+   * 自定义 HTTP 请求头
+   *
+   * 注入到所有远程请求中。常用于：
+   * - 自定义认证方式（如 `Authorization: token xxx`）
+   * - CI 身份标识（如 `Job-Token: xxx`）
+   * - 自定义 User-Agent
+   */
+  headers?: Record<string, string>;
+
+  /** 是否强制推送（--force），等价于 refspec 的 + 前缀 */
+  force?: boolean;
+}
+
+/**
+ * 单条引用更新结果
+ *
+ * 表示服务端对单个引用更新命令的响应。
+ */
+export interface PushRefUpdate {
+  /** 引用名称，如 "refs/heads/main" */
+  refName: string;
+  /** 更新前的哈希（服务端原有值） */
+  oldHash: SHA1 | null;
+  /** 更新后的哈希 */
+  newHash: SHA1 | null;
+  /** 是否成功 */
+  success: boolean;
+  /** 失败时的错误消息 */
+  error?: string;
+  /** 是否强制更新 */
+  forced: boolean;
+}
+
+/**
+ * Push 操作结果
+ */
+export interface PushResult {
+  /** 已更新的引用列表 */
+  refUpdates: PushRefUpdate[];
+  /** 推送的对象数量 */
+  objectCount: number;
+  /** 服务端推送的进度消息 */
+  progress: string[];
 }

@@ -10,7 +10,15 @@
  */
 
 // P1: 核心类型
-export type { RemoteRef, RefAdvertisement, FetchOptions, FetchResult } from "./types.ts";
+export type {
+  RemoteRef,
+  RefAdvertisement,
+  FetchOptions,
+  FetchResult,
+  PushOptions,
+  PushResult,
+  PushRefUpdate,
+} from "./types.ts";
 
 // P1: pkt-line 编解码
 export {
