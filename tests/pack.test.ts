@@ -15,7 +15,7 @@ import { mkdirSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { sha1 } from "../src/types.ts";
-import type { GitBlob, GitTree, GitCommit, GitAuthor } from "../src/types.ts";
+import type { GitBlob, GitTree, GitCommit, GitAuthor, GitTag } from "../src/types.ts";
 import {
   encodeObjectHeader,
   decodeObjectHeader,
@@ -31,6 +31,8 @@ import { createPackObjectStore } from "../src/pack/pack-store.ts";
 import { createCompositeObjectStore } from "../src/pack/composite-store.ts";
 import { createPackBuilder } from "../src/pack/pack-builder.ts";
 import { createMemoryObjectStore } from "../src/store/memory-store.ts";
+import { createFileObjectStore } from "../src/store/file-store.ts";
+import { InvalidPackError, DeltaError } from "../src/errors.ts";
 
 const testAuthor: GitAuthor = {
   name: "Test User",
@@ -114,6 +116,21 @@ describe("Delta 编解码", () => {
     const delta = createDelta(base, target);
     const result = applyDelta(base, delta);
     expect(result).toEqual(target);
+  });
+
+  test("应用非法 copy 指令时报错", () => {
+    const base = Buffer.from("short");
+    const delta = Buffer.concat([
+      encodeVarint(base.length),
+      encodeVarint(4),
+      Buffer.from([
+        0x91, // copy 指令，带 1 字节 offset 和 1 字节 size
+        0x10, // offset = 16
+        0x04, // size = 4
+      ]),
+    ]);
+
+    expect(() => applyDelta(base, delta)).toThrow(DeltaError);
   });
 });
 
@@ -203,6 +220,33 @@ describe("Packfile 读写", () => {
       expect(obj!.tree).toBe(treeHash);
     }
   });
+
+  test("重复对象只写入一次", () => {
+    const writer = createPackWriter();
+    const blob: GitBlob = { type: "blob", content: Buffer.from("deduplicated") };
+
+    const hash1 = writer.addObject(blob);
+    const hash2 = writer.addObject(blob);
+
+    expect(hash2).toBe(hash1);
+    expect(writer.objectCount).toBe(1);
+
+    const reader = createPackReader(writer.build());
+    expect(reader.objectCount).toBe(1);
+    expect(reader.listHashes()).toEqual([hash1]);
+  });
+
+  test("损坏 pack 校验和时报错", () => {
+    const writer = createPackWriter();
+    writer.addObject({ type: "blob", content: Buffer.from("checksum") });
+
+    const packData = writer.build();
+    const corrupted = Buffer.from(packData);
+    const lastIndex = corrupted.length - 1;
+    corrupted[lastIndex] = corrupted[lastIndex]! ^ 0xff;
+
+    expect(() => createPackReader(corrupted)).toThrow(InvalidPackError);
+  });
 });
 
 // ============================================================================
@@ -288,6 +332,36 @@ describe("PackObjectStore", () => {
     }
   });
 
+  test("支持从多个 packfile 读取对象", () => {
+    const gitDir = tempDir;
+    mkdirSync(join(gitDir, "objects", "pack"), { recursive: true });
+
+    const builder1 = createPackBuilder(gitDir);
+    const hash1 = builder1.addObject({ type: "blob", content: Buffer.from("pack one") });
+    builder1.build();
+
+    const builder2 = createPackBuilder(gitDir);
+    const hash2 = builder2.addObject({ type: "blob", content: Buffer.from("pack two") });
+    builder2.build();
+
+    const store = createPackObjectStore(gitDir);
+
+    expect(store.packCount).toBe(2);
+    expect(store.exists(hash1)).toBe(true);
+    expect(store.exists(hash2)).toBe(true);
+
+    const obj1 = store.read(hash1);
+    const obj2 = store.read(hash2);
+    expect(obj1.type).toBe("blob");
+    expect(obj2.type).toBe("blob");
+    if (obj1.type === "blob") {
+      expect(obj1.content.toString("utf-8")).toBe("pack one");
+    }
+    if (obj2.type === "blob") {
+      expect(obj2.content.toString("utf-8")).toBe("pack two");
+    }
+  });
+
   test("PackObjectStore 是只读的", () => {
     const gitDir = tempDir;
     const store = createPackObjectStore(gitDir);
@@ -363,6 +437,39 @@ describe("CompositeObjectStore", () => {
       expect(obj.content.toString("utf-8")).toBe("primary version");
     }
   });
+
+  test("loose object 优先于 packfile", () => {
+    const gitDir = tempDir();
+    mkdirSync(join(gitDir, "objects"), { recursive: true });
+
+    const packBuilder = createPackBuilder(gitDir);
+    const packedHash = packBuilder.addObject({
+      type: "blob",
+      content: Buffer.from("packed version"),
+    });
+    packBuilder.build();
+
+    const fileStore = createFileObjectStore(gitDir);
+    const looseHash = fileStore.write({
+      type: "blob",
+      content: Buffer.from("loose version"),
+    });
+
+    const composite = createCompositeObjectStore(fileStore, createPackObjectStore(gitDir));
+    const looseObj = composite.read(looseHash);
+    const packedObj = composite.read(packedHash);
+
+    expect(looseObj.type).toBe("blob");
+    expect(packedObj.type).toBe("blob");
+    if (looseObj.type === "blob") {
+      expect(looseObj.content.toString("utf-8")).toBe("loose version");
+    }
+    if (packedObj.type === "blob") {
+      expect(packedObj.content.toString("utf-8")).toBe("packed version");
+    }
+
+    rmSync(gitDir, { recursive: true });
+  });
 });
 
 // ============================================================================
@@ -416,4 +523,53 @@ describe("PackBuilder", () => {
       expect(obj.content.toString("utf-8")).toBe("test");
     }
   });
+
+  test("构建器会去重重复对象", () => {
+    const gitDir = tempDir;
+    const builder = createPackBuilder(gitDir);
+    const blob: GitBlob = { type: "blob", content: Buffer.from("same content") };
+
+    const hash1 = builder.addObject(blob);
+    const hash2 = builder.addObject(blob);
+    const result = builder.build();
+
+    expect(hash2).toBe(hash1);
+    expect(result.objectCount).toBe(1);
+  });
+
+  test("构建和读取 tag 对象", () => {
+    const gitDir = tempDir;
+    const builder = createPackBuilder(gitDir);
+    const blobHash = builder.addObject({ type: "blob", content: Buffer.from("release artifact") });
+
+    const tag: GitTag = {
+      type: "tag",
+      object: blobHash,
+      objectType: "blob",
+      tag: "v1.0.0",
+      tagger: testAuthor,
+      message: "Release v1.0.0",
+    };
+
+    const tagHash = builder.addObject(tag);
+    builder.build();
+
+    const store = createPackObjectStore(gitDir);
+    const obj = store.read(tagHash);
+    expect(obj.type).toBe("tag");
+    if (obj.type === "tag") {
+      expect(obj.object).toBe(blobHash);
+      expect(obj.tag).toBe("v1.0.0");
+      expect(obj.message).toBe("Release v1.0.0");
+    }
+  });
 });
+
+function tempDir(): string {
+  const dir = join(
+    tmpdir(),
+    `nano-git-composite-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
+  mkdirSync(dir, { recursive: true });
+  return dir;
+}

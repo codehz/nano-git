@@ -8,10 +8,19 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import type { GitBlob, GitTree, GitCommit, GitAuthor } from "../../src/types.ts";
+import type { GitBlob, GitTree, GitCommit, GitAuthor, SHA1 } from "../../src/types.ts";
 import { createPackBuilder } from "../../src/pack/pack-builder.ts";
 import { createPackObjectStore } from "../../src/pack/pack-store.ts";
-import { gitInit, git, createTempDir, cleanupDir, createFile, FIXED_AUTHOR } from "./helpers.ts";
+import {
+  gitInit,
+  git,
+  gitCatFileRaw,
+  gitRevParse,
+  createTempDir,
+  cleanupDir,
+  createFile,
+  FIXED_AUTHOR,
+} from "./helpers.ts";
 
 const testAuthor: GitAuthor = {
   name: FIXED_AUTHOR.name,
@@ -178,6 +187,90 @@ describe("Packfile 兼容性: git → nano-git", () => {
     const hashes = store.listHashes();
     for (const hash of hashes) {
       expect(() => store.read(hash)).not.toThrow();
+    }
+  });
+
+  test("高相似 blob 的 delta pack 能被正确还原", () => {
+    const expectedContents: Array<{ hash: string; content: string }> = [];
+
+    for (let i = 0; i < 6; i++) {
+      const content =
+        "shared-header\n" +
+        "A".repeat(4096) +
+        `\nversion=${i}\n` +
+        "B".repeat(4096) +
+        "\nshared-footer\n";
+      createFile(tempDir, "story.txt", content);
+      git(["add", "story.txt"], tempDir);
+      git(["commit", "-m", `story ${i}`], tempDir);
+      expectedContents.push({
+        hash: gitRevParse(tempDir, `HEAD:story.txt`),
+        content,
+      });
+    }
+
+    git(["repack", "-a", "-d", "-f", "--depth=50", "--window=50"], tempDir);
+
+    const gitDir = join(tempDir, ".git");
+    const store = createPackObjectStore(gitDir);
+
+    for (const { hash, content } of expectedContents) {
+      const obj = store.read(hash as ReturnType<typeof gitRevParse>);
+      expect(obj.type).toBe("blob");
+      if (obj.type === "blob") {
+        expect(obj.content.toString("utf-8")).toBe(content);
+      }
+    }
+  });
+
+  test("annotated tag 进入 pack 后能被 nano-git 读取", () => {
+    createFile(tempDir, "release.txt", "release payload");
+    git(["add", "release.txt"], tempDir);
+    git(["commit", "-m", "release commit"], tempDir);
+    git(["tag", "-a", "v1.0.0", "-m", "release tag"], tempDir);
+
+    const commitHash = gitRevParse(tempDir, "HEAD");
+    const tagHash = gitRevParse(tempDir, "refs/tags/v1.0.0^{tag}");
+
+    git(["gc", "--aggressive"], tempDir);
+
+    const store = createPackObjectStore(join(tempDir, ".git"));
+    const commitObj = store.read(commitHash);
+    const tagObj = store.read(tagHash);
+
+    expect(commitObj.type).toBe("commit");
+    expect(tagObj.type).toBe("tag");
+    if (tagObj.type === "tag") {
+      expect(tagObj.object).toBe(commitHash);
+      expect(tagObj.objectType).toBe("commit");
+      expect(tagObj.tag).toBe("v1.0.0");
+      expect(tagObj.message).toBe("release tag");
+    }
+  });
+
+  test("delta pack 中的对象内容与 git cat-file 原始输出一致", () => {
+    const blobHashes: SHA1[] = [];
+
+    for (let i = 0; i < 4; i++) {
+      const content =
+        "prefix\n" + "x".repeat(2048) + `\nchunk=${i}\n` + "y".repeat(2048) + "\nsuffix\n";
+      createFile(tempDir, `chunk-${i}.txt`, content);
+      git(["add", `chunk-${i}.txt`], tempDir);
+      git(["commit", "-m", `chunk ${i}`], tempDir);
+      blobHashes.push(gitRevParse(tempDir, `HEAD:chunk-${i}.txt`));
+    }
+
+    git(["repack", "-a", "-d", "-f", "--depth=50", "--window=50"], tempDir);
+
+    const store = createPackObjectStore(join(tempDir, ".git"));
+    for (const hash of blobHashes) {
+      const obj = store.read(hash);
+      const gitRaw = gitCatFileRaw(tempDir, hash);
+
+      expect(obj.type).toBe("blob");
+      if (obj.type === "blob") {
+        expect(obj.content).toEqual(gitRaw);
+      }
     }
   });
 });
