@@ -176,6 +176,7 @@ export {
   createMemoryRepositoryBackend,
   type CreateFileRepositoryBackendOptions,
   type CreateMemoryRepositoryBackendOptions,
+  type RepositoryGCOptions,
   type RepositoryPackSupport,
   type RepositoryRepackOptions,
   type RepositoryBackend,

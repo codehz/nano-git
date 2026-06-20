@@ -557,4 +557,53 @@ describe("文件系统仓库的对象操作", () => {
     const obj = repo.catFile(hash);
     expect(obj.type).toBe("blob");
   });
+
+  test("listReachableObjects() 只返回从 refs/HEAD 可达的对象", () => {
+    const reachableBlob = repo.writeBlob(Buffer.from("reachable"));
+    const reachableTree = repo.createTree([
+      { mode: "100644", name: "file.txt", hash: reachableBlob },
+    ]);
+    const reachableCommit = repo.createCommit(reachableTree, [], "reachable", testAuthor);
+    repo.updateRef("refs/heads/main", reachableCommit);
+
+    const unreachableBlob = repo.writeBlob(Buffer.from("unreachable"));
+    const reachable = repo.listReachableObjects();
+
+    expect(reachable).toContain(reachableBlob);
+    expect(reachable).toContain(reachableTree);
+    expect(reachable).toContain(reachableCommit);
+    expect(reachable).not.toContain(unreachableBlob);
+  });
+
+  test("listReachableObjects() 会跟随 annotated tag", () => {
+    const blobHash = repo.writeBlob(Buffer.from("tag target"));
+    const tagHash = repo.createAnnotatedTag("v1.0.0", blobHash, "release", testAuthor, "blob");
+
+    const reachable = repo.listReachableObjects();
+    expect(reachable).toContain(tagHash);
+    expect(reachable).toContain(blobHash);
+  });
+
+  test("gc() 只保留可达对象", () => {
+    const gitDir = join(tempDir, ".git");
+    const reachableBlob = repo.writeBlob(Buffer.from("reachable after gc"));
+    const reachableTree = repo.createTree([
+      { mode: "100644", name: "keep.txt", hash: reachableBlob },
+    ]);
+    const reachableCommit = repo.createCommit(reachableTree, [], "keep", testAuthor);
+    repo.updateRef("refs/heads/main", reachableCommit);
+
+    const danglingBlob = repo.writeBlob(Buffer.from("dangling"));
+    const danglingPath = join(gitDir, "objects", hashToPath(danglingBlob));
+
+    expect(existsSync(danglingPath)).toBe(true);
+
+    const result = repo.gc();
+
+    expect(result.objectCount).toBeGreaterThan(0);
+    expect(existsSync(danglingPath)).toBe(false);
+    expect(repo.readRef("HEAD")).toBe(reachableCommit);
+    expect(repo.catFile(reachableBlob).type).toBe("blob");
+    expect(repo.listReachableObjects()).not.toContain(danglingBlob);
+  });
 });

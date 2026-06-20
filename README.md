@@ -124,6 +124,18 @@ repo.repack();
 repo.repack({ pruneLoose: true });
 ```
 
+### 基于可达对象执行 GC
+
+```typescript
+import { openRepository } from "nano-git";
+
+const repo = openRepository("/path/to/repo");
+
+// 仅保留从 HEAD、分支、标签可达的对象
+const result = repo.gc();
+console.log(result.objectCount);
+```
+
 ### 对象序列化
 
 ```typescript

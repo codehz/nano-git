@@ -5,7 +5,7 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -107,6 +107,31 @@ describe("createFileRefStore()", () => {
 
     expect(store.listRaw("refs/heads/")).toEqual(["refs/heads/feature/api", "refs/heads/z-last"]);
     expect(() => store.listRaw("refs/heads")).toThrow("Invalid ref prefix");
+  });
+
+  test("readRaw() 支持读取 packed-refs 中的引用", () => {
+    writeFileSync(
+      join(tempDir, "packed-refs"),
+      "# pack-refs with: peeled fully-peeled sorted\n1111111111111111111111111111111111111111 refs/heads/main\n",
+    );
+    const store = createFileRefStore(tempDir);
+
+    expect(store.readRaw("refs/heads/main")).toBe("1111111111111111111111111111111111111111");
+  });
+
+  test("listRaw() 会合并 loose refs 和 packed-refs", () => {
+    writeFileSync(
+      join(tempDir, "packed-refs"),
+      "1111111111111111111111111111111111111111 refs/heads/main\n2222222222222222222222222222222222222222 refs/heads/release\n",
+    );
+    const store = createFileRefStore(tempDir);
+    store.writeRaw("refs/heads/feature/api", "3333333333333333333333333333333333333333");
+
+    expect(store.listRaw("refs/heads/")).toEqual([
+      "refs/heads/feature/api",
+      "refs/heads/main",
+      "refs/heads/release",
+    ]);
   });
 });
 

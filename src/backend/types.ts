@@ -24,6 +24,15 @@ export interface RepositoryRepackOptions {
   readonly pruneLoose?: boolean;
 }
 
+/** 仓库级 gc 选项 */
+export interface RepositoryGCOptions {
+  /** 是否删除已打包的 loose objects，默认 true */
+  readonly pruneLoose?: boolean;
+
+  /** 是否替换旧 pack 文件，默认 true */
+  readonly replaceExistingPacks?: boolean;
+}
+
 /**
  * 仓库 pack 支持接口
  *
@@ -46,6 +55,9 @@ export interface RepositoryPackSupport {
 
   /** 执行仓库级 repack */
   repack(source: ObjectSource, options?: RepositoryRepackOptions): PackBuildResult;
+
+  /** 执行基于可达对象集合的 gc */
+  gc(reachable: Iterable<SHA1>, options?: RepositoryGCOptions): PackBuildResult;
 }
 
 /**

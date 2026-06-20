@@ -241,6 +241,14 @@ export function gitFsck(dir: string): string {
   return git(["fsck", "--no-dangling"], dir);
 }
 
+/**
+ * 执行 git gc
+ */
+export function gitGc(dir: string, aggressive = false): void {
+  const args = aggressive ? ["gc", "--aggressive"] : ["gc"];
+  git(args, dir);
+}
+
 // ============================================================================
 // 临时目录管理
 // ============================================================================

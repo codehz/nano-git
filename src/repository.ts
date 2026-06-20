@@ -18,6 +18,7 @@ import { join } from "node:path";
 import type { PackBuildResult } from "./pack/index.ts";
 import type {
   RepositoryBackend,
+  RepositoryGCOptions,
   RepositoryPackSupport,
   RepositoryRepackOptions,
 } from "./backend/index.ts";
@@ -227,6 +228,21 @@ export interface Repository {
    * - 保留 loose objects
    */
   repack(options?: RepositoryRepackOptions): PackBuildResult;
+
+  /**
+   * 列出从 HEAD、所有分支和所有标签可达的对象
+   */
+  listReachableObjects(): SHA1[];
+
+  /**
+   * 执行基于可达对象的 gc
+   *
+   * 默认行为：
+   * - 只保留从 HEAD、分支、标签可达的对象
+   * - 删除旧 pack 文件
+   * - 删除已打包的 loose objects
+   */
+  gc(options?: RepositoryGCOptions): PackBuildResult;
 }
 
 /**
@@ -313,6 +329,61 @@ export function createRepository(backend: RepositoryBackend): Repository {
 
   function listShortRefs(prefix: string): string[] {
     return refs.listRaw(prefix).map((ref) => ref.slice(prefix.length));
+  }
+
+  function listRootRefs(): string[] {
+    const rootRefs = new Set<string>([HEAD_REF]);
+
+    for (const ref of refs.listRaw(HEADS_PREFIX)) {
+      rootRefs.add(ref);
+    }
+
+    for (const ref of refs.listRaw(TAGS_PREFIX)) {
+      rootRefs.add(ref);
+    }
+
+    return Array.from(rootRefs).sort();
+  }
+
+  function collectReachableObjectHashesFrom(hash: SHA1, reachable: Set<SHA1>): void {
+    if (reachable.has(hash)) {
+      return;
+    }
+
+    reachable.add(hash);
+    const obj = objects.read(hash);
+
+    switch (obj.type) {
+      case "blob":
+        return;
+      case "tree":
+        for (const entry of obj.entries) {
+          collectReachableObjectHashesFrom(entry.hash, reachable);
+        }
+        return;
+      case "commit":
+        collectReachableObjectHashesFrom(obj.tree, reachable);
+        for (const parent of obj.parents) {
+          collectReachableObjectHashesFrom(parent, reachable);
+        }
+        return;
+      case "tag":
+        collectReachableObjectHashesFrom(obj.object, reachable);
+        return;
+    }
+  }
+
+  function listReachableObjectsInternal(): SHA1[] {
+    const reachable = new Set<SHA1>();
+
+    for (const ref of listRootRefs()) {
+      const hash = resolveRefHash(refs, ref);
+      if (hash) {
+        collectReachableObjectHashesFrom(hash, reachable);
+      }
+    }
+
+    return Array.from(reachable).sort();
   }
 
   return {
@@ -470,6 +541,18 @@ export function createRepository(backend: RepositoryBackend): Repository {
       }
 
       return packs.repack(objects, options);
+    },
+
+    listReachableObjects(): SHA1[] {
+      return listReachableObjectsInternal();
+    },
+
+    gc(options?: RepositoryGCOptions): PackBuildResult {
+      if (!packs) {
+        throw new Error("Backend does not support gc");
+      }
+
+      return packs.gc(listReachableObjectsInternal(), options);
     },
   };
 }

@@ -17,6 +17,33 @@ import { RefNotFoundError } from "../errors.ts";
 import type { RefStore } from "./types.ts";
 import { validateRefName, validateRefPrefix, listLooseRefsRecursive } from "./utils.ts";
 
+function readPackedRefs(gitDir: string): Map<string, string> {
+  const packedRefsPath = join(gitDir, "packed-refs");
+  if (!existsSync(packedRefsPath)) {
+    return new Map<string, string>();
+  }
+
+  const packedRefs = new Map<string, string>();
+  const lines = readFileSync(packedRefsPath, "utf-8").split("\n");
+
+  for (const line of lines) {
+    if (!line || line.startsWith("#") || line.startsWith("^")) {
+      continue;
+    }
+
+    const spaceIndex = line.indexOf(" ");
+    if (spaceIndex === -1) {
+      continue;
+    }
+
+    const hash = line.slice(0, spaceIndex);
+    const ref = line.slice(spaceIndex + 1);
+    packedRefs.set(ref, hash);
+  }
+
+  return packedRefs;
+}
+
 /**
  * 创建基于文件系统的 Refs 存储
  *
@@ -34,11 +61,11 @@ export function createFileRefStore(gitDir: string): RefStore {
     readRaw(ref: string): string | null {
       validateRefName(ref);
       const refPath = join(gitDir, ref);
-      if (!existsSync(refPath)) {
-        return null;
+      if (existsSync(refPath)) {
+        return readFileSync(refPath, "utf-8").trimEnd();
       }
 
-      return readFileSync(refPath, "utf-8").trimEnd();
+      return readPackedRefs(gitDir).get(ref) ?? null;
     },
 
     writeRaw(ref: string, content: string): void {
@@ -61,11 +88,21 @@ export function createFileRefStore(gitDir: string): RefStore {
     listRaw(prefix: string): string[] {
       validateRefPrefix(prefix);
       const baseDir = join(gitDir, prefix);
-      if (!existsSync(baseDir)) {
-        return [];
+      const refs = new Set<string>();
+
+      if (existsSync(baseDir)) {
+        for (const ref of listLooseRefsRecursive(baseDir, prefix)) {
+          refs.add(ref);
+        }
       }
 
-      return listLooseRefsRecursive(baseDir, prefix).sort();
+      for (const ref of readPackedRefs(gitDir).keys()) {
+        if (ref.startsWith(prefix)) {
+          refs.add(ref);
+        }
+      }
+
+      return Array.from(refs).sort();
     },
   };
 }

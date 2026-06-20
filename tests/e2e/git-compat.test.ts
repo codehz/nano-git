@@ -14,6 +14,7 @@ import { initRepository, openRepository } from "../../src/repository.ts";
 import { sha1 } from "../../src/types.ts";
 import type { GitAuthor, GitTag } from "../../src/types.ts";
 import {
+  git,
   gitInit,
   gitHashObjectWrite,
   gitHashObject,
@@ -27,6 +28,7 @@ import {
   gitRevParse,
   gitLog,
   gitFsck,
+  gitGc,
   createTempDir,
   cleanupDir,
   createFile,
@@ -867,5 +869,39 @@ describe("完整工作流", () => {
     const fsckOutput = gitFsck(tempDir);
     expect(fsckOutput).not.toContain("error");
     expect(fsckOutput).not.toContain("broken");
+  });
+
+  test("nano-git gc 后仓库仍能被 git 正常读取", () => {
+    const repo = initRepository(tempDir);
+    const blobHash = repo.writeBlob(Buffer.from("tracked"));
+    const treeHash = repo.createTree([{ mode: "100644", name: "tracked.txt", hash: blobHash }]);
+    const commitHash = repo.createCommit(treeHash, [], "keep", testAuthor);
+    repo.updateRef("refs/heads/main", commitHash);
+
+    repo.writeBlob(Buffer.from("dangling"));
+    repo.gc();
+
+    expect(gitRevParse(tempDir, "HEAD")).toBe(commitHash);
+    expect(gitCatFile(tempDir, blobHash)).toBe("tracked");
+
+    const fsckOutput = gitFsck(tempDir);
+    expect(fsckOutput).not.toContain("error");
+    expect(fsckOutput).not.toContain("broken");
+  });
+
+  test("git gc 后的仓库仍能被 nano-git 读取，可达性与 refs 一致", () => {
+    gitInit(tempDir);
+    createFile(tempDir, "keep.txt", "keep");
+    git(["add", "keep.txt"], tempDir);
+    git(["commit", "-m", "keep"], tempDir);
+    gitHashObjectWrite(tempDir, "dangling");
+    gitGc(tempDir, true);
+
+    const repo = openRepository(tempDir);
+    const reachable = repo.listReachableObjects();
+    const headHash = gitRevParse(tempDir, "HEAD");
+
+    expect(reachable).toContain(headHash);
+    expect(repo.readRef("HEAD")).toBe(headHash);
   });
 });

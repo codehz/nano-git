@@ -15,7 +15,12 @@ import { createFileRefStore } from "../refs/index.ts";
 import { createFileObjectStore } from "../store/index.ts";
 import type { SHA1 } from "../types.ts";
 import type { ObjectSource } from "../store/index.ts";
-import type { RepositoryBackend, RepositoryPackSupport, RepositoryRepackOptions } from "./types.ts";
+import type {
+  RepositoryBackend,
+  RepositoryGCOptions,
+  RepositoryPackSupport,
+  RepositoryRepackOptions,
+} from "./types.ts";
 
 /** 创建文件系统仓库后端的可选参数 */
 export interface CreateFileRepositoryBackendOptions {
@@ -44,6 +49,10 @@ export function createFileRepositoryBackend(
 ): RepositoryBackend {
   const looseObjects = createFileObjectStore(gitDir);
   const packSource = createPackObjectStore(gitDir);
+  const objects =
+    options.includePack === false
+      ? looseObjects
+      : createCompositeObjectStore(looseObjects, packSource);
 
   function refreshPackView(): void {
     packSource.refresh();
@@ -118,11 +127,20 @@ export function createFileRepositoryBackend(
       refreshPackView();
       return result;
     },
+    gc(reachable, options: RepositoryGCOptions = {}) {
+      const reachableHashes = Array.from(reachable);
+      const reachableSet = new Set(reachableHashes);
+      const unreachableLooseHashes = looseObjects.list().filter((hash) => !reachableSet.has(hash));
+      const result = this.repack(objects, {
+        hashes: reachableHashes,
+        replaceExistingPacks: options.replaceExistingPacks,
+        pruneLoose: options.pruneLoose ?? true,
+      });
+      pruneLooseObjects(unreachableLooseHashes);
+      refreshPackView();
+      return result;
+    },
   };
-  const objects =
-    options.includePack === false
-      ? looseObjects
-      : createCompositeObjectStore(looseObjects, packSource);
 
   return {
     gitDir,

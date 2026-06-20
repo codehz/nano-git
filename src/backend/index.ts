@@ -4,7 +4,12 @@
  * 统一导出 RepositoryBackend 接口及常用实现。
  */
 
-export type { RepositoryBackend, RepositoryPackSupport, RepositoryRepackOptions } from "./types.ts";
+export type {
+  RepositoryBackend,
+  RepositoryGCOptions,
+  RepositoryPackSupport,
+  RepositoryRepackOptions,
+} from "./types.ts";
 export {
   createMemoryRepositoryBackend,
   type CreateMemoryRepositoryBackendOptions,
