@@ -179,14 +179,7 @@ nano-git/
 │   ├── objects/          # blob/tree/commit/tag 序列化
 │   ├── odb/              # 对象数据库与 pack 支持
 │   ├── refs/             # 引用解析、校验、存储
-│   ├── repository/       # 仓库 API 与后端
-│   ├── types.ts          # 兼容层：转发到 core/types.ts
-│   ├── hash.ts           # 兼容层：转发到 core/hash.ts
-│   ├── errors.ts         # 兼容层：转发到 core/errors.ts
-│   ├── repository.ts     # 兼容层：转发到 repository/
-│   ├── store/            # 兼容层：转发到 odb/
-│   ├── pack/             # 兼容层：转发到 odb/pack/
-│   └── backend/          # 兼容层：转发到 repository/backend/
+│   └── repository/       # 仓库 API 与后端
 ├── tests/
 │   ├── types.test.ts     # 类型校验测试
 │   ├── hash.test.ts      # 哈希工具测试

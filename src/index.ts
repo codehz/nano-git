@@ -15,11 +15,6 @@
  * - refs/: 引用管理（名称校验、解析、存储）
  * - repository/: 高层仓库 API 与后端
  *
- * 兼容层：
- * - 顶层 `types.ts`、`errors.ts`、`hash.ts`、`repository.ts`
- * - `store/`、`pack/`、`backend/`
- *   保留旧导入路径，具体实现已迁移到新的子目录。
- *
  * 扩展点：
  * - diff/: 差异计算
  * - transport/: 远程传输协议
@@ -172,6 +167,7 @@ export {
   validateRefPrefix,
   branchNameToRef,
   tagNameToRef,
+  normalizeShortRefName,
   createFileRefStore,
   createMemoryRefStore,
 } from "./refs/index.ts";
