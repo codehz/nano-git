@@ -49,6 +49,36 @@ export interface UploadPackResult {
 }
 
 /**
+ * Smart HTTP 认证配置
+ *
+ * 控制向远程请求注入的认证信息。
+ */
+export interface SmartHttpAuth {
+  /** Bearer Token，设置为 `Authorization: Bearer <token>` */
+  token?: string;
+  /** 自定义请求头，与 token 合并（token 优先转为 Authorization 头） */
+  headers?: Record<string, string>;
+}
+
+/**
+ * 合并认证配置到请求头中
+ *
+ * token 优先转为 `Authorization: Bearer <token>`，然后合并自定义 headers。
+ */
+function applyAuthHeaders(
+  base: Record<string, string>,
+  auth?: SmartHttpAuth,
+): Record<string, string> {
+  const result: Record<string, string> = {
+    ...auth?.headers,
+  };
+  if (auth?.token) {
+    result["Authorization"] = `Bearer ${auth.token}`;
+  }
+  return { ...base, ...result };
+}
+
+/**
  * Smart HTTP 客户端接口
  *
  * 封装 Git Smart HTTP 协议的两个核心端点。
@@ -75,16 +105,22 @@ export interface SmartHttpClient {
  * 创建 Smart HTTP 客户端
  *
  * @param baseUrl - 远程仓库的 base URL（如 "https://github.com/user/repo"）
+ * @param auth - 可选认证配置（token / 自定义 headers）
  * @returns SmartHttpClient 实例
  *
  * @example
  * ```ts
  * const client = createSmartHttpClient("https://github.com/user/repo");
  * const adv = await client.getRefAdvertisement();
- * const { packfile } = await client.postUploadPack(body);
+ *
+ * // 带认证
+ * const authed = createSmartHttpClient("https://github.com/user/repo", {
+ *   token: "ghp_xxx",
+ * });
+ * const { packfile } = await authed.postUploadPack(body);
  * ```
  */
-export function createSmartHttpClient(baseUrl: string): SmartHttpClient {
+export function createSmartHttpClient(baseUrl: string, auth?: SmartHttpAuth): SmartHttpClient {
   // 去除末尾斜杠
   const normalizedUrl = baseUrl.replace(/\/+$/, "");
 
@@ -94,7 +130,8 @@ export function createSmartHttpClient(baseUrl: string): SmartHttpClient {
 
       let response: Response;
       try {
-        response = await fetch(url);
+        const headers = applyAuthHeaders({}, auth);
+        response = await fetch(url, { headers });
       } catch (err) {
         throw new SmartHttpError(
           `Failed to fetch ref advertisement from ${url}: ${(err as Error).message}`,
@@ -135,11 +172,15 @@ export function createSmartHttpClient(baseUrl: string): SmartHttpClient {
 
       let response: Response;
       try {
-        response = await fetch(url, {
-          method: "POST",
-          headers: {
+        const headers = applyAuthHeaders(
+          {
             "Content-Type": "application/x-git-upload-pack-request",
           },
+          auth,
+        );
+        response = await fetch(url, {
+          method: "POST",
+          headers,
           body,
         });
       } catch (err) {

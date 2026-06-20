@@ -70,6 +70,25 @@ export interface FetchOptions {
   refSpecs?: string[];
   /** shallow clone 深度（可选） */
   depth?: number;
+
+  /**
+   * 认证 Token
+   *
+   * 设置后在所有请求中添加 `Authorization: Bearer <token>` 头。
+   * 与 headers 同时设置时，token 优先转换为 Authorization 头，
+   * 然后再合并 headers 中的其他字段。
+   */
+  token?: string;
+
+  /**
+   * 自定义 HTTP 请求头
+   *
+   * 注入到所有远程请求中。常用于：
+   * - 自定义认证方式（如 `Authorization: token xxx`）
+   * - CI 身份标识（如 `Job-Token: xxx`）
+   * - 自定义 User-Agent
+   */
+  headers?: Record<string, string>;
 }
 
 /**
