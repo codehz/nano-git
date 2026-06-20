@@ -35,3 +35,16 @@ export { extractPackfile, extractProgress, SideBandError } from "./side-band.ts"
 
 // P3: 请求生成
 export { buildUploadPackRequest } from "./negotiate.ts";
+
+// P4: HTTP 传输 & fetch 编排
+export { createSmartHttpClient, SmartHttpError } from "./smart-http.ts";
+export type { SmartHttpClient, UploadPackResult } from "./smart-http.ts";
+export {
+  fetch,
+  parseRefSpec,
+  matchesRefSpec,
+  mapRefName,
+  determineWants,
+  FetchError,
+} from "./fetch.ts";
+export type { ParsedRefSpec } from "./fetch.ts";

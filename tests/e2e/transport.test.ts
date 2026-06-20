@@ -396,3 +396,164 @@ describe("CGI: upload-pack (fetch)", () => {
     expect(fetchResult.status).toBe(200);
   });
 });
+
+describe("CGI: 完整 fetch 流程（HTTP 服务器）", () => {
+  let tempDir: string;
+  let serverRepoDir: string;
+  let projectRoot: string;
+  let serverUrl: string;
+  let server: { stop(): void };
+  let commitHash: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir("e2e-full-fetch");
+
+    // 1. 创建服务端裸仓库
+    serverRepoDir = join(tempDir, "server.git");
+    projectRoot = tempDir;
+    mkdirSync(serverRepoDir);
+    git(["init", "--bare"], serverRepoDir);
+
+    // 2. 创建并推送提交
+    const workDir = join(tempDir, "work");
+    gitInit(workDir);
+    createFile(workDir, "README.md", "# Hello\n");
+    createFile(workDir, "src/index.js", 'console.log("hello");\n');
+    git(["add", "README.md", "src/index.js"], workDir);
+    git(["commit", "-m", "Initial commit"], workDir);
+    commitHash = git(["rev-parse", "HEAD"], workDir);
+    git(["push", serverRepoDir, "main"], workDir);
+
+    // 创建第二个提交
+    createFile(workDir, "src/lib.js", "module.exports = {}\n");
+    git(["add", "src/lib.js"], workDir);
+    git(["commit", "-m", "Add lib"], workDir);
+    git(["push", serverRepoDir, "main"], workDir);
+
+    // 3. 启动 Bun HTTP 服务器代理 git http-backend
+    const port = 17890 + Math.floor(Math.random() * 1000);
+
+    server = Bun.serve({
+      port,
+      async fetch(req) {
+        const url = new URL(req.url);
+        const method = req.method;
+
+        // 只处理 Git 相关路径
+        if (!url.pathname.includes("/info/refs") && !url.pathname.includes("/git-upload-pack")) {
+          return new Response("Not Found", { status: 404 });
+        }
+
+        // PATH_INFO 直接使用 URL 路径（包含仓库名）
+        const pathInfo = url.pathname;
+
+        // 设置 CGI 环境变量
+        const env: Record<string, string> = {
+          ...GIT_ENV,
+          REQUEST_METHOD: method,
+          GIT_PROJECT_ROOT: projectRoot,
+          PATH_INFO: pathInfo,
+          QUERY_STRING: url.search.slice(1),
+          CONTENT_TYPE: method === "POST" ? "application/x-git-upload-pack-request" : "",
+        };
+
+        const body = method === "POST" ? await req.arrayBuffer() : undefined;
+
+        const result = spawnSync(HTTP_BACKEND, [], {
+          env: { ...process.env, ...env },
+          input: body ? Buffer.from(body) : undefined,
+        });
+
+        const stdout = result.stdout ?? Buffer.alloc(0);
+        const headerEndIndex = stdout.indexOf("\r\n\r\n");
+
+        if (headerEndIndex === -1) {
+          return new Response("CGI error", { status: 500 });
+        }
+
+        const headerSection = stdout.subarray(0, headerEndIndex).toString("utf-8");
+        const bodyBuffer = stdout.subarray(headerEndIndex + 4);
+        let statusCode = 200;
+
+        for (const line of headerSection.split("\r\n")) {
+          const trimmedLine = line.trim();
+          if (trimmedLine.startsWith("Status: ")) {
+            statusCode = parseInt(trimmedLine.slice(8), 10);
+            break;
+          }
+        }
+
+        // 提取 Content-Type
+        let contentType = "application/octet-stream";
+        for (const line of headerSection.split("\r\n")) {
+          const trimmedLine = line.trim();
+          const colonIndex = trimmedLine.indexOf(": ");
+          if (
+            colonIndex !== -1 &&
+            trimmedLine.slice(0, colonIndex).toLowerCase() === "content-type"
+          ) {
+            contentType = trimmedLine.slice(colonIndex + 2);
+            break;
+          }
+        }
+
+        return new Response(bodyBuffer, {
+          status: statusCode,
+          headers: { "Content-Type": contentType },
+        });
+      },
+    });
+
+    serverUrl = `http://localhost:${port}/server.git`;
+  });
+
+  afterEach(() => {
+    server?.stop();
+    cleanupDir(tempDir);
+  });
+
+  test("完整初始 clone 流程（fetch 到内存仓库）", async () => {
+    const { initRepository } = await import("../../src/repository/index.ts");
+
+    // 创建本地目标仓库
+    const localDir = join(tempDir, "local");
+    const repo = initRepository(localDir);
+
+    // 执行 fetch
+    const { fetch: fetchFn } = await import("../../src/transport/fetch.ts");
+    const result = await fetchFn(repo.objects, repo.refs, serverUrl);
+
+    // 验证结果
+    expect(result.objectCount).toBeGreaterThan(0);
+
+    // 验证 refs 被正确写入
+    const mainRef = repo.refs.readRaw("refs/remotes/origin/main");
+    expect(mainRef).not.toBeNull();
+    expect(mainRef!.length).toBe(40);
+
+    // 验证 HEAD 也被写入
+    const headRef = repo.refs.readRaw("HEAD");
+    expect(headRef).not.toBeNull();
+
+    // 验证可以通过哈希读取对象
+    const commitObj = repo.objects.read(sha1(mainRef!));
+    expect(commitObj.type).toBe("commit");
+  });
+
+  test("fetch 到已存在对象的仓库（增量 fetch 场景）", async () => {
+    const { initRepository } = await import("../../src/repository/index.ts");
+
+    const localDir = join(tempDir, "local2");
+    const repo = initRepository(localDir);
+
+    // 第一次 fetch
+    const { fetch: fetchFn } = await import("../../src/transport/fetch.ts");
+    const result1 = await fetchFn(repo.objects, repo.refs, serverUrl);
+    expect(result1.objectCount).toBeGreaterThan(0);
+
+    // 第二次 fetch（应返回 0 个新对象）
+    const result2 = await fetchFn(repo.objects, repo.refs, serverUrl);
+    expect(result2.objectCount).toBe(0);
+    expect(result2.fetchedRefs.size).toBe(0);
+  });
+});
