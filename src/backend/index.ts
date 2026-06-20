@@ -1,0 +1,12 @@
+/**
+ * 仓库后端模块
+ *
+ * 统一导出 RepositoryBackend 接口及常用实现。
+ */
+
+export type { RepositoryBackend } from "./types.ts";
+export {
+  createMemoryRepositoryBackend,
+  type CreateMemoryRepositoryBackendOptions,
+} from "./memory-backend.ts";
+export { createFileRepositoryBackend } from "./file-backend.ts";

@@ -168,10 +168,22 @@ export {
 } from "./refs/index.ts";
 
 // ============================================================================
+// 仓库后端
+// ============================================================================
+
+export {
+  createFileRepositoryBackend,
+  createMemoryRepositoryBackend,
+  type CreateMemoryRepositoryBackendOptions,
+  type RepositoryBackend,
+} from "./backend/index.ts";
+
+// ============================================================================
 // 仓库 API
 // ============================================================================
 
 export {
+  createRepository,
   initRepository,
   openRepository,
   createMemoryRepository,

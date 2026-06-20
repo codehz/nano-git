@@ -528,7 +528,7 @@ describe("Tag 兼容性", () => {
         tagger: testAuthor,
         message: "Release v1.0.0\n",
       };
-      const tagHash = repo.store.write(tag);
+      const tagHash = repo.objects.write(tag);
 
       // git 验证
       expect(gitCatFileType(tempDir, tagHash)).toBe("tag");

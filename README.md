@@ -64,6 +64,17 @@ const commitHash = repo.createCommit(
 console.log(`Created commit: ${commitHash}`);
 ```
 
+### 使用显式仓库后端
+
+```typescript
+import { createMemoryRepositoryBackend, createRepository } from "nano-git";
+
+const backend = createMemoryRepositoryBackend();
+const repo = createRepository(backend);
+
+repo.createBranch("main", repo.createTree([]));
+```
+
 ### 使用文件系统仓库
 
 ```typescript

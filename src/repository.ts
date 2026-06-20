@@ -3,6 +3,7 @@
  *
  * 提供类似 git 命令行的高层操作：
  * - init: 初始化仓库
+ * - createRepository: 基于显式后端创建仓库
  * - hashObject: 计算文件哈希（可选写入）
  * - catFile: 读取对象内容
  * - writeTree: 将目录写入 tree 对象
@@ -14,6 +15,21 @@
 
 import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import type { RepositoryBackend } from "./backend/index.ts";
+import { createFileRepositoryBackend, createMemoryRepositoryBackend } from "./backend/index.ts";
+import { hashObject } from "./hash.ts";
+import {
+  resolveRefHash,
+  resolveSymbolicRef,
+  resolveTargetHash,
+  branchNameToRef,
+  tagNameToRef,
+  HEAD_REF,
+  HEADS_PREFIX,
+  TAGS_PREFIX,
+} from "./refs/index.ts";
+import type { RefStore } from "./refs/index.ts";
+import type { ObjectStore } from "./store/index.ts";
 import type {
   GitObject,
   GitBlob,
@@ -25,28 +41,19 @@ import type {
   ObjectType,
   GitTag,
 } from "./types.ts";
-import { sha1 } from "./types.ts";
-import { hashObject } from "./hash.ts";
-import { createFileObjectStore, createMemoryObjectStore, type ObjectStore } from "./store/index.ts";
-import { createFileRefStore, createMemoryRefStore } from "./refs/index.ts";
-import type { RefStore } from "./refs/index.ts";
-import {
-  resolveRefHash,
-  resolveSymbolicRef,
-  resolveTargetHash,
-  branchNameToRef,
-  tagNameToRef,
-  HEAD_REF,
-  HEADS_PREFIX,
-  TAGS_PREFIX,
-} from "./refs/index.ts";
 
 /**
  * Git 仓库接口
  */
 export interface Repository {
-  /** 底层对象存储 */
-  readonly store: ObjectStore;
+  /** 底层仓库后端 */
+  readonly backend: RepositoryBackend;
+
+  /** Git 对象存储 */
+  readonly objects: ObjectStore;
+
+  /** Git 引用存储 */
+  readonly refs: RefStore;
 
   /** .git 目录路径（内存仓库为 null） */
   readonly gitDir: string | null;
@@ -214,7 +221,7 @@ export function initRepository(path: string): Repository {
   // 写入 HEAD 文件
   writeFileSync(join(gitDir, "HEAD"), "ref: refs/heads/main\n");
 
-  return openRepository(path);
+  return createRepository(createFileRepositoryBackend(gitDir));
 }
 
 /**
@@ -235,9 +242,7 @@ export function openRepository(path: string): Repository {
     throw new Error(`Not a git repository: ${path}`);
   }
 
-  const store = createFileObjectStore(gitDir);
-
-  return createRepository(store, gitDir);
+  return createRepository(createFileRepositoryBackend(gitDir));
 }
 
 /**
@@ -250,30 +255,38 @@ export function openRepository(path: string): Repository {
  * ```
  */
 export function createMemoryRepository(): Repository {
-  const store = createMemoryObjectStore();
-  return createRepository(store, null);
+  return createRepository(createMemoryRepositoryBackend());
 }
 
 /**
- * 创建仓库实例的内部工厂函数
+ * 基于显式后端创建仓库实例
+ *
+ * Repository 不负责拼装 ObjectStore / RefStore，
+ * 调用方需要显式提供统一的 RepositoryBackend。
+ *
+ * @example
+ * ```ts
+ * const backend = createMemoryRepositoryBackend();
+ * const repo = createRepository(backend);
+ * ```
  */
-function createRepository(store: ObjectStore, gitDir: string | null): Repository {
-  const refStore: RefStore = gitDir
-    ? createFileRefStore(gitDir)
-    : createMemoryRefStore(new Map<string, string>([[HEAD_REF, `ref: ${HEADS_PREFIX}main`]]));
+export function createRepository(backend: RepositoryBackend): Repository {
+  const { objects, refs, gitDir } = backend;
 
   function ensureRefDoesNotExist(ref: string, kind: "Branch" | "Tag", name: string): void {
-    if (refStore.readRaw(ref) !== null) {
+    if (refs.readRaw(ref) !== null) {
       throw new Error(`${kind} already exists: ${name}`);
     }
   }
 
   function listShortRefs(prefix: string): string[] {
-    return refStore.listRaw(prefix).map((ref) => ref.slice(prefix.length));
+    return refs.listRaw(prefix).map((ref) => ref.slice(prefix.length));
   }
 
   return {
-    store,
+    backend,
+    objects,
+    refs,
     gitDir,
 
     hashObject(data: Buffer): SHA1 {
@@ -282,7 +295,7 @@ function createRepository(store: ObjectStore, gitDir: string | null): Repository
 
     writeBlob(data: Buffer): SHA1 {
       const blob: GitBlob = { type: "blob", content: data };
-      return store.write(blob);
+      return objects.write(blob);
     },
 
     writeBlobFile(filePath: string): SHA1 {
@@ -291,21 +304,21 @@ function createRepository(store: ObjectStore, gitDir: string | null): Repository
     },
 
     catFile(hash: SHA1): GitObject {
-      return store.read(hash);
+      return objects.read(hash);
     },
 
     catFileType(hash: SHA1): string {
-      const obj = store.read(hash);
+      const obj = objects.read(hash);
       return obj.type;
     },
 
     writeTree(dirPath: string): SHA1 {
-      return writeTreeRecursive(store, dirPath);
+      return writeTreeRecursive(objects, dirPath);
     },
 
     createTree(entries: TreeEntry[]): SHA1 {
       const tree: GitTree = { type: "tree", entries };
-      return store.write(tree);
+      return objects.write(tree);
     },
 
     createCommit(
@@ -323,19 +336,19 @@ function createRepository(store: ObjectStore, gitDir: string | null): Repository
         committer: committer ?? author,
         message,
       };
-      return store.write(commit);
+      return objects.write(commit);
     },
 
     updateRef(ref: string, hash: SHA1): void {
-      refStore.writeRaw(ref, hash);
+      refs.writeRaw(ref, hash);
     },
 
     readRef(ref: string): SHA1 | null {
-      return resolveRefHash(refStore, ref);
+      return resolveRefHash(refs, ref);
     },
 
     getCurrentBranch(): string | null {
-      const symbolicRef = resolveSymbolicRef(refStore, HEAD_REF);
+      const symbolicRef = resolveSymbolicRef(refs, HEAD_REF);
       if (!symbolicRef || !symbolicRef.startsWith(HEADS_PREFIX)) {
         return null;
       }
@@ -345,11 +358,11 @@ function createRepository(store: ObjectStore, gitDir: string | null): Repository
     createBranch(name: string, hash?: SHA1): void {
       const ref = branchNameToRef(name);
       ensureRefDoesNotExist(ref, "Branch", name);
-      refStore.writeRaw(ref, resolveTargetHash(refStore, hash));
+      refs.writeRaw(ref, resolveTargetHash(refs, hash));
     },
 
     readBranch(name: string): SHA1 | null {
-      return resolveRefHash(refStore, branchNameToRef(name));
+      return resolveRefHash(refs, branchNameToRef(name));
     },
 
     listBranches(): string[] {
@@ -361,13 +374,13 @@ function createRepository(store: ObjectStore, gitDir: string | null): Repository
       if (currentBranch === name) {
         throw new Error(`Cannot delete current branch: ${name}`);
       }
-      refStore.deleteRaw(branchNameToRef(name));
+      refs.deleteRaw(branchNameToRef(name));
     },
 
     createTag(name: string, hash?: SHA1): void {
       const ref = tagNameToRef(name);
       ensureRefDoesNotExist(ref, "Tag", name);
-      refStore.writeRaw(ref, resolveTargetHash(refStore, hash));
+      refs.writeRaw(ref, resolveTargetHash(refs, hash));
     },
 
     createAnnotatedTag(
@@ -380,7 +393,7 @@ function createRepository(store: ObjectStore, gitDir: string | null): Repository
       const ref = tagNameToRef(name);
       ensureRefDoesNotExist(ref, "Tag", name);
 
-      const resolvedObjectType = objectType ?? store.read(target).type;
+      const resolvedObjectType = objectType ?? objects.read(target).type;
       const tag: GitTag = {
         type: "tag",
         object: target,
@@ -389,13 +402,13 @@ function createRepository(store: ObjectStore, gitDir: string | null): Repository
         tagger,
         message,
       };
-      const tagHash = store.write(tag);
-      refStore.writeRaw(ref, tagHash);
+      const tagHash = objects.write(tag);
+      refs.writeRaw(ref, tagHash);
       return tagHash;
     },
 
     readTag(name: string): SHA1 | null {
-      return resolveRefHash(refStore, tagNameToRef(name));
+      return resolveRefHash(refs, tagNameToRef(name));
     },
 
     listTags(): string[] {
@@ -403,7 +416,7 @@ function createRepository(store: ObjectStore, gitDir: string | null): Repository
     },
 
     deleteTag(name: string): void {
-      refStore.deleteRaw(tagNameToRef(name));
+      refs.deleteRaw(tagNameToRef(name));
     },
   };
 }
