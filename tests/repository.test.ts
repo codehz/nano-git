@@ -125,15 +125,63 @@ describe("createMemoryRepository()", () => {
     }
   });
 
-  test("内存仓库不支持 updateRef", () => {
+  test("内存仓库支持 updateRef() 和 readRef()", () => {
     const hash = sha1("1111111111111111111111111111111111111111");
-    expect(() => repo.updateRef("refs/heads/main", hash)).toThrow(
-      "Cannot update ref in memory repository",
-    );
+    repo.updateRef("refs/heads/main", hash);
+    expect(repo.readRef("refs/heads/main")).toBe(hash);
   });
 
-  test("内存仓库的 readRef 返回 null", () => {
+  test("内存仓库默认 HEAD 指向 main", () => {
+    expect(repo.getCurrentBranch()).toBe("main");
+  });
+
+  test("内存仓库的 readRef 对不存在的 ref 返回 null", () => {
     expect(repo.readRef("refs/heads/main")).toBeNull();
+  });
+
+  test("createBranch() / listBranches() / deleteBranch() 配合工作", () => {
+    const hash = sha1("2222222222222222222222222222222222222222");
+    repo.createBranch("feature/test", hash);
+
+    expect(repo.readBranch("feature/test")).toBe(hash);
+    expect(repo.listBranches()).toEqual(["feature/test"]);
+
+    repo.deleteBranch("feature/test");
+    expect(repo.readBranch("feature/test")).toBeNull();
+  });
+
+  test("deleteBranch() 不允许删除当前分支", () => {
+    const hash = sha1("3333333333333333333333333333333333333333");
+    repo.updateRef("refs/heads/main", hash);
+
+    expect(() => repo.deleteBranch("main")).toThrow("Cannot delete current branch: main");
+  });
+
+  test("createTag() / listTags() / deleteTag() 配合工作", () => {
+    const hash = sha1("4444444444444444444444444444444444444444");
+    repo.createTag("v1.0.0", hash);
+
+    expect(repo.readTag("v1.0.0")).toBe(hash);
+    expect(repo.listTags()).toEqual(["v1.0.0"]);
+
+    repo.deleteTag("v1.0.0");
+    expect(repo.readTag("v1.0.0")).toBeNull();
+  });
+
+  test("createAnnotatedTag() 创建 tag 对象并更新 tag ref", () => {
+    const blobHash = repo.writeBlob(Buffer.from("release"));
+    const tagHash = repo.createAnnotatedTag("v2.0.0", blobHash, "Release v2.0.0\n", testAuthor);
+
+    expect(repo.readTag("v2.0.0")).toBe(tagHash);
+
+    const tag = repo.catFile(tagHash);
+    expect(tag.type).toBe("tag");
+    if (tag.type === "tag") {
+      expect(tag.object).toBe(blobHash);
+      expect(tag.objectType).toBe("blob");
+      expect(tag.tag).toBe("v2.0.0");
+      expect(tag.message).toBe("Release v2.0.0");
+    }
   });
 });
 
@@ -232,6 +280,84 @@ describe("文件系统仓库的 ref 操作", () => {
 
   test("readRef() 对不存在的 ref 返回 null", () => {
     expect(repo.readRef("refs/heads/nonexistent")).toBeNull();
+  });
+
+  test("getCurrentBranch() 返回当前分支名", () => {
+    expect(repo.getCurrentBranch()).toBe("main");
+  });
+
+  test("createBranch() 默认从 HEAD 创建分支", () => {
+    const treeHash = repo.createTree([]);
+    const commitHash = repo.createCommit(treeHash, [], "base", testAuthor);
+    repo.updateRef("refs/heads/main", commitHash);
+
+    repo.createBranch("feature");
+    expect(repo.readBranch("feature")).toBe(commitHash);
+  });
+
+  test("listBranches() 返回排序后的分支名", () => {
+    const hash1 = sha1("3333333333333333333333333333333333333333");
+    const hash2 = sha1("4444444444444444444444444444444444444444");
+    repo.createBranch("z-last", hash1);
+    repo.createBranch("feature/api", hash2);
+
+    expect(repo.listBranches()).toEqual(["feature/api", "z-last"]);
+  });
+
+  test("deleteBranch() 删除分支 ref", () => {
+    const hash = sha1("5555555555555555555555555555555555555555");
+    repo.createBranch("feature/delete", hash);
+
+    repo.deleteBranch("feature/delete");
+    expect(repo.readBranch("feature/delete")).toBeNull();
+  });
+
+  test("createTag() 默认从 HEAD 创建轻量标签", () => {
+    const treeHash = repo.createTree([]);
+    const commitHash = repo.createCommit(treeHash, [], "release", testAuthor);
+    repo.updateRef("refs/heads/main", commitHash);
+
+    repo.createTag("v1.0.0");
+    expect(repo.readTag("v1.0.0")).toBe(commitHash);
+  });
+
+  test("createAnnotatedTag() 创建 annotated tag", () => {
+    const treeHash = repo.createTree([]);
+    const commitHash = repo.createCommit(treeHash, [], "release", testAuthor);
+
+    const tagHash = repo.createAnnotatedTag("v2.0.0", commitHash, "Version 2.0.0\n", testAuthor);
+
+    expect(repo.readTag("v2.0.0")).toBe(tagHash);
+
+    const tag = repo.catFile(tagHash);
+    expect(tag.type).toBe("tag");
+    if (tag.type === "tag") {
+      expect(tag.object).toBe(commitHash);
+      expect(tag.objectType).toBe("commit");
+      expect(tag.tag).toBe("v2.0.0");
+    }
+  });
+
+  test("listTags() 返回排序后的标签名", () => {
+    const hash1 = sha1("6666666666666666666666666666666666666666");
+    const hash2 = sha1("7777777777777777777777777777777777777777");
+    repo.createTag("v2.0.0", hash2);
+    repo.createTag("v1.0.0", hash1);
+
+    expect(repo.listTags()).toEqual(["v1.0.0", "v2.0.0"]);
+  });
+
+  test("deleteTag() 删除标签 ref", () => {
+    const hash = sha1("8888888888888888888888888888888888888888");
+    repo.createTag("v9.9.9", hash);
+
+    repo.deleteTag("v9.9.9");
+    expect(repo.readTag("v9.9.9")).toBeNull();
+  });
+
+  test("updateRef() 拒绝非法 ref 名", () => {
+    const hash = sha1("9999999999999999999999999999999999999999");
+    expect(() => repo.updateRef("refs/heads/../../escape", hash)).toThrow("Invalid ref name");
   });
 });
 

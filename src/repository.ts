@@ -7,12 +7,21 @@
  * - catFile: 读取对象内容
  * - writeTree: 将目录写入 tree 对象
  * - commitTree: 创建 commit 对象
+ * - refs: 管理分支、标签和 HEAD
  *
  * 这些操作对应 git 的 plumbing 命令。
  */
 
-import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import {
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  readdirSync,
+  statSync,
+  unlinkSync,
+} from "node:fs";
+import { dirname, join } from "node:path";
 import type {
   GitObject,
   GitBlob,
@@ -21,10 +30,17 @@ import type {
   GitAuthor,
   TreeEntry,
   SHA1,
+  ObjectType,
+  GitTag,
 } from "./types.ts";
 import { sha1 } from "./types.ts";
 import { hashObject } from "./hash.ts";
 import { createFileObjectStore, createMemoryObjectStore, type ObjectStore } from "./store/index.ts";
+import { CircularReferenceError, RefNotFoundError } from "./errors.ts";
+
+const HEAD_REF = "HEAD";
+const HEADS_PREFIX = "refs/heads/";
+const TAGS_PREFIX = "refs/tags/";
 
 /**
  * Git 仓库接口
@@ -109,6 +125,70 @@ export interface Repository {
    * 等价于 `git rev-parse <ref>`
    */
   readRef(ref: string): SHA1 | null;
+
+  /**
+   * 获取当前检出的分支名
+   *
+   * detached HEAD 时返回 null。
+   */
+  getCurrentBranch(): string | null;
+
+  /**
+   * 创建分支
+   *
+   * 未提供目标哈希时，默认基于当前 HEAD。
+   */
+  createBranch(name: string, hash?: SHA1): void;
+
+  /**
+   * 读取分支引用
+   */
+  readBranch(name: string): SHA1 | null;
+
+  /**
+   * 列出所有分支名
+   */
+  listBranches(): string[];
+
+  /**
+   * 删除分支
+   */
+  deleteBranch(name: string): void;
+
+  /**
+   * 创建轻量标签
+   *
+   * 未提供目标哈希时，默认指向当前 HEAD。
+   */
+  createTag(name: string, hash?: SHA1): void;
+
+  /**
+   * 创建附注标签（annotated tag）
+   *
+   * 返回 tag 对象自身的哈希。
+   */
+  createAnnotatedTag(
+    name: string,
+    target: SHA1,
+    message: string,
+    tagger: GitAuthor,
+    objectType?: ObjectType,
+  ): SHA1;
+
+  /**
+   * 读取标签引用
+   */
+  readTag(name: string): SHA1 | null;
+
+  /**
+   * 列出所有标签名
+   */
+  listTags(): string[];
+
+  /**
+   * 删除标签
+   */
+  deleteTag(name: string): void;
 }
 
 /**
@@ -117,6 +197,12 @@ export interface Repository {
  * 等价于 `git init`
  *
  * @param path - 仓库根目录路径
+ *
+ * @example
+ * ```ts
+ * const repo = initRepository("/tmp/demo");
+ * console.log(repo.getCurrentBranch()); // => "main"
+ * ```
  */
 export function initRepository(path: string): Repository {
   const gitDir = join(path, ".git");
@@ -136,6 +222,12 @@ export function initRepository(path: string): Repository {
  * 打开一个已有的 Git 仓库
  *
  * @param path - 仓库根目录路径
+ *
+ * @example
+ * ```ts
+ * const repo = openRepository("/path/to/repo");
+ * console.log(repo.readRef("HEAD"));
+ * ```
  */
 export function openRepository(path: string): Repository {
   const gitDir = join(path, ".git");
@@ -151,6 +243,12 @@ export function openRepository(path: string): Repository {
 
 /**
  * 创建内存仓库（用于测试）
+ *
+ * @example
+ * ```ts
+ * const repo = createMemoryRepository();
+ * repo.createBranch("main", repo.createTree([]));
+ * ```
  */
 export function createMemoryRepository(): Repository {
   const store = createMemoryObjectStore();
@@ -161,6 +259,120 @@ export function createMemoryRepository(): Repository {
  * 创建仓库实例的内部工厂函数
  */
 function createRepository(store: ObjectStore, gitDir: string | null): Repository {
+  const memoryRefs = gitDir
+    ? null
+    : new Map<string, string>([[HEAD_REF, `ref: ${HEADS_PREFIX}main`]]);
+
+  function readRawRef(ref: string): string | null {
+    validateRefName(ref);
+
+    if (!gitDir) {
+      return memoryRefs!.get(ref) ?? null;
+    }
+
+    const refPath = join(gitDir, ref);
+    if (!existsSync(refPath)) {
+      return null;
+    }
+
+    return readFileSync(refPath, "utf-8").trim();
+  }
+
+  function writeRawRef(ref: string, content: string): void {
+    validateRefName(ref);
+
+    if (!gitDir) {
+      memoryRefs!.set(ref, content.trim());
+      return;
+    }
+
+    const refPath = join(gitDir, ref);
+    mkdirSync(dirname(refPath), { recursive: true });
+    writeFileSync(refPath, `${content.trim()}\n`);
+  }
+
+  function deleteRawRef(ref: string): void {
+    validateRefName(ref);
+
+    if (!gitDir) {
+      if (!memoryRefs!.delete(ref)) {
+        throw new RefNotFoundError(ref);
+      }
+      return;
+    }
+
+    const refPath = join(gitDir, ref);
+    if (!existsSync(refPath)) {
+      throw new RefNotFoundError(ref);
+    }
+
+    unlinkSync(refPath);
+  }
+
+  function listRefs(prefix: string): string[] {
+    validateRefPrefix(prefix);
+
+    if (!gitDir) {
+      return Array.from(memoryRefs!.keys())
+        .filter((ref) => ref.startsWith(prefix))
+        .sort();
+    }
+
+    const baseDir = join(gitDir, prefix);
+    if (!existsSync(baseDir)) {
+      return [];
+    }
+
+    return listLooseRefsRecursive(baseDir, prefix).sort();
+  }
+
+  function resolveRefHash(ref: string, seen = new Set<string>()): SHA1 | null {
+    if (seen.has(ref)) {
+      throw new CircularReferenceError(ref);
+    }
+
+    seen.add(ref);
+    const content = readRawRef(ref);
+    if (content === null) {
+      return null;
+    }
+
+    if (content.startsWith("ref: ")) {
+      return resolveRefHash(content.slice(5), seen);
+    }
+
+    return sha1(content);
+  }
+
+  function resolveSymbolicRef(ref: string, seen = new Set<string>()): string | null {
+    if (seen.has(ref)) {
+      throw new CircularReferenceError(ref);
+    }
+
+    seen.add(ref);
+    const content = readRawRef(ref);
+    if (content === null || !content.startsWith("ref: ")) {
+      return null;
+    }
+
+    const target = content.slice(5);
+    const nestedTarget = resolveSymbolicRef(target, seen);
+    return nestedTarget ?? target;
+  }
+
+  function resolveTargetHash(hash: SHA1 | undefined): SHA1 {
+    if (hash) {
+      return hash;
+    }
+
+    const headHash = resolveRefHash(HEAD_REF);
+    if (!headHash) {
+      throw new Error("Cannot resolve HEAD to create ref");
+    }
+
+    return headHash;
+  }
+
   return {
     store,
     gitDir,
@@ -216,37 +428,190 @@ function createRepository(store: ObjectStore, gitDir: string | null): Repository
     },
 
     updateRef(ref: string, hash: SHA1): void {
-      if (!gitDir) {
-        throw new Error("Cannot update ref in memory repository");
-      }
-
-      const refPath = join(gitDir, ref);
-      mkdirSync(join(refPath, ".."), { recursive: true });
-      writeFileSync(refPath, `${hash}\n`);
+      writeRawRef(ref, hash);
     },
 
     readRef(ref: string): SHA1 | null {
-      if (!gitDir) {
+      return resolveRefHash(ref);
+    },
+
+    getCurrentBranch(): string | null {
+      const symbolicRef = resolveSymbolicRef(HEAD_REF);
+      if (!symbolicRef || !symbolicRef.startsWith(HEADS_PREFIX)) {
         return null;
       }
+      return symbolicRef.slice(HEADS_PREFIX.length);
+    },
 
-      // 处理符号引用（如 HEAD -> ref: refs/heads/main）
-      const refPath = join(gitDir, ref);
-      if (!existsSync(refPath)) {
-        return null;
+    createBranch(name: string, hash?: SHA1): void {
+      const ref = branchNameToRef(name);
+      if (readRawRef(ref) !== null) {
+        throw new Error(`Branch already exists: ${name}`);
+      }
+      writeRawRef(ref, resolveTargetHash(hash));
+    },
+
+    readBranch(name: string): SHA1 | null {
+      return resolveRefHash(branchNameToRef(name));
+    },
+
+    listBranches(): string[] {
+      return listRefs(HEADS_PREFIX).map((ref) => ref.slice(HEADS_PREFIX.length));
+    },
+
+    deleteBranch(name: string): void {
+      const currentBranch = this.getCurrentBranch();
+      if (currentBranch === name) {
+        throw new Error(`Cannot delete current branch: ${name}`);
+      }
+      deleteRawRef(branchNameToRef(name));
+    },
+
+    createTag(name: string, hash?: SHA1): void {
+      const ref = tagNameToRef(name);
+      if (readRawRef(ref) !== null) {
+        throw new Error(`Tag already exists: ${name}`);
+      }
+      writeRawRef(ref, resolveTargetHash(hash));
+    },
+
+    createAnnotatedTag(
+      name: string,
+      target: SHA1,
+      message: string,
+      tagger: GitAuthor,
+      objectType?: ObjectType,
+    ): SHA1 {
+      const ref = tagNameToRef(name);
+      if (readRawRef(ref) !== null) {
+        throw new Error(`Tag already exists: ${name}`);
       }
 
-      const content = readFileSync(refPath, "utf-8").trim();
+      const resolvedObjectType = objectType ?? store.read(target).type;
+      const tag: GitTag = {
+        type: "tag",
+        object: target,
+        objectType: resolvedObjectType,
+        tag: name,
+        tagger,
+        message,
+      };
+      const tagHash = store.write(tag);
+      writeRawRef(ref, tagHash);
+      return tagHash;
+    },
 
-      if (content.startsWith("ref: ")) {
-        // 递归解析符号引用
-        const targetRef = content.slice(5);
-        return this.readRef(targetRef);
-      }
+    readTag(name: string): SHA1 | null {
+      return resolveRefHash(tagNameToRef(name));
+    },
 
-      return sha1(content);
+    listTags(): string[] {
+      return listRefs(TAGS_PREFIX).map((ref) => ref.slice(TAGS_PREFIX.length));
+    },
+
+    deleteTag(name: string): void {
+      deleteRawRef(tagNameToRef(name));
     },
   };
+}
+
+// ============================================================================
+// Ref 辅助函数
+// ============================================================================
+
+function branchNameToRef(name: string): string {
+  return `${HEADS_PREFIX}${normalizeShortRefName(name, "branch")}`;
+}
+
+function tagNameToRef(name: string): string {
+  return `${TAGS_PREFIX}${normalizeShortRefName(name, "tag")}`;
+}
+
+function normalizeShortRefName(name: string, kind: "branch" | "tag"): string {
+  if (!name) {
+    throw new Error(`${kind} name cannot be empty`);
+  }
+
+  validateRefName(`refs/x/${name}`);
+  return name;
+}
+
+function validateRefPrefix(prefix: string): void {
+  if (!prefix.startsWith("refs/") || !prefix.endsWith("/")) {
+    throw new Error(`Invalid ref prefix: ${prefix}`);
+  }
+
+  validateRefName(`${prefix}placeholder`);
+}
+
+function validateRefName(ref: string): void {
+  if (ref === HEAD_REF) {
+    return;
+  }
+
+  if (!ref.startsWith("refs/")) {
+    throw new Error(`Invalid ref name: ${ref}`);
+  }
+
+  if (
+    ref.includes("\\") ||
+    ref.includes("..") ||
+    ref.includes("@{") ||
+    ref.includes("//") ||
+    ref.endsWith("/") ||
+    ref.endsWith(".")
+  ) {
+    throw new Error(`Invalid ref name: ${ref}`);
+  }
+
+  for (const char of ref) {
+    const code = char.charCodeAt(0);
+    if (
+      code <= 0x1f ||
+      code === 0x7f ||
+      char === " " ||
+      char === "~" ||
+      char === "^" ||
+      char === ":" ||
+      char === "?" ||
+      char === "*" ||
+      char === "["
+    ) {
+      throw new Error(`Invalid ref name: ${ref}`);
+    }
+  }
+
+  const parts = ref.split("/");
+  if (parts.length < 3) {
+    throw new Error(`Invalid ref name: ${ref}`);
+  }
+
+  for (const part of parts) {
+    if (!part || part === "." || part === ".." || part.endsWith(".lock")) {
+      throw new Error(`Invalid ref name: ${ref}`);
+    }
+  }
+}
+
+function listLooseRefsRecursive(baseDir: string, prefix: string): string[] {
+  const refs: string[] = [];
+  const entries = readdirSync(baseDir).sort();
+
+  for (const entry of entries) {
+    const fullPath = join(baseDir, entry);
+    const stat = statSync(fullPath);
+
+    if (stat.isDirectory()) {
+      refs.push(...listLooseRefsRecursive(fullPath, `${prefix}${entry}/`));
+      continue;
+    }
+
+    if (stat.isFile()) {
+      refs.push(`${prefix}${entry}`);
+    }
+  }
+
+  return refs;
 }
 
 /**

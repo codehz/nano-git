@@ -539,6 +539,29 @@ describe("Tag 兼容性", () => {
       expect(output).toContain(`tagger ${FIXED_AUTHOR.name} <${FIXED_AUTHOR.email}>`);
       expect(output).toContain("Release v1.0.0");
     });
+
+    test("nano-git 创建的轻量标签能被 git rev-parse 读取", () => {
+      const repo = openRepository(tempDir);
+
+      const treeHash = repo.createTree([]);
+      const commitHash = repo.createCommit(treeHash, [], "Lightweight tag", testAuthor);
+
+      repo.createTag("v1.2.3", commitHash);
+
+      expect(gitRevParse(tempDir, "refs/tags/v1.2.3")).toBe(commitHash);
+    });
+
+    test("nano-git 创建的 annotated tag 能被 git rev-parse 解析", () => {
+      const repo = openRepository(tempDir);
+
+      const treeHash = repo.createTree([]);
+      const commitHash = repo.createCommit(treeHash, [], "Annotated tag", testAuthor);
+
+      const tagHash = repo.createAnnotatedTag("v3.0.0", commitHash, "Release v3.0.0\n", testAuthor);
+
+      expect(gitRevParse(tempDir, "refs/tags/v3.0.0")).toBe(tagHash);
+      expect(gitRevParse(tempDir, "v3.0.0^{commit}")).toBe(commitHash);
+    });
   });
 
   // --- git → nano-git ---
@@ -635,10 +658,29 @@ describe("Ref 兼容性", () => {
       const treeHash = repo.createTree([]);
       const commitHash = repo.createCommit(treeHash, [], "Feature branch", testAuthor);
 
-      repo.updateRef("refs/heads/feature", commitHash);
+      repo.createBranch("feature", commitHash);
 
       const gitResult = gitRevParse(tempDir, "refs/heads/feature");
       expect(gitResult).toBe(commitHash);
+    });
+
+    test("nano-git 创建的分支能被 git branch 列出", () => {
+      const repo = openRepository(tempDir);
+
+      const treeHash = repo.createTree([]);
+      const commitHash = repo.createCommit(treeHash, [], "Branch list", testAuthor);
+      repo.updateRef("refs/heads/main", commitHash);
+      repo.createBranch("feature/api");
+
+      const { spawnSync } = require("node:child_process") as typeof import("node:child_process");
+      const result = spawnSync("git", ["branch", "--list"], {
+        cwd: tempDir,
+        encoding: "utf-8",
+      });
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("feature/api");
+      expect(result.stdout).toContain("main");
     });
   });
 
