@@ -512,16 +512,15 @@ describe("CGI: 完整 fetch 流程（HTTP 服务器）", () => {
     cleanupDir(tempDir);
   });
 
-  test("完整初始 clone 流程（fetch 到内存仓库）", async () => {
+  test("完整初始 clone 流程（使用 repo.fetch()）", async () => {
     const { initRepository } = await import("../../src/repository/index.ts");
 
     // 创建本地目标仓库
     const localDir = join(tempDir, "local");
     const repo = initRepository(localDir);
 
-    // 执行 fetch
-    const { fetch: fetchFn } = await import("../../src/transport/fetch.ts");
-    const result = await fetchFn(repo.objects, repo.refs, serverUrl);
+    // 使用 repo.fetch() API 执行 fetch
+    const result = await repo.fetch(serverUrl);
 
     // 验证结果
     expect(result.objectCount).toBeGreaterThan(0);
@@ -540,19 +539,18 @@ describe("CGI: 完整 fetch 流程（HTTP 服务器）", () => {
     expect(commitObj.type).toBe("commit");
   });
 
-  test("fetch 到已存在对象的仓库（增量 fetch 场景）", async () => {
+  test("fetch 到已存在对象的仓库（增量 fetch 场景，使用 repo.fetch()）", async () => {
     const { initRepository } = await import("../../src/repository/index.ts");
 
     const localDir = join(tempDir, "local2");
     const repo = initRepository(localDir);
 
-    // 第一次 fetch
-    const { fetch: fetchFn } = await import("../../src/transport/fetch.ts");
-    const result1 = await fetchFn(repo.objects, repo.refs, serverUrl);
+    // 第一次 fetch（使用 repo.fetch()）
+    const result1 = await repo.fetch(serverUrl);
     expect(result1.objectCount).toBeGreaterThan(0);
 
     // 第二次 fetch（应返回 0 个新对象）
-    const result2 = await fetchFn(repo.objects, repo.refs, serverUrl);
+    const result2 = await repo.fetch(serverUrl);
     expect(result2.objectCount).toBe(0);
     expect(result2.fetchedRefs.size).toBe(0);
   });

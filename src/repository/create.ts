@@ -7,6 +7,8 @@ import type { Repository } from "./types.ts";
 import { createMaintenanceRepositoryOperations } from "./maintenance-operations.ts";
 import { createObjectRepositoryOperations } from "./object-operations.ts";
 import { createRefRepositoryOperations } from "./ref-operations.ts";
+import { fetch as transportFetch } from "../transport/fetch.ts";
+import type { FetchOptions, FetchResult } from "../transport/types.ts";
 
 /**
  * 基于显式后端创建仓库实例
@@ -35,5 +37,8 @@ export function createRepository(backend: RepositoryBackend): Repository {
     ...createObjectRepositoryOperations(objects),
     ...createRefRepositoryOperations(backend),
     ...createMaintenanceRepositoryOperations(objects, refs, packs),
+    async fetch(url: string, options?: FetchOptions): Promise<FetchResult> {
+      return transportFetch(objects, refs, url, options);
+    },
   };
 }

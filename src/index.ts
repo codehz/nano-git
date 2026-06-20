@@ -201,4 +201,52 @@ export {
   openRepository,
   createMemoryRepository,
   type Repository,
+  type RepositoryFetchOperations,
 } from "./repository/index.ts";
+
+// ============================================================================
+// Smart HTTP Fetch 传输层
+// ============================================================================
+
+export type {
+  RemoteRef,
+  RefAdvertisement,
+  FetchOptions,
+  FetchResult,
+  SmartHttpClient,
+  UploadPackResult,
+  ParsedRefSpec,
+  PktLine,
+  PktLineData,
+  PktLineFlush,
+  PktLineDelimiter,
+  PktLineResponseEnd,
+} from "./transport/index.ts";
+export {
+  // pkt-line 编解码
+  encodePktLine,
+  encodeFlushPkt,
+  encodeDelimiterPkt,
+  encodeResponseEndPkt,
+  parsePktLines,
+  PktLineError,
+  // ref 广告解析
+  parseRefAdvertisement,
+  RefAdvertisementError,
+  // side-band 解复用
+  extractPackfile,
+  extractProgress,
+  SideBandError,
+  // 请求生成
+  buildUploadPackRequest,
+  // HTTP 传输
+  createSmartHttpClient,
+  SmartHttpError,
+  // fetch 编排
+  fetch,
+  parseRefSpec,
+  matchesRefSpec,
+  mapRefName,
+  determineWants,
+  FetchError,
+} from "./transport/index.ts";
