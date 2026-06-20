@@ -104,6 +104,49 @@ export {
 } from "./store/index.ts";
 
 // ============================================================================
+// Packfile 支持
+// ============================================================================
+
+export {
+  // 常量和工具
+  OBJ_COMMIT,
+  OBJ_TREE,
+  OBJ_BLOB,
+  OBJ_TAG,
+  OBJ_OFS_DELTA,
+  OBJ_REF_DELTA,
+  objectTypeToNumber,
+  numberToObjectType,
+  isDeltaType,
+  // Delta 编解码
+  applyDelta,
+  createDelta,
+  // Packfile 读取
+  createPackReader,
+  PackReader,
+  type PackObject,
+  // Packfile 写入
+  createPackWriter,
+  PackWriter,
+  // Packfile 索引
+  createPackIndexReader,
+  createPackIndexWriter,
+  PackIndexReader,
+  PackIndexWriter,
+  type PackIndexEntry,
+  // Packfile 存储
+  createPackObjectStore,
+  PackObjectStore,
+  // 组合存储
+  createCompositeObjectStore,
+  CompositeObjectStore,
+  // Packfile 构建器
+  createPackBuilder,
+  PackBuilder,
+  type PackBuildResult,
+} from "./pack/index.ts";
+
+// ============================================================================
 // 仓库 API
 // ============================================================================
 

@@ -92,3 +92,51 @@ export class RefNotFoundError extends GitError {
     this.name = "RefNotFoundError";
   }
 }
+
+/**
+ * Packfile 错误
+ *
+ * 与 Packfile 操作相关的错误。
+ */
+export class PackError extends GitError {
+  constructor(message: string) {
+    super(`Packfile error: ${message}`);
+    this.name = "PackError";
+  }
+}
+
+/**
+ * 无效的 Packfile 错误
+ *
+ * 当 Packfile 格式不符合 Git 规范时抛出。
+ */
+export class InvalidPackError extends PackError {
+  constructor(message: string) {
+    super(`Invalid packfile: ${message}`);
+    this.name = "InvalidPackError";
+  }
+}
+
+/**
+ * Packfile 索引错误
+ *
+ * 当 Packfile 索引（.idx）文件格式不正确时抛出。
+ */
+export class PackIndexError extends PackError {
+  constructor(message: string) {
+    super(`Pack index error: ${message}`);
+    this.name = "PackIndexError";
+  }
+}
+
+/**
+ * Delta 解码错误
+ *
+ * 当 delta 对象解码失败时抛出。
+ */
+export class DeltaError extends PackError {
+  constructor(message: string) {
+    super(`Delta decode error: ${message}`);
+    this.name = "DeltaError";
+  }
+}
