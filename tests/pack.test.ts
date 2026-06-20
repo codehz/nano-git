@@ -362,13 +362,11 @@ describe("PackObjectStore", () => {
     }
   });
 
-  test("PackObjectStore 是只读的", () => {
+  test("PackObjectStore 只提供读取接口", () => {
     const gitDir = tempDir;
     const store = createPackObjectStore(gitDir);
 
-    expect(() => {
-      store.write({ type: "blob", content: Buffer.from("test") });
-    }).toThrow();
+    expect("write" in store).toBe(false);
   });
 });
 

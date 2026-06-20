@@ -9,4 +9,7 @@ export {
   createMemoryRepositoryBackend,
   type CreateMemoryRepositoryBackendOptions,
 } from "./memory-backend.ts";
-export { createFileRepositoryBackend } from "./file-backend.ts";
+export {
+  createFileRepositoryBackend,
+  type CreateFileRepositoryBackendOptions,
+} from "./file-backend.ts";

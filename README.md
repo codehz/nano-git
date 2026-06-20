@@ -96,6 +96,8 @@ const treeHash = repo.writeTree("/path/to/directory");
 repo.updateRef("refs/heads/main", commitHash);
 ```
 
+`openRepository()` 默认会同时读取 `.git/objects/` 下的 loose objects 和 `.git/objects/pack/` 下的 packed objects，因此可以直接打开经过 `git gc` 或 `git repack` 的真实仓库。
+
 ### 对象序列化
 
 ```typescript

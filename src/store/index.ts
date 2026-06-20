@@ -6,6 +6,6 @@
  * 扩展点：添加新存储后端时，在此处导出即可。
  */
 
-export type { ObjectStore } from "./types.ts";
+export type { ObjectSource, ObjectStore } from "./types.ts";
 export { createFileObjectStore } from "./file-store.ts";
 export { createMemoryObjectStore, type MemoryObjectStore } from "./memory-store.ts";

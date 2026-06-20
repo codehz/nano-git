@@ -8,6 +8,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { createPackBuilder } from "../src/pack/index.ts";
 import {
   createRepository,
   createMemoryRepository,
@@ -477,6 +478,24 @@ describe("文件系统仓库的对象操作", () => {
         expect(subtree.entries).toHaveLength(1);
         expect(subtree.entries[0]!.name).toBe("nested.txt");
       }
+    }
+  });
+
+  test("openRepository() 默认可读取 packfile 中的对象", () => {
+    const gitDir = join(tempDir, ".git");
+    const builder = createPackBuilder(gitDir);
+    const hash = builder.addObject({
+      type: "blob",
+      content: Buffer.from("packed-only content"),
+    });
+    builder.build();
+
+    const packedRepo = openRepository(tempDir);
+    const obj = packedRepo.catFile(hash);
+
+    expect(obj.type).toBe("blob");
+    if (obj.type === "blob") {
+      expect(obj.content.toString("utf-8")).toBe("packed-only content");
     }
   });
 });

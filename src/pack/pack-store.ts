@@ -2,7 +2,7 @@
  * 基于 Packfile 的对象存储
  *
  * 从 .git/objects/pack/ 目录中读取 packfile 和索引文件，
- * 提供与 ObjectStore 兼容的读取接口。
+ * 提供只读的对象读取接口。
  *
  * Git 的 pack 目录结构：
  * - pack-<checksum>.pack  — 打包的对象数据
@@ -22,6 +22,7 @@ import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import type { GitObject, SHA1 } from "../types.ts";
 import { ObjectNotFoundError } from "../errors.ts";
+import type { ObjectSource } from "../store/types.ts";
 import { PackReader } from "./pack-reader.ts";
 import { PackIndexReader } from "./pack-index.ts";
 
@@ -74,7 +75,7 @@ export function createPackObjectStore(gitDir: string): PackObjectStore {
 /**
  * 基于 Packfile 的对象存储类
  */
-export class PackObjectStore {
+export class PackObjectStore implements ObjectSource {
   private readonly packDir: string;
   private readonly pairs: PackPair[] = [];
   private loaded = false;
@@ -161,19 +162,6 @@ export class PackObjectStore {
     }
 
     return false;
-  }
-
-  /**
-   * 写入对象（不支持）
-   *
-   * Packfile 是只读的，写入操作应使用 loose objects 或创建新的 packfile。
-   *
-   * @throws 始终抛出错误
-   */
-  write(_obj: GitObject): SHA1 {
-    throw new Error(
-      "PackObjectStore is read-only. Use createPackBuilder() to create new packfiles.",
-    );
   }
 
   /**
