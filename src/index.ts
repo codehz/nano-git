@@ -9,13 +9,16 @@
  * - Packfile 支持（读取、写入、索引、delta 编解码、打包）
  *
  * 模块结构：
- * - types.ts: 核心类型定义
- * - errors.ts: 错误类型体系
- * - hash.ts: SHA-1 哈希工具
- * - objects/: 对象序列化/反序列化（按类型拆分）
+ * - core/: 核心类型、错误与哈希工具
+ * - objects/: Git 对象序列化/反序列化
  * - odb/: 对象数据库（loose objects + pack）
- * - refs/: 引用管理（分支、标签操作）
- * - repository/: 高层仓库 API
+ * - refs/: 引用管理（名称校验、解析、存储）
+ * - repository/: 高层仓库 API 与后端
+ *
+ * 兼容层：
+ * - 顶层 `types.ts`、`errors.ts`、`hash.ts`、`repository.ts`
+ * - `store/`、`pack/`、`backend/`
+ *   保留旧导入路径，具体实现已迁移到新的子目录。
  *
  * 扩展点：
  * - diff/: 差异计算

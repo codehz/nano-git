@@ -174,12 +174,19 @@ bun run examples/demo.ts
 ```
 nano-git/
 ├── src/
-│   ├── index.ts          # 入口文件和导出
-│   ├── types.ts          # 类型定义
-│   ├── hash.ts           # SHA-1 哈希工具
-│   ├── objects.ts        # 对象序列化/反序列化
-│   ├── store.ts          # 对象存储（文件系统/内存）
-│   └── repository.ts     # 仓库高层 API
+│   ├── index.ts          # 入口文件和公开导出
+│   ├── core/             # 核心类型、错误、哈希工具
+│   ├── objects/          # blob/tree/commit/tag 序列化
+│   ├── odb/              # 对象数据库与 pack 支持
+│   ├── refs/             # 引用解析、校验、存储
+│   ├── repository/       # 仓库 API 与后端
+│   ├── types.ts          # 兼容层：转发到 core/types.ts
+│   ├── hash.ts           # 兼容层：转发到 core/hash.ts
+│   ├── errors.ts         # 兼容层：转发到 core/errors.ts
+│   ├── repository.ts     # 兼容层：转发到 repository/
+│   ├── store/            # 兼容层：转发到 odb/
+│   ├── pack/             # 兼容层：转发到 odb/pack/
+│   └── backend/          # 兼容层：转发到 repository/backend/
 ├── tests/
 │   ├── types.test.ts     # 类型校验测试
 │   ├── hash.test.ts      # 哈希工具测试

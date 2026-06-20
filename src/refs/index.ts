@@ -5,9 +5,9 @@
  *
  * 模块结构：
  * - types.ts: RefStore 接口定义和常量
- * - utils.ts: 引用解析、校验、名称转换等工具函数
- * - file-ref-store.ts: 文件系统实现
- * - memory-ref-store.ts: 内存实现
+ * - names.ts: 引用名校验与名称转换
+ * - resolve.ts: 符号引用解析
+ * - stores/: 文件系统与内存实现
  *
  * @example
  * ```ts
@@ -21,16 +21,15 @@
 export type { RefStore } from "./types.ts";
 export { HEAD_REF, HEADS_PREFIX, TAGS_PREFIX } from "./types.ts";
 
+export { resolveRefHash, resolveSymbolicRef, resolveTargetHash } from "./resolve.ts";
+
 export {
-  resolveRefHash,
-  resolveSymbolicRef,
-  resolveTargetHash,
   validateRefName,
   validateRefPrefix,
   branchNameToRef,
   tagNameToRef,
   normalizeShortRefName,
-} from "./utils.ts";
+} from "./names.ts";
 
-export { createFileRefStore } from "./file-ref-store.ts";
-export { createMemoryRefStore } from "./memory-ref-store.ts";
+export { createFileRefStore } from "./stores/file.ts";
+export { createMemoryRefStore } from "./stores/memory.ts";
