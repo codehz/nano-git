@@ -10,9 +10,9 @@
 import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { deflateSync, inflateSync } from "node:zlib";
-import type { GitObject, SHA1 } from "../types.ts";
-import { sha1 } from "../types.ts";
-import { hashObject, hashToPath } from "../hash.ts";
+import type { GitObject, SHA1 } from "../core/types.ts";
+import { sha1 } from "../core/types.ts";
+import { hashObject, hashToPath } from "../core/hash.ts";
 import { serialize, deserialize, serializeContent } from "../objects/index.ts";
 import type { ObjectStore } from "./types.ts";
 

@@ -22,10 +22,10 @@
 
 import { createHash } from "node:crypto";
 import { inflateSync } from "node:zlib";
-import type { GitObject, ObjectType, SHA1 } from "../types.ts";
-import { hashObject } from "../hash.ts";
+import type { GitObject, ObjectType, SHA1 } from "../core/types.ts";
+import { hashObject } from "../core/hash.ts";
 import { deserializeContent } from "../objects/index.ts";
-import { InvalidPackError } from "../errors.ts";
+import { InvalidPackError } from "../core/errors.ts";
 import {
   PACK_SIGNATURE,
   PACK_VERSION,

@@ -6,7 +6,7 @@
  */
 
 import type { RefStore } from "./types.ts";
-import { RefNotFoundError } from "../errors.ts";
+import { RefNotFoundError } from "../core/errors.ts";
 import { validateRefName, validateRefPrefix } from "./utils.ts";
 
 /**

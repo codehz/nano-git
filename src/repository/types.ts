@@ -22,7 +22,7 @@ import type {
 } from "../backend/index.ts";
 import type { RefStore } from "../refs/index.ts";
 import type { ObjectStore } from "../store/index.ts";
-import type { GitObject, GitAuthor, TreeEntry, SHA1, ObjectType } from "../types.ts";
+import type { GitObject, GitAuthor, TreeEntry, SHA1, ObjectType } from "../core/types.ts";
 
 /**
  * Git 仓库接口

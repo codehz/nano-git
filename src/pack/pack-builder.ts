@@ -19,8 +19,8 @@
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
-import type { GitObject, SHA1 } from "../types.ts";
-import { hashObject } from "../hash.ts";
+import type { GitObject, SHA1 } from "../core/types.ts";
+import { hashObject } from "../core/hash.ts";
 import { serializeContent } from "../objects/index.ts";
 import { PackIndexWriter } from "./pack-index.ts";
 import { PACK_SIGNATURE, PACK_VERSION, objectTypeToNumber } from "./constants.ts";

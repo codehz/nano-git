@@ -9,7 +9,7 @@
  * - loose object、内存存储等可写后端实现 ObjectStore
  */
 
-import type { GitObject, SHA1 } from "../types.ts";
+import type { GitObject, SHA1 } from "../core/types.ts";
 
 /**
  * 对象读取接口

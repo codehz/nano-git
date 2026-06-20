@@ -7,13 +7,13 @@
 
 import { existsSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
-import { hashToPath } from "../hash.ts";
+import { hashToPath } from "../core/hash.ts";
 import { createCompositeObjectStore } from "../pack/composite-store.ts";
 import { createPackBuilder } from "../pack/pack-builder.ts";
 import { createPackObjectStore } from "../pack/pack-store.ts";
 import { createFileRefStore } from "../refs/index.ts";
 import { createFileObjectStore } from "../store/index.ts";
-import type { SHA1 } from "../types.ts";
+import type { SHA1 } from "../core/types.ts";
 import type { ObjectSource } from "../store/index.ts";
 import type {
   RepositoryBackend,

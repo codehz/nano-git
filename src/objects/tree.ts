@@ -8,8 +8,8 @@
  * - hash: 20 字节的原始 SHA-1（不是十六进制字符串）
  */
 
-import type { GitTree, TreeEntry } from "../types.ts";
-import { sha1 } from "../types.ts";
+import type { GitTree, TreeEntry } from "../core/types.ts";
+import { sha1 } from "../core/types.ts";
 
 /**
  * 序列化 Tree 对象

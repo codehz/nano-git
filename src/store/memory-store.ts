@@ -5,8 +5,8 @@
  * 适用于单元测试和临时操作场景。
  */
 
-import type { GitObject, SHA1 } from "../types.ts";
-import { hashObject } from "../hash.ts";
+import type { GitObject, SHA1 } from "../core/types.ts";
+import { hashObject } from "../core/hash.ts";
 import { serialize, deserialize, serializeContent } from "../objects/index.ts";
 import type { ObjectStore } from "./types.ts";
 

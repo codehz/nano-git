@@ -13,7 +13,7 @@
 
 import { mkdirSync, readFileSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
 import { join, dirname } from "node:path";
-import { RefNotFoundError } from "../errors.ts";
+import { RefNotFoundError } from "../core/errors.ts";
 import type { RefStore } from "./types.ts";
 import { validateRefName, validateRefPrefix, listLooseRefsRecursive } from "./utils.ts";
 

@@ -21,8 +21,8 @@
 
 import { createHash } from "node:crypto";
 import { deflateSync } from "node:zlib";
-import type { GitObject, SHA1 } from "../types.ts";
-import { hashObject } from "../hash.ts";
+import type { GitObject, SHA1 } from "../core/types.ts";
+import { hashObject } from "../core/hash.ts";
 import { serializeContent } from "../objects/index.ts";
 import { PACK_SIGNATURE, PACK_VERSION, objectTypeToNumber } from "./constants.ts";
 import { encodeObjectHeader } from "./utils.ts";

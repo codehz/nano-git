@@ -20,8 +20,8 @@
 
 import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import type { GitObject, SHA1 } from "../types.ts";
-import { ObjectNotFoundError } from "../errors.ts";
+import type { GitObject, SHA1 } from "../core/types.ts";
+import { ObjectNotFoundError } from "../core/errors.ts";
 import type { ObjectSource } from "../store/types.ts";
 import { PackReader } from "./pack-reader.ts";
 import { PackIndexReader } from "./pack-index.ts";

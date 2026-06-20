@@ -12,8 +12,8 @@
  * ```
  */
 
-import type { GitTag, ObjectType, SHA1 } from "../types.ts";
-import { sha1 } from "../types.ts";
+import type { GitTag, ObjectType, SHA1 } from "../core/types.ts";
+import { sha1 } from "../core/types.ts";
 import { formatAuthor, parseAuthor } from "./author.ts";
 
 /**

@@ -20,7 +20,7 @@
  * ```
  */
 
-import { DeltaError } from "../errors.ts";
+import { DeltaError } from "../core/errors.ts";
 import { decodeVarint, encodeVarint } from "./utils.ts";
 
 // ============================================================================

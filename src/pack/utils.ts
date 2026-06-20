@@ -11,7 +11,7 @@
  * 其余 7 位存储实际数据。
  */
 
-import { InvalidPackError } from "../errors.ts";
+import { InvalidPackError } from "../core/errors.ts";
 
 // ============================================================================
 // 对象头部编码/解码

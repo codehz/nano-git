@@ -15,7 +15,7 @@
  * 3. 在本文件的 switch 中添加分支
  */
 
-import type { GitObject, ObjectType } from "../types.ts";
+import type { GitObject, ObjectType } from "../core/types.ts";
 import { serializeBlob, deserializeBlob } from "./blob.ts";
 import { serializeTree, deserializeTree } from "./tree.ts";
 import { serializeCommit, deserializeCommit } from "./commit.ts";

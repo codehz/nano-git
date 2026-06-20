@@ -7,7 +7,7 @@
 import { HEAD_REF, HEADS_PREFIX, TAGS_PREFIX, resolveRefHash } from "../refs/index.ts";
 import type { RefStore } from "../refs/index.ts";
 import type { ObjectStore } from "../store/index.ts";
-import type { SHA1 } from "../types.ts";
+import type { SHA1 } from "../core/types.ts";
 
 function listRootRefs(refs: RefStore): string[] {
   const rootRefs = new Set<string>([HEAD_REF]);

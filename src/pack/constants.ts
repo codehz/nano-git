@@ -12,7 +12,7 @@
  * - 7: ref_delta（基于引用的 delta）
  */
 
-import type { ObjectType } from "../types.ts";
+import type { ObjectType } from "../core/types.ts";
 
 // ============================================================================
 // Packfile 对象类型编码

@@ -7,7 +7,7 @@ import type {
   RepositoryGCOptions,
   RepositoryRepackOptions,
 } from "../backend/index.ts";
-import { hashObject } from "../hash.ts";
+import { hashObject } from "../core/hash.ts";
 import {
   resolveRefHash,
   resolveSymbolicRef,
@@ -28,7 +28,7 @@ import type {
   SHA1,
   ObjectType,
   GitTag,
-} from "../types.ts";
+} from "../core/types.ts";
 import type { Repository } from "./types.ts";
 import { listReachableObjects } from "./reachability.ts";
 import { writeTreeRecursive } from "./tree-writer.ts";

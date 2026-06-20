@@ -7,9 +7,9 @@
 
 import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import type { SHA1 } from "../types.ts";
-import { sha1 } from "../types.ts";
-import { CircularReferenceError } from "../errors.ts";
+import type { SHA1 } from "../core/types.ts";
+import { sha1 } from "../core/types.ts";
+import { CircularReferenceError } from "../core/errors.ts";
 import type { RefStore } from "./types.ts";
 import { HEAD_REF, HEADS_PREFIX, TAGS_PREFIX } from "./types.ts";
 

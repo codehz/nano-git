@@ -17,8 +17,8 @@
  * ```
  */
 
-import type { GitObject, SHA1 } from "../types.ts";
-import { ObjectNotFoundError } from "../errors.ts";
+import type { GitObject, SHA1 } from "../core/types.ts";
+import { ObjectNotFoundError } from "../core/errors.ts";
 import type { ObjectSource, ObjectStore } from "../store/types.ts";
 
 // ============================================================================

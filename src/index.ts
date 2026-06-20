@@ -46,9 +46,9 @@ export type {
   GitTag,
   TreeEntry,
   GitAuthor,
-} from "./types.ts";
+} from "./core/types.ts";
 
-export { sha1 } from "./types.ts";
+export { sha1 } from "./core/types.ts";
 
 // ============================================================================
 // 错误类型
@@ -62,13 +62,20 @@ export {
   RepositoryError,
   CircularReferenceError,
   RefNotFoundError,
-} from "./errors.ts";
+} from "./core/errors.ts";
 
 // ============================================================================
 // 哈希工具
 // ============================================================================
 
-export { hashData, hashObject, hashToPath, pathToHash, isValidSHA1, hashFile } from "./hash.ts";
+export {
+  hashData,
+  hashObject,
+  hashToPath,
+  pathToHash,
+  isValidSHA1,
+  hashFile,
+} from "./core/hash.ts";
 
 // ============================================================================
 // 对象序列化/反序列化

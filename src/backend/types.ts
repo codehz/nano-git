@@ -10,7 +10,7 @@ import type { ObjectSource, ObjectStore } from "../store/types.ts";
 import type { PackBuildResult } from "../pack/pack-builder.ts";
 import type { PackBuilder } from "../pack/pack-builder.ts";
 import type { PackObjectStore } from "../pack/pack-store.ts";
-import type { GitObject, SHA1 } from "../types.ts";
+import type { GitObject, SHA1 } from "../core/types.ts";
 
 /** 仓库级 repack 选项 */
 export interface RepositoryRepackOptions {

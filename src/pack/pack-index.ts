@@ -23,9 +23,9 @@
  */
 
 import { createHash } from "node:crypto";
-import type { SHA1 } from "../types.ts";
-import { sha1 } from "../types.ts";
-import { PackIndexError } from "../errors.ts";
+import type { SHA1 } from "../core/types.ts";
+import { sha1 } from "../core/types.ts";
+import { PackIndexError } from "../core/errors.ts";
 import {
   IDX_V2_SIGNATURE,
   IDX_V2_VERSION,
