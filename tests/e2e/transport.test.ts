@@ -30,6 +30,7 @@ import {
 
 import { parseRefAdvertisement } from "../../src/transport/ref-advertisement.ts";
 import { extractPackfile } from "../../src/transport/side-band.ts";
+import { buildUploadPackRequest } from "../../src/transport/negotiate.ts";
 import { parsePktLines, encodePktLine, encodeFlushPkt } from "../../src/transport/pkt-line.ts";
 import type { PktLineData } from "../../src/transport/pkt-line.ts";
 
@@ -288,7 +289,7 @@ describe("CGI: upload-pack (fetch)", () => {
     cleanupDir(tempDir);
   });
 
-  test("发送 want 请求并解包 packfile", () => {
+  test("发送 want 请求并解包 packfile（使用 buildUploadPackRequest）", () => {
     // 1. 先获取 ref advertisement 取得 want hash
     const advResult = callGitHttpBackend(
       repoDir,
@@ -301,13 +302,10 @@ describe("CGI: upload-pack (fetch)", () => {
     const mainRef = adv.refs.find((r) => r.name === "refs/heads/main");
     expect(mainRef).toBeDefined();
 
-    // 2. 构造 upload-pack 请求：want + done
-    const wantBody = Buffer.concat([
-      encodePktLine(`want ${mainRef!.hash} multi_ack side-band-64k ofs-delta\n`),
-      encodeFlushPkt(),
-      encodePktLine("done\n"),
-      encodeFlushPkt(),
-    ]);
+    const caps = ["multi_ack", "side-band-64k", "ofs-delta"];
+
+    // 2. 使用 buildUploadPackRequest 构造请求 body
+    const wantBody = buildUploadPackRequest([mainRef!.hash], [], caps);
 
     const fetchResult = callGitHttpBackend(
       repoDir,
@@ -327,6 +325,48 @@ describe("CGI: upload-pack (fetch)", () => {
 
     // 4. 验证 packfile 以 "PACK" 开头
     expect(packfile.subarray(0, 4).toString("utf-8")).toBe("PACK");
+  });
+
+  test("增量 fetch：want + have + done（使用 buildUploadPackRequest）", () => {
+    // 在已有工作目录上添加新提交
+    const fetchWorkDir = join(tempDir, "work");
+    createFile(fetchWorkDir, "FEATURE.md", "# Feature\n");
+    git(["add", "FEATURE.md"], fetchWorkDir);
+    git(["commit", "-m", "Add feature"], fetchWorkDir);
+    const newCommitHash = git(["rev-parse", "HEAD"], fetchWorkDir);
+    git(["push", "--force", repoDir, "main"], fetchWorkDir);
+
+    // 获取 ref advertisement
+    const advResult = callGitHttpBackend(
+      repoDir,
+      projectRoot,
+      "GET",
+      `/${repoName(repoDir)}/info/refs`,
+      "service=git-upload-pack",
+    );
+    const adv = parseRefAdvertisement(advResult.body, "git-upload-pack");
+    const mainRef = adv.refs.find((r) => r.name === "refs/heads/main");
+    expect(mainRef).toBeDefined();
+
+    const caps = ["multi_ack", "side-band-64k", "ofs-delta"];
+
+    // 使用 buildUploadPackRequest 构造增量 fetch 请求
+    const wantBody = buildUploadPackRequest([sha1(newCommitHash)], [sha1(commitHash)], caps);
+
+    const fetchResult = callGitHttpBackend(
+      repoDir,
+      projectRoot,
+      "POST",
+      `/${repoName(repoDir)}/git-upload-pack`,
+      undefined,
+      wantBody,
+    );
+
+    expect(fetchResult.status).toBe(200);
+
+    // 验证响应体中包含 NAK（增量 fetch 的正常 ACK/NAK 响应）
+    const bodyStr = fetchResult.body.toString("utf-8");
+    expect(bodyStr).toContain("NAK");
   });
 
   test("NAK 响应（没有共同对象的 fetch）", () => {
