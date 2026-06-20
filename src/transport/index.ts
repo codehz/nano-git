@@ -49,7 +49,7 @@ export type { ReceivePackCommand } from "./receive-pack-request.ts";
 // P3b: 响应解析
 export { parseReceivePackResult, ReceivePackResultError } from "./receive-pack-result.ts";
 
-// P4: HTTP 传输 & fetch 编排
+// P4: HTTP 传输 & fetch/push 编排
 export { createSmartHttpClient, SmartHttpError } from "./smart-http.ts";
 export type { SmartHttpClient, UploadPackResult, ReceivePackHttpResult } from "./smart-http.ts";
 export {
@@ -61,3 +61,4 @@ export {
   FetchError,
 } from "./fetch.ts";
 export type { ParsedRefSpec } from "./fetch.ts";
+export { push, PushError } from "./push.ts";
