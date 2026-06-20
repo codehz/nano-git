@@ -2,13 +2,15 @@
  * 增量式 Tree Patch 操作
  *
  * 在不完整重新构造整棵树的前提下，对现有 tree 打补丁，
- * 只更新受影响的路径，支持增、删、改文件（含符号链接）。
+ * 只更新受影响的路径，支持增、删、改、重命名操作。
  *
  * 核心策略：
  * - 声明式 patch 列表，同路径多次操作最后一个生效
  * - 自动创建缺失的中间目录（类似 mkdir -p）
- * - delete 只能操作文件/符号链接，禁止操作目录
- * - 不存在的路径 delete 会抛出异常
+ * - delete 支持文件/符号链接/目录条目
+ * - rename 支持文件/符号链接/目录（直接移动 tree 引用，无需递归重写子树）
+ * - rename 按顺序逐一处理，upsert/delete 段内保持 batch 算法
+ * - 不存在的路径 delete/rename 会抛出异常
  */
 
 import type { ObjectStore } from "../odb/types.ts";
@@ -25,11 +27,14 @@ import type { GitTree, SHA1, TreeEntry } from "../core/types.ts";
  *   - `"100644"` 普通文件
  *   - `"100755"` 可执行文件
  *   - `"120000"` 符号链接
- * - `delete`: 删除文件或符号链接条目。禁止删除目录（mode 为 "40000" 的条目）。
+ * - `delete`: 删除文件、符号链接或目录条目。目录条目删除仅移除 parent tree 引用。
+ * - `rename`: 移动文件、符号链接或目录到新路径。源路径不存在则抛出异常。
+ *   目录 rename 只移动 tree entry 引用，子树内容（tree hash）不变。
  */
 export type TreePatchOp =
   | { readonly op: "upsert"; readonly path: string; readonly mode: string; readonly hash: SHA1 }
-  | { readonly op: "delete"; readonly path: string };
+  | { readonly op: "delete"; readonly path: string }
+  | { readonly op: "rename"; readonly from: string; readonly to: string };
 
 /**
  * Tree patch 结果
@@ -49,15 +54,15 @@ export interface TreePatchResult {
  * 对已有 tree 执行增量 patch 操作
  *
  * 算法描述：
- * 1. 收集所有 upsert 操作涉及的路径（用于 delete 校验）
- * 2. 对操作列表按路径去重（同路径最后一个生效）
- * 3. 从根树开始，将操作按首段路径分组
- * 4. 深层路径递归处理子树，直接路径更新当前层条目
+ * 1. 验证所有操作的路径格式
+ * 2. 将 ops 按 rename 操作分割为若干连续段
+ * 3. 段内 upsert/delete 保持现有 batch 算法（去重 + 递归）
+ * 4. rename 依次单独执行：查找源路径条目 → upsert(to) + delete(from) → batch 算法
  * 5. 所有新/更新的条目按名称排序后写出新 tree
  *
  * @param objects - 对象存储
  * @param rootHash - 根 tree 哈希
- * @param ops - patch 操作列表（同路径多次操作最后一个生效）
+ * @param ops - patch 操作列表（同路径多次操作最后一个生效，rename 按顺序逐一执行）
  * @returns patch 结果
  *
  * @example
@@ -65,7 +70,7 @@ export interface TreePatchResult {
  * const result = patchTree(objects, rootHash, [
  *   { op: "upsert", path: "src/main.ts", mode: "100644", hash: blobHash },
  *   { op: "delete", path: "old.ts" },
- *   { op: "upsert", path: "link", mode: "120000", hash: targetBlobHash },
+ *   { op: "rename", from: "src/utils", to: "lib/utils" },
  * ]);
  * ```
  */
@@ -80,26 +85,112 @@ export function patchTree(
 
   // 验证路径格式
   for (const op of ops) {
-    validatePath(op.path);
-  }
-
-  // 收集所有 upsert 路径（用于 delete 校验：同一批次中 upsert 再 delete 是允许的）
-  const upsertedPaths = new Set<string>();
-  for (const op of ops) {
-    if (op.op === "upsert") {
-      upsertedPaths.add(op.path);
+    if (op.op === "rename") {
+      validatePath(op.from);
+      validatePath(op.to);
+    } else {
+      validatePath(op.path);
     }
   }
 
-  // 同路径去重：最后一个生效
-  const dedupedOps = dedupOpsByPath(ops);
-
-  const result = applyPatchRecursive(objects, rootHash, dedupedOps, "", upsertedPaths);
+  // 按 rename 分割 ops 并顺序执行
+  const result = processOpsSequentially(objects, rootHash, ops);
 
   return {
     rootHash: result.hash,
     writtenTrees: result.written,
   };
+}
+
+// ============================================================================
+// 顺序执行引擎
+// ============================================================================
+
+/**
+ * 顺序执行 ops，rename 打断 batch
+ *
+ * 将连续的非 rename op 聚合成 batch，用现有递归算法处理；
+ * rename op 单独执行，每次在当前 tree 状态上查找源路径并转换为 upsert+delete。
+ */
+function processOpsSequentially(
+  objects: ObjectStore,
+  rootHash: SHA1,
+  ops: TreePatchOp[],
+): { hash: SHA1; written: SHA1[] } {
+  let currentHash = rootHash;
+  const allWritten: SHA1[] = [];
+  let currentBatch: TreePatchOp[] = [];
+
+  function flushBatch(): void {
+    if (currentBatch.length === 0) return;
+    const result = applyPatchBatch(objects, currentHash, currentBatch);
+    currentHash = result.hash;
+    allWritten.push(...result.written);
+    currentBatch = [];
+  }
+
+  for (const op of ops) {
+    if (op.op === "rename") {
+      flushBatch();
+
+      if (op.from === op.to) continue; // no-op
+
+      // 在当前 tree 中查找源条目
+      const entry = findEntryByPath(objects, currentHash, op.from);
+      if (entry === null) {
+        throw new Error(`Cannot rename '${op.from}': path does not exist`);
+      }
+
+      // 转换为 upsert + delete 并执行
+      const renameOps: TreePatchOp[] = [
+        { op: "upsert", path: op.to, mode: entry.mode, hash: entry.hash },
+        { op: "delete", path: op.from },
+      ];
+      const result = applyPatchBatch(objects, currentHash, renameOps);
+      currentHash = result.hash;
+      allWritten.push(...result.written);
+    } else {
+      currentBatch.push(op);
+    }
+  }
+
+  flushBatch();
+  return { hash: currentHash, written: allWritten };
+}
+
+/**
+ * 在 tree 中查找路径对应的条目
+ *
+ * 沿路径依次读取 tree 对象，最后一段返回目标条目。
+ * 中间段必须为目录（mode "40000"），否则抛出异常。
+ */
+function findEntryByPath(objects: ObjectStore, treeHash: SHA1, path: string): TreeEntry | null {
+  const segments = path.split("/");
+  let currentHash = treeHash;
+
+  for (let i = 0; i < segments.length; i++) {
+    const obj = objects.read(currentHash);
+    if (obj.type !== "tree") {
+      throw new Error(
+        `Expected tree at '${segments.slice(0, i).join("/") || "/"}', got '${obj.type}'`,
+      );
+    }
+    const entry = obj.entries.find((e) => e.name === segments[i]!);
+    if (!entry) return null;
+
+    if (i === segments.length - 1) {
+      return entry;
+    }
+
+    if (entry.mode !== "40000") {
+      throw new Error(
+        `Cannot access '${segments.slice(0, i + 1).join("/")}': not a directory (mode: ${entry.mode})`,
+      );
+    }
+    currentHash = entry.hash;
+  }
+
+  return null;
 }
 
 // ============================================================================
@@ -132,13 +223,51 @@ function validatePath(path: string): void {
 
 /**
  * 按路径去重，同路径最后一个操作生效
+ *
+ * 仅处理 upsert/delete（rename 由顺序执行引擎单独处理，不会传给此函数）。
  */
 function dedupOpsByPath(ops: TreePatchOp[]): TreePatchOp[] {
   const map = new Map<string, TreePatchOp>();
   for (const op of ops) {
+    if (op.op === "rename") continue; // 防御性跳过，实际不会发生
     map.set(op.path, op);
   }
   return Array.from(map.values());
+}
+
+// ============================================================================
+// Batch 处理入口
+// ============================================================================
+
+/**
+ * 对一批 upsert/delete 操作执行增量 patch
+ *
+ * 这是原先的 patchTree 实现，提取为内部函数供顺序执行引擎调用。
+ * 该函数不处理 rename 操作——调用方保证传入的 ops 不含 rename。
+ */
+function applyPatchBatch(
+  objects: ObjectStore,
+  rootHash: SHA1,
+  ops: TreePatchOp[],
+): { hash: SHA1; written: SHA1[] } {
+  if (ops.length === 0) {
+    return { hash: rootHash, written: [] };
+  }
+
+  // 收集所有 upsert 路径（用于 delete 校验：同一批次中 upsert 再 delete 是允许的）
+  const upsertedPaths = new Set<string>();
+  for (const op of ops) {
+    if (op.op === "upsert") {
+      upsertedPaths.add(op.path);
+    }
+  }
+
+  // 同路径去重：最后一个生效（rename 不会到这里）
+  const dedupedOps = dedupOpsByPath(ops);
+
+  const result = applyPatchRecursive(objects, rootHash, dedupedOps, "", upsertedPaths);
+
+  return { hash: result.hash, written: result.written };
 }
 
 // ============================================================================
@@ -221,8 +350,8 @@ function applyPatchRecursive(
         name: op.path,
         hash: op.hash,
       });
-    } else {
-      // delete 操作
+    } else if (op.op === "delete") {
+      // delete 操作（rename 由顺序执行引擎处理，不会到达这里）
       const fullPath = prefix + op.path;
       const existsInExisting = existingEntries.some((e) => e.name === op.path);
       const existsInCreated = finalEntryMap.has(op.path);
@@ -230,14 +359,6 @@ function applyPatchRecursive(
 
       if (!existsInExisting && !existsInCreated && !existsInBatch) {
         throw new Error(`Cannot delete '${prefix}${op.path}': path does not exist`);
-      }
-
-      // 验证：不能删除目录
-      const existingEntry = existingEntries.find((e) => e.name === op.path);
-      if (existingEntry?.mode === "40000") {
-        throw new Error(
-          `Cannot delete '${prefix}${op.path}': entry is a directory, only files and symlinks can be deleted`,
-        );
       }
 
       deletedNames.add(op.path);
@@ -305,6 +426,7 @@ function groupOpsByDepth(ops: TreePatchOp[]): {
   const deeperOps = new Map<string, TreePatchOp[]>();
 
   for (const op of ops) {
+    if (op.op === "rename") continue; // 防御性跳过，rename 不会到达 batch 递归
     const segments = op.path.split("/");
     const first = segments[0]!;
 
