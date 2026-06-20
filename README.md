@@ -13,6 +13,7 @@
 - ✅ **引用管理** — refs 验证、解析、存储（文件系统 + 内存）
 - ✅ **仓库 API** — 类似 Git plumbing 命令的高层接口（init、hash-object、cat-file、commit-tree、update-ref 等）
 - ✅ **可达性遍历与 GC** — 基于 refs 的可达对象收集、repack、gc
+- ✅ **Smart HTTP Fetch 客户端** — 基于 Bun fetch 的 Git 协议客户端，支持 clone/fetch
 - ✅ **类型安全** — 完整的 TypeScript 类型定义
 
 ## 安装
@@ -140,6 +141,40 @@ const result = repo.gc();
 console.log(result.objectCount);
 ```
 
+### 从远程仓库 Fetch（Smart HTTP）
+
+```typescript
+import { initRepository } from "nano-git";
+
+const repo = initRepository("/tmp/my-clone");
+
+// 从远程仓库拉取对象和引用
+const result = await repo.fetch("https://github.com/user/repo");
+console.log(`Fetched ${result.objectCount} objects`);
+
+// 远程分支以 refs/remotes/origin/* 写入
+const mainRef = repo.readRef("refs/remotes/origin/main");
+if (mainRef) {
+  const commit = repo.catFile(mainRef);
+  console.log(`Main branch: ${commit.type} ${mainRef}`);
+}
+
+// 执行增量 fetch（仅拉取新对象）
+const result2 = await repo.fetch("https://github.com/user/repo");
+console.log(`New objects: ${result2.objectCount}`); // 0（已是最新）
+```
+
+如果你需要更底层的控制，也可以直接使用 transport 层的独立函数：
+
+```typescript
+import { fetch, createSmartHttpClient, buildUploadPackRequest } from "nano-git";
+
+// 仅获取引用广告
+const client = createSmartHttpClient("https://github.com/user/repo");
+const adv = await client.getRefAdvertisement();
+console.log(adv.refs);
+```
+
 ### 对象序列化
 
 ```typescript
@@ -183,13 +218,12 @@ nano-git/
 │   ├── objects/          # blob/tree/commit/tag 序列化
 │   ├── odb/              # 对象数据库与 pack 支持
 │   ├── refs/             # 引用解析、校验、存储
+│   ├── transport/        # Smart HTTP Fetch 协议客户端
 │   └── repository/       # 仓库 API 与后端
 ├── tests/
-│   ├── types.test.ts     # 类型校验测试
-│   ├── hash.test.ts      # 哈希工具测试
-│   ├── objects.test.ts   # 序列化/反序列化测试
-│   ├── store.test.ts     # 对象存储测试
-│   └── repository.test.ts # 仓库 API 测试
+│   ├── units/            # 单元测试
+│   ├── e2e/              # 端到端兼容性测试
+│   └── README.md
 ├── examples/
 │   └── demo.ts           # 演示脚本
 └── README.md
@@ -267,11 +301,11 @@ bun test
 - [x] 引用管理（refs、HEAD、符号引用解析）
 - [x] 仓库 API（init、open、hash-object、cat-file、write-tree、commit-tree、update-ref、branch、tag）
 - [x] 可达性遍历与 GC（repack、gc）
+- [x] **Smart HTTP Fetch 客户端** — pkt-line 编解码、ref 广告解析、side-band 解复用、请求生成、HTTP 传输、fetch 编排、`repo.fetch()` 集成
 
 ### 规划中（聚焦裸仓库/服务端场景）
 
-- [ ] **远程传输协议** — `git fetch`、`git push` 的协议层（`src/transport/` 已预留）
-- [ ] **Smart HTTP / Git 协议握手** — 服务端 receive-pack / upload-pack
+- [ ] **Smart HTTP Push / receive-pack** — `git push` 的协议层
 - [ ] **Reference Transaction** — 引用更新钩子与事务
 - [ ] **多格式哈希支持** — SHA-256 兼容准备
 
