@@ -12,7 +12,7 @@
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import {
@@ -31,6 +31,8 @@ import {
 import { parseRefAdvertisement } from "../../src/transport/ref-advertisement.ts";
 import { extractPackfile } from "../../src/transport/side-band.ts";
 import { buildUploadPackRequest } from "../../src/transport/negotiate.ts";
+import { buildReceivePackRequest } from "../../src/transport/receive-pack-request.ts";
+import { parseReceivePackResult } from "../../src/transport/receive-pack-result.ts";
 import { parsePktLines, encodePktLine, encodeFlushPkt } from "../../src/transport/pkt-line.ts";
 import type { PktLineData } from "../../src/transport/pkt-line.ts";
 
@@ -93,12 +95,20 @@ function callGitHttpBackend(
   queryString?: string,
   body?: Buffer,
 ): CgiResult {
+  // 根据路径自动确定 content type
+  const contentType =
+    method === "POST"
+      ? pathInfo.includes("git-receive-pack")
+        ? "application/x-git-receive-pack-request"
+        : "application/x-git-upload-pack-request"
+      : "";
+
   const env: Record<string, string> = {
     ...GIT_ENV,
     REQUEST_METHOD: method,
     GIT_PROJECT_ROOT: projectRoot,
     PATH_INFO: pathInfo,
-    CONTENT_TYPE: method === "POST" ? "application/x-git-upload-pack-request" : "",
+    CONTENT_TYPE: contentType,
     QUERY_STRING: queryString ?? "",
   };
 
@@ -553,5 +563,160 @@ describe("CGI: 完整 fetch 流程（HTTP 服务器）", () => {
     const result2 = await repo.fetch(serverUrl);
     expect(result2.objectCount).toBe(0);
     expect(result2.fetchedRefs.size).toBe(0);
+  });
+});
+
+// ============================================================================
+// CGI: receive-pack (push) 测试
+// ============================================================================
+
+describe("CGI: receive-pack (push)", () => {
+  let tempDir: string;
+  let repoDir: string;
+  let projectRoot: string;
+  let parentCommitHash: string;
+  let commitHash: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir("e2e-receive-pack");
+    repoDir = join(tempDir, "test.git");
+    projectRoot = tempDir;
+
+    // 创建裸仓库（receive-pack 需要 http.receivepack=true）
+    mkdirSync(repoDir);
+    git(["init", "--bare"], repoDir);
+    // 启用 receive-pack 服务（直接修改 config 文件）
+    const configPath = join(repoDir, "config");
+    writeFileSync(
+      configPath,
+      readFileSync(configPath, "utf-8") + "\n[http]\n\treceivepack = true\n",
+      "utf-8",
+    );
+
+    // 创建临时工作目录来生成提交
+    const workDir = join(tempDir, "work");
+    gitInit(workDir);
+    createFile(workDir, "README.md", "# Hello\n");
+    git(["add", "README.md"], workDir);
+    git(["commit", "-m", "Initial commit"], workDir);
+    parentCommitHash = git(["rev-parse", "HEAD"], workDir);
+
+    // push 到裸仓库
+    git(["push", repoDir, "main"], workDir);
+
+    // 创建第二个提交（后续用于 push 测试）
+    createFile(workDir, "FEATURE.md", "# Feature\n");
+    git(["add", "FEATURE.md"], workDir);
+    git(["commit", "-m", "Feature commit"], workDir);
+    commitHash = git(["rev-parse", "HEAD"], workDir);
+  });
+
+  afterEach(() => {
+    cleanupDir(tempDir);
+  });
+
+  test("解析 receive-pack ref advertisement", () => {
+    const cgiResult = callGitHttpBackend(
+      repoDir,
+      projectRoot,
+      "GET",
+      `/${repoName(repoDir)}/info/refs`,
+      "service=git-receive-pack",
+    );
+
+    expect(cgiResult.status).toBe(200);
+    expect(cgiResult.headers["Content-Type"]).toBe("application/x-git-receive-pack-advertisement");
+
+    const adv = parseRefAdvertisement(cgiResult.body, "git-receive-pack");
+
+    // 应有 HEAD 和 refs/heads/main
+    expect(adv.refs.length).toBeGreaterThanOrEqual(1);
+
+    const mainRef = adv.refs.find((r) => r.name === "refs/heads/main");
+    expect(mainRef).toBeDefined();
+    expect(mainRef!.hash).toBe(sha1(parentCommitHash));
+
+    // receive-pack 的能力应包含 report-status
+    expect(adv.capabilities["report-status"]).toBe(true);
+    expect(adv.capabilities["side-band-64k"]).toBe(true);
+    expect(adv.capabilities["ofs-delta"]).toBe(true);
+    expect(adv.capabilities["delete-refs"]).toBe(true);
+  });
+
+  test("解析带多个分支的 receive-pack ref advertisement", () => {
+    // 创建额外分支
+    const workDir = join(tempDir, "work2");
+    gitInit(workDir);
+    createFile(workDir, "feature.md", "# Feature\n");
+    git(["add", "feature.md"], workDir);
+    git(["commit", "-m", "Feature commit"], workDir);
+    git(["remote", "add", "origin", repoDir], workDir);
+    git(["push", "origin", "HEAD:refs/heads/feature"], workDir);
+
+    const cgiResult = callGitHttpBackend(
+      repoDir,
+      projectRoot,
+      "GET",
+      `/${repoName(repoDir)}/info/refs`,
+      "service=git-receive-pack",
+    );
+
+    const adv = parseRefAdvertisement(cgiResult.body, "git-receive-pack");
+    const featureRef = adv.refs.find((r) => r.name === "refs/heads/feature");
+    expect(featureRef).toBeDefined();
+  });
+
+  test("report-status 解析", () => {
+    // 构造一个 receive-pack push 请求并发送给 CGI
+    // 需要包含真实的 packfile（Git 服务端会验证对象是否存在）
+    const workDir = join(tempDir, "work");
+
+    // 用 git pack-objects 生成增量 packfile
+    const packResult = spawnSync("git", ["-C", workDir, "pack-objects", "--stdout", "--revs"], {
+      input: `${commitHash}\n^${parentCommitHash}\n`,
+    });
+    expect(packResult.status).toBe(0);
+    const packfile = packResult.stdout ?? Buffer.alloc(0);
+    expect(packfile.length).toBeGreaterThan(0);
+
+    const caps = ["report-status", "side-band-64k", "ofs-delta"];
+
+    const commands = [
+      {
+        oldHash: sha1(parentCommitHash),
+        newHash: sha1(commitHash),
+        refName: "refs/heads/main",
+      },
+    ];
+
+    const body = buildReceivePackRequest(commands, packfile, caps);
+
+    const cgiResult = callGitHttpBackend(
+      repoDir,
+      projectRoot,
+      "POST",
+      `/${repoName(repoDir)}/git-receive-pack`,
+      undefined,
+      body,
+    );
+
+    expect(cgiResult.status).toBe(200);
+    expect(cgiResult.headers["Content-Type"]).toBe("application/x-git-receive-pack-result");
+
+    // 从 side-band 编码中提取 report-status
+    let refUpdates;
+    try {
+      const packfileData = extractPackfile(cgiResult.body);
+      refUpdates = parseReceivePackResult(packfileData);
+    } catch {
+      // 非 side-band 编码，直接解析
+      refUpdates = parseReceivePackResult(cgiResult.body);
+    }
+
+    expect(refUpdates.length).toBeGreaterThanOrEqual(1);
+
+    const mainUpdate = refUpdates.find((u) => u.refName === "refs/heads/main");
+    expect(mainUpdate).toBeDefined();
+    expect(mainUpdate!.success).toBe(true);
   });
 });
