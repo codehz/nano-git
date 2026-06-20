@@ -532,7 +532,6 @@ describe("文件系统仓库的对象操作", () => {
   });
 
   test("repack() 默认替换旧 pack 文件", () => {
-    const gitDir = join(tempDir, ".git");
     repo.writeBlob(Buffer.from("first"));
     repo.writePack();
 

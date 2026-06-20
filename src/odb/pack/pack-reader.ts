@@ -23,7 +23,7 @@
  * 当前文件只保留对象遍历与 delta 解析主流程。
  */
 
-import type { GitObject, ObjectType, SHA1 } from "../../core/types.ts";
+import type { GitObject, SHA1 } from "../../core/types.ts";
 import { deserializeContent } from "../../objects/index.ts";
 import { InvalidPackError } from "../../core/errors.ts";
 import { PACK_HEADER_SIZE, PACK_CHECKSUM_SIZE, OBJ_OFS_DELTA, OBJ_REF_DELTA } from "./constants.ts";

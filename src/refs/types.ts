@@ -9,8 +9,6 @@
  * 扩展点：添加新存储后端时，只需实现此接口即可无缝集成。
  */
 
-import type { SHA1 } from "../core/types.ts";
-
 /** HEAD 引用名称 */
 export const HEAD_REF = "HEAD";
 
