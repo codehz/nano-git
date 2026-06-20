@@ -23,7 +23,7 @@ import {
   type RepositoryBackend,
 } from "../src/repository/backend/index.ts";
 import { sha1 } from "../src/core/types.ts";
-import type { GitAuthor, TreeEntry } from "../src/core/types.ts";
+import type { GitAuthor, GitTree, TreeEntry } from "../src/core/types.ts";
 
 const testAuthor: GitAuthor = {
   name: "Test User",
@@ -190,6 +190,296 @@ describe("createMemoryRepository()", () => {
       expect(tag.tag).toBe("v2.0.0");
       expect(tag.message).toBe("Release v2.0.0");
     }
+  });
+});
+
+// ============================================================================
+// patchTree 增量 tree 操作
+// ============================================================================
+
+describe("patchTree()", () => {
+  let repo: Repository;
+
+  beforeEach(() => {
+    repo = createMemoryRepository();
+  });
+
+  test("upsert 新文件到根目录", () => {
+    const rootHash = repo.createTree([]);
+    const blobHash = repo.writeBlob(Buffer.from("content"));
+
+    const result = repo.patchTree(rootHash, [
+      { op: "upsert", path: "file.txt", mode: "100644", hash: blobHash },
+    ]);
+
+    const tree = repo.catFile(result.rootHash);
+    expect(tree.type).toBe("tree");
+    if (tree.type === "tree") {
+      expect(tree.entries).toHaveLength(1);
+      expect(tree.entries[0]!.name).toBe("file.txt");
+      expect(tree.entries[0]!.mode).toBe("100644");
+      expect(tree.entries[0]!.hash).toBe(blobHash);
+    }
+    expect(result.writtenTrees).toContain(result.rootHash);
+  });
+
+  test("upsert 符号链接", () => {
+    const rootHash = repo.createTree([]);
+    const targetHash = repo.writeBlob(Buffer.from("/usr/bin/node"));
+
+    const result = repo.patchTree(rootHash, [
+      { op: "upsert", path: "node", mode: "120000", hash: targetHash },
+    ]);
+
+    const tree = repo.catFile(result.rootHash);
+    expect(tree.type).toBe("tree");
+    if (tree.type === "tree") {
+      expect(tree.entries).toHaveLength(1);
+      expect(tree.entries[0]!.name).toBe("node");
+      expect(tree.entries[0]!.mode).toBe("120000");
+    }
+  });
+
+  test("upsert 到新子目录（自动创建中间目录）", () => {
+    const rootHash = repo.createTree([]);
+    const blobHash = repo.writeBlob(Buffer.from("nested content"));
+
+    const result = repo.patchTree(rootHash, [
+      { op: "upsert", path: "a/b/c/file.txt", mode: "100644", hash: blobHash },
+    ]);
+
+    // 验证根 tree: a/
+    const root = repo.catFile(result.rootHash);
+    expect(root.type).toBe("tree");
+    if (root.type === "tree") {
+      expect(root.entries).toHaveLength(1);
+      expect(root.entries[0]!.name).toBe("a");
+      expect(root.entries[0]!.mode).toBe("40000");
+    }
+
+    // 验证 a/: b/
+    const aTree = repo.catFile((root as GitTree).entries.find((e) => e.name === "a")!.hash);
+    expect(aTree.type).toBe("tree");
+    if (aTree.type === "tree") {
+      expect(aTree.entries).toHaveLength(1);
+      expect(aTree.entries[0]!.name).toBe("b");
+    }
+
+    // 验证 b/: c/
+    const bTree = repo.catFile((aTree as GitTree).entries.find((e) => e.name === "b")!.hash);
+    expect(bTree.type).toBe("tree");
+    if (bTree.type === "tree") {
+      expect(bTree.entries).toHaveLength(1);
+      expect(bTree.entries[0]!.name).toBe("c");
+    }
+
+    // 验证 c/: file.txt
+    const cTree = repo.catFile((bTree as GitTree).entries.find((e) => e.name === "c")!.hash);
+    expect(cTree.type).toBe("tree");
+    if (cTree.type === "tree") {
+      expect(cTree.entries).toHaveLength(1);
+      expect(cTree.entries[0]!.name).toBe("file.txt");
+      expect(cTree.entries[0]!.hash).toBe(blobHash);
+    }
+  });
+
+  test("upsert 替换已有文件", () => {
+    const oldHash = repo.writeBlob(Buffer.from("old"));
+    const rootHash = repo.createTree([{ mode: "100644", name: "file.txt", hash: oldHash }]);
+    const newHash = repo.writeBlob(Buffer.from("new"));
+
+    const result = repo.patchTree(rootHash, [
+      { op: "upsert", path: "file.txt", mode: "100755", hash: newHash },
+    ]);
+
+    const tree = repo.catFile(result.rootHash);
+    expect(tree.type).toBe("tree");
+    if (tree.type === "tree") {
+      expect(tree.entries).toHaveLength(1);
+      expect(tree.entries[0]!.name).toBe("file.txt");
+      expect(tree.entries[0]!.mode).toBe("100755");
+      expect(tree.entries[0]!.hash).toBe(newHash);
+    }
+  });
+
+  test("upsert 替换子树中的文件", () => {
+    const oldHash = repo.writeBlob(Buffer.from("old"));
+    const subTreeHash = repo.createTree([{ mode: "100644", name: "old.txt", hash: oldHash }]);
+    const rootHash = repo.createTree([{ mode: "40000", name: "sub", hash: subTreeHash }]);
+
+    const newHash = repo.writeBlob(Buffer.from("new"));
+    const result = repo.patchTree(rootHash, [
+      { op: "upsert", path: "sub/old.txt", mode: "100644", hash: newHash },
+    ]);
+
+    const root = repo.catFile(result.rootHash);
+    expect(root.type).toBe("tree");
+    if (root.type === "tree") {
+      expect(root.entries).toHaveLength(1);
+      const sub = repo.catFile(root.entries[0]!.hash);
+      expect(sub.type).toBe("tree");
+      if (sub.type === "tree") {
+        expect(sub.entries).toHaveLength(1);
+        expect(sub.entries[0]!.hash).toBe(newHash);
+      }
+    }
+  });
+
+  test("delete 删除已有文件", () => {
+    const blobHash = repo.writeBlob(Buffer.from("to-delete"));
+    const rootHash = repo.createTree([
+      { mode: "100644", name: "keep.txt", hash: repo.writeBlob(Buffer.from("keep")) },
+      { mode: "100644", name: "delete.txt", hash: blobHash },
+    ]);
+
+    const result = repo.patchTree(rootHash, [{ op: "delete", path: "delete.txt" }]);
+
+    const tree = repo.catFile(result.rootHash);
+    expect(tree.type).toBe("tree");
+    if (tree.type === "tree") {
+      expect(tree.entries).toHaveLength(1);
+      expect(tree.entries[0]!.name).toBe("keep.txt");
+    }
+  });
+
+  test("delete 不存在的路径应抛出异常", () => {
+    const rootHash = repo.createTree([]);
+    expect(() => repo.patchTree(rootHash, [{ op: "delete", path: "nonexistent.txt" }])).toThrow(
+      "path does not exist",
+    );
+  });
+
+  test("delete 目录应抛出异常", () => {
+    const subHash = repo.createTree([]);
+    const rootHash = repo.createTree([{ mode: "40000", name: "subdir", hash: subHash }]);
+
+    expect(() => repo.patchTree(rootHash, [{ op: "delete", path: "subdir" }])).toThrow(
+      "entry is a directory",
+    );
+  });
+
+  test("delete 深层路径不存在的文件应抛出异常", () => {
+    const rootHash = repo.createTree([]);
+    expect(() => repo.patchTree(rootHash, [{ op: "delete", path: "a/b/c/file.txt" }])).toThrow(
+      "path does not exist",
+    );
+  });
+
+  test("同路径多次操作最后一个生效（最后是 upsert）", () => {
+    const rootHash = repo.createTree([]);
+    const hash1 = repo.writeBlob(Buffer.from("first"));
+    const hash2 = repo.writeBlob(Buffer.from("second"));
+
+    const result = repo.patchTree(rootHash, [
+      { op: "upsert", path: "f.txt", mode: "100644", hash: hash1 },
+      { op: "delete", path: "f.txt" },
+      { op: "upsert", path: "f.txt", mode: "100755", hash: hash2 },
+    ]);
+
+    const tree = repo.catFile(result.rootHash);
+    expect(tree.type).toBe("tree");
+    if (tree.type === "tree") {
+      expect(tree.entries).toHaveLength(1);
+      expect(tree.entries[0]!.hash).toBe(hash2);
+      expect(tree.entries[0]!.mode).toBe("100755");
+    }
+  });
+
+  test("同路径多次操作最后一个生效（最后是 delete）", () => {
+    const rootHash = repo.createTree([]);
+    const hash = repo.writeBlob(Buffer.from("content"));
+
+    const result = repo.patchTree(rootHash, [
+      { op: "upsert", path: "f.txt", mode: "100644", hash },
+      { op: "delete", path: "f.txt" },
+    ]);
+
+    const tree = repo.catFile(result.rootHash);
+    expect(tree.type).toBe("tree");
+    if (tree.type === "tree") {
+      expect(tree.entries).toHaveLength(0);
+    }
+  });
+
+  test("同时在多个不同路径 upsert", () => {
+    const rootHash = repo.createTree([]);
+    const h1 = repo.writeBlob(Buffer.from("a"));
+    const h2 = repo.writeBlob(Buffer.from("b"));
+
+    const result = repo.patchTree(rootHash, [
+      { op: "upsert", path: "src/a.ts", mode: "100644", hash: h1 },
+      { op: "upsert", path: "src/b.ts", mode: "100644", hash: h2 },
+      { op: "upsert", path: "README.md", mode: "100644", hash: h1 },
+    ]);
+
+    const root = repo.catFile(result.rootHash);
+    expect(root.type).toBe("tree");
+    if (root.type === "tree") {
+      expect(root.entries).toHaveLength(2); // README.md + src
+      const srcEntry = root.entries.find((e) => e.name === "src")!;
+      expect(srcEntry).toBeDefined();
+
+      const src = repo.catFile(srcEntry.hash);
+      expect(src.type).toBe("tree");
+      if (src.type === "tree") {
+        expect(src.entries).toHaveLength(2);
+        expect(src.entries.find((e) => e.name === "a.ts")!.hash).toBe(h1);
+        expect(src.entries.find((e) => e.name === "b.ts")!.hash).toBe(h2);
+      }
+    }
+  });
+
+  test("空操作列表返回原 tree", () => {
+    const blobHash = repo.writeBlob(Buffer.from("content"));
+    const rootHash = repo.createTree([{ mode: "100644", name: "f.txt", hash: blobHash }]);
+
+    const result = repo.patchTree(rootHash, []);
+
+    expect(result.rootHash).toBe(rootHash);
+    expect(result.writtenTrees).toHaveLength(0);
+  });
+
+  test("writtenTrees 包含所有新写入的中间 tree", () => {
+    const rootHash = repo.createTree([]);
+    const blobHash = repo.writeBlob(Buffer.from("deep"));
+
+    const result = repo.patchTree(rootHash, [
+      { op: "upsert", path: "x/y/z.txt", mode: "100644", hash: blobHash },
+    ]);
+
+    // 应该包含叶子 tree (x/y) 和根 tree (x)，以及根 tree
+    // 总共 3 个新 tree（x, x/y, root）
+    expect(result.writtenTrees.length).toBeGreaterThanOrEqual(3);
+    // 根 tree hash 应该在结果中
+    expect(result.writtenTrees).toContain(result.rootHash);
+  });
+
+  test("路径格式校验：空路径应抛出异常", () => {
+    const rootHash = repo.createTree([]);
+    expect(() => repo.patchTree(rootHash, [{ op: "delete", path: "" }])).toThrow(
+      "Path must not be empty",
+    );
+  });
+
+  test("路径格式校验：以斜杠开头应抛出异常", () => {
+    const rootHash = repo.createTree([]);
+    expect(() => repo.patchTree(rootHash, [{ op: "delete", path: "/file.txt" }])).toThrow(
+      "Path must not start with '/'",
+    );
+  });
+
+  test("路径格式校验：以斜杠结尾应抛出异常", () => {
+    const rootHash = repo.createTree([]);
+    expect(() => repo.patchTree(rootHash, [{ op: "delete", path: "dir/" }])).toThrow(
+      "Path must not end with '/'",
+    );
+  });
+
+  test("路径格式校验：包含 .. 应抛出异常", () => {
+    const rootHash = repo.createTree([]);
+    expect(() => repo.patchTree(rootHash, [{ op: "delete", path: "../escape" }])).toThrow(
+      "Path must not contain '.' or '..'",
+    );
   });
 });
 

@@ -16,6 +16,11 @@ import type {
 import type { ObjectStore } from "../odb/types.ts";
 import type { RepositoryObjectOperations } from "./object-types.ts";
 import { writeTreeRecursive } from "./tree-writer.ts";
+import {
+  patchTree as patchTreeImpl,
+  type TreePatchOp,
+  type TreePatchResult,
+} from "./tree-patch.ts";
 
 /**
  * 创建仓库对象相关操作
@@ -80,6 +85,10 @@ export function createObjectRepositoryOperations(objects: ObjectStore): Reposito
         message,
       };
       return objects.write(commit);
+    },
+
+    patchTree(rootHash: SHA1, ops: TreePatchOp[]): TreePatchResult {
+      return patchTreeImpl(objects, rootHash, ops);
     },
   };
 }
