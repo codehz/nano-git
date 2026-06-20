@@ -6,7 +6,7 @@ import type {
   RepositoryBackend,
   RepositoryGCOptions,
   RepositoryRepackOptions,
-} from "../backend/index.ts";
+} from "./backend/index.ts";
 import { hashObject } from "../core/hash.ts";
 import {
   resolveRefHash,

@@ -19,7 +19,7 @@ import type {
   RepositoryGCOptions,
   RepositoryPackSupport,
   RepositoryRepackOptions,
-} from "../backend/index.ts";
+} from "./backend/index.ts";
 import type { RefStore } from "../refs/index.ts";
 import type { ObjectStore } from "../odb/index.ts";
 import type { GitObject, GitAuthor, TreeEntry, SHA1, ObjectType } from "../core/types.ts";

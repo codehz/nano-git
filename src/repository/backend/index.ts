@@ -1,8 +1,7 @@
 /**
- * 仓库后端兼容出口
+ * 仓库后端模块
  *
- * 具体实现已迁移到 `src/repository/backend/`，
- * 当前目录只保留原有导入路径的兼容层。
+ * 统一导出 RepositoryBackend 接口及常用实现。
  */
 
 export type {
@@ -10,12 +9,12 @@ export type {
   RepositoryGCOptions,
   RepositoryPackSupport,
   RepositoryRepackOptions,
-} from "../repository/backend/index.ts";
+} from "./types.ts";
 export {
   createMemoryRepositoryBackend,
   type CreateMemoryRepositoryBackendOptions,
-} from "../repository/backend/index.ts";
+} from "./memory-backend.ts";
 export {
   createFileRepositoryBackend,
   type CreateFileRepositoryBackendOptions,
-} from "../repository/backend/index.ts";
+} from "./file-backend.ts";

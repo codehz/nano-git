@@ -1,11 +1,10 @@
 /**
- * Git 对象存储
+ * Git 对象存储兼容出口
  *
- * 统一导出对象存储接口和各种实现。
- *
- * 扩展点：添加新存储后端时，在此处导出即可。
+ * 具体实现已迁移到 `src/odb/`，
+ * 当前目录只保留原有导入路径的兼容层。
  */
 
-export type { ObjectSource, ObjectStore } from "./types.ts";
-export { createFileObjectStore } from "./file-store.ts";
-export { createMemoryObjectStore, type MemoryObjectStore } from "./memory-store.ts";
+export type { ObjectSource, ObjectStore } from "../odb/types.ts";
+export { createFileObjectStore } from "../odb/file-store.ts";
+export { createMemoryObjectStore, type MemoryObjectStore } from "../odb/memory-store.ts";

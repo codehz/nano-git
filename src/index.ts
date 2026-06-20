@@ -186,7 +186,7 @@ export {
   type RepositoryPackSupport,
   type RepositoryRepackOptions,
   type RepositoryBackend,
-} from "./backend/index.ts";
+} from "./repository/backend/index.ts";
 
 // ============================================================================
 // 仓库 API
