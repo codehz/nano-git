@@ -211,9 +211,10 @@ function serializeCommit(commit: GitCommit): Buffer {
   lines.push(`author ${formatAuthor(commit.author)}`);
   lines.push(`committer ${formatAuthor(commit.committer)}`);
   lines.push(""); // 空行分隔 header 和 message
-  lines.push(commit.message);
+  // Git 确保 message 末尾恰好有一个换行符，保证相同内容产生相同的哈希
+  lines.push(commit.message.replace(/\n+$/, ""));
 
-  return Buffer.from(lines.join("\n"), "utf-8");
+  return Buffer.from(lines.join("\n") + "\n", "utf-8");
 }
 
 /**
@@ -268,7 +269,8 @@ function deserializeCommit(content: Buffer): GitCommit {
   if (!committer) throw new Error("Commit missing committer");
 
   // 剩余部分是 message
-  const message = lines.slice(messageStart).join("\n");
+  // Git 序列化时会在末尾添加一个换行符，反序列化时需要去掉
+  const message = lines.slice(messageStart).join("\n").replace(/\n$/, "");
 
   return { type: "commit", tree, parents, author, committer, message };
 }
@@ -298,9 +300,10 @@ function serializeTag(tag: GitTag): Buffer {
   lines.push(`tag ${tag.tag}`);
   lines.push(`tagger ${formatAuthor(tag.tagger)}`);
   lines.push(""); // 空行分隔
-  lines.push(tag.message);
+  // Git 确保 message 末尾恰好有一个换行符，保证相同内容产生相同的哈希
+  lines.push(tag.message.replace(/\n+$/, ""));
 
-  return Buffer.from(lines.join("\n"), "utf-8");
+  return Buffer.from(lines.join("\n") + "\n", "utf-8");
 }
 
 /**
@@ -353,7 +356,8 @@ function deserializeTag(content: Buffer): GitTag {
   if (!tagName) throw new Error("Tag missing tag name");
   if (!tagger) throw new Error("Tag missing tagger");
 
-  const message = lines.slice(messageStart).join("\n");
+  // Git 序列化时会在末尾添加一个换行符，反序列化时需要去掉
+  const message = lines.slice(messageStart).join("\n").replace(/\n$/, "");
 
   return { type: "tag", object, objectType, tag: tagName, tagger, message };
 }
