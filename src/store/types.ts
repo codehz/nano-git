@@ -28,6 +28,11 @@ export interface ObjectSource {
    * 检查对象是否存在
    */
   exists(hash: SHA1): boolean;
+
+  /**
+   * 列出当前对象源中的所有对象哈希
+   */
+  list(): SHA1[];
 }
 
 /**

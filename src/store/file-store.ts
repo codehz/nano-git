@@ -7,10 +7,11 @@
  * - 例如: .git/objects/95/d09f2b10159347eece71399a7e2e907ea3df4f
  */
 
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { deflateSync, inflateSync } from "node:zlib";
 import type { GitObject, SHA1 } from "../types.ts";
+import { sha1 } from "../types.ts";
 import { hashObject, hashToPath } from "../hash.ts";
 import { serialize, deserialize, serializeContent } from "../objects/index.ts";
 import type { ObjectStore } from "./types.ts";
@@ -78,6 +79,36 @@ export function createFileObjectStore(gitDir: string): ObjectStore {
     exists(hash: SHA1): boolean {
       const objectPath = join(objectsDir, hashToPath(hash));
       return existsSync(objectPath);
+    },
+
+    list(): SHA1[] {
+      if (!existsSync(objectsDir)) {
+        return [];
+      }
+
+      const hashes: SHA1[] = [];
+      const dirs = readdirSync(objectsDir).sort();
+
+      for (const dirName of dirs) {
+        if (dirName === "info" || dirName === "pack" || dirName.length !== 2) {
+          continue;
+        }
+
+        const dirPath = join(objectsDir, dirName);
+        if (!statSync(dirPath).isDirectory()) {
+          continue;
+        }
+
+        const files = readdirSync(dirPath).sort();
+        for (const fileName of files) {
+          if (fileName.length !== 38) {
+            continue;
+          }
+          hashes.push(sha1(`${dirName}${fileName}`));
+        }
+      }
+
+      return hashes;
     },
   };
 }

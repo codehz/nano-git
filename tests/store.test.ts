@@ -233,4 +233,13 @@ describe("createFileObjectStore()", () => {
       expect(read.message).toBe("Initial commit");
     }
   });
+
+  test("list() 返回 loose object 哈希", () => {
+    expect(store.list()).toHaveLength(0);
+
+    const hash1 = store.write({ type: "blob", content: Buffer.from("a") });
+    const hash2 = store.write({ type: "blob", content: Buffer.from("b") });
+
+    expect(store.list()).toEqual([hash1, hash2].sort());
+  });
 });

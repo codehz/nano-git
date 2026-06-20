@@ -111,6 +111,27 @@ export class CompositeObjectStore implements ObjectStore {
   }
 
   /**
+   * 列出所有对象哈希
+   *
+   * 主存储排在前面，重复哈希自动去重。
+   */
+  list(): SHA1[] {
+    const hashes = new Set<SHA1>();
+
+    for (const hash of this.primary.list()) {
+      hashes.add(hash);
+    }
+
+    for (const store of this.secondary) {
+      for (const hash of store.list()) {
+        hashes.add(hash);
+      }
+    }
+
+    return Array.from(hashes).sort();
+  }
+
+  /**
    * 获取主存储
    */
   getPrimary(): ObjectStore {

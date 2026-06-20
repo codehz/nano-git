@@ -6,7 +6,32 @@
  */
 
 import type { RefStore } from "../refs/types.ts";
-import type { ObjectStore } from "../store/types.ts";
+import type { ObjectSource, ObjectStore } from "../store/types.ts";
+import type { PackBuildResult } from "../pack/pack-builder.ts";
+import type { PackBuilder } from "../pack/pack-builder.ts";
+import type { PackObjectStore } from "../pack/pack-store.ts";
+import type { GitObject, SHA1 } from "../types.ts";
+
+/**
+ * 仓库 pack 支持接口
+ *
+ * 负责：
+ * - 暴露已存在的 pack 对象源
+ * - 创建新的 packfile
+ */
+export interface RepositoryPackSupport {
+  /** 仅包含 packfile 中对象的只读对象源 */
+  readonly source: PackObjectStore;
+
+  /** 创建底层 PackBuilder */
+  createBuilder(): PackBuilder;
+
+  /** 将给定对象集合写入新的 packfile */
+  writeObjects(objects: Iterable<GitObject>): PackBuildResult;
+
+  /** 从对象源中读取指定对象并写入新的 packfile */
+  writeFromSource(source: ObjectSource, hashes: Iterable<SHA1>): PackBuildResult;
+}
 
 /**
  * 仓库后端接口
@@ -14,6 +39,7 @@ import type { ObjectStore } from "../store/types.ts";
  * 聚合 Repository 所需的底层依赖：
  * - objects: Git 对象存储
  * - refs: Git 引用存储
+ * - packs: Packfile 读写支持（可选）
  * - gitDir: .git 目录路径（内存仓库为 null）
  */
 export interface RepositoryBackend {
@@ -22,6 +48,9 @@ export interface RepositoryBackend {
 
   /** Git 引用存储 */
   readonly refs: RefStore;
+
+  /** Packfile 支持（内存仓库等后端可为 null） */
+  readonly packs: RepositoryPackSupport | null;
 
   /** .git 目录路径（内存仓库为 null） */
   readonly gitDir: string | null;

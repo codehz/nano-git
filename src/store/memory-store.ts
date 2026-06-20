@@ -13,10 +13,7 @@ import type { ObjectStore } from "./types.ts";
 /**
  * 内存对象存储接口（扩展了 list 方法）
  */
-export interface MemoryObjectStore extends ObjectStore {
-  /** 获取所有存储的对象哈希 */
-  list(): SHA1[];
-}
+export interface MemoryObjectStore extends ObjectStore {}
 
 /**
  * 创建内存对象存储（用于测试）

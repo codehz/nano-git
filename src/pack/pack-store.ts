@@ -167,7 +167,7 @@ export class PackObjectStore implements ObjectSource {
   /**
    * 获取所有 packfile 中的对象哈希列表
    */
-  listHashes(): SHA1[] {
+  list(): SHA1[] {
     this.ensureLoaded();
 
     const hashes: SHA1[] = [];
@@ -175,6 +175,15 @@ export class PackObjectStore implements ObjectSource {
       hashes.push(...pair.index.listHashes());
     }
     return hashes;
+  }
+
+  /**
+   * 获取所有 packfile 中的对象哈希列表
+   *
+   * 保留此方法作为更明确的命名别名。
+   */
+  listHashes(): SHA1[] {
+    return this.list();
   }
 
   /**

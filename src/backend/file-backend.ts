@@ -6,10 +6,11 @@
  */
 
 import { createCompositeObjectStore } from "../pack/composite-store.ts";
+import { createPackBuilder } from "../pack/pack-builder.ts";
 import { createPackObjectStore } from "../pack/pack-store.ts";
 import { createFileRefStore } from "../refs/index.ts";
 import { createFileObjectStore } from "../store/index.ts";
-import type { RepositoryBackend } from "./types.ts";
+import type { RepositoryBackend, RepositoryPackSupport } from "./types.ts";
 
 /** 创建文件系统仓库后端的可选参数 */
 export interface CreateFileRepositoryBackendOptions {
@@ -37,14 +38,36 @@ export function createFileRepositoryBackend(
   options: CreateFileRepositoryBackendOptions = {},
 ): RepositoryBackend {
   const looseObjects = createFileObjectStore(gitDir);
+  const packSource = createPackObjectStore(gitDir);
+  const packs: RepositoryPackSupport = {
+    source: packSource,
+    createBuilder() {
+      return createPackBuilder(gitDir);
+    },
+    writeObjects(objects) {
+      const builder = createPackBuilder(gitDir);
+      for (const obj of objects) {
+        builder.addObject(obj);
+      }
+      return builder.build();
+    },
+    writeFromSource(source, hashes) {
+      const builder = createPackBuilder(gitDir);
+      for (const hash of hashes) {
+        builder.addObject(source.read(hash));
+      }
+      return builder.build();
+    },
+  };
   const objects =
     options.includePack === false
       ? looseObjects
-      : createCompositeObjectStore(looseObjects, createPackObjectStore(gitDir));
+      : createCompositeObjectStore(looseObjects, packSource);
 
   return {
     gitDir,
     objects,
     refs: createFileRefStore(gitDir),
+    packs,
   };
 }

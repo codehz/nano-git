@@ -241,6 +241,7 @@ describe("createRepository()", () => {
     expect(repo.backend).toBe(backend);
     expect(repo.objects).toBe(backend.objects);
     expect(repo.refs).toBe(backend.refs);
+    expect(repo.packs).toBeNull();
     expect(repo.gitDir).toBeNull();
   });
 
@@ -256,6 +257,7 @@ describe("createRepository()", () => {
       const repo = createRepository(backend);
 
       expect(repo.backend.gitDir).toBe(join(tempDir, ".git"));
+      expect(repo.packs).not.toBeNull();
       expect(repo.getCurrentBranch()).toBe("main");
     } finally {
       if (existsSync(tempDir)) {
@@ -497,5 +499,34 @@ describe("文件系统仓库的对象操作", () => {
     if (obj.type === "blob") {
       expect(obj.content.toString("utf-8")).toBe("packed-only content");
     }
+  });
+
+  test("listObjects() 同时返回 loose 和 packed objects", () => {
+    const gitDir = join(tempDir, ".git");
+    const looseHash = repo.writeBlob(Buffer.from("loose"));
+
+    const builder = createPackBuilder(gitDir);
+    const packedHash = builder.addObject({
+      type: "blob",
+      content: Buffer.from("packed"),
+    });
+    builder.build();
+
+    expect(repo.listObjects()).toContain(looseHash);
+    expect(repo.listObjects()).toContain(packedHash);
+  });
+
+  test("writePack() 将对象写入新的 packfile", () => {
+    const gitDir = join(tempDir, ".git");
+    const hash = repo.writeBlob(Buffer.from("pack me"));
+    const result = repo.writePack([hash]);
+
+    expect(result.objectCount).toBe(1);
+    expect(existsSync(result.packPath)).toBe(true);
+    expect(existsSync(result.idxPath)).toBe(true);
+
+    const reopened = openRepository(tempDir);
+    const obj = reopened.catFile(hash);
+    expect(obj.type).toBe("blob");
   });
 });

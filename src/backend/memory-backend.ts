@@ -35,5 +35,6 @@ export function createMemoryRepositoryBackend(
     gitDir: null,
     objects: createMemoryObjectStore(),
     refs: createMemoryRefStore(refs),
+    packs: null,
   };
 }

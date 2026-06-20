@@ -15,7 +15,8 @@
 
 import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import type { RepositoryBackend } from "./backend/index.ts";
+import type { PackBuildResult } from "./pack/index.ts";
+import type { RepositoryBackend, RepositoryPackSupport } from "./backend/index.ts";
 import { createFileRepositoryBackend, createMemoryRepositoryBackend } from "./backend/index.ts";
 import { hashObject } from "./hash.ts";
 import {
@@ -55,6 +56,9 @@ export interface Repository {
   /** Git 引用存储 */
   readonly refs: RefStore;
 
+  /** Packfile 支持 */
+  readonly packs: RepositoryPackSupport | null;
+
   /** .git 目录路径（内存仓库为 null） */
   readonly gitDir: string | null;
 
@@ -92,6 +96,13 @@ export interface Repository {
    * 等价于 `git cat-file -t <hash>`
    */
   catFileType(hash: SHA1): string;
+
+  /**
+   * 列出仓库当前可见的所有对象哈希
+   *
+   * 返回值同时包含 loose objects 和 packed objects。
+   */
+  listObjects(): SHA1[];
 
   /**
    * 将目录递归写入 tree 对象
@@ -195,6 +206,13 @@ export interface Repository {
    * 删除标签
    */
   deleteTag(name: string): void;
+
+  /**
+   * 将指定对象写入新的 packfile
+   *
+   * 未提供哈希列表时，默认打包仓库当前可见的全部对象。
+   */
+  writePack(hashes?: SHA1[]): PackBuildResult;
 }
 
 /**
@@ -271,7 +289,7 @@ export function createMemoryRepository(): Repository {
  * ```
  */
 export function createRepository(backend: RepositoryBackend): Repository {
-  const { objects, refs, gitDir } = backend;
+  const { objects, refs, packs, gitDir } = backend;
 
   function ensureRefDoesNotExist(ref: string, kind: "Branch" | "Tag", name: string): void {
     if (refs.readRaw(ref) !== null) {
@@ -287,6 +305,7 @@ export function createRepository(backend: RepositoryBackend): Repository {
     backend,
     objects,
     refs,
+    packs,
     gitDir,
 
     hashObject(data: Buffer): SHA1 {
@@ -310,6 +329,10 @@ export function createRepository(backend: RepositoryBackend): Repository {
     catFileType(hash: SHA1): string {
       const obj = objects.read(hash);
       return obj.type;
+    },
+
+    listObjects(): SHA1[] {
+      return objects.list();
     },
 
     writeTree(dirPath: string): SHA1 {
@@ -417,6 +440,14 @@ export function createRepository(backend: RepositoryBackend): Repository {
 
     deleteTag(name: string): void {
       refs.deleteRaw(tagNameToRef(name));
+    },
+
+    writePack(hashes?: SHA1[]): PackBuildResult {
+      if (!packs) {
+        throw new Error("Backend does not support packfile writes");
+      }
+
+      return packs.writeFromSource(objects, hashes ?? objects.list());
     },
   };
 }
