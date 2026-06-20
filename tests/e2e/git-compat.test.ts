@@ -10,11 +10,9 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, writeFileSync, chmodSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { initRepository, openRepository, type Repository } from "../../src/repository.ts";
+import { initRepository, openRepository } from "../../src/repository.ts";
 import { sha1 } from "../../src/types.ts";
-import type { GitAuthor, GitBlob, GitTree, GitCommit, GitTag } from "../../src/types.ts";
+import type { GitAuthor, GitTag } from "../../src/types.ts";
 import {
   gitInit,
   gitHashObjectWrite,
@@ -32,7 +30,6 @@ import {
   createTempDir,
   cleanupDir,
   createFile,
-  createExecutableFile,
   FIXED_AUTHOR,
 } from "./helpers.ts";
 

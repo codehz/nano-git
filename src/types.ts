@@ -7,6 +7,8 @@
  * - 对象以 "<type> <size>\0<content>" 格式存储
  */
 
+import { InvalidSHA1Error } from "./errors.ts";
+
 /** SHA-1 哈希值（40 个十六进制字符） */
 export type SHA1 = string & { readonly __brand: "SHA1" };
 
@@ -81,7 +83,7 @@ export type GitObject = GitBlob | GitTree | GitCommit | GitTag;
 /** 创建 SHA1 类型的辅助函数 */
 export function sha1(value: string): SHA1 {
   if (!/^[0-9a-f]{40}$/.test(value)) {
-    throw new Error(`Invalid SHA-1 hash: ${value}`);
+    throw new InvalidSHA1Error(value);
   }
   return value as SHA1;
 }

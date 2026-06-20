@@ -5,7 +5,12 @@
  */
 
 import { describe, test, expect } from "bun:test";
-import { serialize, deserialize, serializeContent, deserializeContent } from "../src/objects.ts";
+import {
+  serialize,
+  deserialize,
+  serializeContent,
+  deserializeContent,
+} from "../src/objects/index.ts";
 import { sha1 } from "../src/types.ts";
 import type { GitBlob, GitTree, GitCommit, GitTag, GitAuthor } from "../src/types.ts";
 

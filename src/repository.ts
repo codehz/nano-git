@@ -24,7 +24,7 @@ import type {
 } from "./types.ts";
 import { sha1 } from "./types.ts";
 import { hashObject } from "./hash.ts";
-import { createFileObjectStore, createMemoryObjectStore, type ObjectStore } from "./store.ts";
+import { createFileObjectStore, createMemoryObjectStore, type ObjectStore } from "./store/index.ts";
 
 /**
  * Git 仓库接口

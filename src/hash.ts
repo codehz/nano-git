@@ -9,6 +9,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import type { ObjectType, SHA1 } from "./types.ts";
 import { sha1 } from "./types.ts";
 
@@ -78,7 +79,6 @@ export function isValidSHA1(value: string): value is SHA1 {
  * 等价于 `git hash-object <file>`
  */
 export function hashFile(filePath: string): SHA1 {
-  const fs = require("node:fs") as typeof import("node:fs");
-  const content = fs.readFileSync(filePath);
+  const content = readFileSync(filePath);
   return hashObject("blob", content);
 }

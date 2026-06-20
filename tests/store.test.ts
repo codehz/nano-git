@@ -8,7 +8,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { createMemoryObjectStore, createFileObjectStore } from "../src/store.ts";
+import { createMemoryObjectStore, createFileObjectStore } from "../src/store/index.ts";
 import { sha1 } from "../src/types.ts";
 import type { GitBlob, GitTree, GitCommit, GitAuthor } from "../src/types.ts";
 

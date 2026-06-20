@@ -6,9 +6,10 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { mkdirSync, rmSync, existsSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, existsSync, writeFileSync, chmodSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { sha1, type SHA1 } from "../../src/types.ts";
 
 // ============================================================================
 // 固定环境变量（确保测试结果可重复）
@@ -102,7 +103,7 @@ export function gitInit(dir: string): void {
  *
  * 等价于: echo -n "<content>" | git hash-object -w --stdin
  */
-export function gitHashObjectWrite(dir: string, content: Buffer | string): string {
+export function gitHashObjectWrite(dir: string, content: Buffer | string): SHA1 {
   const buf = typeof content === "string" ? Buffer.from(content) : content;
   const result = spawnSync("git", ["hash-object", "-w", "--stdin"], {
     cwd: dir,
@@ -115,13 +116,13 @@ export function gitHashObjectWrite(dir: string, content: Buffer | string): strin
     throw new Error(`git hash-object failed: ${result.stderr}`);
   }
 
-  return result.stdout.trim();
+  return sha1(result.stdout.trim());
 }
 
 /**
  * 计算内容的 blob 哈希（不写入）
  */
-export function gitHashObject(dir: string, content: Buffer | string): string {
+export function gitHashObject(dir: string, content: Buffer | string): SHA1 {
   const buf = typeof content === "string" ? Buffer.from(content) : content;
   const result = spawnSync("git", ["hash-object", "--stdin"], {
     cwd: dir,
@@ -134,7 +135,7 @@ export function gitHashObject(dir: string, content: Buffer | string): string {
     throw new Error(`git hash-object failed: ${result.stderr}`);
   }
 
-  return result.stdout.trim();
+  return sha1(result.stdout.trim());
 }
 
 /**
@@ -173,9 +174,9 @@ export function gitCatFileSize(dir: string, hash: string): number {
  *
  * 使用 git update-index + git write-tree 的方式
  */
-export function gitWriteTreeFromFiles(dir: string, files: Record<string, string>): string {
+export function gitWriteTreeFromFiles(dir: string, files: Record<string, string>): SHA1 {
   // 先写入所有 blob
-  const entries: Array<{ hash: string; mode: string; name: string }> = [];
+  const entries: Array<{ hash: SHA1; mode: string; name: string }> = [];
 
   for (const [name, content] of Object.entries(files)) {
     const hash = gitHashObjectWrite(dir, content);
@@ -189,7 +190,7 @@ export function gitWriteTreeFromFiles(dir: string, files: Record<string, string>
   }
 
   // write-tree
-  return git(["write-tree"], dir);
+  return sha1(git(["write-tree"], dir));
 }
 
 /**
@@ -200,12 +201,12 @@ export function gitCommitTree(
   treeHash: string,
   message: string,
   parents: string[] = [],
-): string {
+): SHA1 {
   const args = ["commit-tree", treeHash, "-m", message];
   for (const parent of parents) {
     args.push("-p", parent);
   }
-  return git(args, dir);
+  return sha1(git(args, dir));
 }
 
 /**
@@ -218,8 +219,8 @@ export function gitUpdateRef(dir: string, ref: string, hash: string): void {
 /**
  * 解析引用
  */
-export function gitRevParse(dir: string, ref: string): string {
-  return git(["rev-parse", ref], dir);
+export function gitRevParse(dir: string, ref: string): SHA1 {
+  return sha1(git(["rev-parse", ref], dir));
 }
 
 /**
@@ -277,7 +278,6 @@ export function createFile(dir: string, name: string, content: string): string {
  */
 export function createExecutableFile(dir: string, name: string, content: string): string {
   const filePath = createFile(dir, name, content);
-  const { chmodSync } = require("node:fs") as typeof import("node:fs");
   chmodSync(filePath, 0o755);
   return filePath;
 }
