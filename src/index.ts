@@ -202,6 +202,7 @@ export {
   createMemoryRepository,
   type Repository,
   type RepositoryFetchOperations,
+  type RepositoryPushOperations,
 } from "./repository/index.ts";
 
 // ============================================================================

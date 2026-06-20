@@ -11,5 +11,6 @@ export type { TreePatchOp, TreePatchResult } from "./tree-patch.ts";
 export type { RepositoryRefOperations } from "./ref-types.ts";
 export type { RepositoryMaintenanceOperations } from "./maintenance-types.ts";
 export type { RepositoryFetchOperations } from "./fetch-types.ts";
+export type { RepositoryPushOperations } from "./push-types.ts";
 export { createRepository } from "./create.ts";
 export { initRepository, openRepository, createMemoryRepository } from "./init.ts";
