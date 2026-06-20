@@ -218,6 +218,7 @@ export type {
   PushRefUpdate,
   SmartHttpClient,
   UploadPackResult,
+  ReceivePackHttpResult,
   ParsedRefSpec,
   PktLine,
   PktLineData,

@@ -51,7 +51,7 @@ export { parseReceivePackResult, ReceivePackResultError } from "./receive-pack-r
 
 // P4: HTTP 传输 & fetch 编排
 export { createSmartHttpClient, SmartHttpError } from "./smart-http.ts";
-export type { SmartHttpClient, UploadPackResult } from "./smart-http.ts";
+export type { SmartHttpClient, UploadPackResult, ReceivePackHttpResult } from "./smart-http.ts";
 export {
   fetch,
   parseRefSpec,
