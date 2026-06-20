@@ -15,8 +15,6 @@ import {
   serialize,
   deserialize,
   type GitBlob,
-  type GitTree,
-  type GitCommit,
   type GitAuthor,
 } from "../src/index.ts";
 
@@ -111,7 +109,7 @@ const commitHash = repo.createCommit(
   treeHash,
   [], // 初始提交，没有父节点
   "Initial commit\n\nThis is the first commit in nano-git demo.",
-  author
+  author,
 );
 
 console.log(`Commit 对象: ${commitHash}`);
@@ -147,7 +145,7 @@ const commit2Hash = repo.createCommit(
   tree2Hash,
   [commitHash], // 第一个 commit 作为父节点
   "Update file1.txt",
-  author
+  author,
 );
 
 console.log(`Commit 2: ${commit2Hash}`);

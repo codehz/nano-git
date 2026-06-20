@@ -34,29 +34,13 @@ export type {
 export { sha1 } from "./types.ts";
 
 // 导出哈希工具
-export {
-  hashData,
-  hashObject,
-  hashToPath,
-  pathToHash,
-  isValidSHA1,
-  hashFile,
-} from "./hash.ts";
+export { hashData, hashObject, hashToPath, pathToHash, isValidSHA1, hashFile } from "./hash.ts";
 
 // 导出序列化/反序列化
-export {
-  serialize,
-  deserialize,
-  serializeContent,
-  deserializeContent,
-} from "./objects.ts";
+export { serialize, deserialize, serializeContent, deserializeContent } from "./objects.ts";
 
 // 导出对象存储
-export {
-  createFileObjectStore,
-  createMemoryObjectStore,
-  type ObjectStore,
-} from "./store.ts";
+export { createFileObjectStore, createMemoryObjectStore, type ObjectStore } from "./store.ts";
 
 // 导出仓库 API
 export {

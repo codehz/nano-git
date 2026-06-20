@@ -66,11 +66,6 @@ export function createFileObjectStore(gitDir: string): ObjectStore {
   return {
     write(obj: GitObject): SHA1 {
       // 计算哈希
-      const content = serialize(obj).subarray(
-        // 跳过 header，只取 content 部分用于哈希计算
-        // 但 hashObject 需要原始 content，所以重新计算
-        0
-      );
       const hash = hashObject(obj.type, getContentBuffer(obj));
 
       // 检查是否已存在

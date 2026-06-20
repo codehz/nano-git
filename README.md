@@ -44,9 +44,7 @@ const repo = createMemoryRepository();
 const fileHash = repo.writeBlob(Buffer.from("Hello, nano-git!"));
 
 // 创建目录结构
-const treeHash = repo.createTree([
-  { mode: "100644", name: "README.md", hash: fileHash },
-]);
+const treeHash = repo.createTree([{ mode: "100644", name: "README.md", hash: fileHash }]);
 
 // 创建提交
 const author: GitAuthor = {
@@ -60,7 +58,7 @@ const commitHash = repo.createCommit(
   treeHash,
   [], // 初始提交
   "Initial commit",
-  author
+  author,
 );
 
 console.log(`Created commit: ${commitHash}`);
@@ -113,6 +111,7 @@ bun run examples/demo.ts
 ```
 
 演示脚本展示了：
+
 - SHA-1 哈希计算
 - 对象序列化/反序列化
 - 内存仓库操作
@@ -140,22 +139,28 @@ nano-git/
 Git 使用内容寻址文件系统，所有对象通过 SHA-1 哈希寻址：
 
 ### Blob（文件内容）
+
 存储文件的原始内容，不包含文件名或权限信息。
 
 ### Tree（目录结构）
+
 存储目录内容，每个条目包含：
+
 - 文件模式（如 `100644` 普通文件，`100755` 可执行文件，`040000` 目录）
 - 文件名
 - 指向 blob 或子 tree 的哈希
 
 ### Commit（快照）
+
 存储一次提交的完整信息：
+
 - 指向 tree 的哈希（项目快照）
 - 父 commit 哈希列表（merge commit 有多个父节点）
 - 作者和提交者信息
 - 提交信息
 
 ### Tag（标签）
+
 带注释的标签，指向特定对象（通常是 commit）。
 
 ## 对象存储格式

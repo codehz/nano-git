@@ -59,9 +59,7 @@ export function deserialize(data: Buffer): GitObject {
   const content = data.subarray(nullIndex + 1);
 
   if (content.length !== size) {
-    throw new Error(
-      `Size mismatch: header says ${size}, got ${content.length}`
-    );
+    throw new Error(`Size mismatch: header says ${size}, got ${content.length}`);
   }
 
   return deserializeContent(type, content);

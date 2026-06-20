@@ -11,15 +11,8 @@
  * 这些操作对应 git 的 plumbing 命令。
  */
 
-import {
-  mkdirSync,
-  readFileSync,
-  writeFileSync,
-  existsSync,
-  readdirSync,
-  statSync,
-} from "node:fs";
-import { join, basename, relative } from "node:path";
+import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
 import type {
   GitObject,
   GitBlob,
@@ -30,12 +23,8 @@ import type {
   SHA1,
 } from "./types.ts";
 import { sha1 } from "./types.ts";
-import { hashObject, hashFile } from "./hash.ts";
-import {
-  createFileObjectStore,
-  createMemoryObjectStore,
-  type ObjectStore,
-} from "./store.ts";
+import { hashObject } from "./hash.ts";
+import { createFileObjectStore, createMemoryObjectStore, type ObjectStore } from "./store.ts";
 
 /**
  * Git 仓库接口
@@ -104,7 +93,7 @@ export interface Repository {
     parents: SHA1[],
     message: string,
     author: GitAuthor,
-    committer?: GitAuthor
+    committer?: GitAuthor,
   ): SHA1;
 
   /**
@@ -213,7 +202,7 @@ function createRepository(store: ObjectStore, gitDir: string | null): Repository
       parents: SHA1[],
       message: string,
       author: GitAuthor,
-      committer?: GitAuthor
+      committer?: GitAuthor,
     ): SHA1 {
       const commit: GitCommit = {
         type: "commit",

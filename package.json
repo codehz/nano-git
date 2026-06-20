@@ -1,9 +1,16 @@
 {
   "name": "nano-git",
-  "module": "src/index.ts",
   "type": "module",
+  "module": "src/index.ts",
+  "scripts": {
+    "lint": "oxlint .",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check ."
+  },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "oxfmt": "^0.55.0",
+    "oxlint": "^1.70.0"
   },
   "peerDependencies": {
     "typescript": "^6"
