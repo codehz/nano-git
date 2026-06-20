@@ -13,9 +13,8 @@
  * - errors.ts: 错误类型体系
  * - hash.ts: SHA-1 哈希工具
  * - objects/: 对象序列化/反序列化（按类型拆分）
- * - store/: 对象存储（按实现拆分）
+ * - odb/: 对象数据库（loose objects + pack）
  * - refs/: 引用管理（分支、标签操作）
- * - pack/: Packfile 支持
  * - repository/: 高层仓库 API
  *
  * 扩展点：
@@ -101,7 +100,7 @@ export {
 } from "./objects/index.ts";
 
 // ============================================================================
-// 对象存储
+// 对象数据库
 // ============================================================================
 
 export {
@@ -109,7 +108,7 @@ export {
   createMemoryObjectStore,
   type ObjectStore,
   type MemoryObjectStore,
-} from "./store/index.ts";
+} from "./odb/index.ts";
 
 // ============================================================================
 // Packfile 支持
@@ -152,7 +151,7 @@ export {
   createPackBuilder,
   PackBuilder,
   type PackBuildResult,
-} from "./pack/index.ts";
+} from "./odb/index.ts";
 
 // ============================================================================
 // Refs 支持

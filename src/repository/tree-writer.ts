@@ -4,7 +4,7 @@
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import type { ObjectStore } from "../store/index.ts";
+import type { ObjectStore } from "../odb/index.ts";
 import type { GitBlob, GitTree, TreeEntry, SHA1 } from "../core/types.ts";
 
 /**

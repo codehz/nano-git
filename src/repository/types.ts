@@ -13,7 +13,7 @@
  * 这些操作对应 git 的 plumbing 命令。
  */
 
-import type { PackBuildResult } from "../pack/index.ts";
+import type { PackBuildResult } from "../odb/index.ts";
 import type {
   RepositoryBackend,
   RepositoryGCOptions,
@@ -21,7 +21,7 @@ import type {
   RepositoryRepackOptions,
 } from "../backend/index.ts";
 import type { RefStore } from "../refs/index.ts";
-import type { ObjectStore } from "../store/index.ts";
+import type { ObjectStore } from "../odb/index.ts";
 import type { GitObject, GitAuthor, TreeEntry, SHA1, ObjectType } from "../core/types.ts";
 
 /**

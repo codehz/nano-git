@@ -6,10 +6,10 @@
  */
 
 import type { RefStore } from "../refs/types.ts";
-import type { ObjectSource, ObjectStore } from "../store/types.ts";
-import type { PackBuildResult } from "../pack/pack-builder.ts";
-import type { PackBuilder } from "../pack/pack-builder.ts";
-import type { PackObjectStore } from "../pack/pack-store.ts";
+import type { ObjectSource, ObjectStore } from "../odb/types.ts";
+import type { PackBuildResult } from "../odb/pack/pack-builder.ts";
+import type { PackBuilder } from "../odb/pack/pack-builder.ts";
+import type { PackObjectStore } from "../odb/pack/pack-store.ts";
 import type { GitObject, SHA1 } from "../core/types.ts";
 
 /** 仓库级 repack 选项 */

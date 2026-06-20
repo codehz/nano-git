@@ -5,7 +5,7 @@
  */
 
 import { createMemoryRefStore, HEAD_REF, HEADS_PREFIX } from "../refs/index.ts";
-import { createMemoryObjectStore } from "../store/index.ts";
+import { createMemoryObjectStore } from "../odb/index.ts";
 import type { RepositoryBackend } from "./types.ts";
 
 /** 创建内存仓库后端的可选参数 */
