@@ -16,7 +16,7 @@
  * - store/: 对象存储（按实现拆分）
  * - refs/: 引用管理（分支、标签操作）
  * - pack/: Packfile 支持
- * - repository.ts: 高层仓库 API
+ * - repository/: 高层仓库 API
  *
  * 扩展点：
  * - diff/: 差异计算
@@ -192,4 +192,4 @@ export {
   openRepository,
   createMemoryRepository,
   type Repository,
-} from "./repository.ts";
+} from "./repository/index.ts";

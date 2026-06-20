@@ -1,0 +1,9 @@
+/**
+ * 仓库模块
+ *
+ * 拆分高层仓库 API 的类型、工厂函数和辅助逻辑。
+ */
+
+export type { Repository } from "./types.ts";
+export { createRepository } from "./create.ts";
+export { initRepository, openRepository, createMemoryRepository } from "./init.ts";
