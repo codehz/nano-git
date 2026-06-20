@@ -129,6 +129,12 @@ nano-git/
 │   ├── objects.ts        # 对象序列化/反序列化
 │   ├── store.ts          # 对象存储（文件系统/内存）
 │   └── repository.ts     # 仓库高层 API
+├── tests/
+│   ├── types.test.ts     # 类型校验测试
+│   ├── hash.test.ts      # 哈希工具测试
+│   ├── objects.test.ts   # 序列化/反序列化测试
+│   ├── store.test.ts     # 对象存储测试
+│   └── repository.test.ts # 仓库 API 测试
 ├── examples/
 │   └── demo.ts           # 演示脚本
 └── README.md
@@ -191,7 +197,7 @@ blob 11\0hello world
 # 类型检查
 bun tsc --noEmit
 
-# 运行测试（待实现）
+# 运行测试
 bun test
 ```
 
