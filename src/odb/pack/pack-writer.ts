@@ -19,24 +19,12 @@
  * ```
  */
 
-import { createHash } from "node:crypto";
-import { deflateSync } from "node:zlib";
 import type { GitObject, SHA1 } from "../../core/types.ts";
-import { hashObject } from "../../core/hash.ts";
-import { serializeContent } from "../../objects/index.ts";
-import { PACK_SIGNATURE, PACK_VERSION, objectTypeToNumber } from "./constants.ts";
-import { encodeObjectHeader } from "./utils.ts";
+import { buildEncodedPack, type EncodedPackObject, toEncodedPackObject } from "./pack-encoding.ts";
 
 // ============================================================================
 // Packfile 写入器
 // ============================================================================
-
-/** 待打包的对象条目 */
-interface PackEntry {
-  type: GitObject["type"];
-  hash: SHA1;
-  data: Buffer;
-}
 
 /**
  * 创建 Packfile 写入器
@@ -63,7 +51,7 @@ export function createPackWriter(): PackWriter {
  * Packfile 写入器类
  */
 export class PackWriter {
-  private entries: PackEntry[] = [];
+  private entries: EncodedPackObject[] = [];
   private readonly hashes: Set<SHA1> = new Set();
 
   /**
@@ -78,18 +66,14 @@ export class PackWriter {
    * ```
    */
   addObject(obj: GitObject): SHA1 {
-    const data = serializeContent(obj);
-    const hash = hashObject(obj.type, data);
+    const entry = toEncodedPackObject(obj);
+    const hash = entry.hash;
 
     if (this.hashes.has(hash)) {
       return hash;
     }
 
-    this.entries.push({
-      type: obj.type,
-      hash,
-      data,
-    });
+    this.entries.push(entry);
     this.hashes.add(hash);
 
     return hash;
@@ -114,29 +98,7 @@ export class PackWriter {
    * ```
    */
   build(): Buffer {
-    const parts: Buffer[] = [];
-
-    // 写入头部
-    const header = Buffer.alloc(12);
-    PACK_SIGNATURE.copy(header, 0);
-    header.writeUInt32BE(PACK_VERSION, 4);
-    header.writeUInt32BE(this.entries.length, 8);
-    parts.push(header);
-
-    // 写入每个对象
-    for (const entry of this.entries) {
-      const typeNum = objectTypeToNumber(entry.type);
-      const objHeader = encodeObjectHeader(typeNum, entry.data.length);
-      const compressed = deflateSync(entry.data);
-
-      parts.push(objHeader, compressed);
-    }
-
-    // 计算校验和
-    const packWithoutChecksum = Buffer.concat(parts);
-    const checksum = createHash("sha1").update(packWithoutChecksum).digest();
-
-    return Buffer.concat([packWithoutChecksum, checksum]);
+    return buildEncodedPack(this.entries).packData;
   }
 
   /**

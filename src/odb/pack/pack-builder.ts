@@ -18,16 +18,10 @@
 
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { createHash } from "node:crypto";
-import { deflateSync } from "node:zlib";
 import type { GitObject, SHA1 } from "../../core/types.ts";
-import { hashObject } from "../../core/hash.ts";
-import { serializeContent } from "../../objects/index.ts";
 import { PackIndexWriter } from "./pack-index.ts";
-import { PACK_SIGNATURE, PACK_VERSION, objectTypeToNumber } from "./constants.ts";
-import { encodeObjectHeader } from "./utils.ts";
 import type { PackBuildResult } from "./pack-builder-types.ts";
-import { crc32Value } from "./crc32.ts";
+import { buildEncodedPack, type EncodedPackObject, toEncodedPackObject } from "./pack-encoding.ts";
 
 export type { PackBuildResult } from "./pack-builder-types.ts";
 
@@ -63,7 +57,7 @@ export function createPackBuilder(gitDir: string): PackBuilder {
  */
 export class PackBuilder {
   private readonly gitDir: string;
-  private readonly objects: GitObject[] = [];
+  private readonly objects: EncodedPackObject[] = [];
   private readonly hashes: Set<SHA1> = new Set();
 
   constructor(gitDir: string) {
@@ -77,14 +71,14 @@ export class PackBuilder {
    * @returns 对象的 SHA-1 哈希
    */
   addObject(obj: GitObject): SHA1 {
-    const data = serializeContent(obj);
-    const hash = hashObject(obj.type, data);
+    const entry = toEncodedPackObject(obj);
+    const hash = entry.hash;
 
     if (this.hashes.has(hash)) {
       return hash;
     }
 
-    this.objects.push(obj);
+    this.objects.push(entry);
     this.hashes.add(hash);
     return hash;
   }
@@ -112,56 +106,22 @@ export class PackBuilder {
     const packDir = join(this.gitDir, "objects", "pack");
     mkdirSync(packDir, { recursive: true });
 
-    // 构建 packfile 数据，同时记录每个对象的偏移量和 CRC32
-    const packParts: Buffer[] = [];
-    const entries: Array<{ hash: SHA1; offset: number; crc32: number }> = [];
-
-    // 写入头部
-    const header = Buffer.alloc(12);
-    PACK_SIGNATURE.copy(header, 0);
-    header.writeUInt32BE(PACK_VERSION, 4);
-    header.writeUInt32BE(this.objects.length, 8);
-    packParts.push(header);
-
-    // 写入每个对象
-    for (const obj of this.objects) {
-      const data = serializeContent(obj);
-      const hash = hashObject(obj.type, data);
-      const typeNum = objectTypeToNumber(obj.type);
-      const objHeader = encodeObjectHeader(typeNum, data.length);
-
-      const compressed = deflateSync(data);
-
-      // 记录偏移量（当前已写入的字节数）
-      const offset = packParts.reduce((sum, buf) => sum + buf.length, 0);
-
-      // 计算 CRC32（对象头部 + 压缩数据）
-      const objData = Buffer.concat([objHeader, compressed]);
-      const crc = crc32Value(objData);
-
-      entries.push({ hash, offset, crc32: crc });
-      packParts.push(objHeader, compressed);
-    }
-
-    // 计算 packfile 校验和
-    const packWithoutChecksum = Buffer.concat(packParts);
-    const packChecksum = createHash("sha1").update(packWithoutChecksum).digest();
-    const packData = Buffer.concat([packWithoutChecksum, packChecksum]);
+    const encoded = buildEncodedPack(this.objects);
 
     // 构建索引文件
     const idxWriter = new PackIndexWriter();
-    for (const entry of entries) {
+    for (const entry of encoded.entries) {
       idxWriter.addEntry(entry);
     }
-    const idxData = idxWriter.build(packChecksum);
+    const idxData = idxWriter.build(encoded.packChecksum);
 
     // 生成文件名
-    const checksumHex = packChecksum.toString("hex");
+    const checksumHex = encoded.packChecksum.toString("hex");
     const packPath = join(packDir, `pack-${checksumHex}.pack`);
     const idxPath = join(packDir, `pack-${checksumHex}.idx`);
 
     // 写入文件
-    writeFileSync(packPath, packData);
+    writeFileSync(packPath, encoded.packData);
     writeFileSync(idxPath, idxData);
 
     return {
