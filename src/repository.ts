@@ -12,16 +12,8 @@
  * 这些操作对应 git 的 plumbing 命令。
  */
 
-import {
-  mkdirSync,
-  readFileSync,
-  writeFileSync,
-  existsSync,
-  readdirSync,
-  statSync,
-  unlinkSync,
-} from "node:fs";
-import { dirname, join } from "node:path";
+import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
 import type {
   GitObject,
   GitBlob,
@@ -36,11 +28,18 @@ import type {
 import { sha1 } from "./types.ts";
 import { hashObject } from "./hash.ts";
 import { createFileObjectStore, createMemoryObjectStore, type ObjectStore } from "./store/index.ts";
-import { CircularReferenceError, RefNotFoundError } from "./errors.ts";
-
-const HEAD_REF = "HEAD";
-const HEADS_PREFIX = "refs/heads/";
-const TAGS_PREFIX = "refs/tags/";
+import { createFileRefStore, createMemoryRefStore } from "./refs/index.ts";
+import type { RefStore } from "./refs/index.ts";
+import {
+  resolveRefHash,
+  resolveSymbolicRef,
+  resolveTargetHash,
+  branchNameToRef,
+  tagNameToRef,
+  HEAD_REF,
+  HEADS_PREFIX,
+  TAGS_PREFIX,
+} from "./refs/index.ts";
 
 /**
  * Git 仓库接口
@@ -259,118 +258,18 @@ export function createMemoryRepository(): Repository {
  * 创建仓库实例的内部工厂函数
  */
 function createRepository(store: ObjectStore, gitDir: string | null): Repository {
-  const memoryRefs = gitDir
-    ? null
-    : new Map<string, string>([[HEAD_REF, `ref: ${HEADS_PREFIX}main`]]);
+  const refStore: RefStore = gitDir
+    ? createFileRefStore(gitDir)
+    : createMemoryRefStore(new Map<string, string>([[HEAD_REF, `ref: ${HEADS_PREFIX}main`]]));
 
-  function readRawRef(ref: string): string | null {
-    validateRefName(ref);
-
-    if (!gitDir) {
-      return memoryRefs!.get(ref) ?? null;
+  function ensureRefDoesNotExist(ref: string, kind: "Branch" | "Tag", name: string): void {
+    if (refStore.readRaw(ref) !== null) {
+      throw new Error(`${kind} already exists: ${name}`);
     }
-
-    const refPath = join(gitDir, ref);
-    if (!existsSync(refPath)) {
-      return null;
-    }
-
-    return readFileSync(refPath, "utf-8").trim();
   }
 
-  function writeRawRef(ref: string, content: string): void {
-    validateRefName(ref);
-
-    if (!gitDir) {
-      memoryRefs!.set(ref, content.trim());
-      return;
-    }
-
-    const refPath = join(gitDir, ref);
-    mkdirSync(dirname(refPath), { recursive: true });
-    writeFileSync(refPath, `${content.trim()}\n`);
-  }
-
-  function deleteRawRef(ref: string): void {
-    validateRefName(ref);
-
-    if (!gitDir) {
-      if (!memoryRefs!.delete(ref)) {
-        throw new RefNotFoundError(ref);
-      }
-      return;
-    }
-
-    const refPath = join(gitDir, ref);
-    if (!existsSync(refPath)) {
-      throw new RefNotFoundError(ref);
-    }
-
-    unlinkSync(refPath);
-  }
-
-  function listRefs(prefix: string): string[] {
-    validateRefPrefix(prefix);
-
-    if (!gitDir) {
-      return Array.from(memoryRefs!.keys())
-        .filter((ref) => ref.startsWith(prefix))
-        .sort();
-    }
-
-    const baseDir = join(gitDir, prefix);
-    if (!existsSync(baseDir)) {
-      return [];
-    }
-
-    return listLooseRefsRecursive(baseDir, prefix).sort();
-  }
-
-  function resolveRefHash(ref: string, seen = new Set<string>()): SHA1 | null {
-    if (seen.has(ref)) {
-      throw new CircularReferenceError(ref);
-    }
-
-    seen.add(ref);
-    const content = readRawRef(ref);
-    if (content === null) {
-      return null;
-    }
-
-    if (content.startsWith("ref: ")) {
-      return resolveRefHash(content.slice(5), seen);
-    }
-
-    return sha1(content);
-  }
-
-  function resolveSymbolicRef(ref: string, seen = new Set<string>()): string | null {
-    if (seen.has(ref)) {
-      throw new CircularReferenceError(ref);
-    }
-
-    seen.add(ref);
-    const content = readRawRef(ref);
-    if (content === null || !content.startsWith("ref: ")) {
-      return null;
-    }
-
-    const target = content.slice(5);
-    const nestedTarget = resolveSymbolicRef(target, seen);
-    return nestedTarget ?? target;
-  }
-
-  function resolveTargetHash(hash: SHA1 | undefined): SHA1 {
-    if (hash) {
-      return hash;
-    }
-
-    const headHash = resolveRefHash(HEAD_REF);
-    if (!headHash) {
-      throw new Error("Cannot resolve HEAD to create ref");
-    }
-
-    return headHash;
+  function listShortRefs(prefix: string): string[] {
+    return refStore.listRaw(prefix).map((ref) => ref.slice(prefix.length));
   }
 
   return {
@@ -428,15 +327,15 @@ function createRepository(store: ObjectStore, gitDir: string | null): Repository
     },
 
     updateRef(ref: string, hash: SHA1): void {
-      writeRawRef(ref, hash);
+      refStore.writeRaw(ref, hash);
     },
 
     readRef(ref: string): SHA1 | null {
-      return resolveRefHash(ref);
+      return resolveRefHash(refStore, ref);
     },
 
     getCurrentBranch(): string | null {
-      const symbolicRef = resolveSymbolicRef(HEAD_REF);
+      const symbolicRef = resolveSymbolicRef(refStore, HEAD_REF);
       if (!symbolicRef || !symbolicRef.startsWith(HEADS_PREFIX)) {
         return null;
       }
@@ -445,18 +344,16 @@ function createRepository(store: ObjectStore, gitDir: string | null): Repository
 
     createBranch(name: string, hash?: SHA1): void {
       const ref = branchNameToRef(name);
-      if (readRawRef(ref) !== null) {
-        throw new Error(`Branch already exists: ${name}`);
-      }
-      writeRawRef(ref, resolveTargetHash(hash));
+      ensureRefDoesNotExist(ref, "Branch", name);
+      refStore.writeRaw(ref, resolveTargetHash(refStore, hash));
     },
 
     readBranch(name: string): SHA1 | null {
-      return resolveRefHash(branchNameToRef(name));
+      return resolveRefHash(refStore, branchNameToRef(name));
     },
 
     listBranches(): string[] {
-      return listRefs(HEADS_PREFIX).map((ref) => ref.slice(HEADS_PREFIX.length));
+      return listShortRefs(HEADS_PREFIX);
     },
 
     deleteBranch(name: string): void {
@@ -464,15 +361,13 @@ function createRepository(store: ObjectStore, gitDir: string | null): Repository
       if (currentBranch === name) {
         throw new Error(`Cannot delete current branch: ${name}`);
       }
-      deleteRawRef(branchNameToRef(name));
+      refStore.deleteRaw(branchNameToRef(name));
     },
 
     createTag(name: string, hash?: SHA1): void {
       const ref = tagNameToRef(name);
-      if (readRawRef(ref) !== null) {
-        throw new Error(`Tag already exists: ${name}`);
-      }
-      writeRawRef(ref, resolveTargetHash(hash));
+      ensureRefDoesNotExist(ref, "Tag", name);
+      refStore.writeRaw(ref, resolveTargetHash(refStore, hash));
     },
 
     createAnnotatedTag(
@@ -483,9 +378,7 @@ function createRepository(store: ObjectStore, gitDir: string | null): Repository
       objectType?: ObjectType,
     ): SHA1 {
       const ref = tagNameToRef(name);
-      if (readRawRef(ref) !== null) {
-        throw new Error(`Tag already exists: ${name}`);
-      }
+      ensureRefDoesNotExist(ref, "Tag", name);
 
       const resolvedObjectType = objectType ?? store.read(target).type;
       const tag: GitTag = {
@@ -497,20 +390,20 @@ function createRepository(store: ObjectStore, gitDir: string | null): Repository
         message,
       };
       const tagHash = store.write(tag);
-      writeRawRef(ref, tagHash);
+      refStore.writeRaw(ref, tagHash);
       return tagHash;
     },
 
     readTag(name: string): SHA1 | null {
-      return resolveRefHash(tagNameToRef(name));
+      return resolveRefHash(refStore, tagNameToRef(name));
     },
 
     listTags(): string[] {
-      return listRefs(TAGS_PREFIX).map((ref) => ref.slice(TAGS_PREFIX.length));
+      return listShortRefs(TAGS_PREFIX);
     },
 
     deleteTag(name: string): void {
-      deleteRawRef(tagNameToRef(name));
+      refStore.deleteRaw(tagNameToRef(name));
     },
   };
 }
@@ -518,101 +411,6 @@ function createRepository(store: ObjectStore, gitDir: string | null): Repository
 // ============================================================================
 // Ref 辅助函数
 // ============================================================================
-
-function branchNameToRef(name: string): string {
-  return `${HEADS_PREFIX}${normalizeShortRefName(name, "branch")}`;
-}
-
-function tagNameToRef(name: string): string {
-  return `${TAGS_PREFIX}${normalizeShortRefName(name, "tag")}`;
-}
-
-function normalizeShortRefName(name: string, kind: "branch" | "tag"): string {
-  if (!name) {
-    throw new Error(`${kind} name cannot be empty`);
-  }
-
-  validateRefName(`refs/x/${name}`);
-  return name;
-}
-
-function validateRefPrefix(prefix: string): void {
-  if (!prefix.startsWith("refs/") || !prefix.endsWith("/")) {
-    throw new Error(`Invalid ref prefix: ${prefix}`);
-  }
-
-  validateRefName(`${prefix}placeholder`);
-}
-
-function validateRefName(ref: string): void {
-  if (ref === HEAD_REF) {
-    return;
-  }
-
-  if (!ref.startsWith("refs/")) {
-    throw new Error(`Invalid ref name: ${ref}`);
-  }
-
-  if (
-    ref.includes("\\") ||
-    ref.includes("..") ||
-    ref.includes("@{") ||
-    ref.includes("//") ||
-    ref.endsWith("/") ||
-    ref.endsWith(".")
-  ) {
-    throw new Error(`Invalid ref name: ${ref}`);
-  }
-
-  for (const char of ref) {
-    const code = char.charCodeAt(0);
-    if (
-      code <= 0x1f ||
-      code === 0x7f ||
-      char === " " ||
-      char === "~" ||
-      char === "^" ||
-      char === ":" ||
-      char === "?" ||
-      char === "*" ||
-      char === "["
-    ) {
-      throw new Error(`Invalid ref name: ${ref}`);
-    }
-  }
-
-  const parts = ref.split("/");
-  if (parts.length < 3) {
-    throw new Error(`Invalid ref name: ${ref}`);
-  }
-
-  for (const part of parts) {
-    if (!part || part === "." || part === ".." || part.endsWith(".lock")) {
-      throw new Error(`Invalid ref name: ${ref}`);
-    }
-  }
-}
-
-function listLooseRefsRecursive(baseDir: string, prefix: string): string[] {
-  const refs: string[] = [];
-  const entries = readdirSync(baseDir).sort();
-
-  for (const entry of entries) {
-    const fullPath = join(baseDir, entry);
-    const stat = statSync(fullPath);
-
-    if (stat.isDirectory()) {
-      refs.push(...listLooseRefsRecursive(fullPath, `${prefix}${entry}/`));
-      continue;
-    }
-
-    if (stat.isFile()) {
-      refs.push(`${prefix}${entry}`);
-    }
-  }
-
-  return refs;
-}
 
 /**
  * 递归将目录写入 tree 对象

@@ -14,11 +14,11 @@
  * - hash.ts: SHA-1 哈希工具
  * - objects/: 对象序列化/反序列化（按类型拆分）
  * - store/: 对象存储（按实现拆分）
+ * - refs/: 引用管理（分支、标签操作）
  * - pack/: Packfile 支持
  * - repository.ts: 高层仓库 API
  *
  * 扩展点：
- * - refs/: 引用管理（分支、标签操作）
  * - diff/: 差异计算
  * - transport/: 远程传输协议
  *
@@ -146,6 +146,26 @@ export {
   PackBuilder,
   type PackBuildResult,
 } from "./pack/index.ts";
+
+// ============================================================================
+// Refs 支持
+// ============================================================================
+
+export type { RefStore } from "./refs/index.ts";
+export {
+  HEAD_REF,
+  HEADS_PREFIX,
+  TAGS_PREFIX,
+  resolveRefHash,
+  resolveSymbolicRef,
+  resolveTargetHash,
+  validateRefName,
+  validateRefPrefix,
+  branchNameToRef,
+  tagNameToRef,
+  createFileRefStore,
+  createMemoryRefStore,
+} from "./refs/index.ts";
 
 // ============================================================================
 // 仓库 API
