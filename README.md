@@ -13,7 +13,7 @@
 - ✅ **引用管理** — refs 验证、解析、存储（文件系统 + 内存）
 - ✅ **仓库 API** — 类似 Git plumbing 命令的高层接口（init、hash-object、cat-file、commit-tree、update-ref 等）
 - ✅ **可达性遍历与 GC** — 基于 refs 的可达对象收集、repack、gc
-- ✅ **Smart HTTP Fetch 客户端** — 基于 Bun fetch 的 Git 协议客户端，支持 clone/fetch
+- ✅ **Smart HTTP Fetch 客户端** — 基于 Bun fetch 的 Git 协议客户端，支持 clone/fetch，支持 Bearer Token 与自定义请求头认证
 - ✅ **类型安全** — 完整的 TypeScript 类型定义
 
 ## 安装
@@ -164,6 +164,20 @@ const result2 = await repo.fetch("https://github.com/user/repo");
 console.log(`New objects: ${result2.objectCount}`); // 0（已是最新）
 ```
 
+带认证的 fetch（私有仓库）：
+
+```typescript
+// 使用 Personal Access Token
+const result = await repo.fetch("https://github.com/org/private-repo", {
+  token: "ghp_xxxxxxxxxxxx",
+});
+
+// 或使用自定义请求头（GitLab CI Job Token 等）
+const result2 = await repo.fetch("https://gitlab.com/org/private-repo", {
+  headers: { "Job-Token": "xxxxxxxx" },
+});
+```
+
 如果你需要更底层的控制，也可以直接使用 transport 层的独立函数：
 
 ```typescript
@@ -173,6 +187,12 @@ import { fetch, createSmartHttpClient, buildUploadPackRequest } from "nano-git";
 const client = createSmartHttpClient("https://github.com/user/repo");
 const adv = await client.getRefAdvertisement();
 console.log(adv.refs);
+
+// 带认证的底层传输控制
+const authedClient = createSmartHttpClient("https://github.com/user/repo", {
+  token: "ghp_xxxxxxxx",
+});
+const { packfile } = await authedClient.postUploadPack(body);
 ```
 
 ### 对象序列化
