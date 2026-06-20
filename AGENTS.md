@@ -2,7 +2,7 @@
 
 ## 项目概述
 
-nano-git 是使用 TypeScript 实现的 Git 核心功能的项目，兼容 Git 底层数据结构和算法。运行时为 Bun。
+nano-git 是使用 TypeScript 实现的 Git 核心功能的项目，专注于**裸仓库（bare repository）** 操作与服务端场景，不涉及暂存区和工作目录管理。兼容 Git 底层数据结构和算法。运行时为 Bun。
 
 ## 常用命令
 

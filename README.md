@@ -1,6 +1,7 @@
 # nano-git
 
-使用 Node.js/TypeScript 实现的 Git 核心功能，旨在深入理解 Git 的底层数据结构和算法。
+使用 TypeScript 实现的 Git 核心功能，专注于**裸仓库（bare repository）** 操作与服务端场景，
+不涉及暂存区（index）和工作目录管理。
 
 ## 特性
 
@@ -8,7 +9,10 @@
 - ✅ **Git 对象模型** — 支持 blob、tree、commit、tag 四种对象类型
 - ✅ **对象序列化/反序列化** — 完整的二进制格式支持
 - ✅ **对象存储** — 文件系统存储和内存存储两种模式
-- ✅ **仓库 API** — 类似 git plumbing 命令的高层接口
+- ✅ **Packfile 支持** — 读取、写入、索引生成、delta 编解码
+- ✅ **引用管理** — refs 验证、解析、存储（文件系统 + 内存）
+- ✅ **仓库 API** — 类似 Git plumbing 命令的高层接口（init、hash-object、cat-file、commit-tree、update-ref 等）
+- ✅ **可达性遍历与 GC** — 基于 refs 的可达对象收集、repack、gc
 - ✅ **类型安全** — 完整的 TypeScript 类型定义
 
 ## 安装
@@ -96,7 +100,7 @@ const treeHash = repo.writeTree("/path/to/directory");
 repo.updateRef("refs/heads/main", commitHash);
 ```
 
-`openRepository()` 默认会同时读取 `.git/objects/` 下的 loose objects 和 `.git/objects/pack/` 下的 packed objects，因此可以直接打开经过 `git gc` 或 `git repack` 的真实仓库。
+`openRepository()` 默认会同时读取 `.git/objects/` 下的 loose objects 和 `.git/objects/pack/` 下的 packed objects，因此可以直接打开经过 `git gc` 或 `git repack` 的真实仓库（包括裸仓库）。搭配 `initRepository()` 的第二个参数可初始化为裸仓库布局。
 
 ### 生成 Packfile
 
@@ -254,15 +258,28 @@ bun test
 
 ## 路线图
 
+### 已实现
+
 - [x] 基础数据结构和哈希算法
 - [x] 对象序列化/反序列化
 - [x] 对象存储（文件系统和内存）
-- [x] 仓库 API（init, hash-object, cat-file, write-tree, commit-tree）
-- [ ] 引用管理（refs, HEAD）
-- [ ] 暂存区（index）操作
-- [ ] Pack 文件格式支持
-- [ ] 远程仓库交互（fetch, push）
-- [ ] 分支和合并操作
+- [x] Packfile 支持（读取、写入、索引、delta 编解码、打包构建器）
+- [x] 引用管理（refs、HEAD、符号引用解析）
+- [x] 仓库 API（init、open、hash-object、cat-file、write-tree、commit-tree、update-ref、branch、tag）
+- [x] 可达性遍历与 GC（repack、gc）
+
+### 规划中（聚焦裸仓库/服务端场景）
+
+- [ ] **远程传输协议** — `git fetch`、`git push` 的协议层（`src/transport/` 已预留）
+- [ ] **Smart HTTP / Git 协议握手** — 服务端 receive-pack / upload-pack
+- [ ] **Reference Transaction** — 引用更新钩子与事务
+- [ ] **多格式哈希支持** — SHA-256 兼容准备
+
+### 非目标（明确不实现）
+
+- ~~暂存区（index）操作~~ — 如 `git add`、`git status`
+- ~~工作目录管理~~ — 如 `git checkout`、`git restore`
+- ~~文件级别的差异计算（diff）~~ — 如 `git diff`
 
 ## 参考资料
 
