@@ -10,6 +10,8 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
+import { symlinkSync } from "node:fs";
+import { join } from "node:path";
 import { initRepository, openRepository } from "../../src/repository/index.ts";
 import { sha1 } from "../../src/core/types.ts";
 import type { GitAuthor, GitTag } from "../../src/core/types.ts";
@@ -283,6 +285,122 @@ describe("Tree 兼容性", () => {
       });
 
       expect(nanoGitTreeHash).toBe(gitTreeHash);
+    });
+  });
+
+  // --- 符号链接兼容性 ---
+
+  describe("nano-git → git 符号链接", () => {
+    test("nano-git createTree 创建的符号链接 tree 能被 git ls-tree 正确显示", () => {
+      const repo = openRepository(tempDir);
+
+      const targetHash = repo.writeBlob(Buffer.from("/usr/bin/node"));
+      const treeHash = repo.createTree([{ mode: "120000", name: "node", hash: targetHash }]);
+
+      const output = git(["ls-tree", treeHash], tempDir);
+      expect(output).toMatch(/^120000 blob [a-f0-9]+\tnode$/m);
+    });
+
+    test("nano-git writeTree 处理的符号链接能被 git 正确读取", () => {
+      const workDir = createTempDir("e2e-symlink-work");
+      try {
+        symlinkSync("/usr/bin/python3", join(workDir, "python-link"));
+        // 需要一个 .git 目录让 nano-git 能打开仓库
+        gitInit(workDir);
+
+        const repo = openRepository(workDir);
+        const treeHash = repo.writeTree(workDir);
+
+        const output = git(["ls-tree", treeHash], workDir);
+        expect(output).toMatch(/^120000 blob [a-f0-9]+\tpython-link$/m);
+
+        // 验证 blob 内容
+        const match = output.match(/^120000 blob ([a-f0-9]+)\tpython-link$/m);
+        expect(match).not.toBeNull();
+        if (match) {
+          const blobContent = gitCatFileRaw(workDir, match[1]!);
+          expect(blobContent.toString("utf-8")).toBe("/usr/bin/python3");
+        }
+      } finally {
+        cleanupDir(workDir);
+      }
+    });
+
+    test("nano-git 写入的符号链接内容与 git hash-object 一致", () => {
+      const repo = openRepository(tempDir);
+
+      const target = "/some/symlink/target";
+      const nanoGitHash = repo.writeBlob(Buffer.from(target));
+      const gitHash = gitHashObject(tempDir, target);
+
+      expect(nanoGitHash).toBe(gitHash);
+    });
+  });
+
+  describe("git → nano-git 符号链接", () => {
+    test("git update-index 添加的符号链接能被 nano-git 正确解析", () => {
+      const repo = openRepository(tempDir);
+
+      // 用 git 创建符号链接条目
+      const blobHash = gitHashObjectWrite(tempDir, "/usr/bin/node");
+      git(["update-index", "--add", "--cacheinfo", `120000,${blobHash},node-link`], tempDir);
+      const gitTreeHash = git(["write-tree"], tempDir);
+
+      const tree = repo.catFile(sha1(gitTreeHash));
+      expect(tree.type).toBe("tree");
+      if (tree.type === "tree") {
+        expect(tree.entries).toHaveLength(1);
+        expect(tree.entries[0]!.mode).toBe("120000");
+        expect(tree.entries[0]!.name).toBe("node-link");
+
+        const blob = repo.catFile(tree.entries[0]!.hash);
+        expect(blob.type).toBe("blob");
+        if (blob.type === "blob") {
+          expect(blob.content.toString("utf-8")).toBe("/usr/bin/node");
+        }
+      }
+    });
+
+    test("git 和 nano-git 对相同符号链接产生相同的 tree 哈希", () => {
+      const repo = openRepository(tempDir);
+
+      // 用 git 创建符号链接 tree
+      const gitBlobHash = gitHashObjectWrite(tempDir, "/target/path");
+      git(["update-index", "--add", "--cacheinfo", `120000,${gitBlobHash},symlink`], tempDir);
+      const gitTreeHash = git(["write-tree"], tempDir);
+
+      // 用 nano-git 创建相同内容的符号链接 tree
+      const nanoBlobHash = repo.writeBlob(Buffer.from("/target/path"));
+      expect(nanoBlobHash).toBe(gitBlobHash);
+
+      const nanoTreeHash = repo.createTree([
+        { mode: "120000", name: "symlink", hash: nanoBlobHash },
+      ]);
+
+      expect(nanoTreeHash).toBe(sha1(gitTreeHash));
+    });
+
+    test("git 和 nano-git 对工作目录中相同的符号链接产生相同的 write-tree 结果", () => {
+      const workDir = createTempDir("e2e-symlink-writetree");
+      try {
+        gitInit(workDir);
+
+        // 在工作目录中创建符号链接
+        symlinkSync("/usr/local/bin/app", join(workDir, "app-link"));
+
+        // 用 nano-git 写入 tree
+        const nanoRepo = openRepository(workDir);
+        const nanoTreeHash = nanoRepo.writeTree(workDir);
+
+        // 用 git 写入 tree（先 add 到索引）
+        git(["add", "app-link"], workDir);
+        const gitTreeHash = sha1(git(["write-tree"], workDir));
+
+        // 两者应该产生相同的 tree hash
+        expect(nanoTreeHash).toBe(gitTreeHash);
+      } finally {
+        cleanupDir(workDir);
+      }
     });
   });
 });
