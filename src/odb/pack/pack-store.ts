@@ -18,41 +18,14 @@
  * ```
  */
 
-import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import type { GitObject, SHA1 } from "../../core/types.ts";
 import { ObjectNotFoundError } from "../../core/errors.ts";
 import type { ObjectSource } from "../types.ts";
-import { PackReader } from "./pack-reader.ts";
-import { PackIndexReader } from "./pack-index.ts";
+import { getPackReader, loadPackPairs, toPackFileInfo } from "./pack-store-loader.ts";
+import type { PackFileInfo, PackPair } from "./pack-store-types.ts";
 
-// ============================================================================
-// Pack 文件对（.pack + .idx）
-// ============================================================================
-
-/** 一个 packfile 及其索引的组合 */
-interface PackPair {
-  /** packfile 的 SHA-1 校验和（文件名中的哈希部分） */
-  checksum: string;
-  /** 索引读取器 */
-  index: PackIndexReader;
-  /** packfile 读取器（延迟加载） */
-  reader: PackReader | null;
-  /** packfile 数据（延迟加载） */
-  packData: Buffer | null;
-}
-
-/** 一个已发现的 pack 文件对 */
-export interface PackFileInfo {
-  /** pack 文件校验和 */
-  checksum: string;
-  /** .pack 文件路径 */
-  packPath: string;
-  /** .idx 文件路径 */
-  idxPath: string;
-  /** 索引中的对象数量 */
-  objectCount: number;
-}
+export type { PackFileInfo } from "./pack-store-types.ts";
 
 // ============================================================================
 // Pack 对象存储
@@ -112,45 +85,7 @@ export class PackObjectStore implements ObjectSource {
   private ensureLoaded(): void {
     if (this.loaded) return;
     this.loaded = true;
-
-    if (!existsSync(this.packDir)) return;
-
-    const files = readdirSync(this.packDir);
-    const idxFiles = files.filter((f) => f.endsWith(".idx"));
-
-    for (const idxFile of idxFiles) {
-      // 从文件名提取校验和
-      const match = idxFile.match(/^pack-([0-9a-f]{40})\.idx$/);
-      if (!match) continue;
-
-      const checksum = match[1]!;
-      const packFile = `pack-${checksum}.pack`;
-
-      // 确保对应的 .pack 文件存在
-      if (!existsSync(join(this.packDir, packFile))) continue;
-
-      // 加载索引
-      const idxData = readFileSync(join(this.packDir, idxFile));
-      const index = new PackIndexReader(idxData);
-
-      this.pairs.push({
-        checksum,
-        index,
-        reader: null,
-        packData: null,
-      });
-    }
-  }
-
-  /**
-   * 延迟加载 packfile 数据
-   */
-  private getPackReader(pair: PackPair): PackReader {
-    if (!pair.reader) {
-      pair.packData = readFileSync(join(this.packDir, `pack-${pair.checksum}.pack`));
-      pair.reader = new PackReader(pair.packData);
-    }
-    return pair.reader;
+    this.pairs.push(...loadPackPairs(this.packDir));
   }
 
   /**
@@ -164,7 +99,7 @@ export class PackObjectStore implements ObjectSource {
     for (const pair of this.pairs) {
       const entry = pair.index.lookup(hash);
       if (entry) {
-        const reader = this.getPackReader(pair);
+        const reader = getPackReader(this.packDir, pair);
         const obj = reader.readObject(hash);
         if (obj) return obj;
       }
@@ -213,13 +148,7 @@ export class PackObjectStore implements ObjectSource {
    */
   listPacks(): PackFileInfo[] {
     this.ensureLoaded();
-
-    return this.pairs.map((pair) => ({
-      checksum: pair.checksum,
-      packPath: join(this.packDir, `pack-${pair.checksum}.pack`),
-      idxPath: join(this.packDir, `pack-${pair.checksum}.idx`),
-      objectCount: pair.index.objectCount,
-    }));
+    return this.pairs.map((pair) => toPackFileInfo(this.packDir, pair));
   }
 
   /**

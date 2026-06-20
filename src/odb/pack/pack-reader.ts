@@ -18,41 +18,25 @@
  *   console.log(obj.type, obj.hash);
  * }
  * ```
+ *
+ * 拆分共享类型与底层辅助函数后，
+ * 当前文件只保留对象遍历与 delta 解析主流程。
  */
 
-import { createHash } from "node:crypto";
-import { inflateSync } from "node:zlib";
 import type { GitObject, ObjectType, SHA1 } from "../../core/types.ts";
-import { hashObject } from "../../core/hash.ts";
 import { deserializeContent } from "../../objects/index.ts";
 import { InvalidPackError } from "../../core/errors.ts";
-import {
-  PACK_SIGNATURE,
-  PACK_VERSION,
-  PACK_HEADER_SIZE,
-  PACK_CHECKSUM_SIZE,
-  OBJ_OFS_DELTA,
-  OBJ_REF_DELTA,
-  numberToObjectType,
-} from "./constants.ts";
+import { PACK_HEADER_SIZE, PACK_CHECKSUM_SIZE, OBJ_OFS_DELTA, OBJ_REF_DELTA } from "./constants.ts";
 import { decodeObjectHeader, decodeOfsDeltaOffset } from "./utils.ts";
-import { applyDelta } from "./delta.ts";
+import type { PackObject } from "./pack-reader-types.ts";
+import { parsePackHeader } from "./pack-reader-utils.ts";
+import {
+  resolveOfsDeltaPackObject,
+  resolvePlainPackObject,
+  resolveRefDeltaPackObject,
+} from "./pack-reader-resolver.ts";
 
-// ============================================================================
-// Packfile 对象信息
-// ============================================================================
-
-/** Packfile 中的对象信息 */
-export interface PackObject {
-  /** 对象类型 */
-  type: ObjectType;
-  /** 对象的 SHA-1 哈希 */
-  hash: SHA1;
-  /** 对象在 packfile 中的偏移量 */
-  offset: number;
-  /** 解压后的原始数据 */
-  data: Buffer;
-}
+export type { PackObject } from "./pack-reader-types.ts";
 
 // ============================================================================
 // Packfile 读取器
@@ -91,48 +75,12 @@ export class PackReader {
 
   constructor(data: Buffer) {
     this.data = data;
-    this._objectCount = this.parseHeader();
+    this._objectCount = parsePackHeader(data);
   }
 
   /** 对象数量 */
   get objectCount(): number {
     return this._objectCount;
-  }
-
-  /**
-   * 解析 packfile 头部
-   */
-  private parseHeader(): number {
-    if (this.data.length < PACK_HEADER_SIZE + PACK_CHECKSUM_SIZE) {
-      throw new InvalidPackError("Packfile too small");
-    }
-
-    // 验证签名
-    const signature = this.data.subarray(0, 4);
-    if (!signature.equals(PACK_SIGNATURE)) {
-      throw new InvalidPackError(`Invalid signature: ${signature.toString("hex")}`);
-    }
-
-    // 验证版本
-    const version = this.data.readUInt32BE(4);
-    if (version !== PACK_VERSION) {
-      throw new InvalidPackError(`Unsupported version: ${version}`);
-    }
-
-    // 读取对象数
-    const objectCount = this.data.readUInt32BE(8);
-
-    // 验证校验和
-    const expectedChecksum = this.data.subarray(this.data.length - PACK_CHECKSUM_SIZE);
-    const actualChecksum = createHash("sha1")
-      .update(this.data.subarray(0, this.data.length - PACK_CHECKSUM_SIZE))
-      .digest();
-
-    if (!expectedChecksum.equals(actualChecksum)) {
-      throw new InvalidPackError("Checksum mismatch");
-    }
-
-    return objectCount;
   }
 
   /**
@@ -157,114 +105,37 @@ export class PackReader {
       let obj: PackObject;
 
       if (typeNum === OBJ_OFS_DELTA) {
-        // ofs_delta：读取负偏移量
         const [negOffset, offsetBytes] = decodeOfsDeltaOffset(this.data, offset);
         offset += offsetBytes;
-
-        // 读取压缩的 delta 数据
-        const [deltaData, compressedBytes] = this.readCompressedData(offset);
-        offset += compressedBytes;
-
-        // 查找 base object
-        const baseOffset = objOffset - negOffset;
-        const baseObj = this.objectsByOffset.get(baseOffset);
-        if (!baseObj) {
-          throw new InvalidPackError(`Base object not found at offset ${baseOffset}`);
-        }
-
-        // 应用 delta
-        const resolvedData = applyDelta(baseObj.data, deltaData);
-        const hash = hashObject(baseObj.type, resolvedData);
-
-        obj = {
-          type: baseObj.type,
-          hash,
-          offset: objOffset,
-          data: resolvedData,
-        };
+        const resolved = resolveOfsDeltaPackObject(
+          this.data,
+          offset,
+          objOffset,
+          negOffset,
+          this.objectsByOffset,
+        );
+        obj = resolved.object;
+        offset = resolved.nextOffset;
       } else if (typeNum === OBJ_REF_DELTA) {
-        // ref_delta：读取 base object 的 SHA-1
         const baseHash = this.data.subarray(offset, offset + 20).toString("hex");
         offset += 20;
-
-        // 读取压缩的 delta 数据
-        const [deltaData, compressedBytes] = this.readCompressedData(offset);
-        offset += compressedBytes;
-
-        // 查找 base object
-        const baseObj = this.objectsByHash.get(baseHash);
-        if (!baseObj) {
-          throw new InvalidPackError(`Base object not found: ${baseHash}`);
-        }
-
-        // 应用 delta
-        const resolvedData = applyDelta(baseObj.data, deltaData);
-        const hash = hashObject(baseObj.type, resolvedData);
-
-        obj = {
-          type: baseObj.type,
-          hash,
-          offset: objOffset,
-          data: resolvedData,
-        };
+        const resolved = resolveRefDeltaPackObject(
+          this.data,
+          offset,
+          objOffset,
+          baseHash,
+          this.objectsByHash,
+        );
+        obj = resolved.object;
+        offset = resolved.nextOffset;
       } else {
-        // 非 delta 对象
-        const type = numberToObjectType(typeNum);
-
-        // 读取压缩数据
-        const [compressedData, compressedBytes] = this.readCompressedData(offset);
-        offset += compressedBytes;
-
-        const hash = hashObject(type, compressedData);
-
-        obj = {
-          type,
-          hash,
-          offset: objOffset,
-          data: compressedData,
-        };
+        const resolved = resolvePlainPackObject(this.data, offset, objOffset, typeNum);
+        obj = resolved.object;
+        offset = resolved.nextOffset;
       }
 
       this.objectsByOffset.set(objOffset, obj);
       this.objectsByHash.set(obj.hash, obj);
-    }
-  }
-
-  /**
-   * 读取 zlib 压缩的数据
-   *
-   * 使用 zlib 的 `info` 选项获取实际消耗的输入字节数，
-   * 从而精确定位下一个对象的起始偏移量。
-   */
-  private readCompressedData(offset: number): [data: Buffer, bytesRead: number] {
-    const remaining = this.data.subarray(offset);
-
-    try {
-      const inflated = inflateSync(remaining, {
-        info: true,
-      }) as unknown;
-
-      if (
-        !inflated ||
-        typeof inflated !== "object" ||
-        !("buffer" in inflated) ||
-        !("engine" in inflated)
-      ) {
-        throw new InvalidPackError("Unexpected inflate result shape");
-      }
-
-      const result = inflated as {
-        buffer: Uint8Array;
-        engine?: { bytesWritten?: number };
-      };
-      const consumed = result.engine?.bytesWritten;
-      if (typeof consumed !== "number" || consumed <= 0) {
-        throw new InvalidPackError("Failed to determine compressed stream length");
-      }
-
-      return [Buffer.from(result.buffer), consumed];
-    } catch (err) {
-      throw new InvalidPackError(`Failed to decompress data at offset ${offset}: ${err}`);
     }
   }
 
