@@ -4,6 +4,16 @@
  * 提供对象数据库使用的 Packfile 相关实现。
  */
 
+// ============================================================================
+// 类型出口
+// ============================================================================
+
+export type { PackObject, PackIndexEntry, PackFileInfo, PackBuildResult } from "./types.ts";
+
+// ============================================================================
+// 常量与底层编解码
+// ============================================================================
+
 export {
   OBJ_COMMIT,
   OBJ_TREE,
@@ -31,16 +41,19 @@ export {
   encodeVarint,
 } from "./utils.ts";
 
+// ============================================================================
+// Packfile 核心能力
+// ============================================================================
+
 export { applyDelta, createDelta } from "./delta.ts";
-export { createPackReader, PackReader, type PackObject } from "./pack-reader.ts";
+export { createPackReader, PackReader } from "./pack-reader.ts";
 export { createPackWriter, PackWriter } from "./pack-writer.ts";
 export {
   createPackIndexReader,
   createPackIndexWriter,
   PackIndexReader,
   PackIndexWriter,
-  type PackIndexEntry,
 } from "./pack-index.ts";
-export { createPackObjectStore, PackObjectStore, type PackFileInfo } from "./pack-store.ts";
+export { createPackObjectStore, PackObjectStore } from "./pack-store.ts";
 export { createCompositeObjectStore, CompositeObjectStore } from "./composite-store.ts";
-export { createPackBuilder, PackBuilder, type PackBuildResult } from "./pack-builder.ts";
+export { createPackBuilder, PackBuilder } from "./pack-builder.ts";

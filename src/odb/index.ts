@@ -8,6 +8,8 @@ export type { ObjectSource, ObjectStore } from "./types.ts";
 export { createFileObjectStore } from "./file-store.ts";
 export { createMemoryObjectStore, type MemoryObjectStore } from "./memory-store.ts";
 
+export type { PackObject, PackIndexEntry, PackFileInfo, PackBuildResult } from "./pack/types.ts";
+
 export {
   OBJ_COMMIT,
   OBJ_TREE,
@@ -34,20 +36,16 @@ export {
   createDelta,
   createPackReader,
   PackReader,
-  type PackObject,
   createPackWriter,
   PackWriter,
   createPackIndexReader,
   createPackIndexWriter,
   PackIndexReader,
   PackIndexWriter,
-  type PackIndexEntry,
   createPackObjectStore,
   PackObjectStore,
-  type PackFileInfo,
   createCompositeObjectStore,
   CompositeObjectStore,
   createPackBuilder,
   PackBuilder,
-  type PackBuildResult,
 } from "./pack/index.ts";
