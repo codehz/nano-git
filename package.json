@@ -5,14 +5,26 @@
   "scripts": {
     "lint": "oxlint .",
     "format": "oxfmt .",
-    "format:check": "oxfmt --check ."
+    "format:check": "oxfmt --check .",
+    "prepare": "husky"
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.7",
     "oxfmt": "^0.55.0",
     "oxlint": "^1.70.0"
   },
   "peerDependencies": {
     "typescript": "^6"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx}": [
+      "oxlint --fix",
+      "oxfmt"
+    ],
+    "*.{json,md}": [
+      "oxfmt"
+    ]
   }
 }
