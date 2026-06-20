@@ -368,6 +368,21 @@ describe("PackObjectStore", () => {
 
     expect("write" in store).toBe(false);
   });
+
+  test("refresh() 后能看到新增的 packfile", () => {
+    const gitDir = tempDir;
+    mkdirSync(join(gitDir, "objects", "pack"), { recursive: true });
+
+    const store = createPackObjectStore(gitDir);
+    expect(store.packCount).toBe(0);
+
+    const builder = createPackBuilder(gitDir);
+    builder.addObject({ type: "blob", content: Buffer.from("after refresh") });
+    builder.build();
+
+    store.refresh();
+    expect(store.packCount).toBe(1);
+  });
 });
 
 // ============================================================================

@@ -42,6 +42,18 @@ interface PackPair {
   packData: Buffer | null;
 }
 
+/** 一个已发现的 pack 文件对 */
+export interface PackFileInfo {
+  /** pack 文件校验和 */
+  checksum: string;
+  /** .pack 文件路径 */
+  packPath: string;
+  /** .idx 文件路径 */
+  idxPath: string;
+  /** 索引中的对象数量 */
+  objectCount: number;
+}
+
 // ============================================================================
 // Pack 对象存储
 // ============================================================================
@@ -82,6 +94,16 @@ export class PackObjectStore implements ObjectSource {
 
   constructor(gitDir: string) {
     this.packDir = join(gitDir, "objects", "pack");
+  }
+
+  /**
+   * 刷新 pack 目录缓存
+   *
+   * 当外部新增或删除 packfile 后，需要调用此方法重新扫描。
+   */
+  refresh(): void {
+    this.loaded = false;
+    this.pairs.length = 0;
   }
 
   /**
@@ -184,6 +206,20 @@ export class PackObjectStore implements ObjectSource {
    */
   listHashes(): SHA1[] {
     return this.list();
+  }
+
+  /**
+   * 列出当前可见的 pack 文件对
+   */
+  listPacks(): PackFileInfo[] {
+    this.ensureLoaded();
+
+    return this.pairs.map((pair) => ({
+      checksum: pair.checksum,
+      packPath: join(this.packDir, `pack-${pair.checksum}.pack`),
+      idxPath: join(this.packDir, `pack-${pair.checksum}.idx`),
+      objectCount: pair.index.objectCount,
+    }));
   }
 
   /**

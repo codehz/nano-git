@@ -12,6 +12,18 @@ import type { PackBuilder } from "../pack/pack-builder.ts";
 import type { PackObjectStore } from "../pack/pack-store.ts";
 import type { GitObject, SHA1 } from "../types.ts";
 
+/** 仓库级 repack 选项 */
+export interface RepositoryRepackOptions {
+  /** 要打包的对象列表，默认使用 source.list() 的全部对象 */
+  readonly hashes?: Iterable<SHA1>;
+
+  /** 是否在成功写入新 pack 后删除旧 pack，默认 true */
+  readonly replaceExistingPacks?: boolean;
+
+  /** 是否删除已写入 pack 的 loose object 文件，默认 false */
+  readonly pruneLoose?: boolean;
+}
+
 /**
  * 仓库 pack 支持接口
  *
@@ -31,6 +43,9 @@ export interface RepositoryPackSupport {
 
   /** 从对象源中读取指定对象并写入新的 packfile */
   writeFromSource(source: ObjectSource, hashes: Iterable<SHA1>): PackBuildResult;
+
+  /** 执行仓库级 repack */
+  repack(source: ObjectSource, options?: RepositoryRepackOptions): PackBuildResult;
 }
 
 /**

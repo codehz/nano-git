@@ -16,7 +16,11 @@
 import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { PackBuildResult } from "./pack/index.ts";
-import type { RepositoryBackend, RepositoryPackSupport } from "./backend/index.ts";
+import type {
+  RepositoryBackend,
+  RepositoryPackSupport,
+  RepositoryRepackOptions,
+} from "./backend/index.ts";
 import { createFileRepositoryBackend, createMemoryRepositoryBackend } from "./backend/index.ts";
 import { hashObject } from "./hash.ts";
 import {
@@ -213,6 +217,16 @@ export interface Repository {
    * 未提供哈希列表时，默认打包仓库当前可见的全部对象。
    */
   writePack(hashes?: SHA1[]): PackBuildResult;
+
+  /**
+   * 重写仓库 pack 布局
+   *
+   * 默认行为：
+   * - 打包当前可见的全部对象
+   * - 删除旧 pack 文件
+   * - 保留 loose objects
+   */
+  repack(options?: RepositoryRepackOptions): PackBuildResult;
 }
 
 /**
@@ -448,6 +462,14 @@ export function createRepository(backend: RepositoryBackend): Repository {
       }
 
       return packs.writeFromSource(objects, hashes ?? objects.list());
+    },
+
+    repack(options?: RepositoryRepackOptions): PackBuildResult {
+      if (!packs) {
+        throw new Error("Backend does not support repack");
+      }
+
+      return packs.repack(objects, options);
     },
   };
 }

@@ -177,6 +177,7 @@ export {
   type CreateFileRepositoryBackendOptions,
   type CreateMemoryRepositoryBackendOptions,
   type RepositoryPackSupport,
+  type RepositoryRepackOptions,
   type RepositoryBackend,
 } from "./backend/index.ts";
 

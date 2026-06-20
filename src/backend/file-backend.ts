@@ -5,12 +5,17 @@
  * 组合为统一的 RepositoryBackend。
  */
 
+import { existsSync, unlinkSync } from "node:fs";
+import { join } from "node:path";
+import { hashToPath } from "../hash.ts";
 import { createCompositeObjectStore } from "../pack/composite-store.ts";
 import { createPackBuilder } from "../pack/pack-builder.ts";
 import { createPackObjectStore } from "../pack/pack-store.ts";
 import { createFileRefStore } from "../refs/index.ts";
 import { createFileObjectStore } from "../store/index.ts";
-import type { RepositoryBackend, RepositoryPackSupport } from "./types.ts";
+import type { SHA1 } from "../types.ts";
+import type { ObjectSource } from "../store/index.ts";
+import type { RepositoryBackend, RepositoryPackSupport, RepositoryRepackOptions } from "./types.ts";
 
 /** 创建文件系统仓库后端的可选参数 */
 export interface CreateFileRepositoryBackendOptions {
@@ -39,6 +44,47 @@ export function createFileRepositoryBackend(
 ): RepositoryBackend {
   const looseObjects = createFileObjectStore(gitDir);
   const packSource = createPackObjectStore(gitDir);
+
+  function refreshPackView(): void {
+    packSource.refresh();
+  }
+
+  function writeFromSource(source: ObjectSource, hashes: Iterable<SHA1>) {
+    const builder = createPackBuilder(gitDir);
+    for (const hash of hashes) {
+      builder.addObject(source.read(hash));
+    }
+    const result = builder.build();
+    refreshPackView();
+    return result;
+  }
+
+  function deletePackFiles(checksums: Iterable<string>, keepChecksum?: string): void {
+    for (const checksum of checksums) {
+      if (checksum === keepChecksum) {
+        continue;
+      }
+
+      const packPath = join(gitDir, "objects", "pack", `pack-${checksum}.pack`);
+      const idxPath = join(gitDir, "objects", "pack", `pack-${checksum}.idx`);
+      if (existsSync(packPath)) {
+        unlinkSync(packPath);
+      }
+      if (existsSync(idxPath)) {
+        unlinkSync(idxPath);
+      }
+    }
+  }
+
+  function pruneLooseObjects(hashes: Iterable<SHA1>): void {
+    for (const hash of hashes) {
+      const objectPath = join(gitDir, "objects", hashToPath(hash));
+      if (existsSync(objectPath)) {
+        unlinkSync(objectPath);
+      }
+    }
+  }
+
   const packs: RepositoryPackSupport = {
     source: packSource,
     createBuilder() {
@@ -49,14 +95,28 @@ export function createFileRepositoryBackend(
       for (const obj of objects) {
         builder.addObject(obj);
       }
-      return builder.build();
+      const result = builder.build();
+      refreshPackView();
+      return result;
     },
     writeFromSource(source, hashes) {
-      const builder = createPackBuilder(gitDir);
-      for (const hash of hashes) {
-        builder.addObject(source.read(hash));
+      return writeFromSource(source, hashes);
+    },
+    repack(source, options: RepositoryRepackOptions = {}) {
+      const hashes = Array.from(options.hashes ?? source.list());
+      const existingChecksums = packSource.listPacks().map((pack) => pack.checksum);
+      const result = writeFromSource(source, hashes);
+
+      if (options.replaceExistingPacks !== false) {
+        deletePackFiles(existingChecksums, result.checksum);
       }
-      return builder.build();
+
+      if (options.pruneLoose) {
+        pruneLooseObjects(hashes);
+      }
+
+      refreshPackView();
+      return result;
     },
   };
   const objects =

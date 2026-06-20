@@ -110,6 +110,20 @@ const result = repo.writePack();
 console.log(result.packPath);
 ```
 
+### Repack 仓库
+
+```typescript
+import { openRepository } from "nano-git";
+
+const repo = openRepository("/path/to/repo");
+
+// 重新生成 pack，并删除旧 pack 文件
+repo.repack();
+
+// 如需同时移除已打包的 loose objects：
+repo.repack({ pruneLoose: true });
+```
+
 ### 对象序列化
 
 ```typescript

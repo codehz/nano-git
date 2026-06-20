@@ -8,6 +8,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { hashToPath } from "../src/hash.ts";
 import { createPackBuilder } from "../src/pack/index.ts";
 import {
   createRepository,
@@ -517,16 +518,43 @@ describe("文件系统仓库的对象操作", () => {
   });
 
   test("writePack() 将对象写入新的 packfile", () => {
-    const gitDir = join(tempDir, ".git");
     const hash = repo.writeBlob(Buffer.from("pack me"));
     const result = repo.writePack([hash]);
 
     expect(result.objectCount).toBe(1);
     expect(existsSync(result.packPath)).toBe(true);
     expect(existsSync(result.idxPath)).toBe(true);
+    expect(repo.packs!.source.packCount).toBe(1);
 
     const reopened = openRepository(tempDir);
     const obj = reopened.catFile(hash);
+    expect(obj.type).toBe("blob");
+  });
+
+  test("repack() 默认替换旧 pack 文件", () => {
+    const gitDir = join(tempDir, ".git");
+    repo.writeBlob(Buffer.from("first"));
+    repo.writePack();
+
+    repo.writeBlob(Buffer.from("second"));
+    const result = repo.repack();
+
+    expect(repo.packs!.source.packCount).toBe(1);
+    expect(repo.packs!.source.listPacks()).toHaveLength(1);
+    expect(repo.packs!.source.listPacks()[0]!.checksum).toBe(result.checksum);
+  });
+
+  test("repack({ pruneLoose: true }) 会删除已打包的 loose object 文件", () => {
+    const gitDir = join(tempDir, ".git");
+    const hash = repo.writeBlob(Buffer.from("packed and pruned"));
+    const objectPath = join(gitDir, "objects", hashToPath(hash));
+
+    expect(existsSync(objectPath)).toBe(true);
+
+    repo.repack({ pruneLoose: true });
+
+    expect(existsSync(objectPath)).toBe(false);
+    const obj = repo.catFile(hash);
     expect(obj.type).toBe("blob");
   });
 });

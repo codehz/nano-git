@@ -93,7 +93,7 @@ export {
 // Packfile 存储
 // ============================================================================
 
-export { createPackObjectStore, PackObjectStore } from "./pack-store.ts";
+export { createPackObjectStore, PackObjectStore, type PackFileInfo } from "./pack-store.ts";
 
 // ============================================================================
 // 组合存储
