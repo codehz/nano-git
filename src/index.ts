@@ -5,7 +5,8 @@
  * - SHA-1 哈希计算
  * - Git 对象（blob, tree, commit, tag）的序列化/反序列化
  * - 对象存储（文件系统和内存）
- * - 仓库操作 API
+ * - 仓库操作 API（init, hash-object, cat-file, write-tree, commit-tree, refs 等）
+ * - Packfile 支持（读取、写入、索引、delta 编解码、打包）
  *
  * 模块结构：
  * - types.ts: 核心类型定义
@@ -13,11 +14,11 @@
  * - hash.ts: SHA-1 哈希工具
  * - objects/: 对象序列化/反序列化（按类型拆分）
  * - store/: 对象存储（按实现拆分）
+ * - pack/: Packfile 支持
  * - repository.ts: 高层仓库 API
  *
  * 扩展点：
  * - refs/: 引用管理（分支、标签操作）
- * - pack/: Packfile 支持
  * - diff/: 差异计算
  * - transport/: 远程传输协议
  *
