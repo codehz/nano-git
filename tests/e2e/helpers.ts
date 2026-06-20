@@ -9,7 +9,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, rmSync, existsSync, writeFileSync, chmodSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { sha1, type SHA1 } from "../../src/types.ts";
+import { sha1, type SHA1 } from "../../src/core/types.ts";
 
 // ============================================================================
 // 固定环境变量（确保测试结果可重复）

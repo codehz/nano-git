@@ -14,8 +14,8 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { sha1 } from "../src/types.ts";
-import type { GitBlob, GitTree, GitCommit, GitAuthor, GitTag } from "../src/types.ts";
+import { sha1 } from "../src/core/types.ts";
+import type { GitBlob, GitTree, GitCommit, GitAuthor, GitTag } from "../src/core/types.ts";
 import {
   encodeObjectHeader,
   decodeObjectHeader,
@@ -23,16 +23,16 @@ import {
   decodeOfsDeltaOffset,
   encodeVarint,
   decodeVarint,
-} from "../src/pack/utils.ts";
-import { applyDelta, createDelta } from "../src/pack/delta.ts";
-import { createPackWriter, createPackReader } from "../src/pack/index.ts";
-import { createPackIndexReader, createPackIndexWriter } from "../src/pack/pack-index.ts";
-import { createPackObjectStore } from "../src/pack/pack-store.ts";
-import { createCompositeObjectStore } from "../src/pack/composite-store.ts";
-import { createPackBuilder } from "../src/pack/pack-builder.ts";
-import { createMemoryObjectStore } from "../src/store/memory-store.ts";
-import { createFileObjectStore } from "../src/store/file-store.ts";
-import { InvalidPackError, DeltaError } from "../src/errors.ts";
+} from "../src/odb/pack/utils.ts";
+import { applyDelta, createDelta } from "../src/odb/pack/delta.ts";
+import { createPackWriter, createPackReader } from "../src/odb/pack/index.ts";
+import { createPackIndexReader, createPackIndexWriter } from "../src/odb/pack/pack-index.ts";
+import { createPackObjectStore } from "../src/odb/pack/pack-store.ts";
+import { createCompositeObjectStore } from "../src/odb/pack/composite-store.ts";
+import { createPackBuilder } from "../src/odb/pack/pack-builder.ts";
+import { createMemoryObjectStore } from "../src/odb/memory-store.ts";
+import { createFileObjectStore } from "../src/odb/file-store.ts";
+import { InvalidPackError, DeltaError } from "../src/core/errors.ts";
 
 const testAuthor: GitAuthor = {
   name: "Test User",

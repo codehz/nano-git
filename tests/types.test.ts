@@ -1,11 +1,11 @@
 /**
- * types.ts 单元测试
+ * core/types.ts 单元测试
  *
  * 测试 SHA1 branded type 的辅助函数
  */
 
 import { describe, test, expect } from "bun:test";
-import { sha1 } from "../src/types.ts";
+import { sha1 } from "../src/core/types.ts";
 
 describe("sha1()", () => {
   test("合法的 SHA-1 哈希应通过校验", () => {

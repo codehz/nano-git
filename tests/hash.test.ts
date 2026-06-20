@@ -1,12 +1,12 @@
 /**
- * hash.ts 单元测试
+ * core/hash.ts 单元测试
  *
  * 测试 SHA-1 哈希计算、路径转换、校验等功能
  */
 
 import { describe, test, expect } from "bun:test";
-import { hashData, hashObject, hashToPath, pathToHash, isValidSHA1 } from "../src/hash.ts";
-import { sha1 } from "../src/types.ts";
+import { hashData, hashObject, hashToPath, pathToHash, isValidSHA1 } from "../src/core/hash.ts";
+import { sha1 } from "../src/core/types.ts";
 
 // ============================================================================
 // hashData

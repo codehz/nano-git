@@ -15,8 +15,8 @@ import {
   resolveSymbolicRef,
   validateRefPrefix,
 } from "../src/refs/index.ts";
-import { CircularReferenceError, RefNotFoundError } from "../src/errors.ts";
-import { sha1 } from "../src/types.ts";
+import { CircularReferenceError, RefNotFoundError } from "../src/core/errors.ts";
+import { sha1 } from "../src/core/types.ts";
 
 describe("createMemoryRefStore()", () => {
   test("会复制初始 Map，避免外部后续修改污染存储", () => {

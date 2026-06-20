@@ -8,9 +8,9 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import type { GitBlob, GitTree, GitCommit, GitAuthor, SHA1 } from "../../src/types.ts";
-import { createPackBuilder } from "../../src/pack/pack-builder.ts";
-import { createPackObjectStore } from "../../src/pack/pack-store.ts";
+import type { GitBlob, GitTree, GitCommit, GitAuthor, SHA1 } from "../../src/core/types.ts";
+import { createPackBuilder } from "../../src/odb/pack/pack-builder.ts";
+import { createPackObjectStore } from "../../src/odb/pack/pack-store.ts";
 import {
   gitInit,
   git,

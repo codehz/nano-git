@@ -10,9 +10,9 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { initRepository, openRepository } from "../../src/repository.ts";
-import { sha1 } from "../../src/types.ts";
-import type { GitAuthor, GitTag } from "../../src/types.ts";
+import { initRepository, openRepository } from "../../src/repository/index.ts";
+import { sha1 } from "../../src/core/types.ts";
+import type { GitAuthor, GitTag } from "../../src/core/types.ts";
 import {
   git,
   gitInit,

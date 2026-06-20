@@ -1,5 +1,5 @@
 /**
- * repository.ts 单元测试
+ * repository 单元测试
  *
  * 测试仓库高层 API（内存仓库和文件系统仓库）
  */
@@ -8,22 +8,22 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { hashToPath } from "../src/hash.ts";
-import { createPackBuilder } from "../src/pack/index.ts";
+import { hashToPath } from "../src/core/hash.ts";
+import { createPackBuilder } from "../src/odb/pack/index.ts";
 import {
   createRepository,
   createMemoryRepository,
   initRepository,
   openRepository,
   type Repository,
-} from "../src/repository.ts";
+} from "../src/repository/index.ts";
 import {
   createFileRepositoryBackend,
   createMemoryRepositoryBackend,
   type RepositoryBackend,
-} from "../src/backend/index.ts";
-import { sha1 } from "../src/types.ts";
-import type { GitAuthor, TreeEntry } from "../src/types.ts";
+} from "../src/repository/backend/index.ts";
+import { sha1 } from "../src/core/types.ts";
+import type { GitAuthor, TreeEntry } from "../src/core/types.ts";
 
 const testAuthor: GitAuthor = {
   name: "Test User",

@@ -1,5 +1,5 @@
 /**
- * store.ts 单元测试
+ * odb 单元测试
  *
  * 测试对象存储（内存实现和文件系统实现）
  */
@@ -8,9 +8,9 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { createMemoryObjectStore, createFileObjectStore } from "../src/store/index.ts";
-import { sha1 } from "../src/types.ts";
-import type { GitBlob, GitTree, GitCommit, GitAuthor } from "../src/types.ts";
+import { createMemoryObjectStore, createFileObjectStore } from "../src/odb/index.ts";
+import { sha1 } from "../src/core/types.ts";
+import type { GitBlob, GitTree, GitCommit, GitAuthor } from "../src/core/types.ts";
 
 const testAuthor: GitAuthor = {
   name: "Test User",
