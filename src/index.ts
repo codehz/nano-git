@@ -244,6 +244,9 @@ export {
   // 请求生成
   buildUploadPackRequest,
   buildReceivePackRequest,
+  // 响应解析
+  parseReceivePackResult,
+  ReceivePackResultError,
   // HTTP 传输
   createSmartHttpClient,
   SmartHttpError,

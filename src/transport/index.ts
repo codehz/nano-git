@@ -46,6 +46,9 @@ export { buildUploadPackRequest } from "./negotiate.ts";
 export { buildReceivePackRequest } from "./receive-pack-request.ts";
 export type { ReceivePackCommand } from "./receive-pack-request.ts";
 
+// P3b: 响应解析
+export { parseReceivePackResult, ReceivePackResultError } from "./receive-pack-result.ts";
+
 // P4: HTTP 传输 & fetch 编排
 export { createSmartHttpClient, SmartHttpError } from "./smart-http.ts";
 export type { SmartHttpClient, UploadPackResult } from "./smart-http.ts";
