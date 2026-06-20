@@ -7,14 +7,17 @@
  * - 例如: .git/objects/95/d09f2b10159347eece71399a7e2e907ea3df4f
  */
 
-import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { deflateSync, inflateSync } from "node:zlib";
 import type { GitObject, SHA1 } from "../core/types.ts";
-import { sha1 } from "../core/types.ts";
-import { hashObject, hashToPath } from "../core/hash.ts";
-import { serialize, deserialize, serializeContent } from "../objects/index.ts";
+import { hashObject } from "../core/hash.ts";
+import { serializeContent } from "../objects/index.ts";
 import type { ObjectStore } from "./types.ts";
+import {
+  hasLooseObject,
+  listLooseObjects,
+  readLooseObject,
+  writeLooseObject,
+} from "./file-store-utils.ts";
 
 /**
  * 创建基于文件系统的对象存储
@@ -38,77 +41,25 @@ export function createFileObjectStore(gitDir: string): ObjectStore {
 
   return {
     write(obj: GitObject): SHA1 {
-      // 计算哈希
       const hash = hashObject(obj.type, serializeContent(obj));
-
-      // 检查是否已存在
-      const objectPath = join(objectsDir, hashToPath(hash));
-      if (existsSync(objectPath)) {
+      if (hasLooseObject(objectsDir, hash)) {
         return hash;
       }
 
-      // 序列化完整对象（含 header）
-      const serialized = serialize(obj);
-
-      // zlib 压缩
-      const compressed = deflateSync(serialized);
-
-      // 创建目录并写入
-      const dir = join(objectsDir, hash.slice(0, 2));
-      mkdirSync(dir, { recursive: true });
-      writeFileSync(objectPath, compressed);
-
+      writeLooseObject(objectsDir, hash, obj);
       return hash;
     },
 
     read(hash: SHA1): GitObject {
-      const objectPath = join(objectsDir, hashToPath(hash));
-
-      if (!existsSync(objectPath)) {
-        throw new Error(`Object not found: ${hash}`);
-      }
-
-      // 读取并解压
-      const compressed = readFileSync(objectPath);
-      const decompressed = inflateSync(compressed);
-
-      // 反序列化
-      return deserialize(decompressed);
+      return readLooseObject(objectsDir, hash);
     },
 
     exists(hash: SHA1): boolean {
-      const objectPath = join(objectsDir, hashToPath(hash));
-      return existsSync(objectPath);
+      return hasLooseObject(objectsDir, hash);
     },
 
     list(): SHA1[] {
-      if (!existsSync(objectsDir)) {
-        return [];
-      }
-
-      const hashes: SHA1[] = [];
-      const dirs = readdirSync(objectsDir).sort();
-
-      for (const dirName of dirs) {
-        if (dirName === "info" || dirName === "pack" || dirName.length !== 2) {
-          continue;
-        }
-
-        const dirPath = join(objectsDir, dirName);
-        if (!statSync(dirPath).isDirectory()) {
-          continue;
-        }
-
-        const files = readdirSync(dirPath).sort();
-        for (const fileName of files) {
-          if (fileName.length !== 38) {
-            continue;
-          }
-          hashes.push(sha1(`${dirName}${fileName}`));
-        }
-      }
-
-      return hashes;
+      return listLooseObjects(objectsDir);
     },
   };
 }
