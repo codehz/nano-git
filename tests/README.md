@@ -1,6 +1,50 @@
-# nano-git 单元测试
+# nano-git 测试
 
-本目录包含 nano-git 项目的基础单元测试，使用 Bun 内置的测试运行器。
+本目录包含 nano-git 项目的所有测试，使用 Bun 内置的测试运行器。
+
+## 目录结构
+
+```
+tests/
+├── README.md
+├── units/              # 单元测试，按源码模块组织
+│   ├── core/           # 基础类型和哈希
+│   │   ├── types.test.ts    # SHA1 branded type 校验
+│   │   └── hash.test.ts     # SHA-1 哈希计算、路径转换、格式验证
+│   ├── objects/        # Git 对象序列化/反序列化
+│   │   ├── blob.test.ts     # Blob 对象
+│   │   ├── tree.test.ts     # Tree 对象
+│   │   ├── commit.test.ts   # Commit 对象
+│   │   ├── tag.test.ts      # Tag 对象
+│   │   └── codec.test.ts    # 编解码错误处理及工具函数
+│   ├── odb/            # 对象存储
+│   │   ├── memory-store.test.ts   # 内存对象存储
+│   │   ├── file-store.test.ts     # 文件系统对象存储
+│   │   └── pack/               # Packfile 组件
+│   │       ├── varint.test.ts       # 变长整数编码/解码
+│   │       ├── delta.test.ts        # Delta 编解码
+│   │       ├── packfile.test.ts     # Packfile 读写
+│   │       ├── pack-index.test.ts   # 索引文件读写
+│   │       ├── pack-store.test.ts   # PackObjectStore
+│   │       ├── composite-store.test.ts # CompositeObjectStore
+│   │       └── pack-builder.test.ts # PackBuilder
+│   ├── refs.test.ts    # 引用存储和工具函数
+│   └── repository/     # 仓库高层 API
+│       ├── memory-repository.test.ts # 内存仓库
+│       ├── tree-patch.test.ts       # 增量 tree 操作
+│       ├── init-open.test.ts        # init/create/open
+│       ├── fs-refs.test.ts          # 文件系统 ref 操作
+│       └── fs-objects.test.ts       # 文件系统对象操作
+└── e2e/                # 端到端兼容性测试（需要系统安装 git）
+    ├── helpers.ts      # Git CLI 封装工具
+    ├── blob.test.ts    # Blob 兼容性
+    ├── tree.test.ts    # Tree 兼容性（含符号链接）
+    ├── commit.test.ts  # Commit 兼容性
+    ├── tag.test.ts     # Tag 兼容性
+    ├── ref.test.ts     # Ref（引用）兼容性
+    ├── workflow.test.ts# 完整工作流
+    └── pack.test.ts    # Packfile 兼容性
+```
 
 ## 运行测试
 
@@ -8,22 +52,23 @@
 # 运行所有测试
 bun test
 
+# 运行所有单元测试
+bun test tests/units/
+
+# 运行特定模块测试
+bun test tests/units/objects/
+bun test tests/units/odb/pack/
+
+# 运行 E2E 测试（需要系统安装 git）
+bun test tests/e2e/
+
 # 运行特定测试文件
-bun test tests/hash.test.ts
+bun test tests/units/core/hash.test.ts
+bun test tests/e2e/blob.test.ts
 
 # 监听模式
 bun test --watch
 ```
-
-## 测试覆盖
-
-| 文件                 | 测试内容                                          |
-| -------------------- | ------------------------------------------------- |
-| `types.test.ts`      | SHA1 branded type 校验                            |
-| `hash.test.ts`       | SHA-1 哈希计算、路径转换、格式验证                |
-| `objects.test.ts`    | Git 对象（blob/tree/commit/tag）序列化/反序列化   |
-| `store.test.ts`      | 对象存储（内存和文件系统实现）                    |
-| `repository.test.ts` | 仓库高层 API（init/open/writeBlob/createTree 等） |
 
 ## 测试原则
 
@@ -32,42 +77,12 @@ bun test --watch
 - **文件系统测试**：使用临时目录，测试后自动清理
 - **往返一致性**：序列化/反序列化、写入/读取等操作验证数据完整性
 
-## 端到端测试（E2E）
-
-`e2e/` 目录包含与标准 Git 命令行工具的兼容性测试。
-
-### 运行 E2E 测试
-
-```bash
-# 运行 E2E 测试（需要系统安装 git）
-bun test tests/e2e/
-
-# 运行特定 E2E 测试文件
-bun test tests/e2e/git-compat.test.ts
-```
-
-### E2E 测试覆盖
-
-| 文件                     | 测试内容                                              |
-| ------------------------ | ----------------------------------------------------- |
-| `e2e/helpers.ts`         | Git CLI 封装工具（spawnSync 调用 git 命令）           |
-| `e2e/git-compat.test.ts` | nano-git 与标准 Git 的双向兼容性测试（33 个测试用例） |
-
-### 测试策略
+## E2E 测试策略
 
 采用**双向验证**模式：
 
 1. **nano-git → git**：用 nano-git 创建对象，用 `git cat-file` 等命令验证
 2. **git → nano-git**：用 `git` 命令创建对象，用 nano-git 的 API 读取验证
-
-### 测试覆盖范围
-
-- **Blob 兼容性**：文本、二进制、空内容、中文内容的读写验证
-- **Tree 兼容性**：简单 tree、多文件 tree、嵌套 tree（子目录）、可执行文件模式
-- **Commit 兼容性**：初始 commit、带父节点 commit、merge commit、author/committer 格式、多行 message
-- **Tag 兼容性**：annotated tag 的创建和读取
-- **Ref 兼容性**：分支引用、HEAD 符号引用、自定义分支
-- **完整工作流**：nano-git 初始化仓库 + git 验证、git 初始化仓库 + nano-git 读取、交替操作
 
 ### 环境要求
 

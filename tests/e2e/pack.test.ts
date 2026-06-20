@@ -56,7 +56,6 @@ describe("Packfile 兼容性: nano-git → git", () => {
     expect(existsSync(result.packPath)).toBe(true);
     expect(existsSync(result.idxPath)).toBe(true);
 
-    // 用 git verify-pack 验证
     const output = git(["verify-pack", "-v", result.idxPath], tempDir);
     expect(output).toContain("blob");
   });
@@ -70,7 +69,6 @@ describe("Packfile 兼容性: nano-git → git", () => {
     const hash = builder.addObject(blob);
     builder.build();
 
-    // 用 git cat-file 读取
     const gitContent = git(["cat-file", "-p", hash], tempDir);
     expect(gitContent).toBe(content);
   });
@@ -89,7 +87,6 @@ describe("Packfile 兼容性: nano-git → git", () => {
     const treeHash = builder.addObject(tree);
     builder.build();
 
-    // 用 git cat-file 读取 tree
     const output = git(["cat-file", "-p", treeHash], tempDir);
     expect(output).toContain("test.txt");
     expect(output).toContain(blobHash);
@@ -113,7 +110,6 @@ describe("Packfile 兼容性: nano-git → git", () => {
     const commitHash = builder.addObject(commit);
     builder.build();
 
-    // 用 git cat-file 读取
     const output = git(["cat-file", "-p", commitHash], tempDir);
     expect(output).toContain("packed commit");
     expect(output).toContain(treeHash);
@@ -137,28 +133,23 @@ describe("Packfile 兼容性: git → nano-git", () => {
   });
 
   test("git repack 生成的 packfile 能被 nano-git 读取", () => {
-    // 用 git 创建一些对象
     createFile(tempDir, "file1.txt", "content 1");
     createFile(tempDir, "file2.txt", "content 2");
 
     git(["add", "."], tempDir);
     git(["commit", "-m", "test commit"], tempDir);
 
-    // 强制 repack
     git(["repack", "-a", "-d"], tempDir);
 
-    // 用 nano-git 读取
     const gitDir = join(tempDir, ".git");
     const store = createPackObjectStore(gitDir);
 
     expect(store.packCount).toBeGreaterThan(0);
     expect(store.objectCount).toBeGreaterThan(0);
 
-    // 验证能列出所有哈希
     const hashes = store.listHashes();
     expect(hashes.length).toBeGreaterThan(0);
 
-    // 验证每个对象都能读取
     for (const hash of hashes) {
       const obj = store.read(hash);
       expect(obj).toBeDefined();
@@ -167,23 +158,19 @@ describe("Packfile 兼容性: git → nano-git", () => {
   });
 
   test("git gc 后的 packfile 能被 nano-git 正确解析", () => {
-    // 创建多个 commit
     for (let i = 0; i < 5; i++) {
       createFile(tempDir, `file${i}.txt`, `content ${i}`);
       git(["add", "."], tempDir);
       git(["commit", "-m", `commit ${i}`], tempDir);
     }
 
-    // 运行 gc
     git(["gc", "--aggressive"], tempDir);
 
-    // 用 nano-git 读取
     const gitDir = join(tempDir, ".git");
     const store = createPackObjectStore(gitDir);
 
     expect(store.packCount).toBeGreaterThan(0);
 
-    // 验证所有对象都能读取
     const hashes = store.listHashes();
     for (const hash of hashes) {
       expect(() => store.read(hash)).not.toThrow();
