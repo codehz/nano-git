@@ -224,6 +224,7 @@ export type {
   PktLineFlush,
   PktLineDelimiter,
   PktLineResponseEnd,
+  ReceivePackCommand,
 } from "./transport/index.ts";
 export {
   // pkt-line 编解码
@@ -242,6 +243,7 @@ export {
   SideBandError,
   // 请求生成
   buildUploadPackRequest,
+  buildReceivePackRequest,
   // HTTP 传输
   createSmartHttpClient,
   SmartHttpError,

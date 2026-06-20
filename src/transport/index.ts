@@ -43,6 +43,8 @@ export { extractPackfile, extractProgress, SideBandError } from "./side-band.ts"
 
 // P3: 请求生成
 export { buildUploadPackRequest } from "./negotiate.ts";
+export { buildReceivePackRequest } from "./receive-pack-request.ts";
+export type { ReceivePackCommand } from "./receive-pack-request.ts";
 
 // P4: HTTP 传输 & fetch 编排
 export { createSmartHttpClient, SmartHttpError } from "./smart-http.ts";
