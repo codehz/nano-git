@@ -14,7 +14,7 @@ import {
 } from "../refs/index.ts";
 import type { SHA1, GitAuthor, ObjectType, GitTag } from "../core/types.ts";
 import type { RepositoryBackend } from "./backend/index.ts";
-import type { Repository } from "./types.ts";
+import type { RepositoryRefOperations } from "./ref-types.ts";
 
 function ensureRefDoesNotExist(
   backend: RepositoryBackend,
@@ -40,23 +40,7 @@ function listShortRefs(backend: RepositoryBackend, prefix: string): string[] {
  * ops.createBranch("main");
  * ```
  */
-export function createRefRepositoryOperations(
-  backend: RepositoryBackend,
-): Pick<
-  Repository,
-  | "updateRef"
-  | "readRef"
-  | "getCurrentBranch"
-  | "createBranch"
-  | "readBranch"
-  | "listBranches"
-  | "deleteBranch"
-  | "createTag"
-  | "createAnnotatedTag"
-  | "readTag"
-  | "listTags"
-  | "deleteTag"
-> {
+export function createRefRepositoryOperations(backend: RepositoryBackend): RepositoryRefOperations {
   const { objects, refs } = backend;
 
   function getCurrentBranch(): string | null {

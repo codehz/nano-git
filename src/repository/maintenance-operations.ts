@@ -11,7 +11,7 @@ import type {
   RepositoryRepackOptions,
 } from "./backend/index.ts";
 import { listReachableObjects } from "./reachability.ts";
-import type { Repository } from "./types.ts";
+import type { RepositoryMaintenanceOperations } from "./maintenance-types.ts";
 
 /**
  * 创建仓库维护相关操作
@@ -26,7 +26,7 @@ export function createMaintenanceRepositoryOperations(
   objects: ObjectStore,
   refs: RefStore,
   packs: RepositoryPackSupport | null,
-): Pick<Repository, "writePack" | "repack" | "listReachableObjects" | "gc"> {
+): RepositoryMaintenanceOperations {
   function requirePacks(): RepositoryPackSupport {
     if (!packs) {
       throw new Error("Backend does not support packfile writes");

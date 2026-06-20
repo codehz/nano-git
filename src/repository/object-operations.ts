@@ -14,7 +14,7 @@ import type {
   TreeEntry,
 } from "../core/types.ts";
 import type { ObjectStore } from "../odb/types.ts";
-import type { Repository } from "./types.ts";
+import type { RepositoryObjectOperations } from "./object-types.ts";
 import { writeTreeRecursive } from "./tree-writer.ts";
 
 /**
@@ -26,20 +26,7 @@ import { writeTreeRecursive } from "./tree-writer.ts";
  * const hash = ops.writeBlob(Buffer.from("hello"));
  * ```
  */
-export function createObjectRepositoryOperations(
-  objects: ObjectStore,
-): Pick<
-  Repository,
-  | "hashObject"
-  | "writeBlob"
-  | "writeBlobFile"
-  | "catFile"
-  | "catFileType"
-  | "listObjects"
-  | "writeTree"
-  | "createTree"
-  | "createCommit"
-> {
+export function createObjectRepositoryOperations(objects: ObjectStore): RepositoryObjectOperations {
   function writeBlob(data: Buffer): SHA1 {
     const blob: GitBlob = { type: "blob", content: data };
     return objects.write(blob);
