@@ -28,3 +28,7 @@ export type {
   PktLineDelimiter,
   PktLineResponseEnd,
 } from "./pkt-line.ts";
+
+// P2: ref 广告解析 & side-band 解复用
+export { parseRefAdvertisement, RefAdvertisementError } from "./ref-advertisement.ts";
+export { extractPackfile, extractProgress, SideBandError } from "./side-band.ts";
