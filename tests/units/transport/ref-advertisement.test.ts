@@ -191,3 +191,37 @@ describe("parseRefAdvertisement()", () => {
     expect(adv.capabilities["agent"]).toBe("git/2.45.1");
   });
 });
+
+// ============================================================================
+// Peeled tag 校验测试
+// ============================================================================
+
+describe("peeled tag 校验", () => {
+  test("^{} 行名字不匹配最后一条 ref 应抛出错误", () => {
+    const tagHash = "95d09f2b10159347eece71399a7e2e907ea3df4f";
+    const peeledHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const data = Buffer.concat([
+      refLine(tagHash, "refs/tags/v1.0"),
+      peeledLine(peeledHash, "refs/tags/v2.0"), // 名字不匹配！
+      encodeFlushPkt(),
+    ]);
+    expect(() => parseRefAdvertisement(data, "git-upload-pack")).toThrow(RefAdvertisementError);
+  });
+
+  test("^{} 行出现在非 tag ref 后应抛出错误", () => {
+    const hash = "95d09f2b10159347eece71399a7e2e907ea3df4f";
+    const peeledHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const data = Buffer.concat([
+      refLine(hash, "refs/heads/main"),
+      peeledLine(peeledHash, "refs/heads/main"), // 不是 tag 却跟了 ^{}
+      encodeFlushPkt(),
+    ]);
+    expect(() => parseRefAdvertisement(data, "git-upload-pack")).toThrow(RefAdvertisementError);
+  });
+
+  test("孤立的 ^{} 行（无前驱 ref）应抛出错误", () => {
+    const peeledHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const data = Buffer.concat([peeledLine(peeledHash, "refs/tags/v1.0"), encodeFlushPkt()]);
+    expect(() => parseRefAdvertisement(data, "git-upload-pack")).toThrow(RefAdvertisementError);
+  });
+});

@@ -128,9 +128,31 @@ export function parseRefAdvertisement(
     // 如果是 peel tag 行 "hash ref^{}"
     if (refLine.endsWith(PEELED_TAG_SUFFIX)) {
       const peeledHash = parseHashFromRefLine(refLine);
-      if (refs.length > 0) {
-        refs[refs.length - 1]!.peeled = peeledHash;
+      const tagName = refLine
+        .slice(0, -PEELED_TAG_SUFFIX.length)
+        .split(" ")
+        .slice(1)
+        .join(" ")
+        .trim();
+
+      if (refs.length === 0) {
+        throw new RefAdvertisementError(`Orphaned peeled tag line "${refLine}": no preceding ref`);
       }
+
+      const lastRef = refs[refs.length - 1]!;
+      if (lastRef.name !== tagName) {
+        throw new RefAdvertisementError(
+          `Peeled tag name "${tagName}" does not match previous ref "${lastRef.name}"`,
+        );
+      }
+
+      if (!lastRef.name.startsWith("refs/tags/")) {
+        throw new RefAdvertisementError(
+          `Peeled tag line "${refLine}" follows non-tag ref "${lastRef.name}"`,
+        );
+      }
+
+      lastRef.peeled = peeledHash;
       continue;
     }
 
