@@ -1012,3 +1012,134 @@ describe("getLocalRefs + determineWants 自定义 namespace 集成", () => {
     expect(wants[0]!.localHash).toBe(existingHash);
   });
 });
+
+// ============================================================================
+// fetch() refspec 未匹配远端引用时报错
+// ============================================================================
+
+describe("fetch() refspec 未匹配远端引用", () => {
+  function createEmptyMockTransport(): RemoteTransport {
+    return {
+      getReceivePackRefs: async () => {
+        throw new Error("not used in fetch");
+      },
+      postReceivePack: async () => {
+        throw new Error("not used in fetch");
+      },
+      getRefAdvertisement: async () => ({
+        capabilities: { multi_ack: true, "side-band-64k": true, "ofs-delta": true },
+        refs: [], // 空远端
+      }),
+      postUploadPack: async () => {
+        throw new Error("should not be called");
+      },
+    };
+  }
+
+  test("显式非通配符 refspec 未匹配远端引用时抛出 FetchError", async () => {
+    const objectStore = createMemoryObjectStore();
+    const refStore = createMemoryRefStore();
+
+    const fetchPromise = fetch(objectStore, refStore, "dummy", {
+      transport: createEmptyMockTransport(),
+      refSpecs: ["refs/heads/missing:refs/remotes/origin/missing"],
+    });
+
+    expect(fetchPromise).rejects.toThrow(/Couldn't find remote ref/i);
+    expect(fetchPromise).rejects.toThrow(/refs\/heads\/missing/);
+  });
+
+  test("通配符 refspec 未匹配远端引用时静默通过（与默认行为一致）", async () => {
+    const objectStore = createMemoryObjectStore();
+    const refStore = createMemoryRefStore();
+
+    const result = await fetch(objectStore, refStore, "dummy", {
+      transport: createEmptyMockTransport(),
+      refSpecs: ["+refs/heads/*:refs/remotes/origin/*"],
+    });
+
+    expect(result.objectCount).toBe(0);
+    expect(result.fetchedRefs.size).toBe(0);
+  });
+
+  test("多个非通配符 refspec 中有一个未匹配也应报错", async () => {
+    const objectStore = createMemoryObjectStore();
+    const refStore = createMemoryRefStore();
+
+    const fetchPromise = fetch(objectStore, refStore, "dummy", {
+      transport: {
+        getReceivePackRefs: async () => {
+          throw new Error("not used in fetch");
+        },
+        postReceivePack: async () => {
+          throw new Error("not used in fetch");
+        },
+        getRefAdvertisement: async () => ({
+          capabilities: { multi_ack: true, "side-band-64k": true, "ofs-delta": true },
+          refs: [
+            { name: "refs/heads/exists", hash: sha1("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") },
+          ],
+        }),
+        postUploadPack: async () => {
+          return { data: Buffer.alloc(0), packfile: Buffer.alloc(0), progress: [] };
+        },
+      },
+      refSpecs: [
+        "refs/heads/exists:refs/remotes/origin/exists",
+        "refs/heads/missing:refs/remotes/origin/missing",
+      ],
+    });
+
+    expect(fetchPromise).rejects.toThrow(/Couldn't find remote ref/i);
+    expect(fetchPromise).rejects.toThrow(/refs\/heads\/missing/);
+  });
+
+  test("显式非通配符 refspec 匹配到远端引用时不报错", async () => {
+    const objectStore = createMemoryObjectStore();
+    const refStore = createMemoryRefStore();
+
+    // 创建远程 commit 和 packfile
+    const remoteCommit = createTestCommit(objectStore, [], 100);
+
+    const blob: GitBlob = { type: "blob", content: Buffer.from("test content") };
+    const entry = toEncodedPackObject(blob);
+    const { packData } = buildEncodedPack([entry]);
+
+    const transport: RemoteTransport = {
+      getReceivePackRefs: async () => {
+        throw new Error("not used in fetch");
+      },
+      postReceivePack: async () => {
+        throw new Error("not used in fetch");
+      },
+      getRefAdvertisement: async () => ({
+        capabilities: { multi_ack: true, "side-band-64k": true, "ofs-delta": true },
+        refs: [{ name: "refs/heads/main", hash: remoteCommit }],
+      }),
+      postUploadPack: async () => {
+        return { data: packData, packfile: packData, progress: [] };
+      },
+    };
+
+    const result = await fetch(objectStore, refStore, "dummy", {
+      transport,
+      refSpecs: ["refs/heads/main:refs/remotes/origin/main"],
+    });
+
+    expect(result.objectCount).toBe(1);
+    expect(result.fetchedRefs.get("refs/remotes/origin/main")).toBe(remoteCommit);
+  });
+
+  test("不传 refSpecs（使用默认 refspec）时远端为空不报错", async () => {
+    const objectStore = createMemoryObjectStore();
+    const refStore = createMemoryRefStore();
+
+    const result = await fetch(objectStore, refStore, "dummy", {
+      transport: createEmptyMockTransport(),
+      // 不传 refSpecs，使用默认值
+    });
+
+    expect(result.objectCount).toBe(0);
+    expect(result.fetchedRefs.size).toBe(0);
+  });
+});

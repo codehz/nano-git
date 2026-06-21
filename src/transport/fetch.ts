@@ -295,6 +295,22 @@ export async function fetch(
   // 4. 确定 wants
   const wants = determineWants(adv.refs, localRefs, parsedSpecs, store);
 
+  // 4.5 校验显式非通配符 refspec：每个非通配符源模式必须匹配至少一个远端引用
+  //     Git CLI 对不存在的远端引用（如 "refs/heads/missing"）会报
+  //     "fatal: couldn't find remote ref ..."，此处保持兼容。
+  //     通配符 refspec（如 "+refs/heads/*:refs/remotes/origin/*"）无匹配时静默通过，
+  //     与不传 refSpecs 时的默认行为一致。
+  if (options?.refSpecs) {
+    for (const spec of parsedSpecs) {
+      if (!spec.isWildcard) {
+        const matched = adv.refs.some((ref) => matchesRefSpec(ref, spec));
+        if (!matched) {
+          throw new FetchError(`Couldn't find remote ref "${spec.srcPattern}"`);
+        }
+      }
+    }
+  }
+
   if (wants.length === 0) {
     return {
       fetchedRefs: new Map(),
