@@ -265,14 +265,16 @@ export async function fetch(
 
   // 6. 构造请求：Consecutive 协商算法
   //
-  //    收集本地 commit 图中从远程跟踪 ref 可达的所有 commit，
+  //    收集本地 commit 图中从所有本地 ref 可达的所有 commit，
   //    按提交时间从旧到新排序后作为 haves 发送，
   //    让服务端能准确定位公共祖先，最小化增量传输。
   const wantHashes = wants.map((w) => w.remote.hash);
-  const localHaveHashes: SHA1[] = wants
-    .map((w) => w.localHash)
-    .filter((h): h is SHA1 => h !== undefined);
-  const haveHashes = localHaveHashes.length > 0 ? collectHaveCommits(store, localHaveHashes) : [];
+
+  // 使用所有本地 ref 作为 have 遍历起点，而非仅用目标 remote-tracking ref 的旧值。
+  // 这样当本地通过其他 ref（如 feature 分支）已持有服务端新 commit 时，
+  // collectHaveCommits 能将其纳入 have 列表，避免服务端重复发送已存在的对象。
+  const localRefValues = Array.from(localRefs.values());
+  const haveHashes = localRefValues.length > 0 ? collectHaveCommits(store, localRefValues) : [];
   // 7. 发送请求
   const packfile = await negotiateAndFetchPackfile(
     client,
