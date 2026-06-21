@@ -13,6 +13,7 @@ import { createMemoryObjectStore } from "@/odb/memory-store.ts";
 import { createMemoryRefStore } from "@/refs/stores/memory.ts";
 import { encodePktLine, encodeFlushPkt } from "@/transport/pkt-line.ts";
 import { collectReachable, push, PushError } from "@/transport/push.ts";
+import { parseReceivePackResult } from "@/transport/receive-pack-result.ts";
 
 import type { RemoteTransport } from "@/transport/types.ts";
 
@@ -304,7 +305,8 @@ function createPushMockTransport(
     }),
     postReceivePack: async (body: Buffer) => {
       onPost?.(body);
-      return { data: reportStatus, refUpdates: [], progress: [] };
+      const refUpdates = parseReceivePackResult(reportStatus);
+      return { data: reportStatus, refUpdates, progress: [] };
     },
     getRefAdvertisement: async () => {
       throw new Error("not used");

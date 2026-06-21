@@ -615,7 +615,16 @@ export async function push(
     throw err;
   }
 
-  // 11. 将服务端返回的 report-status 与我们的推送引用关联，补充 refName/oldHash/newHash 信息
+  // 11. 防御性检查：发送了命令但收到空 refUpdates 属于协议异常
+  //     （可能是下层解析错误被静默处理或服务端未按协议返回 report-status）
+  if (commands.length > 0 && refUpdates.length === 0) {
+    throw new PushError(
+      "Server returned no status updates for the push commands. " +
+        "This may indicate a protocol compatibility issue or a server-side parsing error.",
+    );
+  }
+
+  // 12. 将服务端返回的 report-status 与我们的推送引用关联，补充 refName/oldHash/newHash 信息
   const pushRefMap = new Map<string, PushRefItem>();
   for (const item of pushRefs) {
     pushRefMap.set(item.remoteRef, item);

@@ -14,7 +14,7 @@
 
 import { GitError } from "../core/errors.ts";
 import { parsePktLines } from "./pkt-line.ts";
-import { parseReceivePackResult, ReceivePackResultError } from "./receive-pack-result.ts";
+import { parseReceivePackResult } from "./receive-pack-result.ts";
 import { parseRefAdvertisement, RefAdvertisementError } from "./ref-advertisement.ts";
 import { extractPackfile, extractProgress, extractRawPackfile } from "./side-band.ts";
 
@@ -354,119 +354,108 @@ export function createSmartHttpClient(baseUrl: string, auth?: SmartHttpAuth): Sm
       let progress: string[] = [];
       let refUpdates: PushRefUpdate[] = [];
 
-      try {
-        const pktLines = parsePktLines(data);
+      const pktLines = parsePktLines(data);
 
-        if (pktLines.length > 0 && pktLines[0]!.type === "data") {
-          const firstPayload = (pktLines[0] as PktLineData).payload;
-          if (
-            firstPayload.length > 0 &&
-            (firstPayload[0] === 0x01 || firstPayload[0] === 0x02 || firstPayload[0] === 0x03)
-          ) {
-            // Side-band 编码：从 channel 1 提取 report-status，从 channel 2 提取进度
-            const reportStatusChunks: Buffer[] = [];
-            let unpackError: string | null = null;
+      if (pktLines.length > 0 && pktLines[0]!.type === "data") {
+        const firstPayload = (pktLines[0] as PktLineData).payload;
+        if (
+          firstPayload.length > 0 &&
+          (firstPayload[0] === 0x01 || firstPayload[0] === 0x02 || firstPayload[0] === 0x03)
+        ) {
+          // Side-band 编码：从 channel 1 提取 report-status，从 channel 2 提取进度
+          const reportStatusChunks: Buffer[] = [];
+          let unpackError: string | null = null;
 
-            for (const line of pktLines) {
-              if (line.type !== "data") continue;
-              const payload = line.payload;
-              if (payload.length < 2) continue;
+          for (const line of pktLines) {
+            if (line.type !== "data") continue;
+            const payload = line.payload;
+            if (payload.length < 2) continue;
 
-              const channel = payload[0]!;
-              const frameData = payload.subarray(1);
+            const channel = payload[0]!;
+            const frameData = payload.subarray(1);
 
-              if (channel === 0x01) {
-                // Channel 1: packfile 数据或 report-status 文本
-                // report-status 行以 "ok " 或 "ng " 开头
-                if (
-                  frameData.length >= 3 &&
-                  frameData[0] === 0x6f &&
-                  frameData[1] === 0x6b &&
-                  frameData[2] === 0x20 // "ok "
-                ) {
-                  // ok <ref-name>
-                  const refName = frameData.subarray(3).toString("utf-8").trimEnd();
+            if (channel === 0x01) {
+              // Channel 1: packfile 数据或 report-status 文本
+              // report-status 行以 "ok " 或 "ng " 开头
+              if (
+                frameData.length >= 3 &&
+                frameData[0] === 0x6f &&
+                frameData[1] === 0x6b &&
+                frameData[2] === 0x20 // "ok "
+              ) {
+                // ok <ref-name>
+                const refName = frameData.subarray(3).toString("utf-8").trimEnd();
+                refUpdates.push({
+                  refName,
+                  oldHash: null,
+                  newHash: null,
+                  success: true,
+                  forced: false,
+                });
+              } else if (
+                frameData.length >= 3 &&
+                frameData[0] === 0x6e &&
+                frameData[1] === 0x67 &&
+                frameData[2] === 0x20 // "ng "
+              ) {
+                // ng <ref-name> <error-msg>
+                const rest = frameData.subarray(3).toString("utf-8").trimEnd();
+                const spaceIndex = rest.indexOf(" ");
+                if (spaceIndex !== -1) {
                   refUpdates.push({
-                    refName,
+                    refName: rest.substring(0, spaceIndex),
                     oldHash: null,
                     newHash: null,
-                    success: true,
+                    success: false,
+                    error: rest.substring(spaceIndex + 1),
                     forced: false,
                   });
-                } else if (
-                  frameData.length >= 3 &&
-                  frameData[0] === 0x6e &&
-                  frameData[1] === 0x67 &&
-                  frameData[2] === 0x20 // "ng "
-                ) {
-                  // ng <ref-name> <error-msg>
-                  const rest = frameData.subarray(3).toString("utf-8").trimEnd();
-                  const spaceIndex = rest.indexOf(" ");
-                  if (spaceIndex !== -1) {
-                    refUpdates.push({
-                      refName: rest.substring(0, spaceIndex),
-                      oldHash: null,
-                      newHash: null,
-                      success: false,
-                      error: rest.substring(spaceIndex + 1),
-                      forced: false,
-                    });
-                  } else {
-                    // 格式异常，整段作为 report-status 数据收集
-                    reportStatusChunks.push(frameData);
-                  }
-                } else if (
-                  frameData.length >= 6 &&
-                  frameData.subarray(0, 6).toString("utf-8") === "unpack"
-                ) {
-                  // "unpack ok" / "unpack <error>"
-                  const unpackText = frameData.toString("utf-8").trimEnd();
-                  const unpackResult = unpackText.slice("unpack ".length);
-                  if (unpackResult !== "ok") {
-                    unpackError = unpackResult;
-                  }
                 } else {
-                  // 其他 channel 1 数据（可能是 pkt-line 编码的 report-status）
-                  // 收集起来后续用 parseReceivePackResult 统一解析
+                  // 格式异常，整段作为 report-status 数据收集
                   reportStatusChunks.push(frameData);
                 }
-              } else if (channel === 0x02) {
-                // Channel 2: 进度消息
-                progress.push(frameData.toString("utf-8").trimEnd());
-              } else if (channel === 0x03) {
-                // Channel 3: 致命错误
-                throw new SmartHttpError(
-                  `Server reported error: ${frameData.toString("utf-8").trimEnd()}`,
-                );
+              } else if (
+                frameData.length >= 6 &&
+                frameData.subarray(0, 6).toString("utf-8") === "unpack"
+              ) {
+                // "unpack ok" / "unpack <error>"
+                const unpackText = frameData.toString("utf-8").trimEnd();
+                const unpackResult = unpackText.slice("unpack ".length);
+                if (unpackResult !== "ok") {
+                  unpackError = unpackResult;
+                }
+              } else {
+                // 其他 channel 1 数据（可能是 pkt-line 编码的 report-status）
+                // 收集起来后续用 parseReceivePackResult 统一解析
+                reportStatusChunks.push(frameData);
               }
+            } else if (channel === 0x02) {
+              // Channel 2: 进度消息
+              progress.push(frameData.toString("utf-8").trimEnd());
+            } else if (channel === 0x03) {
+              // Channel 3: 致命错误
+              throw new SmartHttpError(
+                `Server reported error: ${frameData.toString("utf-8").trimEnd()}`,
+              );
             }
-
-            // side-band 解析完成：如果 unpack 失败，立即报错
-            if (unpackError !== null) {
-              throw new SmartHttpError(`Server failed to unpack packfile: ${unpackError}`);
-            }
-
-            // 如果通过直接解析未获得 report-status，尝试用 parseReceivePackResult 解析收集到的数据
-            // 注意：channel 1 的数据内部已经是 pkt-line 编码（包含 4 字节长度前缀），
-            // 因此直接拼接即可，无需额外包装
-            if (refUpdates.length === 0 && reportStatusChunks.length > 0) {
-              const reconstructed = Buffer.concat(reportStatusChunks);
-              refUpdates = parseReceivePackResult(reconstructed);
-            }
-          } else {
-            // 非 side-band：数据为纯 pkt-line report-status
-            refUpdates = parseReceivePackResult(data);
           }
+
+          // side-band 解析完成：如果 unpack 失败，立即报错
+          if (unpackError !== null) {
+            throw new SmartHttpError(`Server failed to unpack packfile: ${unpackError}`);
+          }
+
+          // 如果通过直接解析未获得 report-status，尝试用 parseReceivePackResult 解析收集到的数据
+          // 注意：channel 1 的数据内部已经是 pkt-line 编码（包含 4 字节长度前缀），
+          // 因此直接拼接即可，无需额外包装
+          if (refUpdates.length === 0 && reportStatusChunks.length > 0) {
+            const reconstructed = Buffer.concat(reportStatusChunks);
+            refUpdates = parseReceivePackResult(reconstructed);
+          }
+        } else {
+          // 非 side-band：数据为纯 pkt-line report-status
+          refUpdates = parseReceivePackResult(data);
         }
-      } catch (err) {
-        // SmartHttpError 和 ReceivePackResultError 是协议级错误，需要向上传递
-        if (err instanceof SmartHttpError) {
-          throw err;
-        }
-        if (err instanceof ReceivePackResultError) {
-          throw err;
-        }
-        // 非致命解析错误，返回空结果
       }
 
       return { data, refUpdates, progress };
