@@ -80,12 +80,34 @@ const ZERO_HASH = "0000000000000000000000000000000000000000";
  * @param hash - 起始对象哈希
  * @param reachable - 用于收集结果的可达集合
  */
-function collectReachableFrom(objects: ObjectStore, hash: SHA1, reachable: Set<SHA1>): void {
+/**
+ * 从指定哈希出发，递归收集所有可达对象哈希
+ *
+ * @param objects - 对象存储
+ * @param hash - 起始对象哈希
+ * @param reachable - 用于收集结果的可达集合
+ * @param missing - 遇到缺失对象时的行为：
+ *   - `"skip"`（默认）：静默跳过，用于远程排除计算
+ *   - `"throw"`：抛出 PushError，用于本地可达性校验
+ */
+function collectReachableFrom(
+  objects: ObjectStore,
+  hash: SHA1,
+  reachable: Set<SHA1>,
+  missing: "throw" | "skip" = "skip",
+): void {
   if (reachable.has(hash)) {
     return;
   }
 
   if (!objects.exists(hash)) {
+    if (missing === "throw") {
+      throw new PushError(
+        `Object ${hash} is missing from the local store. ` +
+          `The local repository may be incomplete or corrupted. ` +
+          `Try fetching or running a repair before pushing.`,
+      );
+    }
     return;
   }
 
@@ -97,28 +119,36 @@ function collectReachableFrom(objects: ObjectStore, hash: SHA1, reachable: Set<S
       return;
     case "tree":
       for (const entry of obj.entries) {
-        collectReachableFrom(objects, entry.hash, reachable);
+        collectReachableFrom(objects, entry.hash, reachable, missing);
       }
       return;
     case "commit":
-      collectReachableFrom(objects, obj.tree, reachable);
+      collectReachableFrom(objects, obj.tree, reachable, missing);
       for (const parent of obj.parents) {
-        collectReachableFrom(objects, parent, reachable);
+        collectReachableFrom(objects, parent, reachable, missing);
       }
       return;
     case "tag":
-      collectReachableFrom(objects, obj.object, reachable);
+      collectReachableFrom(objects, obj.object, reachable, missing);
       return;
   }
 }
 
 /**
  * 从多个起始点收集所有可达对象哈希
+ *
+ * @param missing - 遇到缺失对象时的行为，透传给 collectReachableFrom
+ *
+ * @internal 导出仅用于测试
  */
-function collectReachable(objects: ObjectStore, roots: SHA1[]): Set<SHA1> {
+export function collectReachable(
+  objects: ObjectStore,
+  roots: SHA1[],
+  missing: "throw" | "skip" = "skip",
+): Set<SHA1> {
   const reachable = new Set<SHA1>();
   for (const hash of roots) {
-    collectReachableFrom(objects, hash, reachable);
+    collectReachableFrom(objects, hash, reachable, missing);
   }
   return reachable;
 }
@@ -333,9 +363,11 @@ export async function push(
   const localRoots = pushRefs
     .filter((r): r is PushRefItem & { localHash: SHA1 } => r.localHash !== null)
     .map((r) => r.localHash);
-  const reachableLocal = collectReachable(store, localRoots);
+  // 本地可达性使用 throw 模式：遇到缺失对象立即报错
+  const reachableLocal = collectReachable(store, localRoots, "throw");
 
   // 收集远程已有 refs 的可达对象（用于排除已存在的对象）
+  // 此处使用 skip 模式：远程对象在本地缺失是正常情况
   const remoteRoots: SHA1[] = [];
   for (const [, hash] of remoteRefs) {
     remoteRoots.push(hash);
@@ -351,15 +383,11 @@ export async function push(
   }
 
   // 6. 构建 packfile
+  //    此时 objectsToSend 中的对象已由遍历验证过存在性，无需额外容错
   const packWriter = createPackWriter();
   for (const hash of objectsToSend) {
-    try {
-      const obj = store.read(hash);
-      packWriter.addObject(obj);
-    } catch {
-      // 如果某个对象读取失败，跳过（不应发生，但做容错处理）
-      continue;
-    }
+    const obj = store.read(hash);
+    packWriter.addObject(obj);
   }
   const packfile = packWriter.build();
 
