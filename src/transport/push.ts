@@ -177,6 +177,11 @@ export function isAncestor(store: ObjectStore, oldHash: SHA1, newHash: SHA1): bo
     return true;
   }
 
+  // 如果起点 commit 不存在，无法判断
+  if (!store.exists(newHash)) {
+    return false;
+  }
+
   // 将可达性遍历限制在 commit 链上
   const visited = new Set<SHA1>();
   const queue: SHA1[] = [newHash];
@@ -193,6 +198,12 @@ export function isAncestor(store: ObjectStore, oldHash: SHA1, newHash: SHA1): bo
     }
     visited.add(current);
 
+    // 对象缺失说明遇到了 shallow boundary，无法继续回溯。
+    // 此时无法确定 oldHash 是否在更上游，假定为 fast-forward 让服务端做最终判定。
+    if (!store.exists(current)) {
+      return true;
+    }
+
     try {
       const obj = store.read(current);
 
@@ -207,7 +218,7 @@ export function isAncestor(store: ObjectStore, oldHash: SHA1, newHash: SHA1): bo
         }
       }
     } catch {
-      // 对象缺失视为此路径不可达，继续遍历其他路径
+      // 读取异常视为此路径不可达，继续遍历其他路径
       continue;
     }
   }
@@ -463,8 +474,10 @@ export async function push(
   const localRoots = pushRefs
     .filter((r): r is PushRefItem & { localHash: SHA1 } => r.localHash !== null)
     .map((r) => r.localHash);
-  // 本地可达性使用 throw 模式：遇到缺失对象立即报错
-  const reachableLocal = collectReachable(store, localRoots, "throw");
+  // 本地可达性使用 skip 模式：shallow fetch 场景下上游 commit 缺失是正常的，
+  // 无需报错——缺失的上游对象服务端已有，实际需要发送的只有本地新增对象。
+  // 后续 pack 构建阶段 store.read() 仍会捕获真正的本地对象损坏。
+  const reachableLocal = collectReachable(store, localRoots, "skip");
 
   // 收集远程已有 refs 的可达对象（用于排除已存在的对象）
   // 此处使用 skip 模式：远程对象在本地缺失是正常情况

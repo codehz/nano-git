@@ -187,6 +187,56 @@ describe("isAncestor()", () => {
     expect(isAncestor(store, commits.a, fake)).toBe(false);
     expect(isAncestor(store, fake, commits.a)).toBe(false);
   });
+
+  test("shallow fetch：中间 commit 缺失时假定 fast-forward", () => {
+    // 模拟 shallow fetch 后本地只有部分 commit 链的场景
+    // 链为：root → a，但 a 的后续被截断；实际 remoteHash 在更深的上游
+    const shallowStore = createMemoryObjectStore();
+    const emptyTree = shallowStore.write({ type: "tree", entries: [] });
+
+    const root: GitCommit = {
+      type: "commit",
+      tree: emptyTree,
+      parents: [],
+      author: AUTHOR,
+      committer: AUTHOR,
+      message: "root",
+    };
+    const rootHash = shallowStore.write(root);
+
+    const a: GitCommit = {
+      type: "commit",
+      tree: emptyTree,
+      parents: [rootHash],
+      author: AUTHOR,
+      committer: AUTHOR,
+      message: "a",
+    };
+    const aHash = shallowStore.write(a);
+
+    // b 不写入 store，模拟 shallow boundary
+    const bHash = sha1("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+
+    // c 的 parent 是 b（不存在于 store）
+    const c: GitCommit = {
+      type: "commit",
+      tree: emptyTree,
+      parents: [bHash],
+      author: AUTHOR,
+      committer: AUTHOR,
+      message: "c",
+    };
+    const cHash = shallowStore.write(c);
+
+    // root 是 c 的祖先，但中间 b 缺失 → 应假定 fast-forward
+    expect(isAncestor(shallowStore, rootHash, cHash)).toBe(true);
+    // a 同样应假定 fast-forward
+    expect(isAncestor(shallowStore, aHash, cHash)).toBe(true);
+    // 无关哈希在遇到 shallow boundary（b 缺失）时，因为无法继续回溯确认，
+    // 也假定为 fast-forward（让服务端做最终判定）
+    const unrelated = sha1("ffffffffffffffffffffffffffffffffffffffff");
+    expect(isAncestor(shallowStore, unrelated, cHash)).toBe(true);
+  });
 });
 
 describe("isAncestor() 分叉场景", () => {

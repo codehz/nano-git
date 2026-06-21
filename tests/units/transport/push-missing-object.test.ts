@@ -181,4 +181,56 @@ describe('collectReachable(missing="skip", 默认)', () => {
     const result = collectReachable(store, [nonExistentHash]);
     expect(result.size).toBe(0);
   });
+
+  test("shallow fetch：上游 parent commit 缺失时静默跳过", () => {
+    const store = createMemoryObjectStore();
+    const emptyTree = store.write({ type: "tree", entries: [] });
+
+    const root: GitCommit = {
+      type: "commit",
+      tree: emptyTree,
+      parents: [],
+      author: { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" },
+      committer: { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" },
+      message: "root",
+    };
+    const rootHash = store.write(root);
+
+    const a: GitCommit = {
+      type: "commit",
+      tree: emptyTree,
+      parents: [rootHash],
+      author: { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" },
+      committer: { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" },
+      message: "a",
+    };
+    const aHash = store.write(a);
+
+    // b 不写入 store（shallow boundary）
+    const bHash = sha1("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+
+    // c 的 parent 是 b（不存在于 store）
+    const c: GitCommit = {
+      type: "commit",
+      tree: emptyTree,
+      parents: [bHash],
+      author: { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" },
+      committer: { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" },
+      message: "c",
+    };
+    const cHash = store.write(c);
+
+    // skip 模式应静默跳过缺失的 parent b，停止沿该路径回溯；
+    // 收集到的是 c + c 的 tree，但不包括 b 上游的对象
+    const result = collectReachable(store, [cHash], "skip");
+
+    // 应包含 c 和 emptyTree
+    expect(result.has(cHash)).toBe(true);
+    expect(result.has(emptyTree)).toBe(true);
+    // b 本身不在集合中
+    expect(result.has(bHash)).toBe(false);
+    // b 上游的 a 和 root 不可达（路径在 b 处截断）
+    expect(result.has(aHash)).toBe(false);
+    expect(result.has(rootHash)).toBe(false);
+  });
 });
