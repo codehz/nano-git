@@ -11,7 +11,6 @@ import {
   mapRefName,
   determineWants,
 } from "../../../src/transport/fetch.ts";
-import type { ParsedRefSpec } from "../../../src/transport/fetch.ts";
 import type { RemoteRef } from "../../../src/transport/types.ts";
 import { sha1, type SHA1 } from "../../../src/core/types.ts";
 
@@ -93,7 +92,6 @@ describe("matchesRefSpec / mapRefName", () => {
 describe("determineWants()", () => {
   const hash1 = sha1("95d09f2b10159347eece71399a7e2e907ea3df4f");
   const hash2 = sha1("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
-  const hash3 = sha1("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
   const defaultSpec = parseRefSpec("+refs/heads/*:refs/remotes/origin/*");
 
   test("初始 clone：所有分支都应 want", () => {

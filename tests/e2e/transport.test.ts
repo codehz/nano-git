@@ -14,11 +14,7 @@ import { git, gitInit, createTempDir, cleanupDir, createFile, FIXED_AUTHOR } fro
 
 import { sha1 } from "../../src/core/types.ts";
 import { createCgiTransport } from "../../src/transport/cgi-transport.ts";
-import {
-  createMemoryRepository,
-  initRepository,
-  type Repository,
-} from "../../src/repository/index.ts";
+import { initRepository } from "../../src/repository/index.ts";
 
 // ============================================================================
 // 常量
@@ -152,14 +148,12 @@ describe("CgiTransport: upload-pack (fetch)", () => {
   let tempDir: string;
   let repoDir: string;
   let projectRoot: string;
-  let commitHash: string;
 
   beforeEach(() => {
     tempDir = createTempDir("e2e-transport-fetch");
     const server = createServerRepo(tempDir, "test.git");
     repoDir = server.repoDir;
     projectRoot = server.projectRoot;
-    commitHash = server.commitHash;
   });
 
   afterEach(() => {

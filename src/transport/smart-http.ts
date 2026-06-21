@@ -13,7 +13,7 @@
  */
 
 import { parseRefAdvertisement, RefAdvertisementError } from "./ref-advertisement.ts";
-import { extractPackfile, extractProgress, SideBandError } from "./side-band.ts";
+import { extractPackfile, extractProgress } from "./side-band.ts";
 import { parsePktLines } from "./pkt-line.ts";
 import type { PktLineData } from "./pkt-line.ts";
 import { parseReceivePackResult, ReceivePackResultError } from "./receive-pack-result.ts";
@@ -249,7 +249,7 @@ export function createSmartHttpClient(baseUrl: string, auth?: SmartHttpAuth): Sm
       try {
         packfile = extractPackfile(data);
         progress = extractProgress(data);
-      } catch (_err) {
+      } catch {
         // 非 side-band 响应（如纯 NAK），返回空 packfile
         packfile = Buffer.alloc(0);
         progress = [];

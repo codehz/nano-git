@@ -14,7 +14,6 @@
 import { describe, test, expect } from "bun:test";
 import { buildUploadPackRequest } from "../../../src/transport/negotiate.ts";
 import { parsePktLines } from "../../../src/transport/pkt-line.ts";
-import type { PktLineData } from "../../../src/transport/pkt-line.ts";
 import { sha1 } from "../../../src/core/types.ts";
 
 // ============================================================================

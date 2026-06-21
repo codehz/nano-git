@@ -30,7 +30,7 @@ import { createSmartHttpClient } from "./smart-http.ts";
 import { buildReceivePackRequest } from "./receive-pack-request.ts";
 import { ReceivePackResultError } from "./receive-pack-result.ts";
 import type { PushOptions, PushResult, PushRefUpdate } from "./types.ts";
-import { parseRefSpec, matchesRefSpec } from "./fetch.ts";
+import { parseRefSpec } from "./fetch.ts";
 import type { ParsedRefSpec } from "./fetch.ts";
 import { GitError } from "../core/errors.ts";
 
@@ -377,17 +377,6 @@ function remoteRefsToMap(refs: Array<{ name: string; hash: SHA1 }>): Map<string,
     map.set(ref.name, ref.hash);
   }
   return map;
-}
-
-// ============================================================================
-// Push 辅助函数
-// ============================================================================
-
-/**
- * 检测指定哈希是否为零哈希（用于新建/删除引用）
- */
-function isZeroHash(hash: SHA1): boolean {
-  return hash === ZERO_HASH;
 }
 
 // ============================================================================

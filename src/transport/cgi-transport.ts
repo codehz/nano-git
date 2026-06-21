@@ -21,12 +21,7 @@ import { extractPackfile } from "./side-band.ts";
 import { parsePktLines } from "./pkt-line.ts";
 import type { PktLineData } from "./pkt-line.ts";
 import { parseReceivePackResult, ReceivePackResultError } from "./receive-pack-result.ts";
-import type {
-  SmartHttpClient,
-  SmartHttpAuth,
-  UploadPackResult,
-  ReceivePackHttpResult,
-} from "./smart-http.ts";
+import type { SmartHttpClient, UploadPackResult, ReceivePackHttpResult } from "./smart-http.ts";
 import type { RefAdvertisement, PushRefUpdate } from "./types.ts";
 
 // ============================================================================

@@ -9,7 +9,6 @@ import { openRepository } from "../../src/repository/index.ts";
 import { sha1 } from "../../src/core/types.ts";
 import type { GitAuthor, GitTag } from "../../src/core/types.ts";
 import {
-  git,
   gitInit,
   gitCatFile,
   gitCatFileType,
@@ -18,7 +17,6 @@ import {
   gitCommitTree,
   createTempDir,
   cleanupDir,
-  createFile,
   FIXED_AUTHOR,
 } from "./helpers.ts";
 

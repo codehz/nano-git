@@ -17,7 +17,6 @@
 
 import { parsePktLines } from "./pkt-line.ts";
 import type { PktLineData } from "./pkt-line.ts";
-import type { SHA1 } from "../core/types.ts";
 import type { PushRefUpdate } from "./types.ts";
 import { GitError } from "../core/errors.ts";
 

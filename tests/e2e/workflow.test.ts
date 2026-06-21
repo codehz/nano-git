@@ -6,7 +6,6 @@
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { initRepository, openRepository } from "../../src/repository/index.ts";
-import { sha1 } from "../../src/core/types.ts";
 import type { GitAuthor } from "../../src/core/types.ts";
 import {
   git,

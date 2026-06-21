@@ -13,7 +13,6 @@
  */
 
 import { parsePktLines } from "./pkt-line.ts";
-import type { PktLineData } from "./pkt-line.ts";
 import { GitError } from "../core/errors.ts";
 
 // ============================================================================
@@ -24,9 +23,6 @@ import { GitError } from "../core/errors.ts";
 const CHANNEL_PACKFILE = 0x01;
 const CHANNEL_PROGRESS = 0x02;
 const CHANNEL_FATAL = 0x03;
-
-/** side-band 单帧最大数据量（64k - 1 字节 channel 编号） */
-const MAX_SIDEBAND_PAYLOAD = 65520 - 1; // 实际 payload = 65520 - 1
 
 // ============================================================================
 // 错误类型

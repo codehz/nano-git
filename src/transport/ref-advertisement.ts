@@ -70,7 +70,7 @@ const PEELED_TAG_SUFFIX = "^{}";
  */
 export function parseRefAdvertisement(
   data: Buffer,
-  service: "git-upload-pack" | "git-receive-pack",
+  _service: "git-upload-pack" | "git-receive-pack",
 ): RefAdvertisement {
   const pktLines = parsePktLines(data);
 

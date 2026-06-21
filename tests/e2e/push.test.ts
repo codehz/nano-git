@@ -137,7 +137,7 @@ describe("push() 端到端（CgiTransport）", () => {
     // 获取服务端 refs/heads/main 的哈希，用于制造分叉
     // 注意：这个哈希在本地 store 中不存在，但 checkFastForward 中 isAncestor 使用的是本地 store
     // 所以这里我们只需确保 remoteHash 不等于 localHash 且没有祖先关系即可
-    const remoteMainHash = sha1(
+    const _remoteMainHash = sha1(
       git(["--git-dir", serverRepoDir, "rev-parse", "refs/heads/main"], tempDir),
     );
 
