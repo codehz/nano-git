@@ -254,7 +254,12 @@ export function createSmartHttpClient(baseUrl: string, auth?: SmartHttpAuth): Sm
         progress = extractProgress(data);
       } catch {
         // 非 side-band 响应（如 NAK + 原始 packfile），尝试直接从 pkt-line 尾部提取
-        packfile = extractRawPackfile(data);
+        // 若尾部亦无原始数据（纯 ACK/NAK 协商轮次响应），则 packfile 为空
+        try {
+          packfile = extractRawPackfile(data);
+        } catch {
+          packfile = Buffer.alloc(0);
+        }
         progress = [];
       }
 
