@@ -446,12 +446,14 @@ async function negotiateAndFetchPackfile(
   shallow?: SHA1[],
 ): Promise<{ packfile: Buffer; shallow: SHA1[]; unshallow: SHA1[] }> {
   // 构建固定前缀（包含 want/deepen/shallow + flush）
+  //
+  // shallow 边界无论是否 deepen 都应发送：服务端需要知道客户端
+  // 已将哪些 commit 标记为 shallow，才能正确判断公共祖先和生成 unshallow。
   const prefix = buildUploadPackRequestPrefix({
     wants,
     capabilities,
     depth,
-    // shallow 边界只在 deepen 请求时发送
-    shallow: depth !== undefined ? shallow : undefined,
+    shallow,
   });
 
   const state = createNegotiationState();

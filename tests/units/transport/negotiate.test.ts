@@ -483,7 +483,7 @@ describe("collectHaveCommits() 预算化", () => {
     expect(result).toHaveLength(10);
   });
 
-  test("maxCandidates 为 0 的行为（使用默认值 MAX_HAVE_DEPTH）", () => {
+  test("maxCandidates 为 0 表示不限制，返回全部候选", () => {
     const store = createMemoryObjectStore();
     const hashes: SHA1[] = [];
     let parent: SHA1 | undefined;
@@ -492,13 +492,23 @@ describe("collectHaveCommits() 预算化", () => {
       hashes.push(parent);
     }
 
-    // maxCandidates 为 0 时取 Math.min(0, MAX_HAVE_DEPTH) = 0，导致 seen 无法累积
-    // 语义上 0 表示不限制，但当前实现与 MAX_HAVE_DEPTH 取 min
-    // 这里验证它至少不小于实际数量（受 MAX_HAVE_DEPTH 限制）
+    // maxCandidates=0 应等同于"不限制"，与省略该参数行为一致
     const result = collectHaveCommits(store, [hashes[9]!], { maxCandidates: 0 });
-    // 0 < MAX_HAVE_DEPTH, 所以实际限制为 0，返回空
-    // 用户应使用正数或省略该参数
-    expect(result).toHaveLength(0);
+    expect(result).toHaveLength(10);
+  });
+
+  test("maxCandidates 为 0 时与 undefined 行为一致", () => {
+    const store = createMemoryObjectStore();
+    const hashes: SHA1[] = [];
+    let parent: SHA1 | undefined;
+    for (let i = 0; i < 10; i++) {
+      parent = createTestCommit(store, treeHash, parent ? [parent] : [], 100 + i);
+      hashes.push(parent);
+    }
+
+    const result0 = collectHaveCommits(store, [hashes[9]!], { maxCandidates: 0 });
+    const resultUndefined = collectHaveCommits(store, [hashes[9]!]);
+    expect(result0).toEqual(resultUndefined);
   });
 
   test("预算化后仍按时间从旧到新排序", () => {
@@ -517,5 +527,62 @@ describe("collectHaveCommits() 预算化", () => {
       // 时间戳递增
       expect(result[i - 1]!).not.toBe(result[i]!);
     }
+  });
+
+  test("多 tip 时高优先级 tip 优先被遍历，不要因预算限制被低优先级挤占", () => {
+    const store = createMemoryObjectStore();
+
+    // 创建两条独立的提交链
+    const chainA: SHA1[] = [];
+    let parentA: SHA1 | undefined;
+    for (let i = 0; i < 20; i++) {
+      parentA = createTestCommit(store, treeHash, parentA ? [parentA] : [], 100 + i);
+      chainA.push(parentA);
+    }
+
+    const chainB: SHA1[] = [];
+    let parentB: SHA1 | undefined;
+    for (let i = 0; i < 20; i++) {
+      parentB = createTestCommit(store, treeHash, parentB ? [parentB] : [], 200 + i);
+      chainB.push(parentB);
+    }
+
+    // tips 按优先级：chainA[19]（高优先）在先，chainB[19]（低优先）在后
+    // 预算 10 时，应优先收集 chainA 的提交
+    const result = collectHaveCommits(store, [chainA[19]!, chainB[19]!], { maxCandidates: 10 });
+
+    // chainA 的 tip 应被包含
+    expect(result).toContain(chainA[19]!);
+    // chainB 的 tip——如果严格按优先级，可能进也可能不进，取决于遍历顺序
+    // 至少 chainA 的所有提交应该比 chainB 的多（或相等）
+    const aInResult = result.filter((h) => chainA.includes(h)).length;
+    const bInResult = result.filter((h) => chainB.includes(h)).length;
+    // 高优先级的 chainA 应比低优先级的 chainB 贡献更多候选
+    expect(aInResult).toBeGreaterThanOrEqual(bInResult);
+  });
+
+  test("maxCandidates=0 时所有 tip 的提交都收集到", () => {
+    const store = createMemoryObjectStore();
+
+    const chainA: SHA1[] = [];
+    let parent: SHA1 | undefined;
+    for (let i = 0; i < 15; i++) {
+      parent = createTestCommit(store, treeHash, parent ? [parent] : [], 100 + i);
+      chainA.push(parent);
+    }
+
+    const chainB: SHA1[] = [];
+    parent = undefined;
+    for (let i = 0; i < 15; i++) {
+      parent = createTestCommit(store, treeHash, parent ? [parent] : [], 200 + i);
+      chainB.push(parent);
+    }
+
+    // maxCandidates=0 不限制，所有提交都应被收集
+    const result = collectHaveCommits(store, [chainA[14]!, chainB[14]!], { maxCandidates: 0 });
+    expect(result).toContain(chainA[14]!);
+    expect(result).toContain(chainB[14]!);
+    // 全部 30 个
+    expect(result.length).toBeGreaterThanOrEqual(30);
   });
 });

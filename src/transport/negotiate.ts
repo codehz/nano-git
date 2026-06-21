@@ -76,9 +76,14 @@ export function collectHaveCommits(
 ): SHA1[] {
   const seen = new Set<SHA1>();
   const commits: Array<{ hash: SHA1; timestamp: number }> = [];
-  const queue: SHA1[] = [...tips];
+  // reverse 后 pop() 从队尾取，保证高优先级 tip 优先被遍历。
+  // selectHaveTips 返回的 tips 按优先级从高到低排列，而 pop()
+  // 取最后一个元素，所以需要 reverse 让高优先级在队尾。
+  const queue: SHA1[] = [...tips].reverse();
 
-  const maxCandidates = options?.maxCandidates ?? MAX_HAVE_DEPTH;
+  // maxCandidates: undefined 或 0 均表示不限制（使用 MAX_HAVE_DEPTH 兜底）
+  const rawMax = options?.maxCandidates;
+  const maxCandidates = rawMax === undefined || rawMax === 0 ? MAX_HAVE_DEPTH : rawMax;
   const effectiveMax = Math.min(maxCandidates, MAX_HAVE_DEPTH);
 
   while (queue.length > 0) {
