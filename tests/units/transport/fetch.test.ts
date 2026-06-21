@@ -510,7 +510,7 @@ describe("fetch() 增量 fetch 行为", () => {
     let capturedBody: Buffer | null = null;
     const transport = createMockTransport(
       [{ name: "refs/heads/main", hash: remoteCommit }],
-      { multi_ack: true, "side-band-64k": true, "ofs-delta": true },
+      { multi_ack: true, "side-band-64k": true, "ofs-delta": true, shallow: true },
       (body) => {
         capturedBody = body;
         return packData;
@@ -530,6 +530,78 @@ describe("fetch() 增量 fetch 行为", () => {
     // 对象仍能正确写入
     expect(objectStore.exists(entry.hash)).toBe(true);
     expect(result.objectCount).toBe(1);
+  });
+
+  test("shallow fetch：服务端未声明 shallow capability 时拒绝 depth", async () => {
+    const objectStore = createMemoryObjectStore();
+    const refStore = createMemoryRefStore();
+
+    const remoteCommit = createTestCommit(objectStore, [], 100);
+    const { packData } = createBlobPackfile("shallow content");
+
+    const transport = createMockTransport(
+      [{ name: "refs/heads/main", hash: remoteCommit }],
+      { multi_ack: true, "side-band-64k": true, "ofs-delta": true }, // 不含 shallow
+      () => packData,
+    );
+
+    const fetchPromise = fetch(objectStore, refStore, "dummy", {
+      transport,
+      refSpecs: ["+refs/heads/*:refs/remotes/origin/*"],
+      depth: 1,
+    });
+
+    expect(fetchPromise).rejects.toThrow(FetchError);
+    expect(fetchPromise).rejects.toThrow(/does not support shallow fetch/i);
+  });
+
+  test("shallow fetch：服务端未声明 shallow capability 时拒绝 shallow 边界", async () => {
+    const objectStore = createMemoryObjectStore();
+    const refStore = createMemoryRefStore();
+
+    const remoteCommit = createTestCommit(objectStore, [], 100);
+    const { packData } = createBlobPackfile("shallow boundary");
+
+    const transport = createMockTransport(
+      [{ name: "refs/heads/main", hash: remoteCommit }],
+      { multi_ack: true, "side-band-64k": true, "ofs-delta": true }, // 不含 shallow
+      () => packData,
+    );
+
+    const fetchPromise = fetch(objectStore, refStore, "dummy", {
+      transport,
+      refSpecs: ["+refs/heads/*:refs/remotes/origin/*"],
+      shallow: [remoteCommit],
+    });
+
+    expect(fetchPromise).rejects.toThrow(FetchError);
+    expect(fetchPromise).rejects.toThrow(/does not support shallow fetch/i);
+  });
+
+  test("shallow fetch：depth+shallow 都不设置时不受 shallow capability 校验影响", async () => {
+    const objectStore = createMemoryObjectStore();
+    const refStore = createMemoryRefStore();
+
+    // commit 已写入 store（模拟之前已存在），pack 不含该 commit 也不影响
+    const remoteCommit = createTestCommit(objectStore, [], 100);
+    const blob: GitBlob = { type: "blob", content: Buffer.from("extra blob") };
+    const entry = toEncodedPackObject(blob);
+    const { packData } = buildEncodedPack([entry]);
+
+    const transport = createMockTransport(
+      [{ name: "refs/heads/main", hash: remoteCommit }],
+      { multi_ack: true, "side-band-64k": true, "ofs-delta": true }, // 不含 shallow
+      () => packData,
+    );
+
+    // 不传 depth/shallow，shallow capability 校验不应触发
+    const result = await fetch(objectStore, refStore, "dummy", {
+      transport,
+      refSpecs: ["+refs/heads/*:refs/remotes/origin/*"],
+    });
+
+    expect(result.objectCount).toBe(1);
+    expect(result.fetchedRefs.get("refs/remotes/origin/main")).toBe(remoteCommit);
   });
 
   test("Consecutive 协商：超过 32 个 haves 时分多轮发送，最后一轮带 done", async () => {

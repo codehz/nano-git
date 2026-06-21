@@ -321,6 +321,15 @@ export async function fetch(
   // 5. 从服务端 capabilities 中确定可用能力
   const caps = extractCapabilities(adv.capabilities);
 
+  // 5b. shallow 能力校验：服务端未声明 shallow 时拒绝 depth/shallow 选项
+  const hasShallowCap = caps.includes("shallow");
+  if (!hasShallowCap && (options?.depth !== undefined || (options?.shallow ?? []).length > 0)) {
+    throw new FetchError(
+      "Server does not support shallow fetch (shallow capability not advertised), " +
+        "but depth or shallow options were specified.",
+    );
+  }
+
   // 6. 构造请求：裁剪后的 Consecutive 协商算法
   //
   //    从相关 remote-tracking refs 出发收集 have 候选，
