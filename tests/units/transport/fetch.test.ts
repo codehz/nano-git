@@ -862,7 +862,7 @@ describe("fetch() 增量 fetch 行为", () => {
       expect(refStore.read("refs/remotes/origin/missing")).toBeNull();
     });
 
-    test("pack 中途出错时已有对象不被写入 store（原子语义）", async () => {
+    test("pack 中途出错时已有对象不被写入 store（解析阶段原子性）", async () => {
       const objectStore = createMemoryObjectStore();
       const refStore = createMemoryRefStore();
 
@@ -892,7 +892,7 @@ describe("fetch() 增量 fetch 行为", () => {
 
       expect(fetchPromise).rejects.toThrow();
 
-      // 没有任何对象应被写入 store（原子语义保障）
+      // 解析阶段原子性保障：pack 解析出错时尚未写入任何对象
       expect(objectStore.exists(entry1.hash)).toBe(false);
       expect(objectStore.exists(entry2.hash)).toBe(false);
       expect(objectStore.exists(entry3.hash)).toBe(false);

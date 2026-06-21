@@ -393,8 +393,13 @@ export async function fetch(
   }
 
   // 8. 解析 packfile 并写入对象
-  //     先全部解析并反序列化到内存数组，再批量写入 store，
-  //     确保不因中途错误留下部分写入的孤立对象（原子语义）。
+  //
+  //     解析阶段：先将 pack 全部解析到内存数组。这样即使 pack 中途损坏，
+  //     也不会留下部分写入的对象。
+  //
+  //     写入阶段：逐个 store.write()。注意此处没有回滚机制——若第 N 个对象
+  //     写入失败，前 N-1 个对象已永久落到对象库中。这是调用方需要考虑的
+  //     风险（例如在文件系统存储下磁盘满或权限错误可能导致半写入状态）。
   const reader = createPackReader(packfile);
   const pendingObjects: Array<{ hash: SHA1; obj: GitObject }> = [];
 
