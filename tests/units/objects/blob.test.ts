@@ -3,6 +3,7 @@
  */
 
 import { describe, test, expect } from "bun:test";
+
 import { serialize, deserialize } from "../../../src/objects/index.ts";
 import type { GitBlob } from "../../../src/core/types.ts";
 

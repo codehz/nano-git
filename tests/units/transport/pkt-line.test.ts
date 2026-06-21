@@ -3,6 +3,7 @@
  */
 
 import { describe, test, expect } from "bun:test";
+
 import {
   encodePktLine,
   encodeFlushPkt,

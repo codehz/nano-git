@@ -6,9 +6,10 @@
  */
 
 import { describe, test, expect } from "bun:test";
+import { createHash } from "node:crypto";
+
 import { createMemoryObjectStore } from "../../../src/odb/memory-store.ts";
 import { collectReachable, PushError } from "../../../src/transport/push.ts";
-import { createHash } from "node:crypto";
 import {
   sha1,
   type SHA1,

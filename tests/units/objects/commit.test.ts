@@ -3,6 +3,7 @@
  */
 
 import { describe, test, expect } from "bun:test";
+
 import { serialize, deserialize } from "../../../src/objects/index.ts";
 import { sha1 } from "../../../src/core/types.ts";
 import type { GitCommit, GitAuthor } from "../../../src/core/types.ts";

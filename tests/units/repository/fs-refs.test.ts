@@ -6,6 +6,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+
 import { initRepository, type Repository } from "../../../src/repository/index.ts";
 import { sha1 } from "../../../src/core/types.ts";
 import type { GitAuthor } from "../../../src/core/types.ts";

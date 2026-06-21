@@ -3,6 +3,7 @@
  */
 
 import { describe, test, expect } from "bun:test";
+
 import { createPackWriter, createPackReader } from "../../../../src/odb/pack/index.ts";
 import { InvalidPackError } from "../../../../src/core/errors.ts";
 import type { GitBlob, GitTree, GitCommit, GitAuthor } from "../../../../src/core/types.ts";

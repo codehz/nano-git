@@ -11,6 +11,7 @@
  */
 
 import { describe, test, expect } from "bun:test";
+
 import { encodePktLine } from "../../../src/transport/pkt-line.ts";
 import {
   extractPackfile,

@@ -3,6 +3,7 @@
  */
 
 import { describe, test, expect } from "bun:test";
+
 import { applyDelta, createDelta } from "../../../../src/odb/pack/delta.ts";
 import { encodeVarint } from "../../../../src/odb/pack/utils.ts";
 import { DeltaError } from "../../../../src/core/errors.ts";
