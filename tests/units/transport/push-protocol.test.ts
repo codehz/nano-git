@@ -377,3 +377,114 @@ describe("determinePushRefs() 重叠 refspec 去重", () => {
     expect(devItems).toHaveLength(1);
   });
 });
+
+// ============================================================================
+// getLocalRefs + determinePushRefs 自定义命名空间集成测试
+// ============================================================================
+
+describe("push 非 heads/tags 来源 ref 推送", () => {
+  test("refs/remotes/origin/main:refs/heads/backup 应正确推送", async () => {
+    const store = createMemoryObjectStore();
+    const author = { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" };
+    const emptyTree = store.write({ type: "tree", entries: [] });
+
+    const commitHash = store.write({
+      type: "commit" as const,
+      tree: emptyTree,
+      parents: [],
+      author,
+      committer: author,
+      message: "test",
+    });
+
+    // 模拟本地 refs：refs/remotes/origin/main 存在
+    const refStore = createMemoryRefStore(
+      new Map([
+        ["refs/remotes/origin/main", commitHash],
+        ["HEAD", "ref: refs/heads/main"],
+      ]),
+    );
+
+    const transport: RemoteTransport = {
+      getReceivePackRefs: async () => ({
+        capabilities: { "report-status": true, "side-band-64k": true },
+        refs: [],
+      }),
+      postReceivePack: async () => {
+        const data = Buffer.concat([
+          encodePktLine("unpack ok\n"),
+          encodePktLine("ok refs/heads/backup\n"),
+          encodeFlushPkt(),
+        ]);
+        return { data, refUpdates: parseReceivePackResult(data), progress: [] };
+      },
+      getRefAdvertisement: async () => {
+        throw new Error("not used");
+      },
+      postUploadPack: async () => {
+        throw new Error("not used");
+      },
+    };
+
+    const result = await push(store, refStore, "dummy", {
+      transport,
+      refSpecs: ["refs/remotes/origin/main:refs/heads/backup"],
+    });
+
+    expect(result.refUpdates).toHaveLength(1);
+    expect(result.refUpdates[0]!.success).toBe(true);
+  });
+
+  test("循环 HEAD 不应阻塞其他 ref 的推送", async () => {
+    const store = createMemoryObjectStore();
+    const author = { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" };
+    const emptyTree = store.write({ type: "tree", entries: [] });
+
+    const commitHash = store.write({
+      type: "commit" as const,
+      tree: emptyTree,
+      parents: [],
+      author,
+      committer: author,
+      message: "test",
+    });
+
+    // HEAD 指向的分支自身循环（但 refs/heads/main 是独立且正常的）
+    const refStore = createMemoryRefStore(
+      new Map([
+        ["HEAD", "ref: refs/heads/stuck"],
+        ["refs/heads/stuck", "ref: HEAD"], // 循环！resolveRefHash(HEAD) 会抛错
+        ["refs/heads/main", commitHash], // 正常的独立分支
+      ]),
+    );
+
+    const transport: RemoteTransport = {
+      getReceivePackRefs: async () => ({
+        capabilities: { "report-status": true, "side-band-64k": true },
+        refs: [],
+      }),
+      postReceivePack: async () => {
+        const data = Buffer.concat([
+          encodePktLine("unpack ok\n"),
+          encodePktLine("ok refs/heads/main\n"),
+          encodeFlushPkt(),
+        ]);
+        return { data, refUpdates: parseReceivePackResult(data), progress: [] };
+      },
+      getRefAdvertisement: async () => {
+        throw new Error("not used");
+      },
+      postUploadPack: async () => {
+        throw new Error("not used");
+      },
+    };
+
+    const result = await push(store, refStore, "dummy", {
+      transport,
+      refSpecs: ["refs/heads/main:refs/heads/main"],
+    });
+
+    expect(result.refUpdates).toHaveLength(1);
+    expect(result.refUpdates[0]!.success).toBe(true);
+  });
+});

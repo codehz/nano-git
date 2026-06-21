@@ -23,13 +23,7 @@
 import { GitError } from "../core/errors.ts";
 import { sha1 } from "../core/types.ts";
 import { createPackWriter } from "../odb/pack/pack-writer.ts";
-import {
-  HEADS_PREFIX,
-  HEAD_REF,
-  TAGS_PREFIX,
-  resolveRefHash,
-  resolveSymbolicRef,
-} from "../refs/index.ts";
+import { HEADS_PREFIX, HEAD_REF, resolveRefHash, resolveSymbolicRef } from "../refs/index.ts";
 import { parseRefSpec } from "./fetch.ts";
 import { buildReceivePackRequest } from "./receive-pack-request.ts";
 import { ReceivePackResultError } from "./receive-pack-result.ts";
@@ -419,13 +413,14 @@ export function determinePushRefs(
 /**
  * 获取本地 refs 的哈希映射
  *
- * 遍历 refs/heads/、refs/tags/ 和 HEAD。
+ * 扫描 refs/ 下所有命名空间的引用，确保 push refspec 中
+ * 任意来源引用（如 refs/remotes/、refs/notes/ 等）都能被正确检测到。
  */
 function getLocalRefs(refs: RefStore): Map<string, SHA1> {
   const map = new Map<string, SHA1>();
 
-  // 遍历 refs/heads/
-  for (const refName of refs.listRaw(HEADS_PREFIX)) {
+  // 所有 refs/ 下的引用
+  for (const refName of refs.listAllRaw()) {
     const content = refs.readRaw(refName);
     if (content && /^[0-9a-f]{40}$/.test(content)) {
       try {
@@ -436,22 +431,15 @@ function getLocalRefs(refs: RefStore): Map<string, SHA1> {
     }
   }
 
-  // 遍历 refs/tags/
-  for (const refName of refs.listRaw(TAGS_PREFIX)) {
-    const content = refs.readRaw(refName);
-    if (content && /^[0-9a-f]{40}$/.test(content)) {
-      try {
-        map.set(refName, sha1(content));
-      } catch {
-        // 忽略无效哈希
-      }
+  // HEAD 可能指向 refs/ 外的引用（如 "HEAD" 自身），
+  // 解析失败（循环/损坏）不影响其他 ref 的推送
+  try {
+    const hash = resolveRefHash(refs, HEAD_REF);
+    if (hash) {
+      map.set(HEAD_REF, hash);
     }
-  }
-
-  // HEAD 特殊处理
-  const headHash = resolveRefHash(refs, HEAD_REF);
-  if (headHash) {
-    map.set(HEAD_REF, headHash);
+  } catch {
+    // 忽略解析失败（如循环引用）
   }
 
   return map;
