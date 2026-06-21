@@ -290,6 +290,14 @@ export function checkFastForward(
       continue;
     }
 
+    // Git 语义：refs/tags/* 不允许任何替换（即使是 fast-forward），必须显式 force
+    if (item.remoteRef.startsWith("refs/tags/")) {
+      throw new PushError(
+        `Tag update rejected for "${item.remoteRef}": ` +
+          `tag already exists, cannot replace without force (--force or +refspec).`,
+      );
+    }
+
     if (!isAncestor(store, item.remoteHash, item.localHash, shallowBoundaries)) {
       const shortRemote = item.remoteHash.slice(0, 8);
       const shortLocal = item.localHash.slice(0, 8);

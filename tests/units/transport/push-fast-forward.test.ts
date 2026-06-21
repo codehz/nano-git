@@ -340,4 +340,45 @@ describe("checkFastForward()", () => {
     const items = [makeItem(commits.c, commits.a, true), makeItem(commits.b, commits.a, true)];
     expect(() => checkFastForward(store, items)).not.toThrow();
   });
+
+  test("lightweight tag 更新（fast-forward 语义）但未设 force 应拒绝", () => {
+    // refs/tags/* 即使 newHash 是 oldHash 的后代，也必须 force 才能更新
+    const items = [
+      {
+        localRef: "refs/tags/v1",
+        remoteRef: "refs/tags/v1",
+        localHash: commits.c,
+        remoteHash: commits.a,
+        force: false,
+      },
+    ];
+    expect(() => checkFastForward(store, items)).toThrow(PushError);
+  });
+
+  test("lightweight tag 更新设 force 可通过", () => {
+    const items = [
+      {
+        localRef: "refs/tags/v1",
+        remoteRef: "refs/tags/v1",
+        localHash: commits.c,
+        remoteHash: commits.a,
+        force: true,
+      },
+    ];
+    expect(() => checkFastForward(store, items)).not.toThrow();
+  });
+
+  test("分支更新（refs/heads/*）在 fast-forward 时仍可通过", () => {
+    // 验证非 tag ref 不受影响
+    const items = [
+      {
+        localRef: "refs/heads/feature",
+        remoteRef: "refs/heads/feature",
+        localHash: commits.c,
+        remoteHash: commits.a,
+        force: false,
+      },
+    ];
+    expect(() => checkFastForward(store, items)).not.toThrow();
+  });
 });
