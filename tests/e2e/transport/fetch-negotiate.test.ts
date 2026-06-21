@@ -17,6 +17,9 @@ import {
 import { startGitHttpBackendServer } from "./http-server.ts";
 import { sha1 } from "@/core/types.ts";
 import { initRepository } from "@/repository/index.ts";
+import { encodePktLine } from "@/transport/pkt-line.ts";
+
+import type { GitHttpBackendResponse } from "./http-server.ts";
 
 describe("fetch 协商流程", () => {
   let tempDir: string;
@@ -147,6 +150,78 @@ describe("fetch 协商流程", () => {
     const mainRef = repo.refs.read("refs/remotes/origin/main");
     expect(mainRef).toBe(newHead);
     expect(repo.objects.read(sha1(newHead)).type).toBe("commit");
+  });
+
+  test("增量 fetch：服务端返回 ACK continue 时后续轮次重放该 common", async () => {
+    const localDir = join(tempDir, "local-http-ack-continue");
+    const repo = initRepository(localDir);
+
+    const totalInitialCommits = 36;
+    for (let i = 0; i < totalInitialCommits; i++) {
+      createFile(workDir, `ack-continue-${i}.txt`, `ack-continue-${i}\n`);
+      git(["add", `ack-continue-${i}.txt`], workDir);
+      git(["commit", "-m", `ACK continue history commit ${i}`], workDir);
+    }
+    git(["push", repoDir, "main"], workDir);
+
+    const firstFetch = await repo.fetch(serverUrl);
+    expect(firstFetch.objectCount).toBeGreaterThan(totalInitialCommits);
+
+    await server.stop();
+
+    let uploadPackPostCount = 0;
+    let continuedHave: string | null = null;
+    server = startGitHttpBackendServer(projectRoot, "/remote.git", undefined, {
+      transformResponse(response, request): GitHttpBackendResponse {
+        if (request.method !== "POST" || !request.path.endsWith("/git-upload-pack")) {
+          return response;
+        }
+
+        uploadPackPostCount++;
+        if (uploadPackPostCount !== 1) {
+          return response;
+        }
+
+        const firstRoundCommands = decodeUploadPackCommands(request.body);
+        const firstHave = firstRoundCommands.find((line) => line.startsWith("have "));
+        if (!firstHave) {
+          throw new Error("Expected first upload-pack round to contain at least one have command");
+        }
+
+        continuedHave = firstHave.slice("have ".length);
+        return {
+          ...response,
+          body: Buffer.concat([
+            encodePktLine(`ACK ${continuedHave} continue\n`),
+            encodePktLine("NAK\n"),
+          ]),
+        };
+      },
+    });
+    serverUrl = server.url;
+
+    createFile(workDir, "ack-continue-new-a.txt", "ack-continue-new-a\n");
+    git(["add", "ack-continue-new-a.txt"], workDir);
+    git(["commit", "-m", "ACK continue new a"], workDir);
+
+    createFile(workDir, "ack-continue-new-b.txt", "ack-continue-new-b\n");
+    git(["add", "ack-continue-new-b.txt"], workDir);
+    git(["commit", "-m", "ACK continue new b"], workDir);
+
+    const newHead = git(["rev-parse", "HEAD"], workDir);
+    git(["push", repoDir, "main"], workDir);
+
+    const secondFetch = await repo.fetch(serverUrl);
+    expect(secondFetch.objectCount).toBeGreaterThan(0);
+    expect(secondFetch.fetchedRefs.get("refs/remotes/origin/main")).toBe(sha1(newHead));
+
+    const uploadPackRequests = getUploadPackRequests(server.requests);
+    expect(uploadPackRequests).toHaveLength(2);
+    expect(continuedHave).not.toBeNull();
+
+    const secondRoundCommands = decodeUploadPackCommands(uploadPackRequests[1]!.body);
+    expect(secondRoundCommands).toContain(`have ${continuedHave}`);
+    expect(secondRoundCommands.at(-1)).toBe("done");
   });
   // ============================================================================
   // 协商优化测试（起点裁剪、maxCandidates）
