@@ -132,8 +132,10 @@ describe("determineWants()", () => {
     expect(wants).toHaveLength(2);
     expect(wants[0]!.localName).toBe("refs/remotes/origin/main");
     expect(wants[0]!.localHash).toBeUndefined();
+    expect(wants[0]!.force).toBe(true);
     expect(wants[1]!.localName).toBe("refs/remotes/origin/develop");
     expect(wants[1]!.localHash).toBeUndefined();
+    expect(wants[1]!.force).toBe(true);
   });
 
   test("本地已是最新则跳过", () => {
@@ -147,6 +149,7 @@ describe("determineWants()", () => {
     expect(wants).toHaveLength(1);
     expect(wants[0]!.localName).toBe("refs/remotes/origin/develop");
     expect(wants[0]!.localHash).toBeUndefined(); // develop 本地不存在
+    expect(wants[0]!.force).toBe(true);
   });
 
   test("本地 hash 不同则应拉取并包含 localHash", () => {
@@ -159,6 +162,17 @@ describe("determineWants()", () => {
     const wants = determineWants(refs, localRefs, [defaultSpec]);
     expect(wants).toHaveLength(1);
     expect(wants[0]!.localHash).toBe(hash2); // 应返回本地旧 hash
+    expect(wants[0]!.force).toBe(true);
+  });
+
+  test("非强制 refspec 传递 force=false", () => {
+    const refs: RemoteRef[] = [
+      makeRef("refs/heads/main", "95d09f2b10159347eece71399a7e2e907ea3df4f"),
+    ];
+    const nonForceSpec = parseRefSpec("refs/heads/*:refs/remotes/origin/*");
+    const wants = determineWants(refs, new Map(), [nonForceSpec]);
+    expect(wants).toHaveLength(1);
+    expect(wants[0]!.force).toBe(false);
   });
 
   test("空远程返回空 wants", () => {
@@ -449,6 +463,132 @@ describe("fetch() 增量 fetch 行为", () => {
     expect(objectStore.exists(entry.hash)).toBe(true);
     expect(result.objectCount).toBe(1);
   });
+
+  describe("force 语义", () => {
+    function createDivergedScenario() {
+      const objectStore = createMemoryObjectStore();
+
+      // 本地分支：root ← oldTip
+      const root = createTestCommit(objectStore, [], 100);
+      const oldTip = createTestCommit(objectStore, [root], 200);
+
+      // 远程分支：root ← remoteTip（与 oldTip 分叉，非快进）
+      const remoteTip = createTestCommit(objectStore, [root], 300);
+
+      // 先设置本地 remote-tracking ref 指向 oldTip
+      const refStore = createMemoryRefStore(new Map([["refs/remotes/origin/main", oldTip]]));
+
+      // 远程广告 refs/heads/main 指向 remoteTip
+      const { packData } = createBlobPackfile("diverged content");
+
+      let capturedBody: Buffer | null = null;
+      const transport = createMockTransport(
+        [{ name: "refs/heads/main", hash: remoteTip }],
+        { multi_ack: true, "side-band-64k": true, "ofs-delta": true },
+        (body) => {
+          capturedBody = body;
+          return packData;
+        },
+      );
+
+      return { objectStore, refStore, transport, oldTip, remoteTip };
+    }
+
+    test("非强制 refspec：非快进更新被阻止，ref 保持不变", async () => {
+      const { objectStore, refStore, transport, oldTip, remoteTip } = createDivergedScenario();
+
+      // 使用不带 + 的 refspec
+      const result = await fetch(objectStore, refStore, "dummy", {
+        transport,
+        refSpecs: ["refs/heads/*:refs/remotes/origin/*"],
+      });
+
+      // ref 应保持原值（未被覆盖）
+      expect(refStore.readRaw("refs/remotes/origin/main")).toBe(oldTip);
+      // fetchedRefs 中不应包含被拒绝的 ref
+      expect(result.fetchedRefs.has("refs/remotes/origin/main")).toBe(false);
+      // 对象仍被写入
+      expect(result.objectCount).toBe(1);
+    });
+
+    test("强制 refspec：非快进更新仍被允许", async () => {
+      const { objectStore, refStore, transport, remoteTip } = createDivergedScenario();
+
+      // 使用带 + 的 refspec
+      const result = await fetch(objectStore, refStore, "dummy", {
+        transport,
+        refSpecs: ["+refs/heads/*:refs/remotes/origin/*"],
+      });
+
+      // ref 应更新为远程值
+      expect(refStore.readRaw("refs/remotes/origin/main")).toBe(remoteTip);
+      expect(result.fetchedRefs.get("refs/remotes/origin/main")).toBe(remoteTip);
+      expect(result.objectCount).toBe(1);
+    });
+
+    test("非强制 refspec：快进更新仍被允许", async () => {
+      const objectStore = createMemoryObjectStore();
+
+      // 本地分支：root ← oldTip
+      const root = createTestCommit(objectStore, [], 100);
+      const oldTip = createTestCommit(objectStore, [root], 200);
+
+      // 远程分支：root ← oldTip ← remoteTip（快进）
+      const remoteTip = createTestCommit(objectStore, [oldTip], 300);
+
+      const refStore = createMemoryRefStore(new Map([["refs/remotes/origin/main", oldTip]]));
+      const { packData } = createBlobPackfile("fast-forward content");
+
+      let capturedBody: Buffer | null = null;
+      const transport = createMockTransport(
+        [{ name: "refs/heads/main", hash: remoteTip }],
+        { multi_ack: true, "side-band-64k": true, "ofs-delta": true },
+        (body) => {
+          capturedBody = body;
+          return packData;
+        },
+      );
+
+      // 使用不带 + 的 refspec
+      const result = await fetch(objectStore, refStore, "dummy", {
+        transport,
+        refSpecs: ["refs/heads/*:refs/remotes/origin/*"],
+      });
+
+      // ref 应更新为远程值（快进允许）
+      expect(refStore.readRaw("refs/remotes/origin/main")).toBe(remoteTip);
+      expect(result.fetchedRefs.get("refs/remotes/origin/main")).toBe(remoteTip);
+      expect(result.objectCount).toBe(1);
+    });
+
+    test("非强制 refspec：本地 ref 不存在时始终写入", async () => {
+      const objectStore = createMemoryObjectStore();
+      const remoteTip = createTestCommit(objectStore, [], 100);
+      const refStore = createMemoryRefStore(); // 空 refs
+
+      const { entry, packData } = createBlobPackfile("new ref content");
+
+      let capturedBody: Buffer | null = null;
+      const transport = createMockTransport(
+        [{ name: "refs/heads/main", hash: remoteTip }],
+        { multi_ack: true, "side-band-64k": true, "ofs-delta": true },
+        (body) => {
+          capturedBody = body;
+          return packData;
+        },
+      );
+
+      const result = await fetch(objectStore, refStore, "dummy", {
+        transport,
+        refSpecs: ["refs/heads/*:refs/remotes/origin/*"],
+      });
+
+      // 新 ref 应被创建
+      expect(refStore.readRaw("refs/remotes/origin/main")).toBe(remoteTip);
+      expect(result.objectCount).toBe(1);
+      expect(objectStore.exists(entry.hash)).toBe(true);
+    });
+  });
 });
 
 // ============================================================================
@@ -470,6 +610,7 @@ describe("selectHaveTips()", () => {
         remote: makeRef("refs/heads/main"),
         localName: "refs/remotes/origin/main",
         localHash: hashA,
+        force: true,
       },
     ];
 
@@ -491,6 +632,7 @@ describe("selectHaveTips()", () => {
         remote: makeRef("refs/heads/main"),
         localName: "refs/remotes/origin/main",
         localHash: hashA,
+        force: true,
       },
     ];
 
@@ -514,6 +656,7 @@ describe("selectHaveTips()", () => {
         remote: makeRef("refs/heads/main"),
         localName: "refs/remotes/origin/main",
         localHash: hashA,
+        force: true,
       },
     ];
 
@@ -530,7 +673,8 @@ describe("selectHaveTips()", () => {
       ["refs/heads/feature", hashB],
     ]);
     // 无 remote-tracking refs 且无 HEAD
-    const wants: Array<{ remote: RemoteRef; localName: string; localHash?: SHA1 }> = [];
+    const wants: Array<{ remote: RemoteRef; localName: string; localHash?: SHA1; force: boolean }> =
+      [];
 
     const tips = selectHaveTips(localRefs, wants);
     expect(tips).toContain(hashA);
@@ -548,6 +692,7 @@ describe("selectHaveTips()", () => {
         remote: makeRef("refs/heads/main"),
         localName: "refs/remotes/origin/main",
         localHash: hashA,
+        force: true,
       },
     ];
 
@@ -561,7 +706,13 @@ describe("selectHaveTips()", () => {
       ["refs/remotes/origin/main", hashA],
       ["HEAD", hashB],
     ]);
-    const wants = [{ remote: makeRef("refs/heads/main"), localName: "refs/remotes/origin/main" }];
+    const wants = [
+      {
+        remote: makeRef("refs/heads/main"),
+        localName: "refs/remotes/origin/main",
+        force: true,
+      },
+    ];
 
     const tips = selectHaveTips(localRefs, wants);
     // 没有 localHash，直接跳到远程 tracking refs（第二优先）
@@ -579,6 +730,7 @@ describe("selectHaveTips()", () => {
         remote: makeRef("refs/heads/main"),
         localName: "refs/remotes/origin/main",
         localHash: hashA,
+        force: true,
       },
     ];
 

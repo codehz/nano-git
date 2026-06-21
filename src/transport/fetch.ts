@@ -35,6 +35,7 @@ import {
   MAX_HAVES_PER_ROUND,
   parseUploadPackNegotiationResponse,
 } from "./negotiate.ts";
+import { isAncestor } from "./push.ts";
 import { createSmartHttpClient } from "./smart-http.ts";
 
 import type { SHA1 } from "../core/types.ts";
@@ -151,8 +152,9 @@ export function determineWants(
   remoteRefs: RemoteRef[],
   localRefs: Map<string, SHA1>,
   refSpecs: ParsedRefSpec[],
-): Array<{ remote: RemoteRef; localName: string; localHash?: SHA1 }> {
-  const wants: Array<{ remote: RemoteRef; localName: string; localHash?: SHA1 }> = [];
+): Array<{ remote: RemoteRef; localName: string; localHash?: SHA1; force: boolean }> {
+  const wants: Array<{ remote: RemoteRef; localName: string; localHash?: SHA1; force: boolean }> =
+    [];
 
   for (const ref of remoteRefs) {
     for (const spec of refSpecs) {
@@ -166,7 +168,7 @@ export function determineWants(
         continue; // 已是最新，跳过
       }
 
-      wants.push({ remote: ref, localName, localHash });
+      wants.push({ remote: ref, localName, localHash, force: spec.force });
     }
   }
 
@@ -322,9 +324,15 @@ export async function fetch(
     }
   }
 
-  // 9. 更新远程跟踪引用
+  // 9. 更新远程跟踪引用（非强制 refspec 需满足快进条件）
   const fetchedRefs = new Map<string, SHA1>();
-  for (const { localName, remote } of wants) {
+  for (const { localName, remote, localHash, force } of wants) {
+    // 非强制且本地已有值：仅当更新为快进时才写入
+    if (!force && localHash !== undefined) {
+      if (!isAncestor(store, localHash, remote.hash)) {
+        continue; // 非快进，跳过此 ref 的更新
+      }
+    }
     refs.writeRaw(localName, remote.hash);
     fetchedRefs.set(localName, remote.hash);
   }
@@ -364,7 +372,7 @@ function extractCapabilities(serverCaps: Record<string, string | true>): string[
  *  4. 本地 refs/heads/*（兜底）
  *
  * @param localRefs - 所有本地 ref → hash 映射
- * @param wants - 将要拉取的 wants（含 localName 和 localHash）
+ * @param wants - 将要拉取的 wants（含 localName、localHash 和 force）
  * @returns 适合作为 have 遍历起点的哈希列表
  *
  * @example
@@ -374,7 +382,7 @@ function extractCapabilities(serverCaps: Record<string, string | true>): string[
  */
 export function selectHaveTips(
   localRefs: Map<string, SHA1>,
-  wants: Array<{ remote: RemoteRef; localName: string; localHash?: SHA1 }>,
+  wants: Array<{ remote: RemoteRef; localName: string; localHash?: SHA1; force: boolean }>,
 ): SHA1[] {
   const tips: SHA1[] = [];
   const seen = new Set<SHA1>();
