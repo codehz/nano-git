@@ -12,17 +12,10 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import {
-  git,
-  gitInit,
-  createTempDir,
-  cleanupDir,
-  createFile,
-  FIXED_AUTHOR,
-  startGitHttpBackendServer,
-} from "./helpers.ts";
-import { createMemoryRepository, type Repository } from "../../src/repository/index.ts";
-import { sha1 } from "../../src/core/types.ts";
+import { git, gitInit, createTempDir, cleanupDir, createFile, FIXED_AUTHOR } from "../helpers.ts";
+import { startGitHttpBackendServer } from "./http-server.ts";
+import { createMemoryRepository } from "../../../src/repository/index.ts";
+import { sha1 } from "../../../src/core/types.ts";
 
 // ============================================================================
 // 辅助函数
@@ -34,19 +27,6 @@ function enableReceivePack(repoDir: string): void {
   if (!config.includes("http.receivepack")) {
     writeFileSync(configPath, config + "\n[http]\n\treceivepack = true\n");
   }
-}
-
-function makeRepo(): Repository {
-  return createMemoryRepository();
-}
-
-function makeAuthor() {
-  return {
-    name: FIXED_AUTHOR.name,
-    email: FIXED_AUTHOR.email,
-    timestamp: FIXED_AUTHOR.timestamp,
-    timezone: FIXED_AUTHOR.timezone,
-  };
 }
 
 // ============================================================================
@@ -88,8 +68,8 @@ describe("push() 端到端", () => {
   });
 
   test("推送新分支到远端", async () => {
-    const repo = makeRepo();
-    const author = makeAuthor();
+    const repo = createMemoryRepository();
+    const author = { ...FIXED_AUTHOR };
 
     const fileHash = repo.writeBlob(Buffer.from("new branch content"));
     const treeHash = repo.createTree([{ mode: "100644", name: "new-branch.txt", hash: fileHash }]);
@@ -123,7 +103,7 @@ describe("push() 端到端", () => {
     expect(branchRef).toBe(branchHash);
 
     // 2. 用 nano-git push 删除远程分支
-    const deleteRepo = makeRepo();
+    const deleteRepo = createMemoryRepository();
     const deleteResult = await deleteRepo.push(serverUrl, {
       refSpecs: [":refs/heads/feature"],
     });
@@ -137,8 +117,8 @@ describe("push() 端到端", () => {
   });
 
   test("non-fast-forward 推送到远端被本地预检拒绝", async () => {
-    const repo = makeRepo();
-    const author = makeAuthor();
+    const repo = createMemoryRepository();
+    const author = { ...FIXED_AUTHOR };
 
     // 获取服务端 refs/heads/main 的哈希，用于制造分叉
     // 注意：这个哈希在本地 store 中不存在，但 checkFastForward 中 isAncestor 使用的是本地 store
@@ -161,8 +141,8 @@ describe("push() 端到端", () => {
   });
 
   test("non-fast-forward 但设 force 时可以通过", async () => {
-    const repo = makeRepo();
-    const author = makeAuthor();
+    const repo = createMemoryRepository();
+    const author = { ...FIXED_AUTHOR };
 
     const fileHash = repo.writeBlob(Buffer.from("forced"));
     const treeHash = repo.createTree([{ mode: "100644", name: "f.txt", hash: fileHash }]);
@@ -183,8 +163,8 @@ describe("push() 端到端", () => {
   });
 
   test("通过 push 推送 tag 到远端", async () => {
-    const repo = makeRepo();
-    const author = makeAuthor();
+    const repo = createMemoryRepository();
+    const author = { ...FIXED_AUTHOR };
 
     const fileHash = repo.writeBlob(Buffer.from("tagged content"));
     const treeHash = repo.createTree([{ mode: "100644", name: "tagged.txt", hash: fileHash }]);
