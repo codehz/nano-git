@@ -274,6 +274,19 @@ describe("push() 端到端", () => {
     expect(branchList).not.toContain("feature");
   });
 
+  test("删除不存在的远程分支：服务端警告但整体成功", async () => {
+    const repo = createMemoryRepository();
+
+    const result = await repo.push(serverUrl, {
+      refSpecs: [":refs/heads/nonexistent"],
+    });
+
+    expect(result.refUpdates).toHaveLength(1);
+    expect(result.refUpdates[0]!.success).toBe(true);
+    expect(result.refUpdates[0]!.refName).toBe("refs/heads/nonexistent");
+    expect(result.objectCount).toBe(0);
+  });
+
   test("协议降级：receive-pack 返回纯 report-status 时仍能正确解析 push 结果", async () => {
     await using downgradedServer = startGitHttpBackendServer(tempDir, "/server.git", undefined, {
       transformResponse(response, request) {

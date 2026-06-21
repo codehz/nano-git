@@ -219,6 +219,39 @@ describe("完整 fetch 流程", () => {
     expect(tagObject.type).toBe("tag");
   });
 
+  test("tag-only 远端：默认 refspec fetch 返回空结果", async () => {
+    git(["tag", "-a", "v-tag-only", "-m", "tag only"], workDir);
+    git(["push", serverRepoDir, "refs/tags/v-tag-only"], workDir);
+    git(["--git-dir", serverRepoDir, "update-ref", "-d", "refs/heads/main"], tempDir);
+
+    const localDir = join(tempDir, "local-tag-only-default");
+    const repo = initRepository(localDir);
+    const result = await repo.fetch(serverUrl);
+
+    expect(result.objectCount).toBe(0);
+    expect(result.fetchedRefs.size).toBe(0);
+    expect(repo.refs.readRaw("refs/remotes/origin/main")).toBeNull();
+    expect(repo.refs.readRaw("refs/tags/v-tag-only")).toBeNull();
+  });
+
+  test("tag-only 远端：显式 tag refspec 仍可 fetch 注解 tag", async () => {
+    git(["tag", "-a", "v-tag-only-fetch", "-m", "tag only fetch"], workDir);
+    git(["push", serverRepoDir, "refs/tags/v-tag-only-fetch"], workDir);
+    git(["--git-dir", serverRepoDir, "update-ref", "-d", "refs/heads/main"], tempDir);
+
+    const localDir = join(tempDir, "local-tag-only-explicit");
+    const repo = initRepository(localDir);
+    const result = await repo.fetch(serverUrl, {
+      refSpecs: ["+refs/tags/*:refs/tags/*"],
+    });
+
+    expect(result.objectCount).toBeGreaterThan(0);
+    const tagHash = repo.refs.readRaw("refs/tags/v-tag-only-fetch");
+    expect(tagHash).not.toBeNull();
+    expect(repo.refs.readRaw("refs/remotes/origin/main")).toBeNull();
+    expect(repo.objects.read(sha1(tagHash!)).type).toBe("tag");
+  });
+
   test("协议降级：服务端不走 side-band-64k 时 fetch 仍成功", async () => {
     const downgradedServer = startGitHttpBackendServer(tempDir, "/server.git", undefined, {
       transformResponse(response: GitHttpBackendResponse, request: GitHttpRequestRecord) {
