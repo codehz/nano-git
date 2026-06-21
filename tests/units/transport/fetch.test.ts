@@ -256,7 +256,7 @@ describe("fetch() 增量 fetch 行为", () => {
     const c4 = createTestCommit(objectStore, [c3], 400);
 
     const refStore = createMemoryRefStore(new Map([["refs/remotes/origin/main", c3]]));
-    const { entry, packData } = createBlobPackfile("more content");
+    const { packData } = createBlobPackfile("more content");
 
     let capturedBody: Buffer | null = null;
     const transport = createMockTransport(

@@ -14,7 +14,6 @@
 import { describe, test, expect } from "bun:test";
 
 import { sha1, type SHA1, type GitCommit } from "@/core/types.ts";
-import { serialize } from "@/objects/index.ts";
 import { createMemoryObjectStore } from "@/odb/memory-store.ts";
 import {
   buildUploadPackNegotiationRound,
@@ -58,8 +57,7 @@ function createTestCommit(
     committer: { name: "T", email: "t@t", timestamp, timezone: "+0000" },
     message: msg ?? `commit at ${timestamp}`,
   };
-  // 直接用 serialize + write raw bytes，避免 hashObject 逻辑干扰
-  const data = serialize(commit);
+  // 直接使用 store.write，避免 hashObject 逻辑干扰
   return store.write(commit);
 }
 

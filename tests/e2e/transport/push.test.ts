@@ -137,7 +137,7 @@ describe("push() 端到端", () => {
       refSpecs: ["refs/heads/main:refs/heads/main"],
     });
 
-    await expect(pushPromise).rejects.toThrow("Non-fast-forward");
+    expect(pushPromise).rejects.toThrow("Non-fast-forward");
   });
 
   test("non-fast-forward 但设 force 时可以通过", async () => {
@@ -431,6 +431,6 @@ describe("push() 端到端", () => {
       refSpecs: ["refs/heads/non-existent:refs/heads/non-existent"],
     });
 
-    await expect(pushPromise).rejects.toThrow("Local ref not found");
+    expect(pushPromise).rejects.toThrow("Local ref not found");
   });
 });

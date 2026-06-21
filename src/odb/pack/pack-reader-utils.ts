@@ -93,6 +93,6 @@ export function readCompressedData(
 
     return [Buffer.from(result.buffer), consumed];
   } catch (err) {
-    throw new InvalidPackError(`Failed to decompress data at offset ${offset}: ${err}`);
+    throw new InvalidPackError(`Failed to decompress data at offset ${offset}: ${String(err)}`);
   }
 }

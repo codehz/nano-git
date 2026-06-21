@@ -105,7 +105,10 @@ function parseCgiResponse(stdout: Buffer): CgiResponse {
  * 将 Request Headers 转为普通对象
  */
 function toHeaderRecord(headers: Headers): Record<string, string> {
-  const entries = Array.from(headers.entries()).map(([key, value]) => [key.toLowerCase(), value]);
+  const entries: Array<[string, string]> = Array.from(headers.entries()).map(([key, value]) => [
+    key.toLowerCase(),
+    value,
+  ]);
   return Object.fromEntries(entries);
 }
 
