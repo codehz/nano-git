@@ -374,4 +374,27 @@ describe("push() 本地对象缺失预检", () => {
     expect(postCalled).toBe(true);
     expect(result.objectCount).toBeGreaterThan(0);
   });
+
+  test("shallow 边界存在时 tree 条目的 BLOB 缺失仍应报错（避免静默生成不完整 pack）", async () => {
+    const { store, commitHash, blobBHash } = buildMissingBlobStore();
+    const refStore = createMemoryRefStore(new Map([["refs/heads/main", commitHash]]));
+    let postCalled = false;
+    const transport = createPushMockTransport([], () => {
+      postCalled = true;
+    });
+
+    // 传入一个无关的 shallowBoundary，当前 bug：代码走 "skip" 分支，
+    // 导致缺失 blob 被静默跳过，postReceivePack 被误调用
+    const pushPromise = push(store, refStore, "dummy", {
+      transport,
+      refSpecs: ["refs/heads/main:refs/heads/main"],
+      shallowBoundaries: [sha1("0000000000000000000000000000000000000099")],
+    });
+
+    // 应抛出 PushError 而非静默发送不完整 pack
+    expect(pushPromise).rejects.toBeInstanceOf(PushError);
+    // 不应发送 receive-pack 请求
+    expect(postCalled).toBe(false);
+    void blobBHash;
+  });
 });

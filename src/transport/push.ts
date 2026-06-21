@@ -528,11 +528,9 @@ export async function push(
   const localRoots = pushRefs
     .filter((r): r is PushRefItem & { localHash: SHA1 } => r.localHash !== null)
     .map((r) => r.localHash);
-  // 本地可达性：传入 shallowSet 让缺失的 commit parent 在已知 shallow 边界时不报错
-  // 如果 shallowSet 未提供，回退到 "skip-commit-parents" 兼容行为
-  const reachableLocal = shallowSet
-    ? collectReachable(store, localRoots, "skip", shallowSet)
-    : collectReachable(store, localRoots, "skip-commit-parents");
+  // 本地可达性：使用 "skip-commit-parents" 让缺失的 commit parent 不阻断遍历，
+  // 但 tree/blob/tag 等非 commit-parent 边的缺失仍会抛出 PushError，防止本地损坏被静默掩盖
+  const reachableLocal = collectReachable(store, localRoots, "skip-commit-parents", shallowSet);
 
   // 收集远程已有 refs 的可达对象（用于排除已存在的对象）
   // 此处使用 skip 模式：远程对象在本地缺失是正常情况
