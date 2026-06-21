@@ -8,7 +8,7 @@
 import { describe, test, expect } from "bun:test";
 
 import { encodePktLine } from "@/transport/pkt-line.ts";
-import { createSmartHttpClient } from "@/transport/smart-http.ts";
+import { createSmartHttpClient, SmartHttpError } from "@/transport/smart-http.ts";
 
 // ============================================================================
 // 辅助函数
@@ -103,6 +103,66 @@ describe("postUploadPack side-band 致命错误", () => {
     const result = await client.postUploadPack(body);
     expect(result.packfile).toEqual(packData);
     expect(result.progress).toEqual(["progress: done\n"]);
+
+    globalThis.fetch = originalFetch;
+  });
+});
+
+// ============================================================================
+// 协议错误传播测试
+// ============================================================================
+
+describe("postUploadPack 协议错误应传播而非吞掉", () => {
+  test("非 side-band 但 pkt-line 截断应抛出 SmartHttpError", async () => {
+    const originalFetch = globalThis.fetch;
+
+    // 合法的 NAK pkt-line + 截断的 pkt-line（不完整长度前缀）
+    const truncatedData = Buffer.concat([
+      encodePktLine("NAK\n"),
+      Buffer.from("000", "utf-8"), // 截断，只有 3 字节
+    ]);
+
+    globalThis.fetch = (async () => {
+      return new Response(truncatedData, {
+        status: 200,
+        headers: { "content-type": "application/x-git-upload-pack-result" },
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    }) as any as typeof globalThis.fetch;
+
+    const client = createSmartHttpClient("http://dummy.example.com/repo");
+    const body = Buffer.from("test body");
+
+    // 应抛出 SmartHttpError，而非返回空 packfile
+    const promise = client.postUploadPack(body);
+    await expect(promise).rejects.toThrow(SmartHttpError);
+
+    globalThis.fetch = originalFetch;
+  });
+
+  test("非 side-band 合法 NAK+PACK 响应不受影响", async () => {
+    const originalFetch = globalThis.fetch;
+
+    const rawPack = Buffer.alloc(12);
+    rawPack.write("PACK", 0, "utf-8");
+    rawPack.writeUInt32BE(2, 4);
+    rawPack.writeUInt32BE(0, 8);
+    const data = Buffer.concat([encodePktLine("NAK\n"), rawPack]);
+
+    globalThis.fetch = (async () => {
+      return new Response(data, {
+        status: 200,
+        headers: { "content-type": "application/x-git-upload-pack-result" },
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    }) as any as typeof globalThis.fetch;
+
+    const client = createSmartHttpClient("http://dummy.example.com/repo");
+    const body = Buffer.from("test body");
+
+    const result = await client.postUploadPack(body);
+    expect(result.packfile.length).toBeGreaterThan(0);
+    expect(result.packfile.toString("utf-8").startsWith("PACK")).toBe(true);
 
     globalThis.fetch = originalFetch;
   });

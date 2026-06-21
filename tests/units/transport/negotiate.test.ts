@@ -20,6 +20,7 @@ import {
   buildUploadPackRequest,
   collectHaveCommits,
   parseUploadPackNegotiationResponse,
+  NegotiationError,
 } from "@/transport/negotiate.ts";
 import { parsePktLines, encodePktLine } from "@/transport/pkt-line.ts";
 
@@ -414,6 +415,12 @@ describe("parseUploadPackNegotiationResponse()", () => {
     expect(result.unshallow).toEqual([unshallowHash]);
     expect(result.acknowledgements).toEqual([{ hash: ackHash, status: "continue" }]);
     expect(result.nak).toBe(true);
+  });
+
+  test("损坏的 pkt-line 数据应抛出 NegotiationError，而非静默返回空", () => {
+    // 构造完全不合法的响应：既不是 pkt-line 格式，也不是 PACK 签名开头
+    const data = Buffer.from("GARBAGE DATA WITHOUT PKTLINES", "utf-8");
+    expect(() => parseUploadPackNegotiationResponse(data)).toThrow(NegotiationError);
   });
 });
 

@@ -23,7 +23,8 @@
  * @see https://git-scm.com/docs/http-protocol
  */
 
-import { encodePktLine, encodeFlushPkt, parsePktLines } from "./pkt-line.ts";
+import { GitError } from "../core/errors.ts";
+import { encodePktLine, encodeFlushPkt, splitPktLinesFromBuffer } from "./pkt-line.ts";
 
 import type { SHA1 } from "../core/types.ts";
 import type { ObjectStore } from "../odb/types.ts";
@@ -34,6 +35,20 @@ const MAX_HAVE_DEPTH = 65536;
 
 /** Consecutive 协商每轮发送的最大 have 数量 */
 export const MAX_HAVES_PER_ROUND = 32;
+
+// ============================================================================
+// 错误类型
+// ============================================================================
+
+/**
+ * Negotiation 错误
+ */
+export class NegotiationError extends GitError {
+  constructor(message: string) {
+    super(`negotiation error: ${message}`);
+    this.name = "NegotiationError";
+  }
+}
 
 // ============================================================================
 // Have 候选选择与收集
@@ -443,11 +458,18 @@ export function parseUploadPackNegotiationResponse(data: Buffer): UploadPackNego
   const shallow: SHA1[] = [];
   const unshallow: SHA1[] = [];
 
-  let pktLines: PktLine[];
-  try {
-    pktLines = parsePktLines(data);
-  } catch {
-    return { acknowledgements, nak, hasPackfile, shallow, unshallow };
+  // 使用 splitPktLinesFromBuffer 容忍尾部原始数据（非 side-band 的 raw PACK），
+  // 但如果完全没有有效的 pkt-lines 且数据不是 raw PACK 签名开头，则视为损坏
+  const { lines: pktLines } = splitPktLinesFromBuffer(data);
+
+  if (
+    pktLines.length === 0 &&
+    data.length > 0 &&
+    !data.subarray(0, 4).equals(Buffer.from("PACK", "utf-8"))
+  ) {
+    throw new NegotiationError(
+      "Failed to parse upload-pack negotiation response: no valid pkt-lines found",
+    );
   }
 
   for (const line of pktLines) {

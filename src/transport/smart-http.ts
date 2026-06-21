@@ -13,7 +13,7 @@
  */
 
 import { GitError } from "../core/errors.ts";
-import { parsePktLines } from "./pkt-line.ts";
+import { parsePktLines, PktLineError } from "./pkt-line.ts";
 import { parseReceivePackResult } from "./receive-pack-result.ts";
 import { parseRefAdvertisement, RefAdvertisementError } from "./ref-advertisement.ts";
 import {
@@ -21,6 +21,7 @@ import {
   extractProgress,
   extractRawPackfile,
   extractSideBandFatal,
+  SideBandError,
 } from "./side-band.ts";
 
 import type { PktLineData } from "./pkt-line.ts";
@@ -263,15 +264,25 @@ export function createSmartHttpClient(baseUrl: string, auth?: SmartHttpAuth): Sm
       try {
         packfile = extractPackfile(data);
         progress = extractProgress(data);
-      } catch {
-        // 非 side-band 响应（如 NAK + 原始 packfile），尝试直接从 pkt-line 尾部提取
-        // 若尾部亦无原始数据（纯 ACK/NAK 协商轮次响应），则 packfile 为空
-        try {
-          packfile = extractRawPackfile(data);
-        } catch {
+      } catch (err) {
+        if (err instanceof PktLineError && err.message.includes("Invalid pkt-line length")) {
+          // 非 side-band 响应（如 NAK + 原始 packfile），回退到原始 packfile 提取
+          try {
+            packfile = extractRawPackfile(data);
+          } catch {
+            packfile = Buffer.alloc(0);
+          }
+          progress = [];
+        } else if (err instanceof SideBandError) {
+          // side-band 响应但无 packfile 数据（如协商中间轮次），返回空 packfile
           packfile = Buffer.alloc(0);
+          progress = [];
+        } else {
+          // 截断或其他协议损坏应立即报错，而非静默降级
+          throw new SmartHttpError(
+            `Failed to parse upload-pack response: ${(err as Error).message}`,
+          );
         }
-        progress = [];
       }
 
       return { data, packfile, progress };
