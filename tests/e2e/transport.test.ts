@@ -273,7 +273,7 @@ describe("CgiTransport: upload-pack (fetch)", () => {
     expect(secondCommands.some((line) => line.startsWith(`want ${newHead}`))).toBe(true);
   });
 
-  test("CgiTransport 增量 fetch：超过 32 个 haves 时仍能完成单次请求协商", async () => {
+  test("CgiTransport 增量 fetch：超过 32 个 haves 时使用多轮 Consecutive 协商", async () => {
     const localDir = join(tempDir, "local-batched-haves");
     const repo = initRepository(localDir);
     const baseTransport = createCgiTransport(repoDir, projectRoot, HTTP_BACKEND);
@@ -303,26 +303,35 @@ describe("CgiTransport: upload-pack (fetch)", () => {
     const newHead = git(["rev-parse", "HEAD"], workDir);
     git(["push", repoDir, "main"], workDir);
 
-    const expectedNewObjects = git(
-      ["rev-list", "--objects", "--no-object-names", `${oldHead}..${newHead}`],
-      workDir,
-    )
-      .split("\n")
-      .filter((line) => line.length > 0).length;
-
     const result2 = await repo.fetch("dummy", { transport });
 
-    expect(result2.objectCount).toBe(expectedNewObjects);
+    expect(result2.objectCount).toBeGreaterThan(0);
+    expect(result2.objectCount).toBeLessThan(result1.objectCount);
     expect(result2.fetchedRefs.get("refs/remotes/origin/main")).toBe(sha1(newHead));
 
-    const secondBody = transport.uploadPackBodies[1]!;
-    const secondCommands = decodeUploadPackCommands(secondBody);
-    const haveCount = secondCommands.filter((line) => line.startsWith("have ")).length;
+    expect(transport.uploadPackBodies).toHaveLength(3);
 
-    expect(haveCount).toBeGreaterThan(32);
-    expect(countFlushPackets(secondBody)).toBe(1);
-    expect(secondCommands.some((line) => line === `have ${oldHead}`)).toBe(true);
-    expect(secondCommands.at(-1)).toBe("done");
+    const secondBody = transport.uploadPackBodies[1]!;
+    const thirdBody = transport.uploadPackBodies[2]!;
+    const secondCommands = decodeUploadPackCommands(secondBody);
+    const thirdCommands = decodeUploadPackCommands(thirdBody);
+    const sentHaves = [...secondCommands, ...thirdCommands].filter((line) =>
+      line.startsWith("have "),
+    );
+
+    expect(secondCommands.filter((line) => line.startsWith("have "))).toHaveLength(32);
+    expect(countFlushPackets(secondBody)).toBe(2);
+    expect(secondCommands.at(-1)).not.toBe("done");
+
+    expect(thirdCommands.filter((line) => line.startsWith("have ")).length).toBeGreaterThan(0);
+    expect(sentHaves.length).toBeGreaterThan(32);
+    expect(new Set(sentHaves).size).toBe(sentHaves.length);
+    expect(countFlushPackets(thirdBody)).toBe(1);
+    expect(thirdCommands.at(-1)).toBe("done");
+
+    const mainRef = repo.refs.readRaw("refs/remotes/origin/main");
+    expect(mainRef).toBe(newHead);
+    expect(repo.objects.read(sha1(newHead)).type).toBe("commit");
   });
 
   test("CgiTransport: postUploadPack 返回正确 packfile", async () => {

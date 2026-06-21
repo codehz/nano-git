@@ -310,34 +310,38 @@ export function createCgiTransport(
       const progress: string[] = [];
       let packfile: Buffer;
 
-      const pktLines = parsePktLines(cgiResult.body);
-      if (
-        pktLines.length > 0 &&
-        pktLines[0]!.type === "data" &&
-        (pktLines[0] as PktLineData).payload[0] === 0x01
-      ) {
-        // Side-band 编码
-        const packfileChunks: Buffer[] = [];
-        for (const line of pktLines) {
-          if (line.type !== "data") continue;
-          const payload = line.payload;
-          if (payload.length < 2) continue;
-          const channel = payload[0]!;
-          const frameData = payload.subarray(1);
-          if (channel === 0x01) {
-            packfileChunks.push(frameData);
-          } else if (channel === 0x02) {
-            progress.push(frameData.toString("utf-8").trimEnd());
-          } else if (channel === 0x03) {
-            throw new Error(`Server error: ${frameData.toString("utf-8").trimEnd()}`);
+      try {
+        const pktLines = parsePktLines(cgiResult.body);
+        if (
+          pktLines.length > 0 &&
+          pktLines[0]!.type === "data" &&
+          (pktLines[0] as PktLineData).payload[0] === 0x01
+        ) {
+          // Side-band 编码
+          const packfileChunks: Buffer[] = [];
+          for (const line of pktLines) {
+            if (line.type !== "data") continue;
+            const payload = line.payload;
+            if (payload.length < 2) continue;
+            const channel = payload[0]!;
+            const frameData = payload.subarray(1);
+            if (channel === 0x01) {
+              packfileChunks.push(frameData);
+            } else if (channel === 0x02) {
+              progress.push(frameData.toString("utf-8").trimEnd());
+            } else if (channel === 0x03) {
+              throw new Error(`Server error: ${frameData.toString("utf-8").trimEnd()}`);
+            }
           }
+          packfile = Buffer.concat(packfileChunks);
+        } else {
+          packfile = extractPackfile(cgiResult.body);
         }
-        packfile = Buffer.concat(packfileChunks);
-      } else {
-        packfile = extractPackfile(cgiResult.body);
+      } catch {
+        packfile = Buffer.alloc(0);
       }
 
-      return { packfile, progress };
+      return { data: cgiResult.body, packfile, progress };
     },
 
     async getReceivePackRefs(): Promise<RefAdvertisement> {

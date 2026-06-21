@@ -27,7 +27,13 @@ import { sha1 } from "../core/types.ts";
 import { createPackReader } from "../odb/pack/pack-reader.ts";
 import { deserializeContent } from "../objects/codec.ts";
 import { createSmartHttpClient } from "./smart-http.ts";
-import { buildUploadPackRequest, collectHaveCommits } from "./negotiate.ts";
+import {
+  buildUploadPackNegotiationRound,
+  buildUploadPackRequest,
+  collectHaveCommits,
+  MAX_HAVES_PER_ROUND,
+  parseUploadPackNegotiationResponse,
+} from "./negotiate.ts";
 import type { FetchOptions, FetchResult } from "./types.ts";
 import type { RemoteRef } from "./types.ts";
 import { GitError } from "../core/errors.ts";
@@ -265,10 +271,14 @@ export async function fetch(
     .map((w) => w.localHash)
     .filter((h): h is SHA1 => h !== undefined);
   const haveHashes = localHaveHashes.length > 0 ? collectHaveCommits(store, localHaveHashes) : [];
-  const body = buildUploadPackRequest(wantHashes, haveHashes, caps, options?.depth);
-
   // 7. 发送请求
-  const { packfile } = await client.postUploadPack(body);
+  const packfile = await negotiateAndFetchPackfile(
+    client,
+    wantHashes,
+    haveHashes,
+    caps,
+    options?.depth,
+  );
 
   if (packfile.length === 0) {
     throw new FetchError("Server returned empty packfile");
@@ -319,4 +329,49 @@ function extractCapabilities(serverCaps: Record<string, string | true>): string[
   const supported = new Set<string>(DEFAULT_CAPABILITIES);
   // 只使用服务端也支持的能力
   return Object.keys(serverCaps).filter((cap) => supported.has(cap));
+}
+
+/**
+ * 执行 Consecutive 协商并返回最终 packfile
+ */
+async function negotiateAndFetchPackfile(
+  client: import("./types.ts").RemoteTransport,
+  wants: SHA1[],
+  haves: SHA1[],
+  capabilities: string[],
+  depth?: number,
+): Promise<Buffer> {
+  if (haves.length === 0) {
+    const { packfile } = await client.postUploadPack(
+      buildUploadPackRequest(wants, [], capabilities, depth),
+    );
+    return packfile;
+  }
+
+  let offset = 0;
+  while (offset < haves.length) {
+    const chunk = haves.slice(offset, offset + MAX_HAVES_PER_ROUND);
+    const isLastRound = offset + chunk.length >= haves.length;
+    const body = isLastRound
+      ? buildUploadPackRequest(wants, chunk, capabilities, depth)
+      : buildUploadPackNegotiationRound(wants, chunk, capabilities, depth);
+
+    const { data, packfile } = await client.postUploadPack(body);
+    if (packfile.length > 0) {
+      return packfile;
+    }
+
+    const response = parseUploadPackNegotiationResponse(data);
+    if (response.hasPackfile && packfile.length > 0) {
+      return packfile;
+    }
+
+    if (isLastRound) {
+      return packfile;
+    }
+
+    offset += chunk.length;
+  }
+
+  return Buffer.alloc(0);
 }

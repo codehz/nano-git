@@ -36,7 +36,11 @@ export interface RemoteTransport {
   /** 获取 upload-pack ref 广告 */
   getRefAdvertisement(): Promise<RefAdvertisement>;
   /** 发送 upload-pack 请求 */
-  postUploadPack(body: Buffer): Promise<{ packfile: Buffer; progress: string[] }>;
+  postUploadPack(body: Buffer): Promise<{
+    data: Buffer;
+    packfile: Buffer;
+    progress: string[];
+  }>;
 }
 
 /**

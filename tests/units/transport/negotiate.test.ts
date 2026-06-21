@@ -12,8 +12,13 @@
  */
 
 import { describe, test, expect } from "bun:test";
-import { buildUploadPackRequest, collectHaveCommits } from "../../../src/transport/negotiate.ts";
-import { parsePktLines } from "../../../src/transport/pkt-line.ts";
+import {
+  buildUploadPackNegotiationRound,
+  buildUploadPackRequest,
+  collectHaveCommits,
+  parseUploadPackNegotiationResponse,
+} from "../../../src/transport/negotiate.ts";
+import { parsePktLines, encodePktLine } from "../../../src/transport/pkt-line.ts";
 import { sha1, type SHA1, type GitCommit } from "../../../src/core/types.ts";
 import { createMemoryObjectStore } from "../../../src/odb/memory-store.ts";
 import { serialize } from "../../../src/objects/index.ts";
@@ -216,7 +221,7 @@ describe("buildUploadPackRequest()", () => {
     expect(dataPayload(lines[4]!)).toBe("done\n");
   });
 
-  test("大量 have：单次请求中不插入中间 flush", () => {
+  test("大量 have：最终请求中不插入中间 flush", () => {
     // 创建 35 个 have 哈希（每个都是合法的 40 位十六进制）
     const manyHaves: string[] = [];
     for (let i = 0; i < 35; i++) {
@@ -261,6 +266,18 @@ describe("buildUploadPackRequest()", () => {
 
     // flush 应该仅在 want 后
     expect(flushPositions).toEqual([1]);
+  });
+
+  test("协商轮次请求：have 后以 flush 结束且不带 done", () => {
+    const body = buildUploadPackNegotiationRound([hash1], [hash2, hash3], ["multi_ack"]);
+    const lines = parsePktLines(body);
+
+    expect(lines).toHaveLength(5);
+    expect(dataPayload(lines[0]!)).toBe(`want ${hash1} multi_ack\n`);
+    expect(lines[1]!.type).toBe("flush");
+    expect(dataPayload(lines[2]!)).toBe(`have ${hash2}\n`);
+    expect(dataPayload(lines[3]!)).toBe(`have ${hash3}\n`);
+    expect(lines[4]!.type).toBe("flush");
   });
 
   test("空 wants 应抛出错误", () => {
@@ -321,5 +338,25 @@ describe("buildUploadPackRequest()", () => {
         "Depth must be a positive integer",
       );
     });
+  });
+});
+
+describe("parseUploadPackNegotiationResponse()", () => {
+  test("解析 ACK continue 与 NAK", () => {
+    const hash = sha1("95d09f2b10159347eece71399a7e2e907ea3df4f");
+    const data = Buffer.concat([encodePktLine(`ACK ${hash} continue\n`), encodePktLine("NAK\n")]);
+
+    const result = parseUploadPackNegotiationResponse(data);
+    expect(result.nak).toBe(true);
+    expect(result.hasPackfile).toBe(false);
+    expect(result.acknowledgements).toEqual([{ hash, status: "continue" }]);
+  });
+
+  test("识别带 side-band packfile 的响应", () => {
+    const data = Buffer.concat([
+      encodePktLine(Buffer.concat([Buffer.from([0x01]), Buffer.from("PACK")])),
+    ]);
+    const result = parseUploadPackNegotiationResponse(data);
+    expect(result.hasPackfile).toBe(true);
   });
 });

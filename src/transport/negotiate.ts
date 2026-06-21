@@ -15,12 +15,16 @@
  * @see https://git-scm.com/docs/git-upload-pack#_request
  */
 
-import { encodePktLine, encodeFlushPkt } from "./pkt-line.ts";
+import { encodePktLine, encodeFlushPkt, parsePktLines } from "./pkt-line.ts";
+import type { PktLine } from "./pkt-line.ts";
 import type { SHA1 } from "../core/types.ts";
 import type { ObjectStore } from "../odb/types.ts";
 
 /** 遍历提交图时的最大深度限制 */
 const MAX_HAVE_DEPTH = 65536;
+
+/** Consecutive 协商每轮发送的最大 have 数量 */
+export const MAX_HAVES_PER_ROUND = 32;
 
 // ============================================================================
 // Have 收集（Consecutive 算法）
@@ -163,4 +167,119 @@ export function buildUploadPackRequest(
   chunks.push(encodePktLine("done\n"));
 
   return Buffer.concat(chunks);
+}
+
+/**
+ * 构建不带 done 的 upload-pack 协商轮次请求
+ *
+ * @param wants - want 列表
+ * @param haves - 本轮发送的 have 列表
+ * @param capabilities - 能力列表
+ * @param depth - shallow 深度
+ * @returns pkt-line 编码请求体
+ */
+export function buildUploadPackNegotiationRound(
+  wants: SHA1[],
+  haves: SHA1[],
+  capabilities: string[],
+  depth?: number,
+): Buffer {
+  if (wants.length === 0) {
+    throw new Error("At least one want is required");
+  }
+
+  if (depth !== undefined && depth < 1) {
+    throw new Error("Depth must be a positive integer");
+  }
+
+  const chunks: Buffer[] = [];
+
+  for (let i = 0; i < wants.length; i++) {
+    const hash = wants[i]!;
+    if (i === 0 && capabilities.length > 0) {
+      chunks.push(encodePktLine(`want ${hash} ${capabilities.join(" ")}\n`));
+    } else {
+      chunks.push(encodePktLine(`want ${hash}\n`));
+    }
+  }
+
+  chunks.push(encodeFlushPkt());
+
+  if (depth !== undefined) {
+    chunks.push(encodePktLine(`deepen ${depth}\n`));
+    chunks.push(encodeFlushPkt());
+  }
+
+  for (const hash of haves) {
+    chunks.push(encodePktLine(`have ${hash}\n`));
+  }
+
+  chunks.push(encodeFlushPkt());
+
+  return Buffer.concat(chunks);
+}
+
+/**
+ * 协商 ACK 状态
+ */
+export type UploadPackAckStatus = "continue" | "common" | "ready";
+
+/**
+ * upload-pack 协商响应解析结果
+ */
+export interface UploadPackNegotiationResponse {
+  acknowledgements: Array<{ hash: SHA1; status: UploadPackAckStatus }>;
+  nak: boolean;
+  hasPackfile: boolean;
+}
+
+/**
+ * 解析 upload-pack 协商响应中的 ACK/NAK 与 packfile 信号
+ */
+export function parseUploadPackNegotiationResponse(data: Buffer): UploadPackNegotiationResponse {
+  const acknowledgements: Array<{ hash: SHA1; status: UploadPackAckStatus }> = [];
+  let nak = false;
+  let hasPackfile = false;
+
+  let pktLines: PktLine[];
+  try {
+    pktLines = parsePktLines(data);
+  } catch {
+    return { acknowledgements, nak, hasPackfile: data.includes("PACK") };
+  }
+
+  for (const line of pktLines) {
+    if (line.type !== "data") {
+      continue;
+    }
+
+    const payload = line.payload;
+
+    if (payload.length > 0 && (payload[0] === 0x01 || payload[0] === 0x02 || payload[0] === 0x03)) {
+      if (payload[0] === 0x01 && payload.subarray(1).includes("PACK")) {
+        hasPackfile = true;
+      }
+      continue;
+    }
+
+    const text = payload.toString("utf-8").trimEnd();
+    if (text === "NAK") {
+      nak = true;
+      continue;
+    }
+
+    const match = text.match(/^ACK ([0-9a-f]{40})(?: (continue|common|ready))?$/);
+    if (match) {
+      acknowledgements.push({
+        hash: match[1]! as SHA1,
+        status: (match[2] as UploadPackAckStatus | undefined) ?? "common",
+      });
+    }
+  }
+
+  if (!hasPackfile) {
+    hasPackfile = data.includes("PACK");
+  }
+
+  return { acknowledgements, nak, hasPackfile };
 }

@@ -47,6 +47,8 @@ export class SmartHttpError extends GitError {
 
 /** upload-pack 响应结果 */
 export interface UploadPackResult {
+  /** 原始响应体 */
+  data: Buffer;
   /** 完整的 packfile 数据 */
   packfile: Buffer;
   /** 服务端推送的进度消息列表 */
@@ -255,7 +257,7 @@ export function createSmartHttpClient(baseUrl: string, auth?: SmartHttpAuth): Sm
         progress = [];
       }
 
-      return { packfile, progress };
+      return { data, packfile, progress };
     },
 
     async getReceivePackRefs(): Promise<RefAdvertisement> {

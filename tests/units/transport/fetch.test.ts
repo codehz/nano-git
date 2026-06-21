@@ -18,6 +18,7 @@ import { sha1, type SHA1, type GitBlob, type GitCommit } from "../../../src/core
 import { createMemoryObjectStore } from "../../../src/odb/memory-store.ts";
 import { createMemoryRefStore } from "../../../src/refs/stores/memory.ts";
 import { toEncodedPackObject, buildEncodedPack } from "../../../src/odb/pack/pack-encoding.ts";
+import { parsePktLines } from "../../../src/transport/pkt-line.ts";
 
 // ============================================================================
 // 辅助函数
@@ -193,7 +194,7 @@ describe("fetch() 增量 fetch 行为", () => {
       }),
       postUploadPack: async (body: Buffer) => {
         const packfile = onUploadPack?.(body) ?? Buffer.alloc(0);
-        return { packfile, progress: [] };
+        return { data: packfile, packfile, progress: [] };
       },
     };
   }
@@ -366,6 +367,82 @@ describe("fetch() 增量 fetch 行为", () => {
     expect(bodyStr).toContain("deepen 3\n");
 
     // 对象仍能正确写入
+    expect(objectStore.exists(entry.hash)).toBe(true);
+    expect(result.objectCount).toBe(1);
+  });
+
+  test("Consecutive 协商：超过 32 个 haves 时分多轮发送，最后一轮带 done", async () => {
+    const objectStore = createMemoryObjectStore();
+
+    let head = createTestCommit(objectStore, [], 100);
+    const allHaves: SHA1[] = [head];
+    for (let i = 0; i < 35; i++) {
+      head = createTestCommit(objectStore, [head], 101 + i);
+      allHaves.push(head);
+    }
+
+    const remoteHead = createTestCommit(objectStore, [head], 1000);
+    const refStore = createMemoryRefStore(new Map([["refs/remotes/origin/main", head]]));
+    const { entry, packData } = createBlobPackfile("batched negotiation");
+
+    const bodies: Buffer[] = [];
+    let callCount = 0;
+    const transport: RemoteTransport = {
+      getReceivePackRefs: async () => {
+        throw new Error("not used in fetch");
+      },
+      postReceivePack: async () => {
+        throw new Error("not used in fetch");
+      },
+      getRefAdvertisement: async () => ({
+        capabilities: { multi_ack: true, "side-band-64k": true, "ofs-delta": true },
+        refs: [{ name: "refs/heads/main", hash: remoteHead }],
+      }),
+      postUploadPack: async (body: Buffer) => {
+        bodies.push(body);
+        callCount++;
+
+        if (callCount === 1) {
+          return {
+            data: Buffer.from(`003aACK ${allHaves[0]} continue\n0008NAK\n`, "utf-8"),
+            packfile: Buffer.alloc(0),
+            progress: [],
+          };
+        }
+
+        return {
+          data: packData,
+          packfile: packData,
+          progress: [],
+        };
+      },
+    };
+
+    const result = await fetch(objectStore, refStore, "dummy", {
+      transport,
+      refSpecs: ["+refs/heads/*:refs/remotes/origin/*"],
+    });
+
+    expect(bodies).toHaveLength(2);
+
+    const firstLines = parsePktLines(bodies[0]!);
+    const secondLines = parsePktLines(bodies[1]!);
+
+    const firstData = firstLines
+      .filter((line) => line.type === "data")
+      .map((line) => line.payload.toString("utf-8").trimEnd());
+    const secondData = secondLines
+      .filter((line) => line.type === "data")
+      .map((line) => line.payload.toString("utf-8").trimEnd());
+
+    expect(firstData.filter((line) => line.startsWith("have "))).toHaveLength(32);
+    expect(firstData.at(-1)).not.toBe("done");
+    expect(firstLines.filter((line) => line.type === "flush")).toHaveLength(2);
+
+    expect(secondData.filter((line) => line.startsWith("have "))).toHaveLength(4);
+    expect(secondData.at(-1)).toBe("done");
+    expect(secondLines.filter((line) => line.type === "flush")).toHaveLength(1);
+
     expect(objectStore.exists(entry.hash)).toBe(true);
     expect(result.objectCount).toBe(1);
   });
