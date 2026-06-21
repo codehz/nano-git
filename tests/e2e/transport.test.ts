@@ -1,13 +1,8 @@
 /**
- * Smart HTTP 传输层 — CGI 集成测试
+ * CgiTransport 集成测试
  *
- * 利用 git http-backend CGI 程序测试客户端协议实现的正确性。
- *
- * 测试方式：
- * - 使用 git 创建仓库和提交
- * - 通过 GIT_PROJECT_ROOT + CGI 环境变量直接调用 git-http-backend
- * - 用 nano-git 的协议解析层解析响应
- * - 双向验证解析结果
+ * 通过 CgiTransport 将 fetch/push 高层 API 接入 git http-backend CGI，
+ * 验证 ref advertisement、upload-pack（fetch）、receive-pack（push）的完整流程。
  */
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
@@ -15,37 +10,22 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import {
-  git,
-  gitInit,
-  gitHashObjectWrite,
-  gitCommitTree,
-  gitUpdateRef,
-  gitCatFileType,
-  createTempDir,
-  cleanupDir,
-  createFile,
-  FIXED_AUTHOR,
-} from "./helpers.ts";
-
-import { parseRefAdvertisement } from "../../src/transport/ref-advertisement.ts";
-import { extractPackfile } from "../../src/transport/side-band.ts";
-import { buildUploadPackRequest } from "../../src/transport/negotiate.ts";
-import { buildReceivePackRequest } from "../../src/transport/receive-pack-request.ts";
-import { parseReceivePackResult } from "../../src/transport/receive-pack-result.ts";
-import { parsePktLines, encodePktLine, encodeFlushPkt } from "../../src/transport/pkt-line.ts";
-import type { PktLineData } from "../../src/transport/pkt-line.ts";
+import { git, gitInit, createTempDir, cleanupDir, createFile, FIXED_AUTHOR } from "./helpers.ts";
 
 import { sha1 } from "../../src/core/types.ts";
+import { createCgiTransport } from "../../src/transport/cgi-transport.ts";
+import {
+  createMemoryRepository,
+  initRepository,
+  type Repository,
+} from "../../src/repository/index.ts";
 
 // ============================================================================
 // 常量
 // ============================================================================
 
-/** git http-backend 的路径 */
 const HTTP_BACKEND = "/usr/lib/git-core/git-http-backend";
 
-/** 可导出的环境变量（防止 git 报警告） */
 const GIT_ENV: Record<string, string> = {
   GIT_AUTHOR_NAME: FIXED_AUTHOR.name,
   GIT_AUTHOR_EMAIL: FIXED_AUTHOR.email,
@@ -59,114 +39,49 @@ const GIT_ENV: Record<string, string> = {
 };
 
 // ============================================================================
-// CGI 辅助函数
+// 辅助函数
 // ============================================================================
 
-/**
- * CGI 请求结果
- */
-interface CgiResult {
-  /** HTTP 状态码 */
-  status: number;
-  /** HTTP 响应头 */
-  headers: Record<string, string>;
-  /** 响应体（raw Buffer） */
-  body: Buffer;
+function enableReceivePack(repoDir: string): void {
+  const configPath = join(repoDir, "config");
+  const config = readFileSync(configPath, "utf-8");
+  if (!config.includes("http.receivepack")) {
+    writeFileSync(configPath, config + "\n[http]\n\treceivepack = true\n", "utf-8");
+  }
 }
 
-/**
- * 调用 git http-backend CGI
- *
- * 使用 spawnSync 模拟 CGI 请求，设置标准的 CGI 环境变量。
- *
- * @param repoDir - 裸仓库目录
- * @param projectRoot - GIT_PROJECT_ROOT 目录（repoDir 的父目录）
- * @param method - HTTP 方法
- * @param pathInfo - PATH_INFO（如 /test.git/info/refs）
- * @param queryString - QUERY_STRING（可选）
- * @param body - 请求体（POST 时使用）
- * @returns 解析后的 CGI 响应
- */
-function callGitHttpBackend(
-  repoDir: string,
-  projectRoot: string,
-  method: string,
-  pathInfo: string,
-  queryString?: string,
-  body?: Buffer,
-): CgiResult {
-  // 根据路径自动确定 content type
-  const contentType =
-    method === "POST"
-      ? pathInfo.includes("git-receive-pack")
-        ? "application/x-git-receive-pack-request"
-        : "application/x-git-upload-pack-request"
-      : "";
+/** 用系统 git 创建裸仓库并推送初始提交 */
+function createServerRepo(
+  tempDir: string,
+  name: string,
+  enablePush = false,
+): { repoDir: string; projectRoot: string; commitHash: string; workDir: string } {
+  const repoDir = join(tempDir, name);
+  const projectRoot = tempDir;
+  const workDir = join(tempDir, "work-" + name);
 
-  const env: Record<string, string> = {
-    ...GIT_ENV,
-    REQUEST_METHOD: method,
-    GIT_PROJECT_ROOT: projectRoot,
-    PATH_INFO: pathInfo,
-    CONTENT_TYPE: contentType,
-    QUERY_STRING: queryString ?? "",
-  };
-
-  const result = spawnSync(HTTP_BACKEND, [], {
-    env: { ...process.env, ...env },
-    input: body,
-  });
-
-  // 解析 CGI 输出：headers + \r\n\r\n + body
-  const stdout = result.stdout ?? Buffer.alloc(0);
-  const stderr = result.stderr?.toString() ?? "";
-
-  // 查找 headers/body 分隔符
-  const headerEndIndex = stdout.indexOf("\r\n\r\n");
-  if (headerEndIndex === -1) {
-    throw new Error(
-      `CGI output has no header/body separator\nstdout: ${stdout.toString("utf-8").slice(0, 200)}\nstderr: ${stderr}`,
-    );
+  mkdirSync(repoDir);
+  git(["init", "--bare"], repoDir);
+  if (enablePush) {
+    enableReceivePack(repoDir);
   }
 
-  // 解析 headers
-  const headerSection = stdout.subarray(0, headerEndIndex).toString("utf-8");
-  const bodyBuffer = stdout.subarray(headerEndIndex + 4);
-  const headers: Record<string, string> = {};
-  let status = 200;
+  mkdirSync(workDir);
+  gitInit(workDir);
+  createFile(workDir, "README.md", "# Hello\n");
+  git(["add", "README.md"], workDir);
+  git(["commit", "-m", "Initial commit"], workDir);
+  const commitHash = git(["rev-parse", "HEAD"], workDir);
+  git(["push", repoDir, "main"], workDir);
 
-  for (const line of headerSection.split("\r\n")) {
-    const trimmedLine = line.trim();
-    if (trimmedLine.length === 0) continue;
-
-    if (trimmedLine.startsWith("Status: ")) {
-      status = parseInt(trimmedLine.slice(8), 10);
-      continue;
-    }
-
-    const colonIndex = trimmedLine.indexOf(": ");
-    if (colonIndex !== -1) {
-      const key = trimmedLine.slice(0, colonIndex);
-      const value = trimmedLine.slice(colonIndex + 2);
-      headers[key] = value;
-    }
-  }
-
-  return { status, headers, body: bodyBuffer };
-}
-
-/**
- * 获取仓库的子目录名称（用于 PATH_INFO）
- */
-function repoName(repoDir: string): string {
-  return repoDir.split("/").pop()!;
+  return { repoDir, projectRoot, commitHash, workDir };
 }
 
 // ============================================================================
-// 测试
+// Ref Advertisement 测试
 // ============================================================================
 
-describe("CGI: ref advertisement", () => {
+describe("CgiTransport: ref advertisement", () => {
   let tempDir: string;
   let repoDir: string;
   let projectRoot: string;
@@ -174,105 +89,66 @@ describe("CGI: ref advertisement", () => {
 
   beforeEach(() => {
     tempDir = createTempDir("e2e-transport");
-    repoDir = join(tempDir, "test.git");
-    projectRoot = tempDir;
-
-    // 创建裸仓库
-    mkdirSync(repoDir);
-    git(["init", "--bare"], repoDir);
-
-    // 创建临时工作目录来生成提交
-    const workDir = join(tempDir, "work");
-    gitInit(workDir);
-    createFile(workDir, "README.md", "# Hello\n");
-    git(["add", "README.md"], workDir);
-    git(["commit", "-m", "Initial commit"], workDir);
-
-    // 获取 commit hash
-    commitHash = git(["rev-parse", "HEAD"], workDir);
-
-    // push 到裸仓库
-    git(["push", repoDir, "main"], workDir);
+    const server = createServerRepo(tempDir, "test.git");
+    repoDir = server.repoDir;
+    projectRoot = server.projectRoot;
+    commitHash = server.commitHash;
   });
 
   afterEach(() => {
     cleanupDir(tempDir);
   });
 
-  test("解析 ref advertisement 并验证 refs", () => {
-    const cgiResult = callGitHttpBackend(
-      repoDir,
-      projectRoot,
-      "GET",
-      `/${repoName(repoDir)}/info/refs`,
-      "service=git-upload-pack",
-    );
+  test("解析 ref advertisement 并验证 refs", async () => {
+    const transport = createCgiTransport(repoDir, projectRoot, HTTP_BACKEND);
+    const adv = await transport.getRefAdvertisement();
 
-    expect(cgiResult.status).toBe(200);
-    expect(cgiResult.headers["Content-Type"]).toBe("application/x-git-upload-pack-advertisement");
-
-    const adv = parseRefAdvertisement(cgiResult.body, "git-upload-pack");
-
-    // 应有 HEAD 和 refs/heads/main
     expect(adv.refs.length).toBeGreaterThanOrEqual(1);
 
     const mainRef = adv.refs.find((r) => r.name === "refs/heads/main");
     expect(mainRef).toBeDefined();
     expect(mainRef!.hash).toBe(sha1(commitHash));
 
-    // capabilities 应包含标准能力
     expect(adv.capabilities["multi_ack"]).toBe(true);
     expect(adv.capabilities["side-band-64k"]).toBe(true);
     expect(adv.capabilities["ofs-delta"]).toBe(true);
     expect(adv.capabilities["agent"]).toMatch(/^git\//);
   });
 
-  test("解析带多个分支的 ref advertisement", () => {
-    // 创建额外分支
-    const workDir = join(tempDir, "work2");
-    gitInit(workDir);
-    createFile(workDir, "feature.md", "# Feature\n");
-    git(["add", "feature.md"], workDir);
-    git(["commit", "-m", "Feature commit"], workDir);
-    // 推送到同一个裸仓库
-    git(["remote", "add", "origin", repoDir], workDir);
-    git(["push", "origin", "HEAD:refs/heads/feature"], workDir);
+  test("解析带多个分支的 ref advertisement", async () => {
+    // 创建额外分支：用系统 git 从另一个工作目录 push
+    const branchDir = join(tempDir, "branch-work");
+    gitInit(branchDir);
+    createFile(branchDir, "feature.md", "# Feature\n");
+    git(["add", "feature.md"], branchDir);
+    git(["commit", "-m", "Feature commit"], branchDir);
+    git(["push", repoDir, "HEAD:refs/heads/feature"], branchDir);
 
-    // 拉取 ref advertisement
-    const cgiResult = callGitHttpBackend(
-      repoDir,
-      projectRoot,
-      "GET",
-      `/${repoName(repoDir)}/info/refs`,
-      "service=git-upload-pack",
-    );
-    const adv = parseRefAdvertisement(cgiResult.body, "git-upload-pack");
+    const transport = createCgiTransport(repoDir, projectRoot, HTTP_BACKEND);
+    const adv = await transport.getRefAdvertisement();
 
     const featureRef = adv.refs.find((r) => r.name === "refs/heads/feature");
     expect(featureRef).toBeDefined();
   });
 
-  test("空仓库应返回 capabilities^{} 行", () => {
-    const emptyRepoDir = join(tempDir, "empty.git");
-    mkdirSync(emptyRepoDir);
-    git(["init", "--bare"], emptyRepoDir);
+  test("空仓库应返回 capabilities 但无 refs", async () => {
+    const emptyDir = join(tempDir, "empty.git");
+    mkdirSync(emptyDir);
+    git(["init", "--bare"], emptyDir);
 
-    const cgiResult = callGitHttpBackend(
-      emptyRepoDir,
-      tempDir,
-      "GET",
-      `/empty.git/info/refs`,
-      "service=git-upload-pack",
-    );
+    const transport = createCgiTransport(emptyDir, tempDir, HTTP_BACKEND);
+    const adv = await transport.getRefAdvertisement();
 
-    const adv = parseRefAdvertisement(cgiResult.body, "git-upload-pack");
     expect(adv.refs).toHaveLength(0);
-    // capabilities 应存在
     expect(Object.keys(adv.capabilities).length).toBeGreaterThan(0);
   });
 });
 
-describe("CGI: upload-pack (fetch)", () => {
+// ============================================================================
+// Upload-Pack (Fetch) 测试
+// ============================================================================
+
+describe("CgiTransport: upload-pack (fetch)", () => {
   let tempDir: string;
   let repoDir: string;
   let projectRoot: string;
@@ -280,140 +156,124 @@ describe("CGI: upload-pack (fetch)", () => {
 
   beforeEach(() => {
     tempDir = createTempDir("e2e-transport-fetch");
-    repoDir = join(tempDir, "test.git");
-    projectRoot = tempDir;
-
-    mkdirSync(repoDir);
-    git(["init", "--bare"], repoDir);
-
-    const workDir = join(tempDir, "work");
-    gitInit(workDir);
-    createFile(workDir, "README.md", "# Hello\n");
-    git(["add", "README.md"], workDir);
-    git(["commit", "-m", "Initial commit"], workDir);
-    commitHash = git(["rev-parse", "HEAD"], workDir);
-    git(["push", repoDir, "main"], workDir);
+    const server = createServerRepo(tempDir, "test.git");
+    repoDir = server.repoDir;
+    projectRoot = server.projectRoot;
+    commitHash = server.commitHash;
   });
 
   afterEach(() => {
     cleanupDir(tempDir);
   });
 
-  test("发送 want 请求并解包 packfile（使用 buildUploadPackRequest）", () => {
-    // 1. 先获取 ref advertisement 取得 want hash
-    const advResult = callGitHttpBackend(
-      repoDir,
-      projectRoot,
-      "GET",
-      `/${repoName(repoDir)}/info/refs`,
-      "service=git-upload-pack",
-    );
-    const adv = parseRefAdvertisement(advResult.body, "git-upload-pack");
+  test("CgiTransport 配合 repo.fetch() 完成拉取", async () => {
+    // CgiTransport 注入给 initRepository 的 repo
+    const localDir = join(tempDir, "local");
+    const repo = initRepository(localDir);
+    const transport = createCgiTransport(repoDir, projectRoot, HTTP_BACKEND);
+
+    const result = await repo.fetch("dummy", { transport });
+
+    expect(result.objectCount).toBeGreaterThan(0);
+
+    const mainRef = repo.refs.readRaw("refs/remotes/origin/main");
+    expect(mainRef).not.toBeNull();
+    expect(mainRef!.length).toBe(40);
+  });
+
+  test("CgiTransport fetch 到已存在对象的仓库（增量场景）", async () => {
+    const localDir = join(tempDir, "local2");
+    const repo = initRepository(localDir);
+    const transport = createCgiTransport(repoDir, projectRoot, HTTP_BACKEND);
+
+    const result1 = await repo.fetch("dummy", { transport });
+    expect(result1.objectCount).toBeGreaterThan(0);
+
+    const result2 = await repo.fetch("dummy", { transport });
+    expect(result2.objectCount).toBe(0);
+  });
+
+  test("CgiTransport: postUploadPack 返回正确 packfile", async () => {
+    const transport = createCgiTransport(repoDir, projectRoot, HTTP_BACKEND);
+    const adv = await transport.getRefAdvertisement();
     const mainRef = adv.refs.find((r) => r.name === "refs/heads/main");
     expect(mainRef).toBeDefined();
 
+    const { buildUploadPackRequest } = await import("../../src/transport/negotiate.ts");
     const caps = ["multi_ack", "side-band-64k", "ofs-delta"];
+    const body = buildUploadPackRequest([mainRef!.hash], [], caps);
 
-    // 2. 使用 buildUploadPackRequest 构造请求 body
-    const wantBody = buildUploadPackRequest([mainRef!.hash], [], caps);
-
-    const fetchResult = callGitHttpBackend(
-      repoDir,
-      projectRoot,
-      "POST",
-      `/${repoName(repoDir)}/git-upload-pack`,
-      undefined,
-      wantBody,
-    );
-
-    expect(fetchResult.status).toBe(200);
-    expect(fetchResult.headers["Content-Type"]).toBe("application/x-git-upload-pack-result");
-
-    // 3. 用 side-band 解复用提取 packfile
-    const packfile = extractPackfile(fetchResult.body);
-    expect(packfile.length).toBeGreaterThan(0);
-
-    // 4. 验证 packfile 以 "PACK" 开头
-    expect(packfile.subarray(0, 4).toString("utf-8")).toBe("PACK");
-  });
-
-  test("增量 fetch：want + have + done（使用 buildUploadPackRequest）", () => {
-    // 在已有工作目录上添加新提交
-    const fetchWorkDir = join(tempDir, "work");
-    createFile(fetchWorkDir, "FEATURE.md", "# Feature\n");
-    git(["add", "FEATURE.md"], fetchWorkDir);
-    git(["commit", "-m", "Add feature"], fetchWorkDir);
-    const newCommitHash = git(["rev-parse", "HEAD"], fetchWorkDir);
-    git(["push", "--force", repoDir, "main"], fetchWorkDir);
-
-    // 获取 ref advertisement
-    const advResult = callGitHttpBackend(
-      repoDir,
-      projectRoot,
-      "GET",
-      `/${repoName(repoDir)}/info/refs`,
-      "service=git-upload-pack",
-    );
-    const adv = parseRefAdvertisement(advResult.body, "git-upload-pack");
-    const mainRef = adv.refs.find((r) => r.name === "refs/heads/main");
-    expect(mainRef).toBeDefined();
-
-    const caps = ["multi_ack", "side-band-64k", "ofs-delta"];
-
-    // 使用 buildUploadPackRequest 构造增量 fetch 请求
-    const wantBody = buildUploadPackRequest([sha1(newCommitHash)], [sha1(commitHash)], caps);
-
-    const fetchResult = callGitHttpBackend(
-      repoDir,
-      projectRoot,
-      "POST",
-      `/${repoName(repoDir)}/git-upload-pack`,
-      undefined,
-      wantBody,
-    );
-
-    expect(fetchResult.status).toBe(200);
-
-    // 验证响应体中包含 NAK（增量 fetch 的正常 ACK/NAK 响应）
-    const bodyStr = fetchResult.body.toString("utf-8");
-    expect(bodyStr).toContain("NAK");
-  });
-
-  test("NAK 响应（没有共同对象的 fetch）", () => {
-    // 模拟 clone：发送 want 空 hash（0000...）应得到 NAK
-    const wantBody = Buffer.concat([
-      encodePktLine(
-        `want 0000000000000000000000000000000000000000 multi_ack side-band-64k ofs-delta\n`,
-      ),
-      encodeFlushPkt(),
-      encodePktLine("done\n"),
-      encodeFlushPkt(),
-    ]);
-
-    const fetchResult = callGitHttpBackend(
-      repoDir,
-      projectRoot,
-      "POST",
-      `/${repoName(repoDir)}/git-upload-pack`,
-      undefined,
-      wantBody,
-    );
-
-    // 应该收到响应（可能是 NAK + abort）
-    // 检查响应体是否包含 NAK
-    const bodyStr = fetchResult.body.toString("utf-8");
-    // 即使有错误，也应能正常处理
-    expect(fetchResult.status).toBe(200);
+    const result = await transport.postUploadPack(body);
+    expect(result.packfile.length).toBeGreaterThan(0);
+    expect(result.packfile.subarray(0, 4).toString("utf-8")).toBe("PACK");
   });
 });
 
-describe("CGI: 完整 fetch 流程（HTTP 服务器）", () => {
+// ============================================================================
+// Receive-Pack (Push) 测试
+// ============================================================================
+
+describe("CgiTransport: receive-pack (push)", () => {
+  let tempDir: string;
+  let repoDir: string;
+  let projectRoot: string;
+  let commitHash: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir("e2e-transport-push");
+    const server = createServerRepo(tempDir, "test.git", true);
+    repoDir = server.repoDir;
+    projectRoot = server.projectRoot;
+    commitHash = server.commitHash;
+  });
+
+  afterEach(() => {
+    cleanupDir(tempDir);
+  });
+
+  test("解析 receive-pack ref advertisement", async () => {
+    const transport = createCgiTransport(repoDir, projectRoot, HTTP_BACKEND);
+    const adv = await transport.getReceivePackRefs();
+
+    expect(adv.refs.length).toBeGreaterThanOrEqual(1);
+
+    const mainRef = adv.refs.find((r) => r.name === "refs/heads/main");
+    expect(mainRef).toBeDefined();
+    expect(mainRef!.hash).toBe(sha1(commitHash));
+
+    expect(adv.capabilities["report-status"]).toBe(true);
+    expect(adv.capabilities["side-band-64k"]).toBe(true);
+    expect(adv.capabilities["ofs-delta"]).toBe(true);
+    expect(adv.capabilities["delete-refs"]).toBe(true);
+  });
+
+  test("解析带多个分支的 receive-pack ref advertisement", async () => {
+    // 创建额外分支：用系统 git 从另一个工作目录 push
+    const branchDir = join(tempDir, "branch-work");
+    gitInit(branchDir);
+    createFile(branchDir, "feature.md", "# Feature\n");
+    git(["add", "feature.md"], branchDir);
+    git(["commit", "-m", "Feature commit"], branchDir);
+    git(["push", repoDir, "HEAD:refs/heads/feature"], branchDir);
+
+    const transport = createCgiTransport(repoDir, projectRoot, HTTP_BACKEND);
+    const adv = await transport.getReceivePackRefs();
+
+    const featureRef = adv.refs.find((r) => r.name === "refs/heads/feature");
+    expect(featureRef).toBeDefined();
+  });
+});
+
+// ============================================================================
+// 完整 Fetch 流程（通过 HTTP 服务器）
+// ============================================================================
+
+describe("完整 fetch 流程（HTTP 服务器）", () => {
   let tempDir: string;
   let serverRepoDir: string;
   let projectRoot: string;
   let serverUrl: string;
   let server: { stop(): void };
-  let commitHash: string;
 
   beforeEach(() => {
     tempDir = createTempDir("e2e-full-fetch");
@@ -431,7 +291,6 @@ describe("CGI: 完整 fetch 流程（HTTP 服务器）", () => {
     createFile(workDir, "src/index.js", 'console.log("hello");\n');
     git(["add", "README.md", "src/index.js"], workDir);
     git(["commit", "-m", "Initial commit"], workDir);
-    commitHash = git(["rev-parse", "HEAD"], workDir);
     git(["push", serverRepoDir, "main"], workDir);
 
     // 创建第二个提交
@@ -449,15 +308,12 @@ describe("CGI: 完整 fetch 流程（HTTP 服务器）", () => {
         const url = new URL(req.url);
         const method = req.method;
 
-        // 只处理 Git 相关路径
         if (!url.pathname.includes("/info/refs") && !url.pathname.includes("/git-upload-pack")) {
           return new Response("Not Found", { status: 404 });
         }
 
-        // PATH_INFO 直接使用 URL 路径（包含仓库名）
         const pathInfo = url.pathname;
 
-        // 设置 CGI 环境变量
         const env: Record<string, string> = {
           ...GIT_ENV,
           REQUEST_METHOD: method,
@@ -493,7 +349,6 @@ describe("CGI: 完整 fetch 流程（HTTP 服务器）", () => {
           }
         }
 
-        // 提取 Content-Type
         let contentType = "application/octet-stream";
         for (const line of headerSection.split("\r\n")) {
           const trimmedLine = line.trim();
@@ -523,200 +378,33 @@ describe("CGI: 完整 fetch 流程（HTTP 服务器）", () => {
   });
 
   test("完整初始 clone 流程（使用 repo.fetch()）", async () => {
-    const { initRepository } = await import("../../src/repository/index.ts");
-
-    // 创建本地目标仓库
     const localDir = join(tempDir, "local");
     const repo = initRepository(localDir);
 
-    // 使用 repo.fetch() API 执行 fetch
     const result = await repo.fetch(serverUrl);
 
-    // 验证结果
     expect(result.objectCount).toBeGreaterThan(0);
 
-    // 验证 refs 被正确写入
     const mainRef = repo.refs.readRaw("refs/remotes/origin/main");
     expect(mainRef).not.toBeNull();
     expect(mainRef!.length).toBe(40);
 
-    // 验证 HEAD 也被写入
     const headRef = repo.refs.readRaw("HEAD");
     expect(headRef).not.toBeNull();
 
-    // 验证可以通过哈希读取对象
     const commitObj = repo.objects.read(sha1(mainRef!));
     expect(commitObj.type).toBe("commit");
   });
 
-  test("fetch 到已存在对象的仓库（增量 fetch 场景，使用 repo.fetch()）", async () => {
-    const { initRepository } = await import("../../src/repository/index.ts");
-
+  test("fetch 到已存在对象的仓库（增量 fetch 场景）", async () => {
     const localDir = join(tempDir, "local2");
     const repo = initRepository(localDir);
 
-    // 第一次 fetch（使用 repo.fetch()）
     const result1 = await repo.fetch(serverUrl);
     expect(result1.objectCount).toBeGreaterThan(0);
 
-    // 第二次 fetch（应返回 0 个新对象）
     const result2 = await repo.fetch(serverUrl);
     expect(result2.objectCount).toBe(0);
     expect(result2.fetchedRefs.size).toBe(0);
-  });
-});
-
-// ============================================================================
-// CGI: receive-pack (push) 测试
-// ============================================================================
-
-describe("CGI: receive-pack (push)", () => {
-  let tempDir: string;
-  let repoDir: string;
-  let projectRoot: string;
-  let parentCommitHash: string;
-  let commitHash: string;
-
-  beforeEach(() => {
-    tempDir = createTempDir("e2e-receive-pack");
-    repoDir = join(tempDir, "test.git");
-    projectRoot = tempDir;
-
-    // 创建裸仓库（receive-pack 需要 http.receivepack=true）
-    mkdirSync(repoDir);
-    git(["init", "--bare"], repoDir);
-    // 启用 receive-pack 服务（直接修改 config 文件）
-    const configPath = join(repoDir, "config");
-    writeFileSync(
-      configPath,
-      readFileSync(configPath, "utf-8") + "\n[http]\n\treceivepack = true\n",
-      "utf-8",
-    );
-
-    // 创建临时工作目录来生成提交
-    const workDir = join(tempDir, "work");
-    gitInit(workDir);
-    createFile(workDir, "README.md", "# Hello\n");
-    git(["add", "README.md"], workDir);
-    git(["commit", "-m", "Initial commit"], workDir);
-    parentCommitHash = git(["rev-parse", "HEAD"], workDir);
-
-    // push 到裸仓库
-    git(["push", repoDir, "main"], workDir);
-
-    // 创建第二个提交（后续用于 push 测试）
-    createFile(workDir, "FEATURE.md", "# Feature\n");
-    git(["add", "FEATURE.md"], workDir);
-    git(["commit", "-m", "Feature commit"], workDir);
-    commitHash = git(["rev-parse", "HEAD"], workDir);
-  });
-
-  afterEach(() => {
-    cleanupDir(tempDir);
-  });
-
-  test("解析 receive-pack ref advertisement", () => {
-    const cgiResult = callGitHttpBackend(
-      repoDir,
-      projectRoot,
-      "GET",
-      `/${repoName(repoDir)}/info/refs`,
-      "service=git-receive-pack",
-    );
-
-    expect(cgiResult.status).toBe(200);
-    expect(cgiResult.headers["Content-Type"]).toBe("application/x-git-receive-pack-advertisement");
-
-    const adv = parseRefAdvertisement(cgiResult.body, "git-receive-pack");
-
-    // 应有 HEAD 和 refs/heads/main
-    expect(adv.refs.length).toBeGreaterThanOrEqual(1);
-
-    const mainRef = adv.refs.find((r) => r.name === "refs/heads/main");
-    expect(mainRef).toBeDefined();
-    expect(mainRef!.hash).toBe(sha1(parentCommitHash));
-
-    // receive-pack 的能力应包含 report-status
-    expect(adv.capabilities["report-status"]).toBe(true);
-    expect(adv.capabilities["side-band-64k"]).toBe(true);
-    expect(adv.capabilities["ofs-delta"]).toBe(true);
-    expect(adv.capabilities["delete-refs"]).toBe(true);
-  });
-
-  test("解析带多个分支的 receive-pack ref advertisement", () => {
-    // 创建额外分支
-    const workDir = join(tempDir, "work2");
-    gitInit(workDir);
-    createFile(workDir, "feature.md", "# Feature\n");
-    git(["add", "feature.md"], workDir);
-    git(["commit", "-m", "Feature commit"], workDir);
-    git(["remote", "add", "origin", repoDir], workDir);
-    git(["push", "origin", "HEAD:refs/heads/feature"], workDir);
-
-    const cgiResult = callGitHttpBackend(
-      repoDir,
-      projectRoot,
-      "GET",
-      `/${repoName(repoDir)}/info/refs`,
-      "service=git-receive-pack",
-    );
-
-    const adv = parseRefAdvertisement(cgiResult.body, "git-receive-pack");
-    const featureRef = adv.refs.find((r) => r.name === "refs/heads/feature");
-    expect(featureRef).toBeDefined();
-  });
-
-  test("report-status 解析", () => {
-    // 构造一个 receive-pack push 请求并发送给 CGI
-    // 需要包含真实的 packfile（Git 服务端会验证对象是否存在）
-    const workDir = join(tempDir, "work");
-
-    // 用 git pack-objects 生成增量 packfile
-    const packResult = spawnSync("git", ["-C", workDir, "pack-objects", "--stdout", "--revs"], {
-      input: `${commitHash}\n^${parentCommitHash}\n`,
-    });
-    expect(packResult.status).toBe(0);
-    const packfile = packResult.stdout ?? Buffer.alloc(0);
-    expect(packfile.length).toBeGreaterThan(0);
-
-    const caps = ["report-status", "side-band-64k", "ofs-delta"];
-
-    const commands = [
-      {
-        oldHash: sha1(parentCommitHash),
-        newHash: sha1(commitHash),
-        refName: "refs/heads/main",
-      },
-    ];
-
-    const body = buildReceivePackRequest(commands, packfile, caps);
-
-    const cgiResult = callGitHttpBackend(
-      repoDir,
-      projectRoot,
-      "POST",
-      `/${repoName(repoDir)}/git-receive-pack`,
-      undefined,
-      body,
-    );
-
-    expect(cgiResult.status).toBe(200);
-    expect(cgiResult.headers["Content-Type"]).toBe("application/x-git-receive-pack-result");
-
-    // 从 side-band 编码中提取 report-status
-    let refUpdates;
-    try {
-      const packfileData = extractPackfile(cgiResult.body);
-      refUpdates = parseReceivePackResult(packfileData);
-    } catch {
-      // 非 side-band 编码，直接解析
-      refUpdates = parseReceivePackResult(cgiResult.body);
-    }
-
-    expect(refUpdates.length).toBeGreaterThanOrEqual(1);
-
-    const mainUpdate = refUpdates.find((u) => u.refName === "refs/heads/main");
-    expect(mainUpdate).toBeDefined();
-    expect(mainUpdate!.success).toBe(true);
   });
 });

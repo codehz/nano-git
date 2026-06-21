@@ -1,432 +1,182 @@
 /**
- * Smart HTTP Push — CGI 端到端测试
+ * Push 高层 API 端到端测试
  *
- * 直接通过 stdio 调用 git http-backend CGI 测试完整 push 流程。
+ * 通过 CgiTransport 将 push() 的全套编排逻辑接入 git http-backend CGI：
+ *   parseRefSpec → determinePushRefs → checkFastForward → collectReachable
+ *   → createPackWriter → buildReceivePackRequest → postReceivePack → parseReceivePackResult
  *
- * 测试方式：
- * - 创建服务端裸仓库（启用 http.receivepack）
- * - 使用 nano-git 的 buildReceivePackRequest 构造请求
- * - 通过 CGI 环境变量调用 git-http-backend
- * - 解析 report-status 验证结果
+ * 不依赖手工构造协议报文，完整验证高层 push() 函数的行为。
  */
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { git, gitInit, createTempDir, cleanupDir, createFile, FIXED_AUTHOR } from "./helpers.ts";
-
-import { sha1, type SHA1 } from "../../src/core/types.ts";
-import { buildReceivePackRequest } from "../../src/transport/receive-pack-request.ts";
-import { parseReceivePackResult } from "../../src/transport/receive-pack-result.ts";
-import { extractPackfile } from "../../src/transport/side-band.ts";
-import { parsePktLines, encodePktLine, encodeFlushPkt } from "../../src/transport/pkt-line.ts";
-import { parseRefSpec } from "../../src/transport/fetch.ts";
-import { determinePushRefs } from "../../src/transport/push.ts";
+import { createCgiTransport } from "../../src/transport/cgi-transport.ts";
+import { createMemoryRepository, type Repository } from "../../src/repository/index.ts";
+import { sha1 } from "../../src/core/types.ts";
 
 // ============================================================================
 // 常量
 // ============================================================================
 
-/** 零哈希（表示新建引用或删除引用） */
-const ZERO_HASH = "0000000000000000000000000000000000000000";
-
-/** git http-backend 的路径 */
 const HTTP_BACKEND = "/usr/lib/git-core/git-http-backend";
 
-/** CGI 环境变量 */
-const GIT_ENV: Record<string, string> = {
-  GIT_AUTHOR_NAME: FIXED_AUTHOR.name,
-  GIT_AUTHOR_EMAIL: FIXED_AUTHOR.email,
-  GIT_AUTHOR_DATE: `${FIXED_AUTHOR.timestamp} ${FIXED_AUTHOR.timezone}`,
-  GIT_COMMITTER_NAME: FIXED_AUTHOR.name,
-  GIT_COMMITTER_EMAIL: FIXED_AUTHOR.email,
-  GIT_COMMITTER_DATE: `${FIXED_AUTHOR.timestamp} ${FIXED_AUTHOR.timezone}`,
-  GIT_TERMINAL_PROMPT: "0",
-  GIT_CONFIG_NOSYSTEM: "1",
-  GIT_HTTP_EXPORT_ALL: "1",
-  GIT_HTTP_MAX_REQUEST_BUFFER: "10M",
-};
-
-// ============================================================================
-// CGI 辅助函数
-// ============================================================================
-
-interface CgiResult {
-  status: number;
-  headers: Record<string, string>;
-  body: Buffer;
-}
-
-function callGitHttpBackend(
-  repoDir: string,
-  projectRoot: string,
-  method: string,
-  pathInfo: string,
-  queryString?: string,
-  body?: Buffer,
-): CgiResult {
-  const contentType =
-    method === "POST"
-      ? pathInfo.includes("git-receive-pack")
-        ? "application/x-git-receive-pack-request"
-        : "application/x-git-upload-pack-request"
-      : "";
-
-  const env: Record<string, string> = {
-    ...GIT_ENV,
-    REQUEST_METHOD: method,
-    GIT_PROJECT_ROOT: projectRoot,
-    PATH_INFO: pathInfo,
-    CONTENT_TYPE: contentType,
-    QUERY_STRING: queryString ?? "",
-  };
-
-  const result = spawnSync(HTTP_BACKEND, [], {
-    env: { ...process.env, ...env },
-    input: body,
-  });
-
-  const stdout = result.stdout ?? Buffer.alloc(0);
-  const stderr = result.stderr?.toString() ?? "";
-
-  const headerEndIndex = stdout.indexOf("\r\n\r\n");
-  if (headerEndIndex === -1) {
-    throw new Error(
-      `CGI output has no header/body separator\nstdout: ${stdout.toString("utf-8").slice(0, 200)}\nstderr: ${stderr}`,
-    );
-  }
-
-  const headerSection = stdout.subarray(0, headerEndIndex).toString("utf-8");
-  const bodyBuffer = stdout.subarray(headerEndIndex + 4);
-  const headers: Record<string, string> = {};
-  let status = 200;
-
-  for (const line of headerSection.split("\r\n")) {
-    const trimmedLine = line.trim();
-    if (trimmedLine.length === 0) continue;
-    if (trimmedLine.startsWith("Status: ")) {
-      status = parseInt(trimmedLine.slice(8), 10);
-      continue;
-    }
-    const colonIndex = trimmedLine.indexOf(": ");
-    if (colonIndex !== -1) {
-      headers[trimmedLine.slice(0, colonIndex)] = trimmedLine.slice(colonIndex + 2);
-    }
-  }
-
-  return { status, headers, body: bodyBuffer };
-}
-
-/** 获取仓库目录名称 */
-function repoName(repoDir: string): string {
-  return repoDir.split("/").pop()!;
-}
-
-/** 启用仓库的 receive-pack 服务 */
 function enableReceivePack(repoDir: string): void {
   const configPath = join(repoDir, "config");
   const config = readFileSync(configPath, "utf-8");
   if (!config.includes("http.receivepack")) {
-    writeFileSync(configPath, config + "\n[http]\n\treceivepack = true\n", "utf-8");
+    writeFileSync(configPath, config + "\n[http]\n\treceivepack = true\n");
   }
+}
+
+function makeRepo(): Repository {
+  return createMemoryRepository();
+}
+
+function makeAuthor() {
+  return {
+    name: FIXED_AUTHOR.name,
+    email: FIXED_AUTHOR.email,
+    timestamp: FIXED_AUTHOR.timestamp,
+    timezone: FIXED_AUTHOR.timezone,
+  };
 }
 
 // ============================================================================
 // 测试
 // ============================================================================
 
-describe("CGI: push (receive-pack) 端到端", () => {
+describe("push() 端到端（CgiTransport）", () => {
   let tempDir: string;
   let serverRepoDir: string;
   let projectRoot: string;
   let workDir: string;
 
-  /** 服务端的原始提交哈希（push 前的基准） */
-  let serverCommitHash: string;
-  /** 本地新提交的哈希 */
-  let localCommitHash: string;
-  /** 本地第二个新提交的哈希 */
-  let localCommitHash2: string;
-
   beforeEach(() => {
-    tempDir = createTempDir("e2e-push");
+    tempDir = createTempDir("e2e-push-cgi");
 
-    // 1. 创建服务端裸仓库（启用 receive-pack）
+    // 1. 创建服务端裸仓库
     serverRepoDir = join(tempDir, "server.git");
     projectRoot = tempDir;
     mkdirSync(serverRepoDir);
     git(["init", "--bare"], serverRepoDir);
     enableReceivePack(serverRepoDir);
 
-    // 2. 创建工作目录，创建初始提交并推送到服务端
+    // 2. 创建初始提交并推送到服务端作为基准
     workDir = join(tempDir, "work");
     gitInit(workDir);
     createFile(workDir, "README.md", "# Hello\n");
     git(["add", "README.md"], workDir);
     git(["commit", "-m", "Initial commit"], workDir);
-    serverCommitHash = git(["rev-parse", "HEAD"], workDir);
     git(["push", serverRepoDir, "main"], workDir);
-
-    // 3. 再创建一个提交（这个 commit 只存在于本地，后续用于 push）
-    createFile(workDir, "FEATURE.md", "# Feature\n");
-    git(["add", "FEATURE.md"], workDir);
-    git(["commit", "-m", "Feature commit"], workDir);
-    localCommitHash = git(["rev-parse", "HEAD"], workDir);
-
-    // 4. 创建第二个新提交
-    createFile(workDir, "OTHER.md", "# Other\n");
-    git(["add", "OTHER.md"], workDir);
-    git(["commit", "-m", "Other commit"], workDir);
-    localCommitHash2 = git(["rev-parse", "HEAD"], workDir);
   });
 
   afterEach(() => {
     cleanupDir(tempDir);
   });
 
-  test("完整 push 流程：推送新提交到远程", () => {
-    // 1. 构造 receive-pack 请求 body
-    const commands = [
-      {
-        oldHash: sha1(serverCommitHash),
-        newHash: sha1(localCommitHash2),
-        refName: "refs/heads/main",
-      },
-    ];
+  test("推送新分支到远端", async () => {
+    const repo = makeRepo();
+    const author = makeAuthor();
 
-    // 2. 从工作目录获取需要发送的对象（packfile）
-    // 使用 git 生成 packfile（增量：从 serverCommitHash 到 localCommitHash2）
-    const packResult = spawnSync("git", ["-C", workDir, "pack-objects", "--stdout", "--revs"], {
-      env: { ...process.env, ...GIT_ENV },
-      input: `${localCommitHash2}\n^${serverCommitHash}\n`,
+    const fileHash = repo.writeBlob(Buffer.from("new branch content"));
+    const treeHash = repo.createTree([{ mode: "100644", name: "new-branch.txt", hash: fileHash }]);
+    const commitHash = repo.createCommit(treeHash, [], "New branch commit", author);
+    repo.updateRef("refs/heads/new-feature", commitHash);
+
+    const transport = createCgiTransport(serverRepoDir, projectRoot, HTTP_BACKEND);
+    const result = await repo.push("dummy", {
+      refSpecs: ["refs/heads/new-feature:refs/heads/new-feature"],
+      transport,
     });
-    expect(packResult.status).toBe(0);
-    const packfile = packResult.stdout ?? Buffer.alloc(0);
-    expect(packfile.length).toBeGreaterThan(0);
 
-    const caps = ["report-status", "side-band-64k", "ofs-delta"];
-    const body = buildReceivePackRequest(commands, packfile, caps);
+    expect(result.refUpdates).toHaveLength(1);
+    expect(result.refUpdates[0]!.success).toBe(true);
+    expect(result.refUpdates[0]!.refName).toBe("refs/heads/new-feature");
 
-    // 3. 调用 CGI
-    const cgiResult = callGitHttpBackend(
-      serverRepoDir,
-      projectRoot,
-      "POST",
-      `/${repoName(serverRepoDir)}/git-receive-pack`,
-      undefined,
-      body,
-    );
-
-    expect(cgiResult.status).toBe(200);
-    expect(cgiResult.headers["Content-Type"]).toBe("application/x-git-receive-pack-result");
-
-    // 4. 解析 report-status
-    let refUpdates;
-    try {
-      const packfileData = extractPackfile(cgiResult.body);
-      refUpdates = parseReceivePackResult(packfileData);
-    } catch {
-      refUpdates = parseReceivePackResult(cgiResult.body);
-    }
-
-    expect(refUpdates.length).toBeGreaterThanOrEqual(1);
-    const mainUpdate = refUpdates.find((u) => u.refName === "refs/heads/main");
-    expect(mainUpdate).toBeDefined();
-    expect(mainUpdate!.success).toBe(true);
-
-    // 5. 验证服务端 ref 已更新（使用 --git-dir 避免 safe.bareRepository 限制）
-    const serverRef = git(["--git-dir", serverRepoDir, "rev-parse", "refs/heads/main"], tempDir);
-    expect(serverRef).toBe(localCommitHash2);
-
-    // 6. 验证对象可通过 git cat-file 读取
-    const featureContent = git(
-      ["--git-dir", serverRepoDir, "cat-file", "-p", `${localCommitHash2}:FEATURE.md`],
+    const serverRef = git(
+      ["--git-dir", serverRepoDir, "rev-parse", "refs/heads/new-feature"],
       tempDir,
     );
-    expect(featureContent).toBe("# Feature");
+    expect(serverRef).toBe(commitHash);
   });
 
-  test("push 后服务端可 fetch 到新对象", () => {
-    // 1. 先推送一个提交到服务端
-    const commands = [
-      {
-        oldHash: sha1(serverCommitHash),
-        newHash: sha1(localCommitHash),
-        refName: "refs/heads/main",
-      },
-    ];
-
-    const packResult = spawnSync("git", ["-C", workDir, "pack-objects", "--stdout", "--revs"], {
-      env: { ...process.env, ...GIT_ENV },
-      input: `${localCommitHash}\n^${serverCommitHash}\n`,
-    });
-    expect(packResult.status).toBe(0);
-    const packfile = packResult.stdout ?? Buffer.alloc(0);
-    expect(packfile.length).toBeGreaterThan(0);
-
-    const caps = ["report-status", "side-band-64k", "ofs-delta"];
-    const body = buildReceivePackRequest(commands, packfile, caps);
-
-    const pushResult = callGitHttpBackend(
-      serverRepoDir,
-      projectRoot,
-      "POST",
-      `/${repoName(serverRepoDir)}/git-receive-pack`,
-      undefined,
-      body,
-    );
-    expect(pushResult.status).toBe(200);
-
-    // 2. 通过 upload-pack 验证新对象可从服务端 fetch
-    const fetchQuery = callGitHttpBackend(
-      serverRepoDir,
-      projectRoot,
-      "GET",
-      `/${repoName(serverRepoDir)}/info/refs`,
-      "service=git-upload-pack",
-    );
-    expect(fetchQuery.status).toBe(200);
-
-    // 3. 验证服务端 refs 包含我们的提交
-    const serverRef = git(["--git-dir", serverRepoDir, "rev-parse", "refs/heads/main"], tempDir);
-    expect(serverRef).toBe(localCommitHash);
-  });
-
-  test("删除远程分支 push", () => {
-    // 1. 先推送一个新分支
-    createFile(workDir, "BRANCH.md", "# Branch\n");
-    git(["add", "BRANCH.md"], workDir);
-    git(["commit", "-m", "Branch commit"], workDir);
+  test("通过 push 删除远程分支", async () => {
+    // 1. 先用系统 git 创建 feature 分支并推送到服务端
+    createFile(workDir, "FEATURE.md", "# Feature\n");
+    git(["add", "FEATURE.md"], workDir);
+    git(["commit", "-m", "Feature commit"], workDir);
     const branchHash = git(["rev-parse", "HEAD"], workDir);
-    git(["push", serverRepoDir, `HEAD:refs/heads/feature`], workDir);
+    git(["push", serverRepoDir, "HEAD:refs/heads/feature"], workDir);
 
-    // 验证分支存在
     const branchRef = git(["--git-dir", serverRepoDir, "rev-parse", "refs/heads/feature"], tempDir);
     expect(branchRef).toBe(branchHash);
 
-    // 2. 构造删除分支的 push 命令（newHash 为 000...0）
-    const deleteCommands = [
-      {
-        oldHash: sha1(branchHash),
-        newHash: sha1("0000000000000000000000000000000000000000"),
-        refName: "refs/heads/feature",
-      },
-    ];
+    // 2. 用 CgiTransport 删除远程分支
+    const deleteRepo = makeRepo();
+    const deleteTransport = createCgiTransport(serverRepoDir, projectRoot, HTTP_BACKEND);
+    const deleteResult = await deleteRepo.push("dummy", {
+      refSpecs: [":refs/heads/feature"],
+      transport: deleteTransport,
+    });
 
-    const deletePackResult = spawnSync(
-      "git",
-      ["-C", workDir, "pack-objects", "--stdout", "--revs"],
-      {
-        env: { ...process.env, ...GIT_ENV },
-        input: `${ZERO_HASH}\n^${branchHash}\n`,
-      },
-    );
-    const deletePackfile = deletePackResult.stdout ?? Buffer.alloc(0);
+    expect(deleteResult.refUpdates).toHaveLength(1);
+    expect(deleteResult.refUpdates[0]!.success).toBe(true);
+    expect(deleteResult.refUpdates[0]!.refName).toBe("refs/heads/feature");
 
-    const deleteCaps = ["report-status", "side-band-64k", "ofs-delta", "delete-refs"];
-    const deleteBody = buildReceivePackRequest(deleteCommands, deletePackfile, deleteCaps);
-
-    const deleteResult = callGitHttpBackend(
-      serverRepoDir,
-      projectRoot,
-      "POST",
-      `/${repoName(serverRepoDir)}/git-receive-pack`,
-      undefined,
-      deleteBody,
-    );
-
-    expect(deleteResult.status).toBe(200);
-
-    // 3. 解析 report-status
-    let refUpdates;
-    try {
-      const packfileData = extractPackfile(deleteResult.body);
-      refUpdates = parseReceivePackResult(packfileData);
-    } catch {
-      refUpdates = parseReceivePackResult(deleteResult.body);
-    }
-
-    const featureUpdate = refUpdates.find((u) => u.refName === "refs/heads/feature");
-    expect(featureUpdate).toBeDefined();
-    expect(featureUpdate!.success).toBe(true);
-
-    // 4. 验证远程分支已被删除
     const branchList = git(["--git-dir", serverRepoDir, "branch", "-a"], tempDir);
     expect(branchList).not.toContain("feature");
   });
 
-  test("通过 determinePushRefs 路径删除远程分支", () => {
-    // 本测试走 parseRefSpec → determinePushRefs → 命令构造路径，
-    // 即 transport/push.ts 中 push() 内部使用的逻辑，验证高层 API
-    // 的删除分支路径能正确生成 receive-pack 命令。
+  test("non-fast-forward 推送到远端被本地预检拒绝", async () => {
+    const repo = makeRepo();
+    const author = makeAuthor();
 
-    // 1. 先推送一个新分支
-    createFile(workDir, "DELETE_ME.md", "# Delete me\n");
-    git(["add", "DELETE_ME.md"], workDir);
-    git(["commit", "-m", "Branch to delete"], workDir);
-    const branchHash = git(["rev-parse", "HEAD"], workDir);
-    git(["push", serverRepoDir, `HEAD:refs/heads/to-delete`], workDir);
-
-    // 验证分支存在
-    const branchRef = git(
-      ["--git-dir", serverRepoDir, "rev-parse", "refs/heads/to-delete"],
-      tempDir,
+    // 获取服务端 refs/heads/main 的哈希，用于制造分叉
+    // 注意：这个哈希在本地 store 中不存在，但 checkFastForward 中 isAncestor 使用的是本地 store
+    // 所以这里我们只需确保 remoteHash 不等于 localHash 且没有祖先关系即可
+    const remoteMainHash = sha1(
+      git(["--git-dir", serverRepoDir, "rev-parse", "refs/heads/main"], tempDir),
     );
-    expect(branchRef).toBe(branchHash);
 
-    // 2. 构造 refspec 和 ref 映射（模拟 push() 内部行为）
-    const deleteSpec = parseRefSpec(":refs/heads/to-delete");
-    const localRefs = new Map<string, SHA1>();
-    const remoteRefs = new Map<string, SHA1>([
-      ["refs/heads/main", sha1(serverCommitHash)],
-      ["refs/heads/to-delete", sha1(branchHash)],
-    ]);
-    const items = determinePushRefs(localRefs, remoteRefs, [deleteSpec]);
+    // 本地创建分叉 commit
+    const fileHash = repo.writeBlob(Buffer.from("divergent"));
+    const treeHash = repo.createTree([{ mode: "100644", name: "d.txt", hash: fileHash }]);
+    const divergentHash = repo.createCommit(treeHash, [], "Divergent", author);
+    repo.updateRef("refs/heads/main", divergentHash);
 
-    expect(items).toHaveLength(1);
-    expect(items[0]!.localHash).toBeNull();
-    expect(items[0]!.remoteRef).toBe("refs/heads/to-delete");
+    const transport = createCgiTransport(serverRepoDir, projectRoot, HTTP_BACKEND);
+    const pushPromise = repo.push("dummy", {
+      refSpecs: ["refs/heads/main:refs/heads/main"],
+      transport,
+    });
 
-    // 3. 从 determinePushRefs 的结果构造 receive-pack 命令
-    const commands = items.map((r) => ({
-      oldHash: r.remoteHash ?? (ZERO_HASH as SHA1),
-      newHash: r.localHash ?? (ZERO_HASH as SHA1),
-      refName: r.remoteRef,
-    }));
+    await expect(pushPromise).rejects.toThrow("Non-fast-forward");
+  });
 
-    // 删除操作不需要发送 packfile 对象
-    const emptyPackfile = Buffer.alloc(0);
-    const caps = ["report-status", "side-band-64k", "ofs-delta", "delete-refs"];
-    const body = buildReceivePackRequest(commands, emptyPackfile, caps);
+  test("non-fast-forward 但设 force 时可以通过", async () => {
+    const repo = makeRepo();
+    const author = makeAuthor();
 
-    // 4. 通过 CGI 发送
-    const deleteResult = callGitHttpBackend(
-      serverRepoDir,
-      projectRoot,
-      "POST",
-      `/${repoName(serverRepoDir)}/git-receive-pack`,
-      undefined,
-      body,
-    );
-    expect(deleteResult.status).toBe(200);
+    const fileHash = repo.writeBlob(Buffer.from("forced"));
+    const treeHash = repo.createTree([{ mode: "100644", name: "f.txt", hash: fileHash }]);
+    const forceHash = repo.createCommit(treeHash, [], "Forced", author);
+    repo.updateRef("refs/heads/main", forceHash);
 
-    // 5. 解析 report-status
-    let refUpdates;
-    try {
-      const packfileData = extractPackfile(deleteResult.body);
-      refUpdates = parseReceivePackResult(packfileData);
-    } catch {
-      refUpdates = parseReceivePackResult(deleteResult.body);
-    }
+    const transport = createCgiTransport(serverRepoDir, projectRoot, HTTP_BACKEND);
+    const result = await repo.push("dummy", {
+      refSpecs: ["refs/heads/main:refs/heads/main"],
+      force: true,
+      transport,
+    });
 
-    const deleteUpdate = refUpdates.find((u) => u.refName === "refs/heads/to-delete");
-    expect(deleteUpdate).toBeDefined();
-    expect(deleteUpdate!.success).toBe(true);
+    expect(result.refUpdates).toHaveLength(1);
+    expect(result.refUpdates[0]!.success).toBe(true);
+    expect(result.refUpdates[0]!.refName).toBe("refs/heads/main");
 
-    // 6. 验证远程分支已被删除
-    const branchList = git(["--git-dir", serverRepoDir, "branch", "-a"], tempDir);
-    expect(branchList).not.toContain("to-delete");
+    const serverRef = git(["--git-dir", serverRepoDir, "rev-parse", "refs/heads/main"], tempDir);
+    expect(serverRef).toBe(forceHash);
   });
 });
