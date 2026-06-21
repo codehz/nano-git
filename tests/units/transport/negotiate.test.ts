@@ -12,9 +12,11 @@
  */
 
 import { describe, test, expect } from "bun:test";
-import { buildUploadPackRequest } from "../../../src/transport/negotiate.ts";
+import { buildUploadPackRequest, collectHaveCommits } from "../../../src/transport/negotiate.ts";
 import { parsePktLines } from "../../../src/transport/pkt-line.ts";
-import { sha1 } from "../../../src/core/types.ts";
+import { sha1, type SHA1, type GitCommit } from "../../../src/core/types.ts";
+import { createMemoryObjectStore } from "../../../src/odb/memory-store.ts";
+import { serialize } from "../../../src/objects/index.ts";
 
 // ============================================================================
 // 辅助函数
@@ -31,7 +33,120 @@ function dataPayload(line: unknown): string {
 }
 
 // ============================================================================
-// 测试
+// 辅助函数
+// ============================================================================
+
+/** 创建一个提交对象并写入 store，返回哈希 */
+function createTestCommit(
+  store: ReturnType<typeof createMemoryObjectStore>,
+  tree: SHA1,
+  parents: SHA1[],
+  timestamp: number,
+  msg?: string,
+): SHA1 {
+  const commit: GitCommit = {
+    type: "commit",
+    tree,
+    parents,
+    author: { name: "T", email: "t@t", timestamp, timezone: "+0000" },
+    committer: { name: "T", email: "t@t", timestamp, timezone: "+0000" },
+    message: msg ?? `commit at ${timestamp}`,
+  };
+  // 直接用 serialize + write raw bytes，避免 hashObject 逻辑干扰
+  const data = serialize(commit);
+  return store.write(commit);
+}
+
+// ============================================================================
+// collectHaveCommits
+// ============================================================================
+
+describe("collectHaveCommits()", () => {
+  const treeHash = sha1("0000000000000000000000000000000000000001");
+
+  test("单链提交：从最新遍历到最旧，按时间升序返回", () => {
+    const store = createMemoryObjectStore();
+
+    // 构造提交链：c1(ts=100) ← c2(ts=200) ← c3(ts=300)
+    const c1 = createTestCommit(store, treeHash, [], 100);
+    const c2 = createTestCommit(store, treeHash, [c1], 200);
+    const c3 = createTestCommit(store, treeHash, [c2], 300);
+
+    const result = collectHaveCommits(store, [c3]);
+
+    // 应返回 [c1, c2, c3]（按时间升序）
+    expect(result).toEqual([c1, c2, c3]);
+  });
+
+  test("多个 tips：合并并去重后返回排序结果", () => {
+    const store = createMemoryObjectStore();
+
+    // 分支一：c1(100) ← c2(200)
+    const c1 = createTestCommit(store, treeHash, [], 100);
+    const c2 = createTestCommit(store, treeHash, [c1], 200);
+
+    // 分支二：c1(100) ← c3(300)（c1 是共同祖先）
+    const c3 = createTestCommit(store, treeHash, [c1], 300);
+
+    const result = collectHaveCommits(store, [c2, c3]);
+
+    // 应返回 [c1, c2, c3]，c1 只出现一次
+    expect(result).toEqual([c1, c2, c3]);
+  });
+
+  test("仅收集 commit 对象，跳过 tree/blob", () => {
+    const store = createMemoryObjectStore();
+
+    // 写入一个 tree 和一个 blob，确保它们不被收集
+    const blobHash = store.write({ type: "blob", content: Buffer.from("data") });
+    const treeEntryHash = store.write({
+      type: "tree",
+      entries: [{ mode: "100644", name: "f", hash: blobHash }],
+    });
+
+    // commit 指向 tree
+    const commit = createTestCommit(store, treeEntryHash, [], 100);
+
+    const result = collectHaveCommits(store, [commit]);
+
+    // 只应包含 commit，不应包含 tree 或 blob 的哈希
+    expect(result).toEqual([commit]);
+    expect(result).not.toContain(treeEntryHash);
+    expect(result).not.toContain(blobHash);
+  });
+
+  test("空 tips 返回空数组", () => {
+    const store = createMemoryObjectStore();
+    const result = collectHaveCommits(store, []);
+    expect(result).toEqual([]);
+  });
+
+  test("不存在的对象被跳过", () => {
+    const store = createMemoryObjectStore();
+    const unknown = sha1("ffffffffffffffffffffffffffffffffffffffff");
+    const result = collectHaveCommits(store, [unknown]);
+    expect(result).toEqual([]);
+  });
+
+  test("merge commit：两个父节点都被遍历", () => {
+    const store = createMemoryObjectStore();
+
+    // c1(100) ─┐
+    //           ├─ c3(300)
+    // c2(200) ─┘
+    const c1 = createTestCommit(store, treeHash, [], 100);
+    const c2 = createTestCommit(store, treeHash, [], 200);
+    const c3 = createTestCommit(store, treeHash, [c1, c2], 300);
+
+    const result = collectHaveCommits(store, [c3]);
+
+    // 应包含所有 3 个 commit，按时间升序
+    expect(result).toEqual([c1, c2, c3]);
+  });
+});
+
+// ============================================================================
+// buildUploadPackRequest
 // ============================================================================
 
 describe("buildUploadPackRequest()", () => {

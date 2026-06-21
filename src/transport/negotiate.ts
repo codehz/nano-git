@@ -19,6 +19,7 @@
 
 import { encodePktLine, encodeFlushPkt } from "./pkt-line.ts";
 import type { SHA1 } from "../core/types.ts";
+import type { ObjectStore } from "../odb/types.ts";
 
 // ============================================================================
 // 常量
@@ -26,6 +27,66 @@ import type { SHA1 } from "../core/types.ts";
 
 /** 每批 have 的最大数量（Git 协议建议 ≤ 32） */
 const MAX_HAVES_PER_BATCH = 32;
+
+/** 遍历提交图时的最大深度限制 */
+const MAX_HAVE_DEPTH = 65536;
+
+// ============================================================================
+// Have 收集（Consecutive 算法）
+// ============================================================================
+
+/**
+ * 从起始哈希出发遍历 commit 图，收集所有可达 commit 哈希
+ *
+ * 沿 parent 链回溯，按提交时间戳从旧到新排序。
+ * 这实现了 Consecutive 协商算法——发送完整的本地历史，
+ * 让服务端能准确定位公共祖先，最小化增量传输。
+ *
+ * @param store - 对象存储
+ * @param tips - 遍历起点（通常是本地远程跟踪 ref 的哈希）
+ * @returns 按提交时间从旧到新排序的 commit 哈希列表
+ *
+ * @example
+ * ```ts
+ * const haves = collectHaveCommits(store, [localHash]);
+ * // => [oldest_commit, ..., newest_commit]
+ * ```
+ */
+export function collectHaveCommits(store: ObjectStore, tips: SHA1[]): SHA1[] {
+  const seen = new Set<SHA1>();
+  const commits: Array<{ hash: SHA1; timestamp: number }> = [];
+  const queue: SHA1[] = [...tips];
+
+  while (queue.length > 0) {
+    const hash = queue.pop()!;
+    if (seen.has(hash)) continue;
+    if (seen.size >= MAX_HAVE_DEPTH) break;
+
+    seen.add(hash);
+
+    try {
+      const obj = store.read(hash);
+      if (obj.type !== "commit") continue;
+
+      const commit = obj as import("../core/types.ts").GitCommit;
+      commits.push({ hash, timestamp: commit.committer.timestamp });
+
+      // 将父 commit 加入遍历队列
+      for (const parentHash of commit.parents) {
+        if (!seen.has(parentHash)) {
+          queue.push(parentHash);
+        }
+      }
+    } catch {
+      // 对象不存在时跳过
+      continue;
+    }
+  }
+
+  // 按提交时间从旧到新排序（Consecutive 算法要求 oldest first）
+  commits.sort((a, b) => a.timestamp - b.timestamp);
+  return commits.map((c) => c.hash);
+}
 
 // ============================================================================
 // 请求生成

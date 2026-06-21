@@ -14,7 +14,7 @@ import {
 } from "../../../src/transport/fetch.ts";
 import type { RemoteRef } from "../../../src/transport/types.ts";
 import type { RemoteTransport } from "../../../src/transport/types.ts";
-import { sha1, type SHA1, type GitBlob } from "../../../src/core/types.ts";
+import { sha1, type SHA1, type GitBlob, type GitCommit } from "../../../src/core/types.ts";
 import { createMemoryObjectStore } from "../../../src/odb/memory-store.ts";
 import { createMemoryRefStore } from "../../../src/refs/stores/memory.ts";
 import { toEncodedPackObject, buildEncodedPack } from "../../../src/odb/pack/pack-encoding.ts";
@@ -25,6 +25,26 @@ import { toEncodedPackObject, buildEncodedPack } from "../../../src/odb/pack/pac
 
 function makeRef(name: string, hash?: string): RemoteRef {
   return { name, hash: sha1(hash ?? "95d09f2b10159347eece71399a7e2e907ea3df4f") };
+}
+
+const TREE_PLACEHOLDER = sha1("0000000000000000000000000000000000000001");
+
+/** 创建一个提交对象并写入 store */
+function createTestCommit(
+  store: ReturnType<typeof createMemoryObjectStore>,
+  parents: SHA1[],
+  timestamp: number,
+  msg?: string,
+): SHA1 {
+  const commit: GitCommit = {
+    type: "commit",
+    tree: TREE_PLACEHOLDER,
+    parents,
+    author: { name: "T", email: "t@t", timestamp, timezone: "+0000" },
+    committer: { name: "T", email: "t@t", timestamp, timezone: "+0000" },
+    message: msg ?? `commit at ${timestamp}`,
+  };
+  return store.write(commit);
 }
 
 // ============================================================================
@@ -148,9 +168,6 @@ describe("determineWants()", () => {
 // ============================================================================
 
 describe("fetch() 增量 fetch 行为", () => {
-  const oldHash = sha1("95d09f2b10159347eece71399a7e2e907ea3df4f");
-  const newHash = sha1("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
-
   function createBlobPackfile(content: string) {
     const blob: GitBlob = { type: "blob", content: Buffer.from(content) };
     const entry = toEncodedPackObject(blob);
@@ -181,15 +198,22 @@ describe("fetch() 增量 fetch 行为", () => {
     };
   }
 
-  test("增量 fetch：当本地有旧 hash 时发送 have 行", async () => {
+  test("增量 fetch：Consecutive 算法发送完整 commit 链作为 haves", async () => {
     const objectStore = createMemoryObjectStore();
-    const refStore = createMemoryRefStore(new Map([["refs/remotes/origin/main", oldHash]]));
 
+    // 构造本地已有提交链：c1(100) ← c2(200)
+    const c1 = createTestCommit(objectStore, [], 100);
+    const c2 = createTestCommit(objectStore, [c1], 200);
+
+    // 远程最新 hash（c3，本地还没有）
+    const c3 = createTestCommit(objectStore, [c2], 300);
+
+    const refStore = createMemoryRefStore(new Map([["refs/remotes/origin/main", c2]]));
     const { entry, packData } = createBlobPackfile("incremental content");
 
     let capturedBody: Buffer | null = null;
     const transport = createMockTransport(
-      [{ name: "refs/heads/main", hash: newHash }],
+      [{ name: "refs/heads/main", hash: c3 }],
       { multi_ack: true, "side-band-64k": true, "ofs-delta": true },
       (body) => {
         capturedBody = body;
@@ -202,32 +226,69 @@ describe("fetch() 增量 fetch 行为", () => {
       refSpecs: ["+refs/heads/*:refs/remotes/origin/*"],
     });
 
-    // 请求体中必须包含 have 行，值为本地旧 hash
+    // 请求体中必须包含 Consecutive 排序后的完整 commit 链
     expect(capturedBody).not.toBeNull();
     const bodyStr = capturedBody!.toString("utf-8");
-    expect(bodyStr).toContain(`have ${oldHash}`);
+    expect(bodyStr).toContain(`have ${c1}`);
+    expect(bodyStr).toContain(`have ${c2}`);
 
     // 验证 ref 已更新
     const updatedRef = refStore.readRaw("refs/remotes/origin/main");
-    expect(updatedRef).toBe(newHash);
+    expect(updatedRef).toBe(c3);
 
-    // 验证对象已写入（使用 packfile 中对象的哈希）
     expect(objectStore.exists(entry.hash)).toBe(true);
-
-    // 验证 fetch result
     expect(result.objectCount).toBe(1);
-    expect(result.fetchedRefs.get("refs/remotes/origin/main")).toBe(newHash);
+    expect(result.fetchedRefs.get("refs/remotes/origin/main")).toBe(c3);
+  });
+
+  test("增量 fetch：本地有多个祖先 commit，全部作为 haves 发送", async () => {
+    const objectStore = createMemoryObjectStore();
+
+    // 本地提交链：c1(100) ← c2(200) ← c3(300)，c3 是旧 tip
+    const c1 = createTestCommit(objectStore, [], 100);
+    const c2 = createTestCommit(objectStore, [c1], 200);
+    const c3 = createTestCommit(objectStore, [c2], 300);
+
+    // 远程在 c3 基础上新增 c4
+    const c4 = createTestCommit(objectStore, [c3], 400);
+
+    const refStore = createMemoryRefStore(new Map([["refs/remotes/origin/main", c3]]));
+    const { entry, packData } = createBlobPackfile("more content");
+
+    let capturedBody: Buffer | null = null;
+    const transport = createMockTransport(
+      [{ name: "refs/heads/main", hash: c4 }],
+      { multi_ack: true, "side-band-64k": true, "ofs-delta": true },
+      (body) => {
+        capturedBody = body;
+        return packData;
+      },
+    );
+
+    await fetch(objectStore, refStore, "dummy", {
+      transport,
+      refSpecs: ["+refs/heads/*:refs/remotes/origin/*"],
+    });
+
+    const bodyStr = capturedBody!.toString("utf-8");
+    // 所有祖先都应出现在 haves 中
+    expect(bodyStr).toContain(`have ${c1}`);
+    expect(bodyStr).toContain(`have ${c2}`);
+    expect(bodyStr).toContain(`have ${c3}`);
   });
 
   test("首次 fetch（clone）：本地无旧 hash，不发送 haves", async () => {
     const objectStore = createMemoryObjectStore();
+
+    // 远程的 commit
+    const remoteCommit = createTestCommit(objectStore, [], 100);
     const refStore = createMemoryRefStore(); // 空 refs
 
     const { entry, packData } = createBlobPackfile("clone content");
 
     let capturedBody: Buffer | null = null;
     const transport = createMockTransport(
-      [{ name: "refs/heads/main", hash: newHash }],
+      [{ name: "refs/heads/main", hash: remoteCommit }],
       { multi_ack: true, "side-band-64k": true, "ofs-delta": true },
       (body) => {
         capturedBody = body;
@@ -245,20 +306,21 @@ describe("fetch() 增量 fetch 行为", () => {
     expect(bodyStr).not.toContain("have ");
 
     // 验证 ref 已创建
-    expect(refStore.readRaw("refs/remotes/origin/main")).toBe(newHash);
+    expect(refStore.readRaw("refs/remotes/origin/main")).toBe(remoteCommit);
     expect(objectStore.exists(entry.hash)).toBe(true);
     expect(result.objectCount).toBe(1);
   });
 
   test("远程无变化：wants 为空，不调用 postUploadPack", async () => {
     const objectStore = createMemoryObjectStore();
+    const localCommit = createTestCommit(objectStore, [], 100);
     const refStore = createMemoryRefStore(
-      new Map([["refs/remotes/origin/main", newHash]]), // 与远程相同
+      new Map([["refs/remotes/origin/main", localCommit]]), // 与远程相同
     );
 
     let postUploadPackCalled = false;
     const transport = createMockTransport(
-      [{ name: "refs/heads/main", hash: newHash }],
+      [{ name: "refs/heads/main", hash: localCommit }],
       { multi_ack: true, "side-band-64k": true, "ofs-delta": true },
       (_body) => {
         postUploadPackCalled = true;
@@ -280,11 +342,12 @@ describe("fetch() 增量 fetch 行为", () => {
     const objectStore = createMemoryObjectStore();
     const refStore = createMemoryRefStore();
 
+    const remoteCommit = createTestCommit(objectStore, [], 100);
     const { entry, packData } = createBlobPackfile("shallow content");
 
     let capturedBody: Buffer | null = null;
     const transport = createMockTransport(
-      [{ name: "refs/heads/main", hash: newHash }],
+      [{ name: "refs/heads/main", hash: remoteCommit }],
       { multi_ack: true, "side-band-64k": true, "ofs-delta": true },
       (body) => {
         capturedBody = body;

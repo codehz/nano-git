@@ -27,7 +27,7 @@ import { sha1 } from "../core/types.ts";
 import { createPackReader } from "../odb/pack/pack-reader.ts";
 import { deserializeContent } from "../objects/codec.ts";
 import { createSmartHttpClient } from "./smart-http.ts";
-import { buildUploadPackRequest } from "./negotiate.ts";
+import { buildUploadPackRequest, collectHaveCommits } from "./negotiate.ts";
 import type { FetchOptions, FetchResult } from "./types.ts";
 import type { RemoteRef } from "./types.ts";
 import { GitError } from "../core/errors.ts";
@@ -255,11 +255,16 @@ export async function fetch(
   // 5. 从服务端 capabilities 中确定可用能力
   const caps = extractCapabilities(adv.capabilities);
 
-  // 6. 构造请求：收集本地已有的远程跟踪 ref 哈希作为 haves，实现增量 fetch
+  // 6. 构造请求：Consecutive 协商算法
+  //
+  //    收集本地 commit 图中从远程跟踪 ref 可达的所有 commit，
+  //    按提交时间从旧到新排序后作为 haves 发送，
+  //    让服务端能准确定位公共祖先，最小化增量传输。
   const wantHashes = wants.map((w) => w.remote.hash);
-  const haveHashes: SHA1[] = wants
+  const localHaveHashes: SHA1[] = wants
     .map((w) => w.localHash)
     .filter((h): h is SHA1 => h !== undefined);
+  const haveHashes = localHaveHashes.length > 0 ? collectHaveCommits(store, localHaveHashes) : [];
   const body = buildUploadPackRequest(wantHashes, haveHashes, caps, options?.depth);
 
   // 7. 发送请求
