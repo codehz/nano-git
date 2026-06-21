@@ -328,6 +328,56 @@ describe("push 非 heads/tags 来源 ref 推送", () => {
     expect(result.refUpdates).toHaveLength(1);
     expect(result.refUpdates[0]!.success).toBe(true);
   });
+
+  test("远端旧 tip 对象不在本地时，合法 fast-forward push 不应被本地预检拦截", async () => {
+    const store = createMemoryObjectStore();
+    const refStore = createMemoryRefStore(new Map());
+    const author = { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" };
+
+    const emptyTree = store.write({ type: "tree", entries: [] });
+    const remoteTip = sha1("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    const localCommit = store.write({
+      type: "commit" as const,
+      tree: emptyTree,
+      parents: [remoteTip],
+      author,
+      committer: author,
+      message: "child of remote tip",
+    });
+    refStore.write("refs/heads/main", localCommit);
+
+    let postCalled = false;
+    const transport: RemoteTransport = {
+      getReceivePackRefs: async () => ({
+        capabilities: { "report-status": true },
+        refs: [{ name: "refs/heads/main", hash: remoteTip }],
+      }),
+      postReceivePack: async () => {
+        postCalled = true;
+        const data = Buffer.concat([
+          encodePktLine("unpack ok\n"),
+          encodePktLine("ok refs/heads/main\n"),
+          encodeFlushPkt(),
+        ]);
+        return { data, refUpdates: parseReceivePackResult(data), progress: [] };
+      },
+      getRefAdvertisement: async () => {
+        throw new Error("not used");
+      },
+      postUploadPack: async () => {
+        throw new Error("not used");
+      },
+    };
+
+    const result = await push(store, refStore, "dummy", {
+      transport,
+      refSpecs: ["refs/heads/main:refs/heads/main"],
+    });
+
+    expect(postCalled).toBe(true);
+    expect(result.refUpdates).toHaveLength(1);
+    expect(result.refUpdates[0]!.success).toBe(true);
+  });
 });
 
 // ============================================================================

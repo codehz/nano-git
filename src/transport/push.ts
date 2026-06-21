@@ -88,13 +88,12 @@ function throwIfMissingObject(
   viaCommitParent: boolean,
   shallowBoundaries?: Set<SHA1>,
 ): void {
-  // 如果缺失的 commit parent 在已知 shallow 边界集合中，按正常边界处理
+  // commit parent 缺失且在边界集合中（shallow 或远端 ref 当前 tip）时静默跳过
   if (viaCommitParent && shallowBoundaries?.has(hash)) {
     return;
   }
 
-  // "skip-commit-parents" 模式下仅在已知 shallow 边界中放行 commit parent 缺失；
-  // 其余所有缺失（含未在 shallowBoundaries 中的 commit parent）均按本地损坏报错
+  // "skip-commit-parents"：非 commit-parent 边的缺失仍视为本地损坏
   const shouldThrow = missing === "throw" || missing === "skip-commit-parents";
 
   if (shouldThrow) {
@@ -267,14 +266,17 @@ export function isAncestor(
     }
     visited.add(current);
 
-    // 对象缺失的处理：先检查是否为已知 shallow boundary
+    // 对象缺失的处理：先检查是否为已知边界（shallow 或远端已广告的 tip）
     if (!store.exists(current)) {
-      // 如果缺失哈希在 shallow 边界集合中，按正常 shallow 边界处理
-      // 此时无法确定 oldHash 是否在更上游，假定为 fast-forward 让服务端做最终判定
+      // 回溯命中 remote old tip（peeledOld）即 fast-forward
+      if (current === peeledOld) {
+        return true;
+      }
+      // 如果缺失哈希在边界集合中，无法继续确认祖先链，假定为 fast-forward 让服务端判定
       if (shallowBoundaries?.has(current)) {
         return true;
       }
-      // 不在 shallow 集合中且对象缺失，视为本地损坏，停止回溯
+      // 其余缺失对象无法证明祖先关系
       return false;
     }
 
@@ -548,6 +550,28 @@ function remoteRefsToMap(refs: Array<{ name: string; hash: SHA1 }>): Map<string,
   return map;
 }
 
+/**
+ * 合并 shallow 边界与各推送项的远端当前 tip，供预检与本地可达性遍历使用
+ */
+function mergePushBoundaries(
+  shallowSet: Set<SHA1> | undefined,
+  pushRefs: PushRefItem[],
+): Set<SHA1> | undefined {
+  const remoteTips = pushRefs
+    .map((item) => item.remoteHash)
+    .filter((hash): hash is SHA1 => hash !== null);
+
+  if (!shallowSet && remoteTips.length === 0) {
+    return undefined;
+  }
+
+  const merged = new Set<SHA1>(shallowSet);
+  for (const hash of remoteTips) {
+    merged.add(hash);
+  }
+  return merged;
+}
+
 // ============================================================================
 // Push 编排
 // ============================================================================
@@ -642,11 +666,12 @@ export async function push(
     };
   }
 
+  // 推送边界：shallow 边界 + 各 ref 远端当前 tip（本地可无对象，服务端仍持有）
+  const pushBoundaries = mergePushBoundaries(shallowSet, pushRefs);
+
   // 6. non-fast-forward 预检
   //    未设 force 的更新如果不是 fast-forward 则立即报错
-  //    传入 shallowSet 让 isAncestor 能精确判断 shallow boundary，
-  //    避免将已知的 shallow 边界缺失误判为损坏。
-  checkFastForward(store, pushRefs, shallowSet);
+  checkFastForward(store, pushRefs, pushBoundaries);
 
   // 7. 收集需要发送的对象
   //    需要推送的对象 = 从推送 refs 可达的对象 - 从远程已有 refs 可达的对象
@@ -656,7 +681,7 @@ export async function push(
     .map((r) => r.localHash);
   // 本地可达性：使用 "skip-commit-parents" 让缺失的 commit parent 不阻断遍历，
   // 但 tree/blob/tag 等非 commit-parent 边的缺失仍会抛出 PushError，防止本地损坏被静默掩盖
-  const reachableLocal = collectReachable(store, localRoots, "skip-commit-parents", shallowSet);
+  const reachableLocal = collectReachable(store, localRoots, "skip-commit-parents", pushBoundaries);
 
   // 收集远程已有 refs 的可达对象（用于排除已存在的对象）
   // 此处使用 skip 模式：远程对象在本地缺失是正常情况
