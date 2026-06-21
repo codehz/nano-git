@@ -585,3 +585,54 @@ describe("push() delete-refs capability 校验", () => {
     expect(result.refUpdates[0]!.success).toBe(true);
   });
 });
+
+// ============================================================================
+// push() 对缺失 unpack 的非法响应处理
+// ============================================================================
+
+describe("push() 对缺失 unpack 的非法响应处理", () => {
+  test("receive-pack 响应缺少 unpack 行时 push() 应抛出 PushError", async () => {
+    const store = createMemoryObjectStore();
+    const refStore = createMemoryRefStore(new Map());
+    const author = { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" };
+    const emptyTree = store.write({ type: "tree", entries: [] });
+    const hash = store.write({
+      type: "commit" as const,
+      tree: emptyTree,
+      parents: [],
+      author,
+      committer: author,
+      message: "test",
+    });
+    refStore.write("refs/heads/main", hash);
+
+    const transport: RemoteTransport = {
+      getReceivePackRefs: async () => ({
+        capabilities: { "report-status": true },
+        refs: [],
+      }),
+      postReceivePack: async () => {
+        // 非法响应：缺少 unpack ok，直接以 ok 开头
+        const data = Buffer.concat([encodePktLine("ok refs/heads/main\n"), encodeFlushPkt()]);
+        const refUpdates = parseReceivePackResult(data);
+        return { data, refUpdates, progress: [] };
+      },
+      getRefAdvertisement: async () => {
+        throw new Error("not used");
+      },
+      postUploadPack: async () => {
+        throw new Error("not used");
+      },
+    };
+
+    const pushPromise = push(store, refStore, "dummy", {
+      transport,
+      refSpecs: ["refs/heads/main:refs/heads/main"],
+    });
+
+    // parseReceivePackResult 会抛出 ReceivePackResultError，
+    // push() 应将其转换为 PushError 传播给调用方
+    expect(pushPromise).rejects.toThrow(PushError);
+    expect(pushPromise).rejects.toThrow(/missing unpack/i);
+  });
+});

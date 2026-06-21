@@ -128,7 +128,11 @@ describe("buildReceivePackRequest", () => {
 
 describe("parseReceivePackResult", () => {
   test("解析 ok 行", () => {
-    const data = Buffer.concat([encodePktLine("ok refs/heads/main\n"), encodeFlushPkt()]);
+    const data = Buffer.concat([
+      encodePktLine("unpack ok\n"),
+      encodePktLine("ok refs/heads/main\n"),
+      encodeFlushPkt(),
+    ]);
 
     const result = parseReceivePackResult(data);
     expect(result).toHaveLength(1);
@@ -139,6 +143,7 @@ describe("parseReceivePackResult", () => {
 
   test("解析 ng 行", () => {
     const data = Buffer.concat([
+      encodePktLine("unpack ok\n"),
       encodePktLine("ng refs/heads/main non-fast-forward\n"),
       encodeFlushPkt(),
     ]);
@@ -223,5 +228,33 @@ describe("parseReceivePackResult", () => {
     const data = Buffer.concat([encodePktLine("unknown data\n"), encodeFlushPkt()]);
 
     expect(() => parseReceivePackResult(data)).toThrow(ReceivePackResultError);
+  });
+
+  test("缺少 unpack 行时以 ok 开头应报错", () => {
+    const data = Buffer.concat([encodePktLine("ok refs/heads/main\n"), encodeFlushPkt()]);
+
+    expect(() => parseReceivePackResult(data)).toThrow(ReceivePackResultError);
+    expect(() => parseReceivePackResult(data)).toThrow(/missing unpack/i);
+  });
+
+  test("缺少 unpack 行时以 ng 开头应报错", () => {
+    const data = Buffer.concat([
+      encodePktLine("ng refs/heads/main some error\n"),
+      encodeFlushPkt(),
+    ]);
+
+    expect(() => parseReceivePackResult(data)).toThrow(ReceivePackResultError);
+    expect(() => parseReceivePackResult(data)).toThrow(/missing unpack/i);
+  });
+
+  test("ok 出现在 unpack 之前应报错", () => {
+    const data = Buffer.concat([
+      encodePktLine("ok refs/heads/main\n"),
+      encodePktLine("unpack ok\n"),
+      encodeFlushPkt(),
+    ]);
+
+    expect(() => parseReceivePackResult(data)).toThrow(ReceivePackResultError);
+    expect(() => parseReceivePackResult(data)).toThrow(/missing unpack/i);
   });
 });

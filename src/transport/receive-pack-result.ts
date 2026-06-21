@@ -72,6 +72,7 @@ const NG_PREFIX = "ng ";
 export function parseReceivePackResult(data: Buffer): PushRefUpdate[] {
   const pktLines = parsePktLines(data);
   const updates: PushRefUpdate[] = [];
+  let seenUnpack = false;
 
   for (const line of pktLines) {
     if (line.type !== "data") {
@@ -83,6 +84,21 @@ export function parseReceivePackResult(data: Buffer): PushRefUpdate[] {
 
     if (payload.length === 0) {
       continue;
+    }
+
+    // report-status 协议要求第一条状态行必须是 "unpack <status>"
+    if (!seenUnpack) {
+      if (payload.startsWith("unpack ")) {
+        seenUnpack = true;
+        const unpackResult = payload.slice("unpack ".length);
+        if (unpackResult !== "ok") {
+          throw new ReceivePackResultError(`Server failed to unpack packfile: ${unpackResult}`);
+        }
+        continue;
+      }
+      throw new ReceivePackResultError(
+        `Missing unpack status line: first status line is "${payload}", expected "unpack <result>"`,
+      );
     }
 
     if (payload.startsWith(OK_PREFIX)) {
@@ -113,13 +129,8 @@ export function parseReceivePackResult(data: Buffer): PushRefUpdate[] {
         forced: false,
       });
     } else if (payload.startsWith("unpack ")) {
-      // "unpack ok" 或 "unpack <error>"
-      // unpack 失败是致命错误，立即抛出而不等待后续 ref 行
-      const unpackResult = payload.slice("unpack ".length);
-      if (unpackResult !== "ok") {
-        throw new ReceivePackResultError(`Server failed to unpack packfile: ${unpackResult}`);
-      }
-      continue;
+      // 重复 unpack 行也视为非法
+      throw new ReceivePackResultError(`Unexpected duplicate unpack status line: "${payload}"`);
     } else {
       throw new ReceivePackResultError(
         `Unexpected status line: "${payload}" (expected "ok " or "ng ")`,
