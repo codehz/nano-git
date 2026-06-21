@@ -363,10 +363,16 @@ export function createNegotiationState(): NegotiationState {
 }
 
 /**
- * 吸收 ACK 回复中的 common/ready 信息到协商状态
+ * 吸收 ACK 回复中的 common/continue/ready 信息到协商状态
  *
- * 将服务端确认的公共点加入 commonToReplay，
- * 确保下一轮请求会重放这些 have。
+ * 在 stateless-rpc 协议中，每轮 HTTP POST 都是独立的，服务端不维持状态。
+ * 因此所有 ACK 确认的公共点（包括 continue）都必须加入 commonToReplay，
+ * 确保后续轮次重放这些 have，否则服务端可能丢失已确认的公共点，导致
+ * 协商退化、重复传输甚至无法收敛。
+ *
+ * 注：ACK continue、common、ready 三种状态都表示服务端已确认该 commit
+ * 为公共点，区别仅在于服务端是否准备好发送 packfile。在 stateless-rpc
+ * 下三者都需要重放。
  *
  * @param state - 协商状态
  * @param ack - ACK 回复条目
@@ -375,7 +381,7 @@ export function absorbAckCommon(
   state: NegotiationState,
   ack: { hash: SHA1; status: UploadPackAckStatus },
 ): void {
-  if (ack.status === "common" || ack.status === "ready") {
+  if (ack.status === "continue" || ack.status === "common" || ack.status === "ready") {
     if (!state.commonSet.has(ack.hash)) {
       state.commonSet.add(ack.hash);
       state.commonToReplay.push(ack.hash);

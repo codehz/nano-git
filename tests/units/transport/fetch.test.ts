@@ -462,7 +462,8 @@ describe("fetch() 增量 fetch 行为", () => {
     expect(firstData.at(-1)).not.toBe("done");
     expect(firstLines.filter((line) => line.type === "flush")).toHaveLength(2);
 
-    expect(secondData.filter((line) => line.startsWith("have "))).toHaveLength(4);
+    // 第二轮包含 1 个 replay（ACK continue）+ 4 个新增 = 5 个 have
+    expect(secondData.filter((line) => line.startsWith("have "))).toHaveLength(5);
     expect(secondData.at(-1)).toBe("done");
     expect(secondLines.filter((line) => line.type === "flush")).toHaveLength(1);
 

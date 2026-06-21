@@ -138,7 +138,9 @@ describe("fetch 协商流程", () => {
 
     expect(thirdCommands.filter((line) => line.startsWith("have ")).length).toBeGreaterThan(0);
     expect(sentHaves.length).toBeGreaterThan(32);
-    expect(new Set(sentHaves).size).toBe(sentHaves.length);
+    // 多轮协商中，ACK continue 确认的 common 需要在后续轮次重放，
+    // 因此跨轮次 may 出现重复 have，但所有 unique have 应覆盖全部祖先 commit
+    expect(new Set(sentHaves).size).toBe(37);
     expect(countFlushPackets(thirdBody)).toBe(1);
     expect(thirdCommands.at(-1)).toBe("done");
 

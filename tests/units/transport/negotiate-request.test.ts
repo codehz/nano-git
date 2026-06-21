@@ -302,11 +302,11 @@ describe("协商状态管理", () => {
       expect(state.commonToReplay).toEqual([hash1]);
     });
 
-    test("ACK continue 不加入 commonToReplay", () => {
+    test("ACK continue 也应加入 commonToReplay（stateless-rpc 语义）", () => {
       const state = createNegotiationState();
       absorbAckCommon(state, { hash: hash1, status: "continue" });
-      expect(state.commonToReplay).toEqual([]);
-      expect(state.commonSet.has(hash1)).toBe(false);
+      expect(state.commonToReplay).toEqual([hash1]);
+      expect(state.commonSet.has(hash1)).toBe(true);
     });
 
     test("重复的 common 不重复添加", () => {
