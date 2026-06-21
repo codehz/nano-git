@@ -364,9 +364,11 @@ describe("push() 本地对象缺失预检", () => {
       postCalled = true;
     });
 
+    // 传入 shallowBoundaries 告知 push 层 bHash 是已知 shallow 边界
     const result = await push(store, refStore, "dummy", {
       transport,
       refSpecs: ["refs/heads/main:refs/heads/main"],
+      shallowBoundaries: [bHash],
     });
 
     expect(postCalled).toBe(true);

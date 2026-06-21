@@ -228,14 +228,17 @@ describe("isAncestor()", () => {
     };
     const cHash = shallowStore.write(c);
 
+    // 显式传递 shallowBoundaries 告知 bHash 是已知 shallow 边界
+    const shallowSet = new Set([bHash]);
+
     // root 是 c 的祖先，但中间 b 缺失 → 应假定 fast-forward
-    expect(isAncestor(shallowStore, rootHash, cHash)).toBe(true);
+    expect(isAncestor(shallowStore, rootHash, cHash, shallowSet)).toBe(true);
     // a 同样应假定 fast-forward
-    expect(isAncestor(shallowStore, aHash, cHash)).toBe(true);
+    expect(isAncestor(shallowStore, aHash, cHash, shallowSet)).toBe(true);
     // 无关哈希在遇到 shallow boundary（b 缺失）时，因为无法继续回溯确认，
     // 也假定为 fast-forward（让服务端做最终判定）
     const unrelated = sha1("ffffffffffffffffffffffffffffffffffffffff");
-    expect(isAncestor(shallowStore, unrelated, cHash)).toBe(true);
+    expect(isAncestor(shallowStore, unrelated, cHash, shallowSet)).toBe(true);
   });
 });
 

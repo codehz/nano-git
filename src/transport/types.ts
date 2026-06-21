@@ -193,6 +193,18 @@ export interface PushOptions {
   force?: boolean;
 
   /**
+   * 已知的 shallow 边界 commit 哈希列表
+   *
+   * 设置此字段后，push 在遍历本地 commit 图遇到边界缺失 parent 时，
+   * 会优先检查该哈希是否在 shallow 集合中：
+   * - 如果在，按 shallow boundary 处理（允许正常的边界缺失）
+   * - 如果不在，按本地损坏报错（避免误判）
+   *
+   * 通常由 Repository 层自动从 backend.shallow 读取，无需调用方手工设置。
+   */
+  shallowBoundaries?: SHA1[];
+
+  /**
    * 可选的远程传输层实现
    *
    * 默认使用 Smart HTTP（调用 createSmartHttpClient）。

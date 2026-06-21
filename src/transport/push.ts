@@ -89,8 +89,10 @@ function throwIfMissingObject(
   hash: SHA1,
   missing: CollectReachableMissing,
   viaCommitParent: boolean,
+  shallowBoundaries?: Set<SHA1>,
 ): void {
-  if (objects.exists(hash)) {
+  // 如果缺失的 commit parent 在已知 shallow 边界集合中，按正常边界处理
+  if (viaCommitParent && shallowBoundaries?.has(hash)) {
     return;
   }
 
@@ -123,6 +125,7 @@ function collectReachableFrom(
   hash: SHA1,
   reachable: Set<SHA1>,
   missing: CollectReachableMissing = "skip",
+  shallowBoundaries?: Set<SHA1>,
   viaCommitParent = false,
 ): void {
   if (reachable.has(hash)) {
@@ -130,7 +133,7 @@ function collectReachableFrom(
   }
 
   if (!objects.exists(hash)) {
-    throwIfMissingObject(objects, hash, missing, viaCommitParent);
+    throwIfMissingObject(objects, hash, missing, viaCommitParent, shallowBoundaries);
     return;
   }
 
@@ -142,17 +145,17 @@ function collectReachableFrom(
       return;
     case "tree":
       for (const entry of obj.entries) {
-        collectReachableFrom(objects, entry.hash, reachable, missing, false);
+        collectReachableFrom(objects, entry.hash, reachable, missing, shallowBoundaries, false);
       }
       return;
     case "commit":
-      collectReachableFrom(objects, obj.tree, reachable, missing, false);
+      collectReachableFrom(objects, obj.tree, reachable, missing, shallowBoundaries, false);
       for (const parent of obj.parents) {
-        collectReachableFrom(objects, parent, reachable, missing, true);
+        collectReachableFrom(objects, parent, reachable, missing, shallowBoundaries, true);
       }
       return;
     case "tag":
-      collectReachableFrom(objects, obj.object, reachable, missing, false);
+      collectReachableFrom(objects, obj.object, reachable, missing, shallowBoundaries, false);
       return;
   }
 }
@@ -161,6 +164,7 @@ function collectReachableFrom(
  * 从多个起始点收集所有可达对象哈希
  *
  * @param missing - 遇到缺失对象时的行为，透传给 collectReachableFrom
+ * @param shallowBoundaries - 已知 shallow 边界集合（可选）
  *
  * @internal 导出仅用于测试
  */
@@ -168,10 +172,11 @@ export function collectReachable(
   objects: ObjectStore,
   roots: SHA1[],
   missing: CollectReachableMissing = "skip",
+  shallowBoundaries?: Set<SHA1>,
 ): Set<SHA1> {
   const reachable = new Set<SHA1>();
   for (const hash of roots) {
-    collectReachableFrom(objects, hash, reachable, missing, false);
+    collectReachableFrom(objects, hash, reachable, missing, shallowBoundaries, false);
   }
   return reachable;
 }
@@ -193,7 +198,12 @@ export function collectReachable(
  *
  * @internal 导出仅用于测试
  */
-export function isAncestor(store: ObjectStore, oldHash: SHA1, newHash: SHA1): boolean {
+export function isAncestor(
+  store: ObjectStore,
+  oldHash: SHA1,
+  newHash: SHA1,
+  shallowBoundaries?: Set<SHA1>,
+): boolean {
   // 相同哈希 trivially 是 fast-forward
   if (oldHash === newHash) {
     return true;
@@ -220,10 +230,15 @@ export function isAncestor(store: ObjectStore, oldHash: SHA1, newHash: SHA1): bo
     }
     visited.add(current);
 
-    // 对象缺失说明遇到了 shallow boundary，无法继续回溯。
-    // 此时无法确定 oldHash 是否在更上游，假定为 fast-forward 让服务端做最终判定。
+    // 对象缺失的处理：先检查是否为已知 shallow boundary
     if (!store.exists(current)) {
-      return true;
+      // 如果缺失哈希在 shallow 边界集合中，按正常 shallow 边界处理
+      // 此时无法确定 oldHash 是否在更上游，假定为 fast-forward 让服务端做最终判定
+      if (shallowBoundaries?.has(current)) {
+        return true;
+      }
+      // 不在 shallow 集合中且对象缺失，视为本地损坏，停止回溯
+      return false;
     }
 
     try {
@@ -251,11 +266,21 @@ export function isAncestor(store: ObjectStore, oldHash: SHA1, newHash: SHA1): bo
 /**
  * 预检所有推送项是否为 fast-forward，不通过的（且未设 force）立即报错
  *
+ * @param store - 对象存储
+ * @param items - 推送引用项列表
+ * @param shallowBoundaries - 已知 shallow 边界集合（可选）
+ *   提供后，isAncestor 会优先判断缺失 parent 是否为已知 shallow boundary，
+ *   避免在 shallow 仓库中将正常边界缺失误判为损坏。
+ *
  * @throws PushError 如果存在 non-fast-forward 更新且未设 force
  *
  * @internal 导出仅用于测试
  */
-export function checkFastForward(store: ObjectStore, items: PushRefItem[]): void {
+export function checkFastForward(
+  store: ObjectStore,
+  items: PushRefItem[],
+  shallowBoundaries?: Set<SHA1>,
+): void {
   for (const item of items) {
     // 删除操作（newHash === null）或新建操作（remoteHash === null）总是安全
     if (item.localHash === null || item.remoteHash === null) {
@@ -267,7 +292,7 @@ export function checkFastForward(store: ObjectStore, items: PushRefItem[]): void
       continue;
     }
 
-    if (!isAncestor(store, item.remoteHash, item.localHash)) {
+    if (!isAncestor(store, item.remoteHash, item.localHash, shallowBoundaries)) {
       const shortRemote = item.remoteHash.slice(0, 8);
       const shortLocal = item.localHash.slice(0, 8);
       throw new PushError(
@@ -471,11 +496,16 @@ export async function push(
     ? parsedSpecs.map((s) => ({ ...s, force: true }))
     : parsedSpecs;
 
-  // 3. 获取本地 refs 和远程 refs
+  // 3. 获取 shallow 边界集合（用于更精确的缺失对象判断）
+  const shallowSet: Set<SHA1> | undefined = options?.shallowBoundaries
+    ? new Set(options.shallowBoundaries)
+    : undefined;
+
+  // 4. 获取本地 refs 和远程 refs
   const localRefs = getLocalRefs(refs);
   const remoteRefs = remoteRefsToMap(adv.refs);
 
-  // 4. 确定要推送的引用
+  // 5. 确定要推送的引用
   const pushRefs = determinePushRefs(localRefs, remoteRefs, effectiveSpecs);
 
   if (pushRefs.length === 0) {
@@ -486,18 +516,23 @@ export async function push(
     };
   }
 
-  // 5. non-fast-forward 预检
+  // 6. non-fast-forward 预检
   //    未设 force 的更新如果不是 fast-forward 则立即报错
-  checkFastForward(store, pushRefs);
+  //    传入 shallowSet 让 isAncestor 能精确判断 shallow boundary，
+  //    避免将已知的 shallow 边界缺失误判为损坏。
+  checkFastForward(store, pushRefs, shallowSet);
 
-  // 6. 收集需要发送的对象
+  // 7. 收集需要发送的对象
   //    需要推送的对象 = 从推送 refs 可达的对象 - 从远程已有 refs 可达的对象
   //    删除操作（localHash === null）跳过对象收集
   const localRoots = pushRefs
     .filter((r): r is PushRefItem & { localHash: SHA1 } => r.localHash !== null)
     .map((r) => r.localHash);
-  // 本地可达性：tree/blob/tag 缺失视为损坏；仅 commit parent 缺失视为 shallow 边界
-  const reachableLocal = collectReachable(store, localRoots, "skip-commit-parents");
+  // 本地可达性：传入 shallowSet 让缺失的 commit parent 在已知 shallow 边界时不报错
+  // 如果 shallowSet 未提供，回退到 "skip-commit-parents" 兼容行为
+  const reachableLocal = shallowSet
+    ? collectReachable(store, localRoots, "skip", shallowSet)
+    : collectReachable(store, localRoots, "skip-commit-parents");
 
   // 收集远程已有 refs 的可达对象（用于排除已存在的对象）
   // 此处使用 skip 模式：远程对象在本地缺失是正常情况

@@ -61,6 +61,18 @@ export interface RepositoryPackSupport {
 }
 
 /**
+ * Shallow 边界更新
+ *
+ * 表示一次 fetch 操作中 shallow 边界集合的增减变化。
+ */
+export interface ShallowUpdate {
+  /** 新增的 shallow 边界 commit 哈希列表 */
+  readonly shallow: SHA1[];
+  /** 从 shallow 边界移除的 commit 哈希列表（变为完整） */
+  readonly unshallow: SHA1[];
+}
+
+/**
  * 仓库后端接口
  *
  * 聚合 Repository 所需的底层依赖：
@@ -68,6 +80,7 @@ export interface RepositoryPackSupport {
  * - refs: Git 引用存储
  * - packs: Packfile 读写支持（可选）
  * - gitDir: .git 目录路径（内存仓库为 null）
+ * - shallow: Shallow 边界状态读写
  */
 export interface RepositoryBackend {
   /** Git 对象存储 */
@@ -81,4 +94,36 @@ export interface RepositoryBackend {
 
   /** .git 目录路径（内存仓库为 null） */
   readonly gitDir: string | null;
+
+  /**
+   * 读取当前 shallow 边界集合
+   *
+   * 返回当前仓库标记为 shallow 边界（即只拉取了部分历史）的 commit 哈希列表。
+   * 非 shallow 仓库返回空数组。
+   */
+  readShallow(): SHA1[];
+
+  /**
+   * 完全替换 shallow 边界集合
+   *
+   * 将 shallow 边界集合替换为给定列表。
+   * 传空数组表示移除此仓库的 shallow 状态（转为完整仓库）。
+   */
+  writeShallow(boundaries: SHA1[]): void;
+
+  /**
+   * 增量更新 shallow 边界
+   *
+   * 根据 fetch 操作返回的 shallow/unshallow 信息，做集合变换：
+   * - 加入 server 新返回的 shallow 边界
+   * - 删除 server 返回的 unshallow 边界
+   */
+  applyShallowUpdate(update: ShallowUpdate): void;
+
+  /**
+   * 判断指定哈希是否为 shallow boundary commit
+   *
+   * 若哈希在当前 shallow 边界集合中返回 true，否则返回 false。
+   */
+  isShallowCommit(hash: SHA1): boolean;
 }
