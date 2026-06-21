@@ -329,6 +329,16 @@ describe("完整 fetch 流程", () => {
     expect(result2.objectCount).toBe(0);
     expect(result2.fetchedRefs.size).toBe(0);
   });
+
+  test("shallow fetch：depth=1 应成功完成初始拉取", async () => {
+    const localDir = join(tempDir, "local-shallow");
+    const repo = initRepository(localDir);
+
+    const result = await repo.fetch(serverUrl, { depth: 1 });
+
+    expect(result.objectCount).toBeGreaterThan(0);
+    expect(repo.refs.readRaw("refs/remotes/origin/main")).not.toBeNull();
+  });
 });
 
 // ============================================================================

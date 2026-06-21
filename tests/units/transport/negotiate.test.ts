@@ -291,40 +291,37 @@ describe("buildUploadPackRequest()", () => {
   // ============================================================================
 
   describe("shallow fetch (deepen)", () => {
-    test("shallow clone：want + flush + deepen + flush + done", () => {
+    test("shallow clone：want + deepen + flush + done", () => {
       const body = buildUploadPackRequest([hash1], [], ["multi_ack"], 3);
       const lines = parsePktLines(body);
 
-      // want + flush + deepen + flush + done = 5
-      expect(lines).toHaveLength(5);
+      // want + deepen + flush + done = 4
+      expect(lines).toHaveLength(4);
 
       expect(lines[0]!.type).toBe("data");
       expect(dataPayload(lines[0]!)).toBe(`want ${hash1} multi_ack\n`);
 
-      expect(lines[1]!.type).toBe("flush");
+      expect(lines[1]!.type).toBe("data");
+      expect(dataPayload(lines[1]!)).toBe("deepen 3\n");
 
-      expect(lines[2]!.type).toBe("data");
-      expect(dataPayload(lines[2]!)).toBe("deepen 3\n");
+      expect(lines[2]!.type).toBe("flush");
 
-      expect(lines[3]!.type).toBe("flush");
-
-      expect(lines[4]!.type).toBe("data");
-      expect(dataPayload(lines[4]!)).toBe("done\n");
+      expect(lines[3]!.type).toBe("data");
+      expect(dataPayload(lines[3]!)).toBe("done\n");
     });
 
     test("shallow + incremental：deepen 出现在 haves 之前", () => {
       const body = buildUploadPackRequest([hash1], [hash2], [], 5);
       const lines = parsePktLines(body);
 
-      // want + flush + deepen + flush + 1 have + done = 6
-      expect(lines).toHaveLength(6);
+      // want + deepen + flush + 1 have + done = 5
+      expect(lines).toHaveLength(5);
 
       expect(dataPayload(lines[0]!)).toBe(`want ${hash1}\n`);
-      expect(lines[1]!.type).toBe("flush");
-      expect(dataPayload(lines[2]!)).toBe("deepen 5\n");
-      expect(lines[3]!.type).toBe("flush");
-      expect(dataPayload(lines[4]!)).toBe(`have ${hash2}\n`);
-      expect(dataPayload(lines[5]!)).toBe("done\n");
+      expect(dataPayload(lines[1]!)).toBe("deepen 5\n");
+      expect(lines[2]!.type).toBe("flush");
+      expect(dataPayload(lines[3]!)).toBe(`have ${hash2}\n`);
+      expect(dataPayload(lines[4]!)).toBe("done\n");
     });
 
     test("depth 为 0 应抛出错误", () => {

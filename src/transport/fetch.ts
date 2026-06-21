@@ -66,6 +66,7 @@ const DEFAULT_CAPABILITIES = [
   "ofs-delta",
   "no-progress",
   "include-tag",
+  "shallow",
 ];
 
 // ============================================================================

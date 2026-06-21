@@ -148,14 +148,13 @@ export function buildUploadPackRequest(
     }
   }
 
-  // want 后的 flush
-  chunks.push(encodeFlushPkt());
-
-  // deepen 命令（shallow fetch 时添加）
+  // deepen 命令（shallow fetch 时添加，必须在 flush 之前）
   if (depth !== undefined) {
     chunks.push(encodePktLine(`deepen ${depth}\n`));
-    chunks.push(encodeFlushPkt());
   }
+
+  // wants + deepen 之后的 flush
+  chunks.push(encodeFlushPkt());
 
   // have 行：当前 fetch 编排使用单次 stateless-rpc 请求，
   // 一次性发送完整 have 列表，避免中间 flush 提前结束协商阶段。
@@ -203,12 +202,13 @@ export function buildUploadPackNegotiationRound(
     }
   }
 
-  chunks.push(encodeFlushPkt());
-
+  // deepen 命令（shallow fetch 时添加，必须在 flush 之前）
   if (depth !== undefined) {
     chunks.push(encodePktLine(`deepen ${depth}\n`));
-    chunks.push(encodeFlushPkt());
   }
+
+  // wants + deepen 之后的 flush
+  chunks.push(encodeFlushPkt());
 
   for (const hash of haves) {
     chunks.push(encodePktLine(`have ${hash}\n`));
