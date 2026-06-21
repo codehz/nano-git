@@ -136,8 +136,8 @@ export function determineWants(
   remoteRefs: RemoteRef[],
   localRefs: Map<string, SHA1>,
   refSpecs: ParsedRefSpec[],
-): Array<{ remote: RemoteRef; localName: string }> {
-  const wants: Array<{ remote: RemoteRef; localName: string }> = [];
+): Array<{ remote: RemoteRef; localName: string; localHash?: SHA1 }> {
+  const wants: Array<{ remote: RemoteRef; localName: string; localHash?: SHA1 }> = [];
 
   for (const ref of remoteRefs) {
     for (const spec of refSpecs) {
@@ -151,7 +151,7 @@ export function determineWants(
         continue; // 已是最新，跳过
       }
 
-      wants.push({ remote: ref, localName });
+      wants.push({ remote: ref, localName, localHash });
     }
   }
 
@@ -255,9 +255,12 @@ export async function fetch(
   // 5. 从服务端 capabilities 中确定可用能力
   const caps = extractCapabilities(adv.capabilities);
 
-  // 6. 构造请求（初始实现：空 haves，后续支持增量 fetch）
+  // 6. 构造请求：收集本地已有的远程跟踪 ref 哈希作为 haves，实现增量 fetch
   const wantHashes = wants.map((w) => w.remote.hash);
-  const body = buildUploadPackRequest(wantHashes, [], caps);
+  const haveHashes: SHA1[] = wants
+    .map((w) => w.localHash)
+    .filter((h): h is SHA1 => h !== undefined);
+  const body = buildUploadPackRequest(wantHashes, haveHashes, caps);
 
   // 7. 发送请求
   const { packfile } = await client.postUploadPack(body);
