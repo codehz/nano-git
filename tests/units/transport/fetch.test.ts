@@ -876,7 +876,7 @@ describe("fetch() refs/heads/* 类型校验", () => {
     };
   }
 
-  test("annotated tag 被 fetch 到 refs/heads/* 时写入 peeled commit hash", async () => {
+  test("annotated tag 被 fetch 到 refs/heads/* 时抛出 FetchError", async () => {
     const objectStore = createMemoryObjectStore();
     const refStore = createMemoryRefStore();
 
@@ -897,15 +897,14 @@ describe("fetch() refs/heads/* 类型校验", () => {
       () => packData,
     );
 
-    const result = await fetch(objectStore, refStore, "dummy", {
+    const fetchPromise = fetch(objectStore, refStore, "dummy", {
       transport,
       refSpecs: ["+refs/tags/v1:refs/heads/from-tag"],
     });
 
-    // refs/heads/from-tag 应指向 commit hash，而非 tag object hash
-    expect(refStore.read("refs/heads/from-tag")).toBe(commitHash);
-    expect(result.fetchedRefs.get("refs/heads/from-tag")).toBe(commitHash);
-    expect(result.objectCount).toBe(1);
+    // Git 拒绝将 annotated tag（非 commit 对象）写入 refs/heads/*
+    expect(fetchPromise).rejects.toThrow(FetchError);
+    expect(fetchPromise).rejects.toThrow(/is a tag object/);
   });
 
   test("非 commit 对象被 fetch 到 refs/heads/* 时抛出 FetchError", async () => {

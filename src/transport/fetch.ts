@@ -39,8 +39,7 @@ import {
 import { isAncestor } from "./push.ts";
 import { createSmartHttpClient } from "./smart-http.ts";
 
-import type { SHA1 } from "../core/types.ts";
-import type { GitObject, GitTag } from "../core/types.ts";
+import type { SHA1, GitObject } from "../core/types.ts";
 import type { ObjectSource, ObjectStore } from "../odb/types.ts";
 import type { RefStore } from "../refs/types.ts";
 import type { FetchOptions, FetchResult } from "./types.ts";
@@ -651,12 +650,14 @@ async function negotiateAndFetchPackfile(
 // ============================================================================
 
 /**
- * 解析 refs/heads/* 的目标哈希
+ * 校验远程 ref 对象可写入 refs/heads/*
  *
- * refs/heads/* 只能指向 commit 对象。当远程 ref 是 annotated tag 时，
- * 优先使用广告中的 peeled hash（tag 解引用后的 commit 哈希）；
- * 如果没有 peeled hash，从 store 中读取对象、自动沿 tag 链解引用，
- * 并校验最终类型为 commit。
+ * refs/heads/* 只能指向 commit 对象。GIT 协议中远程 ref 的 hash 可能指向
+ * 四种对象类型：
+ * - commit：允许（直接写入）
+ * - tag（annotated tag）：拒绝——即使有 peeled hash，远程 ref 本身的
+ *   目标对象仍是 tag，non-commit 对象不可写入 refs/heads/*
+ * - blob/tree：拒绝
  *
  * @param store - 对象存储
  * @param remote - 远程引用（含 hash 和可选的 peeled hash）
@@ -664,25 +665,6 @@ async function negotiateAndFetchPackfile(
  * @throws FetchError 如果目标对象不存在或不是 commit
  */
 function resolveBranchTargetHash(store: ObjectStore, remote: RemoteRef): SHA1 {
-  // 优先使用远程广告中的 peeled hash（annotated tag 解引用结果）
-  if (remote.peeled !== undefined) {
-    if (!store.exists(remote.peeled)) {
-      throw new FetchError(
-        `Peeled object ${remote.peeled} for remote ref "${remote.name}" ` +
-          `is missing from the local store. refs/heads/* can only point to commit objects.`,
-      );
-    }
-    const obj = store.read(remote.peeled);
-    if (obj.type !== "commit") {
-      throw new FetchError(
-        `Remote ref "${remote.name}" peels to a ${obj.type} (${remote.peeled}), ` +
-          `expected commit. refs/heads/* can only point to commit objects.`,
-      );
-    }
-    return remote.peeled;
-  }
-
-  // 无 peeled hash：从 store 中读取 remote.hash 并校验
   if (!store.exists(remote.hash)) {
     throw new FetchError(
       `Object ${remote.hash} for remote ref "${remote.name}" is missing from the local store. ` +
@@ -691,9 +673,12 @@ function resolveBranchTargetHash(store: ObjectStore, remote: RemoteRef): SHA1 {
   }
   const obj = store.read(remote.hash);
 
-  // 如果是 tag 对象，自动沿 tag 链解引用
   if (obj.type === "tag") {
-    return peelTagToCommit(store, remote.hash, obj, remote.name);
+    throw new FetchError(
+      `Remote ref "${remote.name}" (${remote.hash}) is a tag object, ` +
+        `expected commit. refs/heads/* can only point to commit objects. ` +
+        `Use a lightweight tag or a direct ref to a commit.`,
+    );
   }
 
   if (obj.type !== "commit") {
@@ -704,46 +689,6 @@ function resolveBranchTargetHash(store: ObjectStore, remote: RemoteRef): SHA1 {
   }
 
   return remote.hash;
-}
-
-/**
- * 沿 tag 链解引用直到最底层非 tag 对象，并验证结果为 commit
- *
- * @param store - 对象存储
- * @param startHash - 起始 tag 对象哈希
- * @param startObj - 起始 tag 对象
- * @param refName - 原始远程 ref 名称（用于错误消息）
- * @returns 解引用后的 commit 哈希
- * @throws FetchError 如果解引用过程中对象缺失或最终不是 commit
- */
-function peelTagToCommit(
-  store: ObjectStore,
-  startHash: SHA1,
-  startObj: GitTag,
-  refName: string,
-): SHA1 {
-  let currentHash = startHash;
-  let currentObj: GitObject = startObj;
-
-  while (currentObj.type === "tag") {
-    currentHash = currentObj.object;
-    if (!store.exists(currentHash)) {
-      throw new FetchError(
-        `Tag object ${currentHash} in tag chain for remote ref "${refName}" ` +
-          `is missing from the local store. refs/heads/* can only point to commit objects.`,
-      );
-    }
-    currentObj = store.read(currentHash);
-  }
-
-  if (currentObj.type !== "commit") {
-    throw new FetchError(
-      `Remote ref "${refName}" resolves to a ${currentObj.type} after tag peeling, ` +
-        `expected commit. refs/heads/* can only point to commit objects.`,
-    );
-  }
-
-  return currentHash;
 }
 
 /**
