@@ -89,78 +89,111 @@ export interface RefAdvertisement {
   refs: RemoteRef[];
 }
 
+// ============================================================================
+// Advertise 类型
+// ============================================================================
+
 /**
- * Fetch 操作选项
- *
- * 控制 clone/fetch 行为。
+ * 广告获取选项
  */
-export interface FetchOptions {
-  /**
-   * refspec 列表，格式如 "+refs/heads/*:refs/remotes/origin/*"
-   * 默认为 ["+refs/heads/*:refs/remotes/origin/*"]
-   */
-  refSpecs?: string[];
-  /** shallow clone 深度（可选） */
-  depth?: number;
-
-  /**
-   * 已有 shallow 边界 commit 哈希列表
-   *
-   * 进行增量 shallow fetch 时，传入之前保存的 shallow 边界哈希，
-   * 服务端会据此决定哪些 commit 需要 unshallow 或保持 shallow。
-   * 首次 shallow clone 时不需要设置此字段。
-   */
-  shallow?: SHA1[];
-
-  /**
-   * 认证 Token
-   *
-   * 设置后在所有请求中添加 `Authorization: Bearer <token>` 头。
-   * 与 headers 同时设置时，token 优先转换为 Authorization 头，
-   * 然后再合并 headers 中的其他字段。
-   */
-  token?: string;
-
-  /**
-   * 自定义 HTTP 请求头
-   *
-   * 注入到所有远程请求中。常用于：
-   * - 自定义认证方式（如 `Authorization: token xxx`）
-   * - CI 身份标识（如 `Job-Token: xxx`）
-   * - 自定义 User-Agent
-   */
-  headers?: Record<string, string>;
-
-  /**
-   * 可选的远程传输层实现
-   *
-   * 默认使用 Smart HTTP（调用 createSmartHttpClient）。
-   * 传入此字段可注入替代实现用于测试。
-   */
-  transport?: RemoteTransport;
-
-  /**
-   * have 候选集上限
-   *
-   * 控制 collectHaveCommits 返回的最大 have 候选数量。
-   * 设为 0 表示不限制（使用默认深度 65536）。
-   * 默认值为 512。
-   */
-  maxCandidates?: number;
+export interface AdvertiseOptions {
+  readonly token?: string;
+  readonly headers?: Record<string, string>;
+  readonly transport?: RemoteTransport;
 }
 
 /**
- * Fetch 操作结果
+ * 标准化远端广告
+ *
+ * `defaultBranch` 在此统一提取，后续流程不再解析原始 `symref`。
  */
-export interface FetchResult {
-  /** 本地 ref → 新 hash 的映射 */
-  fetchedRefs: Map<string, SHA1>;
-  /** 获取的对象数量 */
-  objectCount: number;
-  /** shallow 边界 commit 哈希列表（仅 shallow fetch 时存在） */
-  shallow?: SHA1[];
-  /** 从 shallow 变为完整的 commit 哈希列表（仅增量 shallow fetch 时存在） */
-  unshallow?: SHA1[];
+export interface RemoteAdvertisement {
+  readonly capabilities: Record<string, string | true>;
+  readonly refs: RemoteRef[];
+  readonly defaultBranch?: string;
+}
+
+// ============================================================================
+// Ref 规划类型
+// ============================================================================
+
+/**
+ * Ref 映射规则
+ */
+export interface RefMappingRule {
+  readonly source: string;
+  readonly target: string;
+  readonly force?: boolean;
+}
+
+/**
+ * Ref 更新计划项
+ */
+export interface RefUpdatePlanItem {
+  readonly remoteRef: RemoteRef;
+  readonly localRef: string;
+  readonly currentLocalHash?: SHA1;
+  readonly force: boolean;
+}
+
+/**
+ * Ref 更新计划
+ */
+export interface RefUpdatePlan {
+  readonly wants: SHA1[];
+  readonly matchedRemoteRefs: RemoteRef[];
+  readonly updates: RefUpdatePlanItem[];
+}
+
+// ============================================================================
+// FetchPack 类型
+// ============================================================================
+
+/**
+ * Fetch-pack 操作选项
+ *
+ * 只接受 wants、depth、shallow 等协议级参数，不涉及 ref 映射。
+ */
+export interface FetchPackOptions {
+  readonly url: string;
+  readonly wants: SHA1[];
+  /** 本地已有 commit tips，用于 negotiate 中作为 have 候选的遍历起点 */
+  readonly haves?: SHA1[];
+  readonly depth?: number;
+  readonly shallow?: SHA1[];
+  readonly token?: string;
+  readonly headers?: Record<string, string>;
+  readonly transport?: RemoteTransport;
+  readonly maxCandidates?: number;
+}
+
+/**
+ * Fetch-pack 操作结果
+ */
+export interface FetchPackResult {
+  readonly objectCount: number;
+  readonly shallow?: SHA1[];
+  readonly unshallow?: SHA1[];
+}
+
+// ============================================================================
+// Ref 更新类型
+// ============================================================================
+
+/**
+ * Ref 更新拒绝项
+ */
+export interface RefUpdateRejection {
+  readonly localRef: string;
+  readonly reason: string;
+}
+
+/**
+ * 应用 ref 更新结果
+ */
+export interface ApplyRefUpdatesResult {
+  readonly updatedRefs: Map<string, SHA1>;
+  readonly rejectedRefs: RefUpdateRejection[];
 }
 
 // ============================================================================

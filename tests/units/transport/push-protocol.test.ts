@@ -11,10 +11,10 @@ import { describe, test, expect } from "bun:test";
 import { sha1, type SHA1 } from "@/core/types.ts";
 import { createMemoryObjectStore } from "@/odb/memory-store.ts";
 import { createMemoryRefStore } from "@/refs/stores/memory.ts";
-import { parseRefSpec } from "@/transport/fetch.ts";
 import { encodePktLine, encodeFlushPkt } from "@/transport/pkt-line.ts";
 import { push, PushError, determinePushRefs } from "@/transport/push.ts";
 import { parseReceivePackResult } from "@/transport/receive-pack-result.ts";
+import { parseRefSpec } from "@/transport/ref-plan.ts";
 
 import type { RemoteTransport } from "@/transport/types.ts";
 

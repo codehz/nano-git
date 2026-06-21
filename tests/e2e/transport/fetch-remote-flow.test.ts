@@ -1,7 +1,11 @@
 /**
- * 完整 Fetch 流程测试
+ * Fetch remote 流程测试（仓库层 E2E）
  *
- * 验证从零 clone、增量 fetch、shallow fetch 等完整 fetch 场景。
+ * 验证 fetchRemote（及兼容 fetch）的 remote-tracking ref 更新行为：
+ * - 创建 refs/remotes/origin/*
+ * - 增量 fetch 无重复对象
+ * - tag 处理、精确 refspec、空仓库
+ * - 不修改 HEAD，不创建本地 branch
  */
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
@@ -12,68 +16,8 @@ import { git, gitInit, createTempDir, cleanupDir, createFile } from "../helpers.
 import { startGitHttpBackendServer } from "./http-server.ts";
 import { sha1 } from "@/core/types.ts";
 import { initRepository } from "@/repository/index.ts";
-import { encodeFlushPkt, encodePktLine, parsePktLines } from "@/transport/pkt-line.ts";
 
-import type { GitHttpBackendResponse, GitHttpRequestRecord } from "./http-server.ts";
-
-function stripCapabilityFromAdvertisement(
-  response: GitHttpBackendResponse,
-  capability: string,
-): GitHttpBackendResponse {
-  return rewriteAdvertisementCapabilities(response, (caps) =>
-    caps.filter((token) => token.length > 0 && token !== capability),
-  );
-}
-
-function rewriteAdvertisementCapabilities(
-  response: GitHttpBackendResponse,
-  rewrite: (capabilities: string[]) => string[],
-): GitHttpBackendResponse {
-  const lines = parsePktLines(response.body);
-  const chunks: Buffer[] = [];
-  let rewritten = false;
-
-  for (const line of lines) {
-    if (line.type === "flush") {
-      chunks.push(encodeFlushPkt());
-      continue;
-    }
-
-    if (line.type !== "data") {
-      continue;
-    }
-
-    if (!rewritten) {
-      const nullIndex = line.payload.indexOf(0);
-      if (nullIndex !== -1) {
-        const refPart = line.payload.subarray(0, nullIndex);
-        const originalCaps = line.payload
-          .subarray(nullIndex + 1)
-          .toString("utf-8")
-          .split(" ")
-          .filter((token) => token.length > 0);
-        const caps = rewrite(originalCaps);
-        const payload = Buffer.concat([
-          refPart,
-          Buffer.from([0]),
-          Buffer.from(caps.join(" "), "utf-8"),
-        ]);
-        chunks.push(encodePktLine(payload));
-        rewritten = true;
-        continue;
-      }
-    }
-
-    chunks.push(encodePktLine(line.payload));
-  }
-
-  return {
-    ...response,
-    body: Buffer.concat(chunks),
-  };
-}
-
-describe("完整 fetch 流程", () => {
+describe("fetch remote 流程", () => {
   let tempDir: string;
   let serverRepoDir: string;
   let workDir: string;
@@ -81,7 +25,7 @@ describe("完整 fetch 流程", () => {
   let server: ReturnType<typeof startGitHttpBackendServer>;
 
   beforeEach(() => {
-    tempDir = createTempDir("e2e-full-fetch");
+    tempDir = createTempDir("e2e-fetch-remote");
 
     // 1. 创建服务端裸仓库
     serverRepoDir = join(tempDir, "server.git");
@@ -103,7 +47,7 @@ describe("完整 fetch 流程", () => {
     git(["commit", "-m", "Add lib"], workDir);
     git(["push", serverRepoDir, "main"], workDir);
 
-    // 3. 启动 HTTP 服务器代理 git http-backend
+    // 3. 启动 HTTP 服务器
     server = startGitHttpBackendServer(tempDir, "/server.git");
     serverUrl = server.url;
   });
@@ -113,11 +57,16 @@ describe("完整 fetch 流程", () => {
     cleanupDir(tempDir);
   });
 
-  test("初始 clone", async () => {
+  test("初始 fetch 创建 remote-tracking refs", async () => {
     const localDir = join(tempDir, "local");
     const repo = initRepository(localDir);
+    repo.addRemote({
+      name: "origin",
+      url: serverUrl,
+      fetchRules: [{ source: "+refs/heads/*", target: "refs/remotes/origin/*" }],
+    });
 
-    const result = await repo.fetch(serverUrl);
+    const result = await repo.fetchRemote("origin");
 
     expect(result.objectCount).toBeGreaterThan(0);
 
@@ -125,8 +74,7 @@ describe("完整 fetch 流程", () => {
     expect(mainRef).not.toBeNull();
     expect(mainRef!.length).toBe(40);
 
-    const headRef = repo.refs.read("HEAD");
-    expect(headRef).not.toBeNull();
+    // 不 assert HEAD 的具体值——transport 层不再写 HEAD
 
     const commitObj = repo.objects.read(sha1(mainRef!));
     expect(commitObj.type).toBe("commit");
@@ -135,59 +83,53 @@ describe("完整 fetch 流程", () => {
   test("增量 fetch：已存在对象时不重复拉取", async () => {
     const localDir = join(tempDir, "local2");
     const repo = initRepository(localDir);
+    repo.addRemote({
+      name: "origin",
+      url: serverUrl,
+      fetchRules: [{ source: "+refs/heads/*", target: "refs/remotes/origin/*" }],
+    });
 
-    const result1 = await repo.fetch(serverUrl);
+    const result1 = await repo.fetchRemote("origin");
     expect(result1.objectCount).toBeGreaterThan(0);
 
-    const result2 = await repo.fetch(serverUrl);
+    const result2 = await repo.fetchRemote("origin");
     expect(result2.objectCount).toBe(0);
-    expect(result2.fetchedRefs.size).toBe(0);
-  });
-
-  test("shallow fetch：depth=1 应成功完成初始拉取", async () => {
-    const localDir = join(tempDir, "local-shallow");
-    const repo = initRepository(localDir);
-
-    const result = await repo.fetch(serverUrl, { depth: 1 });
-
-    expect(result.objectCount).toBeGreaterThan(0);
-    expect(repo.refs.read("refs/remotes/origin/main")).not.toBeNull();
+    expect(result2.updatedRefs.size).toBe(0);
   });
 
   test("增量 fetch：本地通过其他 ref 持有目标 commit 时不重复下载", async () => {
     const localDir = join(tempDir, "local-multi-ref");
     const repo = initRepository(localDir);
+    repo.addRemote({
+      name: "origin",
+      url: serverUrl,
+      fetchRules: [{ source: "+refs/heads/*", target: "refs/remotes/origin/*" }],
+    });
 
-    // 1. 初始 fetch：获取 main 的 2 个提交
-    const result1 = await repo.fetch(serverUrl);
+    // 1. 初始 fetch
+    const result1 = await repo.fetchRemote("origin");
     expect(result1.objectCount).toBeGreaterThan(0);
 
-    const oldMainHash = repo.refs.read("refs/remotes/origin/main")!;
+    // 2. 创建 feature 分支并推送
+    const featureDir = join(tempDir, "work-feature");
+    git(["clone", serverRepoDir, featureDir], tempDir);
+    createFile(featureDir, "feature.txt", "feature content\n");
+    git(["add", "feature.txt"], featureDir);
+    git(["commit", "-m", "Feature commit"], featureDir);
+    const featureHash = git(["rev-parse", "HEAD"], featureDir);
+    git(["push", serverRepoDir, `HEAD:feature`], featureDir);
 
-    // 2. 在服务端创建 feature 分支并推一个新提交
-    const workDir = join(tempDir, "work-feature");
-    git(["clone", serverRepoDir, workDir], tempDir);
-    createFile(workDir, "feature.txt", "feature content\n");
-    git(["add", "feature.txt"], workDir);
-    git(["commit", "-m", "Feature commit"], workDir);
-    const featureHash = git(["rev-parse", "HEAD"], workDir);
-    git(["push", serverRepoDir, `HEAD:feature`], workDir);
+    // 3. 第二次 fetch
+    const result2 = await repo.fetchRemote("origin");
+    expect(result2.updatedRefs.has("refs/remotes/origin/feature")).toBe(true);
 
-    // 3. 第二次 fetch：获取 feature 分支到本地
-    const result2 = await repo.fetch(serverUrl);
-    expect(result2.fetchedRefs.has("refs/remotes/origin/feature")).toBe(true);
-    expect(repo.refs.read("refs/remotes/origin/feature")).toBe(featureHash);
-    expect(repo.refs.read("refs/remotes/origin/main")).toBe(oldMainHash);
-
-    // 4. 服务端将 main 快进到 feature 指向的同一个 commit
+    // 4. 服务端将 main 快进到 feature commit
     git(["update-ref", "refs/heads/main", featureHash], serverRepoDir);
 
-    // 5. 第三次 fetch：main 已前进到 feature commit，但该 commit 已在本地存储中
-    const result3 = await repo.fetch(serverUrl);
-
-    // feature commit 已通过另一个本地 ref 持有，不应重复下载对象。
+    // 5. 第三次 fetch：main 已前进到 feature commit，但该 commit 已在本地
+    const result3 = await repo.fetchRemote("origin");
     expect(result3.objectCount).toBe(0);
-    expect(result3.fetchedRefs.get("refs/remotes/origin/main")).toBe(sha1(featureHash));
+    expect(result3.updatedRefs.get("refs/remotes/origin/main")).toBe(sha1(featureHash));
   });
 
   test("空仓库 fetch：返回空结果且不写入 remote-tracking refs", async () => {
@@ -199,11 +141,56 @@ describe("完整 fetch 流程", () => {
 
     const localDir = join(tempDir, "local-empty-fetch");
     const repo = initRepository(localDir);
-    const result = await repo.fetch(emptyServer.url);
+    repo.addRemote({
+      name: "empty",
+      url: emptyServer.url,
+      fetchRules: [{ source: "+refs/heads/*", target: "refs/remotes/origin/*" }],
+    });
+    const result = await repo.fetchRemote("empty");
 
     expect(result.objectCount).toBe(0);
-    expect(result.fetchedRefs.size).toBe(0);
+    expect(result.updatedRefs.size).toBe(0);
     expect(repo.refs.read("refs/remotes/origin/main")).toBeNull();
+  });
+});
+
+// ============================================================================
+// Tag 相关测试
+// ============================================================================
+
+describe("fetch remote tag 处理", () => {
+  let tempDir: string;
+  let serverRepoDir: string;
+  let workDir: string;
+  let serverUrl: string;
+  let server: ReturnType<typeof startGitHttpBackendServer>;
+
+  beforeEach(() => {
+    tempDir = createTempDir("e2e-fetch-tag");
+
+    serverRepoDir = join(tempDir, "server.git");
+    mkdirSync(serverRepoDir);
+    git(["init", "--bare"], serverRepoDir);
+
+    workDir = join(tempDir, "work");
+    gitInit(workDir);
+    createFile(workDir, "README.md", "# Hello\n");
+    git(["add", "README.md"], workDir);
+    git(["commit", "-m", "Initial commit"], workDir);
+    git(["push", serverRepoDir, "main"], workDir);
+
+    createFile(workDir, "src/lib.js", "module.exports = {}\n");
+    git(["add", "src/lib.js"], workDir);
+    git(["commit", "-m", "Add lib"], workDir);
+    git(["push", serverRepoDir, "main"], workDir);
+
+    server = startGitHttpBackendServer(tempDir, "/server.git");
+    serverUrl = server.url;
+  });
+
+  afterEach(async () => {
+    await server?.stop();
+    cleanupDir(tempDir);
   });
 
   test("显式 tag refspec：fetch 注解 tag 到本地 tags 命名空间", async () => {
@@ -212,10 +199,13 @@ describe("完整 fetch 流程", () => {
 
     const localDir = join(tempDir, "local-tag-fetch");
     const repo = initRepository(localDir);
-
-    const result = await repo.fetch(serverUrl, {
-      refSpecs: ["+refs/tags/*:refs/tags/*"],
+    repo.addRemote({
+      name: "origin",
+      url: serverUrl,
+      fetchRules: [{ source: "+refs/tags/*", target: "refs/tags/*" }],
     });
+
+    const result = await repo.fetchRemote("origin");
 
     expect(result.objectCount).toBeGreaterThan(0);
     const tagHash = repo.refs.read("refs/tags/v1.0");
@@ -236,7 +226,12 @@ describe("完整 fetch 流程", () => {
 
     const localDir = join(tempDir, "local-include-tag");
     const repo = initRepository(localDir);
-    const result = await repo.fetch(serverUrl);
+    repo.addRemote({
+      name: "origin",
+      url: serverUrl,
+      fetchRules: [{ source: "+refs/heads/*", target: "refs/remotes/origin/*" }],
+    });
+    const result = await repo.fetchRemote("origin");
 
     expect(result.objectCount).toBeGreaterThan(0);
     expect(repo.refs.read("refs/remotes/origin/main")).not.toBeNull();
@@ -266,12 +261,15 @@ describe("完整 fetch 流程", () => {
 
     const localDir = join(tempDir, "local-exact-refspec-mixed");
     const repo = initRepository(localDir);
-    const result = await repo.fetch(serverUrl, {
-      refSpecs: [
-        "+refs/heads/main:refs/remotes/origin/main",
-        "+refs/tags/v-main-only:refs/tags/v-main-only",
+    repo.addRemote({
+      name: "origin",
+      url: serverUrl,
+      fetchRules: [
+        { source: "+refs/heads/main", target: "refs/remotes/origin/main" },
+        { source: "+refs/tags/v-main-only", target: "refs/tags/v-main-only" },
       ],
     });
+    const result = await repo.fetchRemote("origin");
 
     expect(result.objectCount).toBeGreaterThan(0);
     expect(repo.refs.read("refs/remotes/origin/main")).not.toBeNull();
@@ -287,10 +285,15 @@ describe("完整 fetch 流程", () => {
 
     const localDir = join(tempDir, "local-tag-only-default");
     const repo = initRepository(localDir);
-    const result = await repo.fetch(serverUrl);
+    repo.addRemote({
+      name: "origin",
+      url: serverUrl,
+      fetchRules: [{ source: "+refs/heads/*", target: "refs/remotes/origin/*" }],
+    });
+    const result = await repo.fetchRemote("origin");
 
     expect(result.objectCount).toBe(0);
-    expect(result.fetchedRefs.size).toBe(0);
+    expect(result.updatedRefs.size).toBe(0);
     expect(repo.refs.read("refs/remotes/origin/main")).toBeNull();
     expect(repo.refs.read("refs/tags/v-tag-only")).toBeNull();
   });
@@ -302,9 +305,12 @@ describe("完整 fetch 流程", () => {
 
     const localDir = join(tempDir, "local-tag-only-explicit");
     const repo = initRepository(localDir);
-    const result = await repo.fetch(serverUrl, {
-      refSpecs: ["+refs/tags/*:refs/tags/*"],
+    repo.addRemote({
+      name: "origin",
+      url: serverUrl,
+      fetchRules: [{ source: "+refs/tags/*", target: "refs/tags/*" }],
     });
+    const result = await repo.fetchRemote("origin");
 
     expect(result.objectCount).toBeGreaterThan(0);
     const tagHash = repo.refs.read("refs/tags/v-tag-only-fetch");
@@ -319,10 +325,13 @@ describe("完整 fetch 流程", () => {
 
     const localDir = join(tempDir, "local-invalid-branch-target");
     const repo = initRepository(localDir);
-
-    const fetchPromise = repo.fetch(serverUrl, {
-      refSpecs: ["+refs/tags/v-branch-invalid:refs/heads/from-tag"],
+    repo.addRemote({
+      name: "origin",
+      url: serverUrl,
+      fetchRules: [{ source: "+refs/tags/v-branch-invalid", target: "refs/heads/from-tag" }],
     });
+
+    const fetchPromise = repo.fetchRemote("origin");
 
     expect(fetchPromise).rejects.toThrow(/tag object|expected commit|refs\/heads/i);
     expect(repo.refs.read("refs/heads/from-tag")).toBeNull();
@@ -337,86 +346,42 @@ describe("完整 fetch 流程", () => {
     // 2. 用 + 先在本地创建 lightweight tag
     const localDir = join(tempDir, "local-tag-update");
     const repo = initRepository(localDir);
-    const firstResult = await repo.fetch(serverUrl, {
-      refSpecs: ["+refs/tags/*:refs/tags/*"],
+    repo.addRemote({
+      name: "tag-force",
+      url: serverUrl,
+      fetchRules: [{ source: "+refs/tags/*", target: "refs/tags/*" }],
     });
-    expect(firstResult.fetchedRefs.has("refs/tags/v-update")).toBe(true);
+    const firstResult = await repo.fetchRemote("tag-force");
+    expect(firstResult.updatedRefs.has("refs/tags/v-update")).toBe(true);
 
     // 3. 创建新的 commit 并推送到服务端
     createFile(workDir, "new-tag-file.txt", "new content\n");
     git(["add", "new-tag-file.txt"], workDir);
     git(["commit", "-m", "New commit for tag update"], workDir);
     git(["push", serverRepoDir, "main"], workDir);
-    // 在服务端将 lightweight tag 移到新的 commit
     const newCommit = git(["rev-parse", "HEAD"], workDir);
     git(["--git-dir", serverRepoDir, "tag", "-f", "v-update", newCommit], tempDir);
 
     // 4. 非强制 fetch——应拒绝更新已有 tag
-    const secondResult = await repo.fetch(serverUrl, {
-      refSpecs: ["refs/tags/*:refs/tags/*"],
+    repo.addRemote({
+      name: "tag-noforce",
+      url: serverUrl,
+      fetchRules: [{ source: "refs/tags/*", target: "refs/tags/*", force: false }],
     });
+    const secondResult = await repo.fetchRemote("tag-noforce");
     const localTagHash = repo.refs.read("refs/tags/v-update");
     expect(localTagHash).toBe(initialCommit);
-    expect(secondResult.fetchedRefs.has("refs/tags/v-update")).toBe(false);
+    expect(secondResult.updatedRefs.has("refs/tags/v-update")).toBe(false);
 
     // 5. 强制 fetch——应更新 tag
-    const thirdResult = await repo.fetch(serverUrl, {
-      refSpecs: ["+refs/tags/*:refs/tags/*"],
+    repo.addRemote({
+      name: "tag-force2",
+      url: serverUrl,
+      fetchRules: [{ source: "+refs/tags/*", target: "refs/tags/*" }],
     });
+    const thirdResult = await repo.fetchRemote("tag-force2");
     const updatedTagHash = repo.refs.read("refs/tags/v-update");
     expect(updatedTagHash).toBe(newCommit);
-    expect(thirdResult.fetchedRefs.get("refs/tags/v-update")).toBe(sha1(newCommit));
-  });
-
-  test("协议降级：服务端不走 side-band-64k 时 fetch 仍成功", async () => {
-    const downgradedServer = startGitHttpBackendServer(tempDir, "/server.git", undefined, {
-      transformResponse(response: GitHttpBackendResponse, request: GitHttpRequestRecord) {
-        if (
-          request.method === "GET" &&
-          request.path.endsWith("/info/refs") &&
-          request.query === "service=git-upload-pack"
-        ) {
-          return stripCapabilityFromAdvertisement(response, "side-band-64k");
-        }
-        return response;
-      },
-    });
-
-    await using serverHandle = downgradedServer;
-    const localDir = join(tempDir, "local-raw-pack-fetch");
-    const repo = initRepository(localDir);
-
-    const result = await repo.fetch(serverHandle.url);
-
-    expect(result.objectCount).toBeGreaterThan(0);
-    const mainRef = repo.refs.read("refs/remotes/origin/main");
-    expect(mainRef).not.toBeNull();
-    expect(repo.objects.read(sha1(mainRef!)).type).toBe("commit");
-  });
-
-  test("最小能力集：upload-pack advertisement 仅保留 ofs-delta 时 fetch 仍成功", async () => {
-    const minimalServer = startGitHttpBackendServer(tempDir, "/server.git", undefined, {
-      transformResponse(response: GitHttpBackendResponse, request: GitHttpRequestRecord) {
-        if (
-          request.method === "GET" &&
-          request.path.endsWith("/info/refs") &&
-          request.query === "service=git-upload-pack"
-        ) {
-          return rewriteAdvertisementCapabilities(response, () => ["ofs-delta"]);
-        }
-        return response;
-      },
-    });
-
-    await using serverHandle = minimalServer;
-    const localDir = join(tempDir, "local-minimal-upload-pack");
-    const repo = initRepository(localDir);
-
-    const result = await repo.fetch(serverHandle.url);
-
-    expect(result.objectCount).toBeGreaterThan(0);
-    const mainRef = repo.refs.read("refs/remotes/origin/main");
-    expect(mainRef).not.toBeNull();
-    expect(repo.objects.read(sha1(mainRef!)).type).toBe("commit");
+    expect(thirdResult.updatedRefs.get("refs/tags/v-update")).toBe(sha1(newCommit));
   });
 });

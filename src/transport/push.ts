@@ -24,15 +24,15 @@ import { GitError } from "../core/errors.ts";
 import { sha1 } from "../core/types.ts";
 import { createPackWriter } from "../odb/pack/pack-writer.ts";
 import { HEADS_PREFIX, HEAD_REF, resolveRefHash, resolveSymbolicRef } from "../refs/index.ts";
-import { parseRefSpec } from "./fetch.ts";
 import { buildReceivePackRequest } from "./receive-pack-request.ts";
 import { ReceivePackResultError } from "./receive-pack-result.ts";
+import { parseRefSpec } from "./ref-plan.ts";
 import { createSmartHttpClient } from "./smart-http.ts";
 
 import type { SHA1 } from "../core/types.ts";
 import type { ObjectStore } from "../odb/types.ts";
 import type { RefStore } from "../refs/types.ts";
-import type { ParsedRefSpec } from "./fetch.ts";
+import type { ParsedRefSpec } from "./ref-plan.ts";
 import type { PushOptions, PushResult, PushRefUpdate } from "./types.ts";
 
 // ============================================================================

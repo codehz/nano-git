@@ -7,7 +7,7 @@
 import { describe, test, expect } from "bun:test";
 
 import { sha1 } from "@/core/types.ts";
-import { parseRefSpec, matchesRefSpec, mapRefName } from "@/transport/fetch.ts";
+import { parseRefSpec, matchesRefSpec, mapRefName } from "@/transport/ref-plan.ts";
 
 import type { RemoteRef } from "@/transport/types.ts";
 

@@ -1,7 +1,9 @@
 /**
- * Fetch 协商流程测试
+ * Fetch-pack 流程测试（传输层 E2E）
  *
- * 验证增量 fetch 中的 have/want 协商逻辑，包括多轮协商（超过 32 个 haves）。
+ * 验证协议级交互：shallow fetch、能力降级、多轮协商等。
+ *
+ * 这些测试只关注对象同步和协议交互，不涉及 ref 映射或 remote 配置。
  */
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
@@ -17,11 +19,181 @@ import {
 import { startGitHttpBackendServer } from "./http-server.ts";
 import { sha1 } from "@/core/types.ts";
 import { initRepository } from "@/repository/index.ts";
-import { encodePktLine } from "@/transport/pkt-line.ts";
+import { encodeFlushPkt, encodePktLine, parsePktLines } from "@/transport/pkt-line.ts";
 
-import type { GitHttpBackendResponse } from "./http-server.ts";
+import type { GitHttpBackendResponse, GitHttpRequestRecord } from "./http-server.ts";
 
-describe("fetch 协商流程", () => {
+// ============================================================================
+// 广告改写辅助
+// ============================================================================
+
+function stripCapabilityFromAdvertisement(
+  response: GitHttpBackendResponse,
+  capability: string,
+): GitHttpBackendResponse {
+  return rewriteAdvertisementCapabilities(response, (caps) =>
+    caps.filter((token) => token.length > 0 && token !== capability),
+  );
+}
+
+function rewriteAdvertisementCapabilities(
+  response: GitHttpBackendResponse,
+  rewrite: (capabilities: string[]) => string[],
+): GitHttpBackendResponse {
+  const lines = parsePktLines(response.body);
+  const chunks: Buffer[] = [];
+  let rewritten = false;
+
+  for (const line of lines) {
+    if (line.type === "flush") {
+      chunks.push(encodeFlushPkt());
+      continue;
+    }
+
+    if (line.type !== "data") {
+      continue;
+    }
+
+    if (!rewritten) {
+      const nullIndex = line.payload.indexOf(0);
+      if (nullIndex !== -1) {
+        const refPart = line.payload.subarray(0, nullIndex);
+        const originalCaps = line.payload
+          .subarray(nullIndex + 1)
+          .toString("utf-8")
+          .split(" ")
+          .filter((token) => token.length > 0);
+        const caps = rewrite(originalCaps);
+        const payload = Buffer.concat([
+          refPart,
+          Buffer.from([0]),
+          Buffer.from(caps.join(" "), "utf-8"),
+        ]);
+        chunks.push(encodePktLine(payload));
+        rewritten = true;
+        continue;
+      }
+    }
+
+    chunks.push(encodePktLine(line.payload));
+  }
+
+  return {
+    ...response,
+    body: Buffer.concat(chunks),
+  };
+}
+
+// ============================================================================
+// Shallow / 能力降级测试
+// ============================================================================
+
+describe("fetch-pack 流程", () => {
+  let tempDir: string;
+  let projectRoot: string;
+  let _repoDir: string;
+  let _workDir: string;
+  let serverUrl: string;
+  let server: ReturnType<typeof startGitHttpBackendServer>;
+
+  beforeEach(() => {
+    tempDir = createTempDir("e2e-fetch-pack");
+    const remote = createServerRepo(tempDir, "remote.git");
+    _repoDir = remote.repoDir;
+    projectRoot = remote.projectRoot;
+    _workDir = remote.workDir;
+    server = startGitHttpBackendServer(projectRoot, "/remote.git");
+    serverUrl = server.url;
+  });
+
+  afterEach(async () => {
+    await server?.stop();
+    cleanupDir(tempDir);
+  });
+
+  test("shallow fetch：depth=1 应成功完成初始拉取", async () => {
+    const localDir = join(tempDir, "local-shallow");
+    const repo = initRepository(localDir);
+    repo.addRemote({
+      name: "origin",
+      url: serverUrl,
+      fetchRules: [{ source: "+refs/heads/*", target: "refs/remotes/origin/*" }],
+    });
+
+    const result = await repo.fetchRemote("origin", { depth: 1 });
+
+    expect(result.objectCount).toBeGreaterThan(0);
+    expect(repo.refs.read("refs/remotes/origin/main")).not.toBeNull();
+  });
+
+  test("协议降级：服务端不走 side-band-64k 时 fetch 仍成功", async () => {
+    const downgradedServer = startGitHttpBackendServer(projectRoot, "/remote.git", undefined, {
+      transformResponse(response: GitHttpBackendResponse, request: GitHttpRequestRecord) {
+        if (
+          request.method === "GET" &&
+          request.path.endsWith("/info/refs") &&
+          request.query === "service=git-upload-pack"
+        ) {
+          return stripCapabilityFromAdvertisement(response, "side-band-64k");
+        }
+        return response;
+      },
+    });
+
+    await using serverHandle = downgradedServer;
+    const localDir = join(tempDir, "local-raw-pack-fetch");
+    const repo = initRepository(localDir);
+    repo.addRemote({
+      name: "downgraded",
+      url: serverHandle.url,
+      fetchRules: [{ source: "+refs/heads/*", target: "refs/remotes/origin/*" }],
+    });
+
+    const result = await repo.fetchRemote("downgraded");
+
+    expect(result.objectCount).toBeGreaterThan(0);
+    const mainRef = repo.refs.read("refs/remotes/origin/main");
+    expect(mainRef).not.toBeNull();
+    expect(repo.objects.read(sha1(mainRef!)).type).toBe("commit");
+  });
+
+  test("最小能力集：upload-pack advertisement 仅保留 ofs-delta 时 fetch 仍成功", async () => {
+    const minimalServer = startGitHttpBackendServer(projectRoot, "/remote.git", undefined, {
+      transformResponse(response: GitHttpBackendResponse, request: GitHttpRequestRecord) {
+        if (
+          request.method === "GET" &&
+          request.path.endsWith("/info/refs") &&
+          request.query === "service=git-upload-pack"
+        ) {
+          return rewriteAdvertisementCapabilities(response, () => ["ofs-delta"]);
+        }
+        return response;
+      },
+    });
+
+    await using serverHandle = minimalServer;
+    const localDir = join(tempDir, "local-minimal-upload-pack");
+    const repo = initRepository(localDir);
+    repo.addRemote({
+      name: "minimal",
+      url: serverHandle.url,
+      fetchRules: [{ source: "+refs/heads/*", target: "refs/remotes/origin/*" }],
+    });
+
+    const result = await repo.fetchRemote("minimal");
+
+    expect(result.objectCount).toBeGreaterThan(0);
+    const mainRef = repo.refs.read("refs/remotes/origin/main");
+    expect(mainRef).not.toBeNull();
+    expect(repo.objects.read(sha1(mainRef!)).type).toBe("commit");
+  });
+});
+
+// ============================================================================
+// 协商测试
+// ============================================================================
+
+describe("fetch-pack 协商流程", () => {
   let tempDir: string;
   let repoDir: string;
   let projectRoot: string;
@@ -30,7 +202,7 @@ describe("fetch 协商流程", () => {
   let server: ReturnType<typeof startGitHttpBackendServer>;
 
   beforeEach(() => {
-    tempDir = createTempDir("e2e-http-fetch-negotiate");
+    tempDir = createTempDir("e2e-fetch-negotiate");
     const remote = createServerRepo(tempDir, "remote.git");
     repoDir = remote.repoDir;
     projectRoot = remote.projectRoot;
@@ -46,11 +218,16 @@ describe("fetch 协商流程", () => {
   });
 
   test("增量 fetch：远端推进后发送 haves 并仅拉取新增对象", async () => {
-    const localDir = join(tempDir, "local-http-incremental");
+    const localDir = join(tempDir, "local-incremental");
     const repo = initRepository(localDir);
+    repo.addRemote({
+      name: "origin",
+      url: serverUrl,
+      fetchRules: [{ source: "+refs/heads/*", target: "refs/remotes/origin/*" }],
+    });
 
     const initialHead = git(["rev-parse", "HEAD"], workDir);
-    const result1 = await repo.fetch(serverUrl);
+    const result1 = await repo.fetchRemote("origin");
     expect(result1.objectCount).toBeGreaterThan(0);
 
     const firstUploadPackRequests = getUploadPackRequests(server.requests);
@@ -60,13 +237,13 @@ describe("fetch 协商流程", () => {
 
     server.clearRequests();
 
-    createFile(workDir, "src/http-feature-a.ts", 'export const a = "a";\n');
-    git(["add", "src/http-feature-a.ts"], workDir);
-    git(["commit", "-m", "Add HTTP feature a"], workDir);
+    createFile(workDir, "src/feature-a.ts", 'export const a = "a";\n');
+    git(["add", "src/feature-a.ts"], workDir);
+    git(["commit", "-m", "Add feature a"], workDir);
 
-    createFile(workDir, "src/http-feature-b.ts", 'export const b = "b";\n');
-    git(["add", "src/http-feature-b.ts"], workDir);
-    git(["commit", "-m", "Add HTTP feature b"], workDir);
+    createFile(workDir, "src/feature-b.ts", 'export const b = "b";\n');
+    git(["add", "src/feature-b.ts"], workDir);
+    git(["commit", "-m", "Add feature b"], workDir);
 
     const newHead = git(["rev-parse", "HEAD"], workDir);
     git(["push", repoDir, "main"], workDir);
@@ -77,11 +254,11 @@ describe("fetch 协商流程", () => {
       .split("\n")
       .filter((line) => line.length > 0).length;
 
-    const result2 = await repo.fetch(serverUrl);
+    const result2 = await repo.fetchRemote("origin");
 
     expect(result2.objectCount).toBeGreaterThan(0);
     expect(result2.objectCount).toBe(expectedNewObjects);
-    expect(result2.fetchedRefs.get("refs/remotes/origin/main")).toBe(sha1(newHead));
+    expect(result2.updatedRefs.get("refs/remotes/origin/main")).toBe(sha1(newHead));
 
     const secondUploadPackRequests = getUploadPackRequests(server.requests);
     expect(secondUploadPackRequests).toHaveLength(1);
@@ -91,38 +268,43 @@ describe("fetch 协商流程", () => {
   });
 
   test("增量 fetch：超过 32 个 haves 时使用多轮协商", async () => {
-    const localDir = join(tempDir, "local-http-batched-haves");
+    const localDir = join(tempDir, "local-batched-haves");
     const repo = initRepository(localDir);
+    repo.addRemote({
+      name: "origin",
+      url: serverUrl,
+      fetchRules: [{ source: "+refs/heads/*", target: "refs/remotes/origin/*" }],
+    });
 
     const totalInitialCommits = 36;
     for (let i = 0; i < totalInitialCommits; i++) {
-      createFile(workDir, `history/http-commit-${i}.txt`, `commit-${i}\n`);
-      git(["add", `history/http-commit-${i}.txt`], workDir);
-      git(["commit", "-m", `HTTP history commit ${i}`], workDir);
+      createFile(workDir, `history/commit-${i}.txt`, `commit-${i}\n`);
+      git(["add", `history/commit-${i}.txt`], workDir);
+      git(["commit", "-m", `History commit ${i}`], workDir);
     }
     git(["push", repoDir, "main"], workDir);
 
-    const result1 = await repo.fetch(serverUrl);
+    const result1 = await repo.fetchRemote("origin");
     expect(result1.objectCount).toBeGreaterThan(totalInitialCommits);
 
     server.clearRequests();
 
-    createFile(workDir, "history/http-new-a.txt", "new-a\n");
-    git(["add", "history/http-new-a.txt"], workDir);
-    git(["commit", "-m", "HTTP new history a"], workDir);
+    createFile(workDir, "history/new-a.txt", "new-a\n");
+    git(["add", "history/new-a.txt"], workDir);
+    git(["commit", "-m", "New history a"], workDir);
 
-    createFile(workDir, "history/http-new-b.txt", "new-b\n");
-    git(["add", "history/http-new-b.txt"], workDir);
-    git(["commit", "-m", "HTTP new history b"], workDir);
+    createFile(workDir, "history/new-b.txt", "new-b\n");
+    git(["add", "history/new-b.txt"], workDir);
+    git(["commit", "-m", "New history b"], workDir);
 
     const newHead = git(["rev-parse", "HEAD"], workDir);
     git(["push", repoDir, "main"], workDir);
 
-    const result2 = await repo.fetch(serverUrl);
+    const result2 = await repo.fetchRemote("origin");
 
     expect(result2.objectCount).toBeGreaterThan(0);
     expect(result2.objectCount).toBeLessThan(result1.objectCount);
-    expect(result2.fetchedRefs.get("refs/remotes/origin/main")).toBe(sha1(newHead));
+    expect(result2.updatedRefs.get("refs/remotes/origin/main")).toBe(sha1(newHead));
 
     const uploadPackRequests = getUploadPackRequests(server.requests);
     expect(uploadPackRequests).toHaveLength(2);
@@ -141,20 +323,23 @@ describe("fetch 协商流程", () => {
 
     expect(thirdCommands.filter((line) => line.startsWith("have ")).length).toBeGreaterThan(0);
     expect(sentHaves.length).toBeGreaterThan(32);
-    // 多轮协商中，ACK continue 确认的 common 需要在后续轮次重放，
-    // 因此跨轮次 may 出现重复 have，但所有 unique have 应覆盖全部祖先 commit
     expect(new Set(sentHaves).size).toBe(37);
     expect(countFlushPackets(thirdBody)).toBe(1);
     expect(thirdCommands.at(-1)).toBe("done");
 
     const mainRef = repo.refs.read("refs/remotes/origin/main");
     expect(mainRef).toBe(newHead);
-    expect(repo.objects.read(sha1(newHead)).type).toBe("commit");
+    expect(repo.objects.read(sha1(mainRef!)).type).toBe("commit");
   });
 
   test("增量 fetch：服务端返回 ACK continue 时后续轮次重放该 common", async () => {
-    const localDir = join(tempDir, "local-http-ack-continue");
+    const localDir = join(tempDir, "local-ack-continue");
     const repo = initRepository(localDir);
+    repo.addRemote({
+      name: "origin",
+      url: serverUrl,
+      fetchRules: [{ source: "+refs/heads/*", target: "refs/remotes/origin/*" }],
+    });
 
     const totalInitialCommits = 36;
     for (let i = 0; i < totalInitialCommits; i++) {
@@ -164,7 +349,7 @@ describe("fetch 协商流程", () => {
     }
     git(["push", repoDir, "main"], workDir);
 
-    const firstFetch = await repo.fetch(serverUrl);
+    const firstFetch = await repo.fetchRemote("origin");
     expect(firstFetch.objectCount).toBeGreaterThan(totalInitialCommits);
 
     await server.stop();
@@ -198,7 +383,13 @@ describe("fetch 协商流程", () => {
         };
       },
     });
+
     serverUrl = server.url;
+    repo.addRemote({
+      name: "origin-ack",
+      url: serverUrl,
+      fetchRules: [{ source: "+refs/heads/*", target: "refs/remotes/origin/*" }],
+    });
 
     createFile(workDir, "ack-continue-new-a.txt", "ack-continue-new-a\n");
     git(["add", "ack-continue-new-a.txt"], workDir);
@@ -211,9 +402,9 @@ describe("fetch 协商流程", () => {
     const newHead = git(["rev-parse", "HEAD"], workDir);
     git(["push", repoDir, "main"], workDir);
 
-    const secondFetch = await repo.fetch(serverUrl);
+    const secondFetch = await repo.fetchRemote("origin-ack");
     expect(secondFetch.objectCount).toBeGreaterThan(0);
-    expect(secondFetch.fetchedRefs.get("refs/remotes/origin/main")).toBe(sha1(newHead));
+    expect(secondFetch.updatedRefs.get("refs/remotes/origin/main")).toBe(sha1(newHead));
 
     const uploadPackRequests = getUploadPackRequests(server.requests);
     expect(uploadPackRequests).toHaveLength(2);
@@ -223,6 +414,7 @@ describe("fetch 协商流程", () => {
     expect(secondRoundCommands).toContain(`have ${continuedHave}`);
     expect(secondRoundCommands.at(-1)).toBe("done");
   });
+
   // ============================================================================
   // 协商优化测试（起点裁剪、maxCandidates）
   // ============================================================================
@@ -230,9 +422,14 @@ describe("fetch 协商流程", () => {
   test("起点裁剪：本地 tag 不添加额外 have 候选，fetch 正常执行", async () => {
     const localDir = join(tempDir, "local-tag-nonpollute");
     const repo = initRepository(localDir);
+    repo.addRemote({
+      name: "origin",
+      url: serverUrl,
+      fetchRules: [{ source: "+refs/heads/*", target: "refs/remotes/origin/*" }],
+    });
 
     // 1. 初始 fetch
-    const result1 = await repo.fetch(serverUrl);
+    const result1 = await repo.fetchRemote("origin");
     expect(result1.objectCount).toBeGreaterThan(0);
 
     // 2. 在本地仓库创建与 fetch 无关的 tag（pointer to old commit）
@@ -250,9 +447,9 @@ describe("fetch 协商流程", () => {
     server.clearRequests();
 
     // 4. 增量 fetch，验证仍能正常拉取
-    const result2 = await repo.fetch(serverUrl);
+    const result2 = await repo.fetchRemote("origin");
     expect(result2.objectCount).toBeGreaterThan(0);
-    expect(result2.fetchedRefs.get("refs/remotes/origin/main")).toBe(sha1(newHead));
+    expect(result2.updatedRefs.get("refs/remotes/origin/main")).toBe(sha1(newHead));
 
     // 5. 验证请求中 have 不超过候选集上限
     const requests = getUploadPackRequests(server.requests);
@@ -267,9 +464,14 @@ describe("fetch 协商流程", () => {
   test("起点裁剪：feature 分支的 remote-tracking ref 能帮助 main 避免重传", async () => {
     const localDir = join(tempDir, "local-cross-ref");
     const repo = initRepository(localDir);
+    repo.addRemote({
+      name: "origin",
+      url: serverUrl,
+      fetchRules: [{ source: "+refs/heads/*", target: "refs/remotes/origin/*" }],
+    });
 
     // 1. 初始 fetch
-    const result1 = await repo.fetch(serverUrl);
+    const result1 = await repo.fetchRemote("origin");
     expect(result1.objectCount).toBeGreaterThan(0);
 
     // 2. 创建 feature 分支并推送
@@ -283,24 +485,29 @@ describe("fetch 协商流程", () => {
 
     // 3. fetch feature 到本地
     server.clearRequests();
-    const result2 = await repo.fetch(serverUrl);
-    expect(result2.fetchedRefs.has("refs/remotes/origin/feature")).toBe(true);
+    const result2 = await repo.fetchRemote("origin");
+    expect(result2.updatedRefs.has("refs/remotes/origin/feature")).toBe(true);
 
     // 4. 服务端将 main 快进到 feature commit
     git(["update-ref", "refs/heads/main", featureHash], repoDir);
     server.clearRequests();
 
     // 5. 再次 fetch main：feature commit 已通过之前的 fetch 在本地
-    const result3 = await repo.fetch(serverUrl);
+    const result3 = await repo.fetchRemote("origin");
     // selectHaveTips 会使用 refs/remotes/origin/feature 作为 tip，
     // collectHaveCommits 能遍历到 feature commit，服务端不再重复发送
     expect(result3.objectCount).toBe(0);
-    expect(result3.fetchedRefs.get("refs/remotes/origin/main")).toBe(sha1(featureHash));
+    expect(result3.updatedRefs.get("refs/remotes/origin/main")).toBe(sha1(featureHash));
   });
 
   test("maxCandidates 限制下增量 fetch 仍能正常完成", async () => {
     const localDir = join(tempDir, "local-max-candidates");
     const repo = initRepository(localDir);
+    repo.addRemote({
+      name: "origin",
+      url: serverUrl,
+      fetchRules: [{ source: "+refs/heads/*", target: "refs/remotes/origin/*" }],
+    });
 
     // 1. 在服务端创建 30 个提交（maxCandidates 设为 10）
     for (let i = 0; i < 30; i++) {
@@ -311,7 +518,7 @@ describe("fetch 协商流程", () => {
     git(["push", repoDir, "main"], workDir);
 
     // 2. 初始 fetch，设 maxCandidates=10
-    const result1 = await repo.fetch(serverUrl, { maxCandidates: 10 });
+    const result1 = await repo.fetchRemote("origin", { maxCandidates: 10 });
     expect(result1.objectCount).toBeGreaterThan(0);
     expect(repo.refs.read("refs/remotes/origin/main")).not.toBeNull();
 
@@ -328,9 +535,9 @@ describe("fetch 协商流程", () => {
     server.clearRequests();
 
     // 4. 增量 fetch，maxCandidates=10
-    const result2 = await repo.fetch(serverUrl, { maxCandidates: 10 });
+    const result2 = await repo.fetchRemote("origin", { maxCandidates: 10 });
     expect(result2.objectCount).toBeGreaterThan(0);
-    expect(result2.fetchedRefs.get("refs/remotes/origin/main")).toBe(sha1(newHead));
+    expect(result2.updatedRefs.get("refs/remotes/origin/main")).toBe(sha1(newHead));
 
     // 5. 验证请求体中的 have 确实被 maxCandidates 截断
     const requests = getUploadPackRequests(server.requests);
@@ -344,6 +551,11 @@ describe("fetch 协商流程", () => {
   test("多次增量 fetch：连续多次 fetch 后仓库一致性不受影响", async () => {
     const localDir = join(tempDir, "local-multi-fetch-consistent");
     const repo = initRepository(localDir);
+    repo.addRemote({
+      name: "origin",
+      url: serverUrl,
+      fetchRules: [{ source: "+refs/heads/*", target: "refs/remotes/origin/*" }],
+    });
 
     // 连续 5 次小步 fetch
     for (let round = 1; round <= 5; round++) {
@@ -352,9 +564,9 @@ describe("fetch 协商流程", () => {
       git(["commit", "-m", `Multi round ${round}`], workDir);
       git(["push", repoDir, "main"], workDir);
 
-      const result = await repo.fetch(serverUrl);
+      const result = await repo.fetchRemote("origin");
       expect(result.objectCount).toBeGreaterThanOrEqual(0);
-      expect(result.fetchedRefs.size).toBeGreaterThan(0);
+      expect(result.updatedRefs.size).toBeGreaterThan(0);
     }
 
     // 最终仓库完整性检查
@@ -370,6 +582,11 @@ describe("fetch 协商流程", () => {
   test("多轮协商：超过 32 haves + maxCandidates 双重限制下正确完成", async () => {
     const localDir = join(tempDir, "local-dual-limits");
     const repo = initRepository(localDir);
+    repo.addRemote({
+      name: "origin",
+      url: serverUrl,
+      fetchRules: [{ source: "+refs/heads/*", target: "refs/remotes/origin/*" }],
+    });
 
     // 1. 服务端创建 50 个提交
     for (let i = 0; i < 50; i++) {
@@ -380,7 +597,7 @@ describe("fetch 协商流程", () => {
     git(["push", repoDir, "main"], workDir);
 
     // 2. 初始 fetch，maxCandidates=30（受预算限制，只取 30 个候选）
-    const result1 = await repo.fetch(serverUrl, { maxCandidates: 30 });
+    const result1 = await repo.fetchRemote("origin", { maxCandidates: 30 });
     expect(result1.objectCount).toBeGreaterThan(0);
 
     // 3. 服务端新增 2 个提交
@@ -396,9 +613,9 @@ describe("fetch 协商流程", () => {
     server.clearRequests();
 
     // 4. 增量 fetch，maxCandidates=30（但本地只有 30 个候选，≤32，单轮即可）
-    const result2 = await repo.fetch(serverUrl, { maxCandidates: 30 });
+    const result2 = await repo.fetchRemote("origin", { maxCandidates: 30 });
     expect(result2.objectCount).toBeGreaterThan(0);
-    expect(result2.fetchedRefs.get("refs/remotes/origin/main")).toBe(sha1(newHead));
+    expect(result2.updatedRefs.get("refs/remotes/origin/main")).toBe(sha1(newHead));
 
     const requests = getUploadPackRequests(server.requests);
     // 因为候选只有 30，不超过 MAX_HAVES_PER_ROUND(32)，单轮即可

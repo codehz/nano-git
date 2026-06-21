@@ -158,7 +158,7 @@ function createBackendErrorResponse(message: string): Response {
  * @example
  * ```ts
  * const server = startGitHttpBackendServer("/tmp", "/server.git");
- * const result = await repo.fetch(server.url);
+ * const result = await repo.fetchRemote("origin");
  * await server.stop();
  * ```
  */

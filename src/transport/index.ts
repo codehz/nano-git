@@ -1,23 +1,30 @@
 /**
- * Smart HTTP Fetch 传输层
+ * Smart HTTP 传输层
  *
  * 提供 Git Smart HTTP 协议的客户端实现，包含：
  * - pkt-line 帧编解码
  * - 引用广告解析
  * - side-band 多路解复用
  * - 请求生成与 HTTP 传输
- * - 高层 fetch 编排
+ * - 新的分层 fetch 模块（advertise / ref-plan / fetch-pack / update-refs）
  */
 
 // P1: 核心类型
 export type {
   RemoteRef,
   RefAdvertisement,
-  FetchOptions,
-  FetchResult,
   PushOptions,
   PushResult,
   PushRefUpdate,
+  AdvertiseOptions,
+  RemoteAdvertisement,
+  RefMappingRule,
+  RefUpdatePlanItem,
+  RefUpdatePlan,
+  FetchPackOptions,
+  FetchPackResult,
+  RefUpdateRejection,
+  ApplyRefUpdatesResult,
 } from "./types.ts";
 
 // P1: pkt-line 编解码
@@ -55,17 +62,35 @@ export type { ReceivePackCommand } from "./receive-pack-request.ts";
 // P3b: 响应解析
 export { parseReceivePackResult, ReceivePackResultError } from "./receive-pack-result.ts";
 
-// P4: HTTP 传输 & fetch/push 编排
-export { createSmartHttpClient, SmartHttpError } from "./smart-http.ts";
-export type { SmartHttpClient, UploadPackResult, ReceivePackHttpResult } from "./smart-http.ts";
+// P4: 广告获取
+export { advertiseRemote } from "./advertise.ts";
+
+// P5: Ref 规划
 export {
-  fetch,
   parseRefSpec,
+  mappingRuleToParsedSpec,
+  parsedSpecToMappingRule,
   matchesRefSpec,
   mapRefName,
-  determineWants,
-  selectHaveTips,
-  FetchError,
-} from "./fetch.ts";
-export type { ParsedRefSpec } from "./fetch.ts";
+  getLocalRefs,
+  planRefUpdates,
+  validateExactRules,
+  RefPlanError,
+} from "./ref-plan.ts";
+export type { ParsedRefSpec } from "./ref-plan.ts";
+
+// P6: Fetch-pack（对象同步，不写 ref）
+export { fetchPack, FetchPackError } from "./fetch-pack.ts";
+
+// P7: Ref 更新
+export {
+  applyRefUpdates,
+  resolveBranchTargetHash,
+  isRefNamespaceRequiringFastForward,
+  RefUpdateError,
+} from "./update-refs.ts";
+
+// P8: HTTP 传输 & push 编排
+export { createSmartHttpClient, SmartHttpError } from "./smart-http.ts";
+export type { SmartHttpClient, UploadPackResult, ReceivePackHttpResult } from "./smart-http.ts";
 export { push, PushError } from "./push.ts";

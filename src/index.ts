@@ -203,6 +203,11 @@ export {
   type Repository,
   type RepositoryFetchOperations,
   type RepositoryPushOperations,
+  type RemoteConfig,
+  type FetchRemoteOptions,
+  type FetchRemoteResult,
+  type BootstrapRemoteOptions,
+  type BootstrapRemoteResult,
 } from "./repository/index.ts";
 
 // ============================================================================
@@ -212,8 +217,6 @@ export {
 export type {
   RemoteRef,
   RefAdvertisement,
-  FetchOptions,
-  FetchResult,
   PushOptions,
   PushResult,
   PushRefUpdate,
@@ -227,6 +230,15 @@ export type {
   PktLineDelimiter,
   PktLineResponseEnd,
   ReceivePackCommand,
+  AdvertiseOptions,
+  RemoteAdvertisement,
+  RefMappingRule,
+  RefUpdatePlanItem,
+  RefUpdatePlan,
+  FetchPackOptions,
+  FetchPackResult,
+  RefUpdateRejection,
+  ApplyRefUpdatesResult,
 } from "./transport/index.ts";
 export {
   // pkt-line 编解码
@@ -252,13 +264,24 @@ export {
   // HTTP 传输
   createSmartHttpClient,
   SmartHttpError,
-  // fetch 编排
-  fetch,
+  // 广告获取
+  advertiseRemote,
+  // Ref 规划
   parseRefSpec,
   matchesRefSpec,
   mapRefName,
-  determineWants,
-  FetchError,
+  getLocalRefs,
+  planRefUpdates,
+  validateExactRules,
+  RefPlanError,
+  // Fetch-pack（对象同步）
+  fetchPack,
+  FetchPackError,
+  // Ref 更新
+  applyRefUpdates,
+  resolveBranchTargetHash,
+  isRefNamespaceRequiringFastForward,
+  RefUpdateError,
   // push 编排
   push,
   PushError,

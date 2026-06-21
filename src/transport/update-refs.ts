@@ -1,0 +1,172 @@
+/**
+ * 应用本地 ref 更新
+ *
+ * 根据 RefUpdatePlanItem[] 应用 ref 更新，执行 fast-forward / tag / object-type 校验，
+ * 返回成功更新与拒绝更新明细。
+ *
+ * @example
+ * ```ts
+ * const result = applyRefUpdates(store, refs, plan.updates);
+ * console.log(`Updated ${result.updatedRefs.size} refs`);
+ * ```
+ */
+
+import { GitError } from "../core/errors.ts";
+import { isAncestor } from "./push.ts";
+
+import type { SHA1 } from "../core/types.ts";
+import type { ObjectStore } from "../odb/types.ts";
+import type { RefStore } from "../refs/types.ts";
+import type { RefUpdatePlanItem, ApplyRefUpdatesResult, RefUpdateRejection } from "./types.ts";
+
+// ============================================================================
+// 错误类型
+// ============================================================================
+
+/**
+ * Ref 更新错误
+ */
+export class RefUpdateError extends GitError {
+  constructor(message: string) {
+    super(`Ref update error: ${message}`);
+    this.name = "RefUpdateError";
+  }
+}
+
+// ============================================================================
+// 校验
+// ============================================================================
+
+/**
+ * 校验远程 ref 对象可写入 refs/heads/*
+ *
+ * refs/heads/* 只能指向 commit 对象。
+ *
+ * @param store - 对象存储
+ * @param hash - 远程引用哈希
+ * @param refName - 远程引用名称（仅用于错误消息）
+ * @returns 可用于写入 refs/heads/* 的哈希
+ * @throws RefUpdateError 如果目标对象不存在或不是 commit
+ */
+export function resolveBranchTargetHash(store: ObjectStore, hash: SHA1, refName: string): SHA1 {
+  if (!store.exists(hash)) {
+    throw new RefUpdateError(
+      `Object ${hash} for remote ref "${refName}" is missing from the local store. ` +
+        `refs/heads/* can only point to commit objects.`,
+    );
+  }
+  const obj = store.read(hash);
+
+  if (obj.type === "tag") {
+    throw new RefUpdateError(
+      `Remote ref "${refName}" (${hash}) is a tag object, ` +
+        `expected commit. refs/heads/* can only point to commit objects.`,
+    );
+  }
+
+  if (obj.type !== "commit") {
+    throw new RefUpdateError(
+      `Remote ref "${refName}" (${hash}) is a ${obj.type}, ` +
+        `expected commit. refs/heads/* can only point to commit objects.`,
+    );
+  }
+
+  return hash;
+}
+
+/**
+ * 判断指定 ref 是否属于需要 fast-forward 检查的命名空间
+ *
+ * Git fetch 语义：仅 refs/heads/* 在没有 + 的 refspec 下要求新 tip 必须是
+ * 旧 tip 的子孙（快进）。
+ */
+export function isRefNamespaceRequiringFastForward(refName: string): boolean {
+  return refName.startsWith("refs/heads/");
+}
+
+// ============================================================================
+// 主入口
+// ============================================================================
+
+/**
+ * 应用 ref 更新
+ *
+ * 根据更新计划逐条应用 ref 更新，执行以下校验：
+ * - wanted tip 对象存在性校验
+ * - refs/heads/* 的 commit 类型校验
+ * - refs/tags/* 的非 force 拒绝替换
+ * - refs/heads/* 的非 force fast-forward 检查
+ *
+ * @param store - 对象存储（用于校验对象存在性和类型）
+ * @param refs - 本地引用存储
+ * @param updates - ref 更新计划项列表
+ * @returns 更新结果（成功和拒绝列表）
+ *
+ * @example
+ * ```ts
+ * const result = applyRefUpdates(objects, refs, plan.updates);
+ * for (const [ref, hash] of result.updatedRefs) {
+ *   console.log(`Updated ${ref} -> ${hash}`);
+ * }
+ * ```
+ */
+export function applyRefUpdates(
+  store: ObjectStore,
+  refs: RefStore,
+  updates: RefUpdatePlanItem[],
+): ApplyRefUpdatesResult {
+  const updatedRefs = new Map<string, SHA1>();
+  const rejectedRefs: RefUpdateRejection[] = [];
+
+  // 先校验所有 wanted tip 的对象都存在
+  for (const item of updates) {
+    if (!store.exists(item.remoteRef.hash)) {
+      rejectedRefs.push({
+        localRef: item.localRef,
+        reason: `Object ${item.remoteRef.hash} was advertised but not received in the packfile`,
+      });
+      continue;
+    }
+  }
+
+  for (const item of updates) {
+    const { remoteRef, localRef, currentLocalHash, force } = item;
+
+    // 跳过已因对象缺失被拒绝的项
+    if (rejectedRefs.some((r) => r.localRef === localRef)) continue;
+
+    // Git 规则：refs/heads/* 只能指向 commit 对象
+    const writeHash = localRef.startsWith("refs/heads/")
+      ? resolveBranchTargetHash(store, remoteRef.hash, remoteRef.name)
+      : remoteRef.hash;
+
+    // 非强制且本地已有值
+    if (!force && currentLocalHash !== undefined) {
+      // refs/tags/* 不允许任何替换
+      if (localRef.startsWith("refs/tags/")) {
+        rejectedRefs.push({
+          localRef,
+          reason: `Tag "${localRef}" already exists and force is not set`,
+        });
+        continue;
+      }
+
+      // 需要 fast-forward 检查的命名空间
+      if (
+        isRefNamespaceRequiringFastForward(localRef) &&
+        !isAncestor(store, currentLocalHash, writeHash)
+      ) {
+        rejectedRefs.push({
+          localRef,
+          reason: `Non-fast-forward update rejected for "${localRef}"`,
+        });
+        continue;
+      }
+    }
+
+    refs.write(localRef, writeHash);
+    updatedRefs.set(localRef, writeHash);
+  }
+
+  return { updatedRefs, rejectedRefs };
+}
