@@ -17,6 +17,7 @@ import {
   extractPackfile,
   extractProgress,
   extractRawPackfile,
+  extractSideBandFatal,
   SideBandError,
 } from "@/transport/side-band.ts";
 
@@ -227,5 +228,36 @@ describe("extractRawPackfile()", () => {
 
     const result = extractRawPackfile(data);
     expect(Buffer.compare(result, rawPack)).toBe(0);
+  });
+});
+
+// ============================================================================
+// extractSideBandFatal（side-band 致命错误检测）
+// ============================================================================
+
+describe("extractSideBandFatal()", () => {
+  test("side-band 数据中检测到 fatal 应返回消息", () => {
+    const data = Buffer.concat([
+      sideBandFrame(1, "some data"),
+      sideBandFrame(3, "fatal: repository not found"),
+    ]);
+    expect(extractSideBandFatal(data)).toBe("fatal: repository not found");
+  });
+
+  test("无 fatal 的 side-band 数据应返回 null", () => {
+    const data = Buffer.concat([
+      sideBandFrame(1, "packfile data"),
+      sideBandFrame(2, "progress: ok\n"),
+    ]);
+    expect(extractSideBandFatal(data)).toBeNull();
+  });
+
+  test("非 side-band 数据（NAK + raw PACK）不应抛出，应返回 null", () => {
+    const rawPack = Buffer.alloc(12);
+    rawPack.write("PACK", 0, "utf-8");
+    rawPack.writeUInt32BE(2, 4);
+    rawPack.writeUInt32BE(0, 8);
+    const data = Buffer.concat([encodePktLine("NAK\n"), rawPack]);
+    expect(extractSideBandFatal(data)).toBeNull();
   });
 });

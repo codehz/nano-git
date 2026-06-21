@@ -162,7 +162,7 @@ export function extractRawPackfile(data: Buffer): Buffer {
  * ```
  */
 export function extractSideBandFatal(data: Buffer): string | null {
-  const pktLines = parsePktLines(data);
+  const { lines: pktLines } = splitPktLinesFromBuffer(data);
 
   for (const line of pktLines) {
     if (line.type !== "data") continue;
