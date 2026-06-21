@@ -1,7 +1,7 @@
 /**
- * HTTP 传输层集成测试
+ * 传输层集成测试
  *
- * 通过真实 HTTP 服务器代理 git http-backend，验证 ref advertisement、
+ * 通过 HTTP 服务器代理 git http-backend，验证 ref advertisement、
  * upload-pack（fetch）、receive-pack（push）的完整流程。
  */
 
@@ -86,7 +86,7 @@ function countFlushPackets(body: Buffer): number {
 }
 
 /**
- * 过滤真实 HTTP 服务端记录到的 upload-pack POST 请求
+ * 过滤服务端记录到的 upload-pack POST 请求
  */
 function getUploadPackRequests(requests: GitHttpRequestRecord[]): GitHttpRequestRecord[] {
   return requests.filter(
@@ -95,10 +95,10 @@ function getUploadPackRequests(requests: GitHttpRequestRecord[]): GitHttpRequest
 }
 
 // ============================================================================
-// Ref Advertisement 测试（通过 HTTP）
+// Ref Advertisement 测试
 // ============================================================================
 
-describe("HTTP ref advertisement", () => {
+describe("ref advertisement", () => {
   let tempDir: string;
   let repoDir: string;
   let serverUrl: string;
@@ -169,10 +169,10 @@ describe("HTTP ref advertisement", () => {
 });
 
 // ============================================================================
-// Receive-Pack Ref 测试（通过 HTTP）
+// Receive-Pack Ref 测试
 // ============================================================================
 
-describe("HTTP receive-pack ref advertisement", () => {
+describe("receive-pack ref advertisement", () => {
   let tempDir: string;
   let repoDir: string;
   let serverUrl: string;
@@ -226,10 +226,10 @@ describe("HTTP receive-pack ref advertisement", () => {
 });
 
 // ============================================================================
-// Upload-Pack 直接调用（通过 HTTP）
+// Upload-Pack 直接调用
 // ============================================================================
 
-describe("HTTP upload-pack 直接调用", () => {
+describe("upload-pack 直接调用", () => {
   let tempDir: string;
   let serverUrl: string;
   let server: ReturnType<typeof startGitHttpBackendServer>;
@@ -263,10 +263,10 @@ describe("HTTP upload-pack 直接调用", () => {
 });
 
 // ============================================================================
-// 完整 Fetch 流程（通过 HTTP 服务器）
+// 完整 Fetch 流程
 // ============================================================================
 
-describe("完整 fetch 流程（HTTP 服务器）", () => {
+describe("完整 fetch 流程", () => {
   let tempDir: string;
   let serverRepoDir: string;
   let serverUrl: string;
@@ -305,7 +305,7 @@ describe("完整 fetch 流程（HTTP 服务器）", () => {
     cleanupDir(tempDir);
   });
 
-  test("完整初始 clone 流程（使用 repo.fetch()）", async () => {
+  test("初始 clone", async () => {
     const localDir = join(tempDir, "local");
     const repo = initRepository(localDir);
 
@@ -324,7 +324,7 @@ describe("完整 fetch 流程（HTTP 服务器）", () => {
     expect(commitObj.type).toBe("commit");
   });
 
-  test("fetch 到已存在对象的仓库（增量 fetch 场景）", async () => {
+  test("增量 fetch：已存在对象时不重复拉取", async () => {
     const localDir = join(tempDir, "local2");
     const repo = initRepository(localDir);
 
@@ -338,10 +338,10 @@ describe("完整 fetch 流程（HTTP 服务器）", () => {
 });
 
 // ============================================================================
-// 完整 Fetch 协商流程（通过真实 HTTP 请求抓包）
+// Fetch 协商流程
 // ============================================================================
 
-describe("完整 fetch 协商流程（真实 HTTP 抓包）", () => {
+describe("fetch 协商流程", () => {
   let tempDir: string;
   let repoDir: string;
   let projectRoot: string;
@@ -365,7 +365,7 @@ describe("完整 fetch 协商流程（真实 HTTP 抓包）", () => {
     cleanupDir(tempDir);
   });
 
-  test("真实 HTTP 增量 fetch：远端推进后发送 haves 并仅拉取新增对象", async () => {
+  test("增量 fetch：远端推进后发送 haves 并仅拉取新增对象", async () => {
     const localDir = join(tempDir, "local-http-incremental");
     const repo = initRepository(localDir);
 
@@ -410,7 +410,7 @@ describe("完整 fetch 协商流程（真实 HTTP 抓包）", () => {
     expect(secondCommands.some((line) => line.startsWith(`want ${newHead}`))).toBe(true);
   });
 
-  test("真实 HTTP 增量 fetch：超过 32 个 haves 时使用多轮 Consecutive 协商", async () => {
+  test("增量 fetch：超过 32 个 haves 时使用多轮协商", async () => {
     const localDir = join(tempDir, "local-http-batched-haves");
     const repo = initRepository(localDir);
 

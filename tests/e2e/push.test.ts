@@ -1,11 +1,11 @@
 /**
  * Push 高层 API 端到端测试
  *
- * 通过真实 HTTP 服务将 push() 的全套编排逻辑接入 git http-backend：
+ * 通过 HTTP 服务将 push() 的全套编排逻辑接入 git http-backend：
  *   parseRefSpec → determinePushRefs → checkFastForward → collectReachable
  *   → createPackWriter → buildReceivePackRequest → postReceivePack → parseReceivePackResult
  *
- * 不依赖手工构造协议报文，完整验证高层 push() 函数的真实网络路径行为。
+ * 不依赖手工构造协议报文，完整验证高层 push() 函数的网络路径行为。
  */
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
@@ -55,7 +55,7 @@ function makeAuthor() {
 // 测试
 // ============================================================================
 
-describe("push() 端到端（真实 HTTP）", () => {
+describe("push() 端到端", () => {
   let tempDir: string;
   let serverRepoDir: string;
   let workDir: string;
@@ -79,7 +79,7 @@ describe("push() 端到端（真实 HTTP）", () => {
     git(["commit", "-m", "Initial commit"], workDir);
     git(["push", serverRepoDir, "main"], workDir);
 
-    // 3. 启动真实 HTTP 服务
+    // 3. 启动 HTTP 服务
     server = startGitHttpBackendServer(tempDir, "/server.git", HTTP_BACKEND);
     serverUrl = server.url;
   });
@@ -124,7 +124,7 @@ describe("push() 端到端（真实 HTTP）", () => {
     const branchRef = git(["--git-dir", serverRepoDir, "rev-parse", "refs/heads/feature"], tempDir);
     expect(branchRef).toBe(branchHash);
 
-    // 2. 用真实 HTTP push 删除远程分支
+    // 2. 用 nano-git push 删除远程分支
     const deleteRepo = makeRepo();
     const deleteResult = await deleteRepo.push(serverUrl, {
       refSpecs: [":refs/heads/feature"],
