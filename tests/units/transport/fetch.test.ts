@@ -843,7 +843,119 @@ describe("fetch() 增量 fetch 行为", () => {
 });
 
 // ============================================================================
-// fetch() refspec 未匹配远端引用时报错
+// fetch() refs/heads/* 类型校验
+// ============================================================================
+
+describe("fetch() refs/heads/* 类型校验", () => {
+  function createBlobPackfile(content: string) {
+    const blob: GitBlob = { type: "blob", content: Buffer.from(content) };
+    const entry = toEncodedPackObject(blob);
+    const { packData } = buildEncodedPack([entry]);
+    return { entry, packData };
+  }
+
+  function createMockTransport(
+    refs: RemoteRef[],
+    onUploadPack?: (body: Buffer) => Buffer,
+  ): RemoteTransport {
+    return {
+      getReceivePackRefs: async () => {
+        throw new Error("not used in fetch");
+      },
+      postReceivePack: async () => {
+        throw new Error("not used in fetch");
+      },
+      getRefAdvertisement: async () => ({
+        capabilities: { multi_ack: true, "side-band-64k": true, "ofs-delta": true },
+        refs,
+      }),
+      postUploadPack: async (body: Buffer) => {
+        const packfile = onUploadPack?.(body) ?? Buffer.alloc(0);
+        return { data: packfile, packfile, progress: [] };
+      },
+    };
+  }
+
+  test("annotated tag 被 fetch 到 refs/heads/* 时写入 peeled commit hash", async () => {
+    const objectStore = createMemoryObjectStore();
+    const refStore = createMemoryRefStore();
+
+    const commitHash = createTestCommit(objectStore, [], 100);
+    const tagHash = objectStore.write({
+      type: "tag",
+      object: commitHash,
+      objectType: "commit",
+      tag: "v1",
+      tagger: { name: "T", email: "t@t", timestamp: 200, timezone: "+0000" },
+      message: "Tag v1\n",
+    });
+
+    const { packData } = createBlobPackfile("tag-to-branch");
+
+    const transport = createMockTransport(
+      [{ name: "refs/tags/v1", hash: tagHash, peeled: commitHash }],
+      () => packData,
+    );
+
+    const result = await fetch(objectStore, refStore, "dummy", {
+      transport,
+      refSpecs: ["+refs/tags/v1:refs/heads/from-tag"],
+    });
+
+    // refs/heads/from-tag 应指向 commit hash，而非 tag object hash
+    expect(refStore.read("refs/heads/from-tag")).toBe(commitHash);
+    expect(result.fetchedRefs.get("refs/heads/from-tag")).toBe(commitHash);
+    expect(result.objectCount).toBe(1);
+  });
+
+  test("非 commit 对象被 fetch 到 refs/heads/* 时抛出 FetchError", async () => {
+    const objectStore = createMemoryObjectStore();
+    const refStore = createMemoryRefStore();
+
+    const blobHash = objectStore.write({
+      type: "blob",
+      content: Buffer.from("this is a blob, not a commit"),
+    });
+
+    const { packData } = createBlobPackfile("blob-to-branch");
+
+    const transport = createMockTransport(
+      [{ name: "refs/blob-target", hash: blobHash }],
+      () => packData,
+    );
+
+    const fetchPromise = fetch(objectStore, refStore, "dummy", {
+      transport,
+      refSpecs: ["+refs/blob-target:refs/heads/blob-target"],
+    });
+
+    expect(fetchPromise).rejects.toThrow(FetchError);
+    expect(fetchPromise).rejects.toThrow(/commit/);
+  });
+
+  test("轻量 tag（指向 commit）被 fetch 到 refs/heads/* 时正常写入", async () => {
+    const objectStore = createMemoryObjectStore();
+    const refStore = createMemoryRefStore();
+
+    const commitHash = createTestCommit(objectStore, [], 100);
+
+    const { packData } = createBlobPackfile("lightweight-tag-to-branch");
+
+    const transport = createMockTransport(
+      // 轻量 tag：ref 直接指向 commit hash，无 peeled
+      [{ name: "refs/tags/light", hash: commitHash }],
+      () => packData,
+    );
+
+    const result = await fetch(objectStore, refStore, "dummy", {
+      transport,
+      refSpecs: ["+refs/tags/light:refs/heads/from-light-tag"],
+    });
+
+    expect(refStore.read("refs/heads/from-light-tag")).toBe(commitHash);
+    expect(result.fetchedRefs.get("refs/heads/from-light-tag")).toBe(commitHash);
+  });
+});
 
 // ============================================================================
 // fetch() refspec 未匹配远端引用时报错
