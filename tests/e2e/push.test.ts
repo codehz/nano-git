@@ -25,10 +25,8 @@ import { createMemoryRepository, type Repository } from "../../src/repository/in
 import { sha1 } from "../../src/core/types.ts";
 
 // ============================================================================
-// 常量
+// 辅助函数
 // ============================================================================
-
-const HTTP_BACKEND = "/usr/lib/git-core/git-http-backend";
 
 function enableReceivePack(repoDir: string): void {
   const configPath = join(repoDir, "config");
@@ -80,7 +78,7 @@ describe("push() 端到端", () => {
     git(["push", serverRepoDir, "main"], workDir);
 
     // 3. 启动 HTTP 服务
-    server = startGitHttpBackendServer(tempDir, "/server.git", HTTP_BACKEND);
+    server = startGitHttpBackendServer(tempDir, "/server.git");
     serverUrl = server.url;
   });
 

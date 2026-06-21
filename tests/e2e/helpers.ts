@@ -37,8 +37,8 @@ const GIT_ENV: Record<string, string> = {
   GIT_TERMINAL_PROMPT: "0",
 };
 
-/** git http-backend 可执行文件默认路径 */
-const DEFAULT_HTTP_BACKEND = "/usr/lib/git-core/git-http-backend";
+/** git http-backend 可执行文件 */
+const DEFAULT_HTTP_BACKEND = "git";
 
 // ============================================================================
 // HTTP 测试服务端
@@ -177,7 +177,7 @@ export function startGitHttpBackendServer(
           ? "application/x-git-receive-pack-request"
           : "application/x-git-upload-pack-request";
 
-    const result = spawnSync(httpBackend, [], {
+    const result = spawnSync(httpBackend, ["http-backend"], {
       env: {
         ...process.env,
         ...GIT_ENV,

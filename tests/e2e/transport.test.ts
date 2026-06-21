@@ -25,12 +25,6 @@ import { initRepository } from "../../src/repository/index.ts";
 import { parsePktLines } from "../../src/transport/pkt-line.ts";
 
 // ============================================================================
-// 常量
-// ============================================================================
-
-const HTTP_BACKEND = "/usr/lib/git-core/git-http-backend";
-
-// ============================================================================
 // 辅助函数
 // ============================================================================
 
@@ -110,7 +104,7 @@ describe("ref advertisement", () => {
     const created = createServerRepo(tempDir, "test.git");
     repoDir = created.repoDir;
     commitHash = created.commitHash;
-    server = startGitHttpBackendServer(tempDir, "/test.git", HTTP_BACKEND);
+    server = startGitHttpBackendServer(tempDir, "/test.git");
     serverUrl = server.url;
   });
 
@@ -155,7 +149,7 @@ describe("ref advertisement", () => {
     mkdirSync(emptyDir);
     git(["init", "--bare"], emptyDir);
 
-    const emptyServer = startGitHttpBackendServer(tempDir, "/empty.git", HTTP_BACKEND);
+    const emptyServer = startGitHttpBackendServer(tempDir, "/empty.git");
     try {
       const transport = createSmartHttpClient(emptyServer.url);
       const adv = await transport.getRefAdvertisement();
@@ -184,7 +178,7 @@ describe("receive-pack ref advertisement", () => {
     const created = createServerRepo(tempDir, "test.git", true);
     repoDir = created.repoDir;
     commitHash = created.commitHash;
-    server = startGitHttpBackendServer(tempDir, "/test.git", HTTP_BACKEND);
+    server = startGitHttpBackendServer(tempDir, "/test.git");
     serverUrl = server.url;
   });
 
@@ -237,7 +231,7 @@ describe("upload-pack 直接调用", () => {
   beforeEach(() => {
     tempDir = createTempDir("e2e-http-upload-pack-direct");
     createServerRepo(tempDir, "test.git");
-    server = startGitHttpBackendServer(tempDir, "/test.git", HTTP_BACKEND);
+    server = startGitHttpBackendServer(tempDir, "/test.git");
     serverUrl = server.url;
   });
 
@@ -295,8 +289,8 @@ describe("完整 fetch 流程", () => {
     git(["commit", "-m", "Add lib"], workDir);
     git(["push", serverRepoDir, "main"], workDir);
 
-    // 3. 启动真实 HTTP 服务器代理 git http-backend
-    server = startGitHttpBackendServer(tempDir, "/server.git", HTTP_BACKEND);
+    // 3. 启动 HTTP 服务器代理 git http-backend
+    server = startGitHttpBackendServer(tempDir, "/server.git");
     serverUrl = server.url;
   });
 
@@ -356,7 +350,7 @@ describe("fetch 协商流程", () => {
     projectRoot = remote.projectRoot;
     workDir = remote.workDir;
 
-    server = startGitHttpBackendServer(projectRoot, "/remote.git", HTTP_BACKEND);
+    server = startGitHttpBackendServer(projectRoot, "/remote.git");
     serverUrl = server.url;
   });
 
