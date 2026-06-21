@@ -121,8 +121,28 @@ export function parseRefSpec(refSpec: string): ParsedRefSpec {
   const src = spec.substring(0, colonIndex);
   const dst = spec.substring(colonIndex + 1);
 
-  // 是否包含通配符（* 只允许出现在末尾，由外层调用确保）
-  const isWildcard = src.endsWith("*") && dst.endsWith("*");
+  // 校验通配符格式
+  for (const [sideName, side] of [["src", src] as const, ["dst", dst] as const]) {
+    const starCount = (side.match(/\*/g) ?? []).length;
+    if (starCount > 1) {
+      throw new FetchError(`Invalid refspec: "${refSpec}" (multiple wildcards in ${sideName})`);
+    }
+    if (starCount === 1 && !side.endsWith("*")) {
+      throw new FetchError(
+        `Invalid refspec: "${refSpec}" (wildcard must be at the end of ${sideName})`,
+      );
+    }
+  }
+
+  const srcHasStar = src.endsWith("*");
+  const dstHasStar = dst.endsWith("*");
+
+  if (srcHasStar !== dstHasStar) {
+    throw new FetchError(`Invalid refspec: "${refSpec}" (wildcard must appear on both sides)`);
+  }
+
+  // 是否包含通配符（* 只允许出现在末尾）
+  const isWildcard = srcHasStar;
 
   // 处理通配符：去掉尾部 *
   const srcPattern = src.replace(/\*$/, "");

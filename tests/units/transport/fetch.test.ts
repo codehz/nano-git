@@ -88,6 +88,52 @@ describe("parseRefSpec()", () => {
     expect(spec.dstPattern).toBe("refs/tags/");
     expect(spec.force).toBe(true);
   });
+
+  // ========================================================================
+  // 非法 refspec 校验
+  // ========================================================================
+
+  test("单边通配符（src 有 *、dst 无 *）应拒绝", () => {
+    expect(() => parseRefSpec("refs/heads/*:refs/remotes/origin/main")).toThrow("Invalid refspec");
+  });
+
+  test("单边通配符（src 无 *、dst 有 *）应拒绝", () => {
+    expect(() => parseRefSpec("refs/heads/main:refs/remotes/origin/*")).toThrow("Invalid refspec");
+  });
+
+  test("带 force 的单边通配符也应拒绝", () => {
+    expect(() => parseRefSpec("+refs/heads/*:refs/remotes/origin/main")).toThrow("Invalid refspec");
+  });
+
+  test("通配符不在末尾（src 中间带 *）应拒绝", () => {
+    expect(() => parseRefSpec("refs/heads/*/abc:refs/heads/*/xyz")).toThrow("Invalid refspec");
+  });
+
+  test("通配符不在末尾（src * 后有后缀）应拒绝", () => {
+    expect(() => parseRefSpec("refs/heads/*extra:refs/heads/*")).toThrow("Invalid refspec");
+  });
+
+  test("通配符不在末尾（dst * 后有后缀）应拒绝", () => {
+    expect(() => parseRefSpec("refs/heads/*:refs/heads/*extra")).toThrow("Invalid refspec");
+  });
+
+  test("多个通配符应拒绝", () => {
+    expect(() => parseRefSpec("refs/heads/*/*:refs/heads/*/*")).toThrow("Invalid refspec");
+  });
+
+  test("删除 refspec（:refs/heads/feature）不受影响", () => {
+    const spec = parseRefSpec(":refs/heads/feature");
+    expect(spec.srcPattern).toBe("");
+    expect(spec.dstPattern).toBe("refs/heads/feature");
+    expect(spec.isWildcard).toBe(false);
+  });
+
+  test("精确 refspec 不受影响", () => {
+    const spec = parseRefSpec("+refs/heads/main:refs/remotes/origin/main");
+    expect(spec.isWildcard).toBe(false);
+    expect(spec.srcPattern).toBe("refs/heads/main");
+    expect(spec.dstPattern).toBe("refs/remotes/origin/main");
+  });
 });
 
 // ============================================================================
