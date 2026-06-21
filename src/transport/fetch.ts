@@ -225,10 +225,12 @@ export async function fetch(
   url: string,
   options?: FetchOptions,
 ): Promise<FetchResult> {
-  const client = createSmartHttpClient(url, {
-    token: options?.token,
-    headers: options?.headers,
-  });
+  const client =
+    options?.transport ??
+    createSmartHttpClient(url, {
+      token: options?.token,
+      headers: options?.headers,
+    });
 
   // 1. 获取远程引用广告
   const adv = await client.getRefAdvertisement();

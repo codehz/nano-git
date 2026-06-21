@@ -417,10 +417,12 @@ export async function push(
   url: string,
   options?: PushOptions,
 ): Promise<PushResult> {
-  const client = createSmartHttpClient(url, {
-    token: options?.token,
-    headers: options?.headers,
-  });
+  const client =
+    options?.transport ??
+    createSmartHttpClient(url, {
+      token: options?.token,
+      headers: options?.headers,
+    });
 
   // 1. 获取远程 receive-pack ref 广告
   const adv = await client.getReceivePackRefs();

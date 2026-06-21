@@ -13,6 +13,32 @@
 
 import type { SHA1 } from "../core/types.ts";
 
+// ============================================================================
+// 传输层接口（用于测试注入）
+// ============================================================================
+
+/**
+ * 远程传输层接口
+ *
+ * 定义 push/fetch 编排函数所需的远程交互原语。
+ * SmartHttpClient（smart-http.ts）和 CgiTransport（cgi-transport.ts）
+ * 都实现此接口，允许在测试中注入 CGI 传输层。
+ */
+export interface RemoteTransport {
+  /** 获取 receive-pack ref 广告 */
+  getReceivePackRefs(): Promise<RefAdvertisement>;
+  /** 发送 receive-pack 请求 */
+  postReceivePack(body: Buffer): Promise<{
+    data: Buffer;
+    refUpdates: PushRefUpdate[];
+    progress: string[];
+  }>;
+  /** 获取 upload-pack ref 广告 */
+  getRefAdvertisement(): Promise<RefAdvertisement>;
+  /** 发送 upload-pack 请求 */
+  postUploadPack(body: Buffer): Promise<{ packfile: Buffer; progress: string[] }>;
+}
+
 /**
  * 远程引用
  *
@@ -92,6 +118,14 @@ export interface FetchOptions {
    * - 自定义 User-Agent
    */
   headers?: Record<string, string>;
+
+  /**
+   * 可选的远程传输层实现
+   *
+   * 默认使用 Smart HTTP（调用 createSmartHttpClient）。
+   * 传入此字段可注入替代实现（如 CgiTransport）用于测试。
+   */
+  transport?: RemoteTransport;
 }
 
 /**
@@ -141,6 +175,14 @@ export interface PushOptions {
 
   /** 是否强制推送（--force），等价于 refspec 的 + 前缀 */
   force?: boolean;
+
+  /**
+   * 可选的远程传输层实现
+   *
+   * 默认使用 Smart HTTP（调用 createSmartHttpClient）。
+   * 传入此字段可注入替代实现（如 CgiTransport）用于测试。
+   */
+  transport?: RemoteTransport;
 }
 
 /**

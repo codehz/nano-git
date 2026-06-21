@@ -17,7 +17,7 @@ import { extractPackfile, extractProgress, SideBandError } from "./side-band.ts"
 import { parsePktLines } from "./pkt-line.ts";
 import type { PktLineData } from "./pkt-line.ts";
 import { parseReceivePackResult, ReceivePackResultError } from "./receive-pack-result.ts";
-import type { RefAdvertisement, PushRefUpdate } from "./types.ts";
+import type { RefAdvertisement, PushRefUpdate, RemoteTransport } from "./types.ts";
 import { GitError } from "../core/errors.ts";
 
 // ============================================================================
@@ -97,8 +97,9 @@ function applyAuthHeaders(
  * Smart HTTP 客户端接口
  *
  * 封装 Git Smart HTTP 协议的四个核心端点。
+ * 实现 RemoteTransport 接口，允许作为 push/fetch 的传输层注入。
  */
-export interface SmartHttpClient {
+export interface SmartHttpClient extends RemoteTransport {
   /**
    * 获取远程仓库的引用广告
    *
