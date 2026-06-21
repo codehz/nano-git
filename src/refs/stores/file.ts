@@ -94,5 +94,24 @@ export function createFileRefStore(gitDir: string): RefStore {
 
       return Array.from(refs).sort();
     },
+
+    listAllRaw(): string[] {
+      const refs = new Set<string>();
+      const refsDir = join(gitDir, "refs");
+
+      if (existsSync(refsDir)) {
+        for (const ref of listLooseRefsRecursive(refsDir, "refs/")) {
+          refs.add(ref);
+        }
+      }
+
+      for (const ref of readPackedRefs(gitDir).keys()) {
+        if (ref.startsWith("refs/")) {
+          refs.add(ref);
+        }
+      }
+
+      return Array.from(refs).sort();
+    },
   };
 }

@@ -59,4 +59,14 @@ export interface RefStore {
    * @returns 完整的引用路径列表（已排序）
    */
   listRaw(prefix: string): string[];
+
+  /**
+   * 列出所有引用（不限命名空间）
+   *
+   * 返回 refs/ 下的所有引用完整路径。
+   * 此方法不做前缀校验，适用于需要扫描全部 refs 的场景。
+   *
+   * @returns 所有引用的完整路径列表（已排序）
+   */
+  listAllRaw(): string[];
 }

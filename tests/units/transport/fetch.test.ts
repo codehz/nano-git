@@ -837,4 +837,53 @@ describe("getLocalRefs()", () => {
     const refs = getLocalRefs(store);
     expect(refs.get("HEAD")).toBe(hash);
   });
+
+  test("自定义命名空间 refs/mirrors/ 也能被 getLocalRefs 检测到", () => {
+    const hash = sha1("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    const store = createMemoryRefStore(
+      new Map([
+        ["HEAD", "ref: refs/heads/main"],
+        ["refs/heads/main", hash],
+        ["refs/mirrors/upstream/main", hash],
+      ]),
+    );
+
+    const refs = getLocalRefs(store);
+    expect(refs.get("HEAD")).toBe(hash);
+    expect(refs.get("refs/heads/main")).toBe(hash);
+    expect(refs.get("refs/mirrors/upstream/main")).toBe(hash);
+  });
+});
+
+// ============================================================================
+// getLocalRefs + determineWants 集成测试
+// ============================================================================
+
+describe("getLocalRefs + determineWants 自定义 namespace 集成", () => {
+  test("自定义目标命名空间的本地已有 ref 应被检测到，localHash 正确设置", () => {
+    const existingHash = sha1("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    const newHash = sha1("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+
+    // 模拟本地已有 refs/mirrors/upstream/main
+    const refs = createMemoryRefStore(
+      new Map([
+        ["refs/heads/main", existingHash],
+        ["refs/mirrors/upstream/main", existingHash],
+      ]),
+    );
+
+    const localRefs = getLocalRefs(refs);
+
+    // refspec: refs/heads/main:refs/mirrors/upstream/main
+    // 远程有更新的 hash，本地已有旧值 → localHash 应为 existingHash
+    const spec = parseRefSpec("refs/heads/main:refs/mirrors/upstream/main");
+    const remoteRef: RemoteRef[] = [{ name: "refs/heads/main", hash: newHash }];
+
+    const wants = determineWants(remoteRef, localRefs, [spec]);
+
+    expect(wants).toHaveLength(1);
+    expect(wants[0]!.localName).toBe("refs/mirrors/upstream/main");
+    // 这才是关键断言：localHash 应为 existingHash 而非 undefined
+    expect(wants[0]!.localHash).toBe(existingHash);
+  });
 });

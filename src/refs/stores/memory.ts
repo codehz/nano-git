@@ -44,5 +44,11 @@ export function createMemoryRefStore(initial?: Map<string, string>): RefStore {
         .filter((key) => key.startsWith(prefix))
         .sort();
     },
+
+    listAllRaw(): string[] {
+      return Array.from(store.keys())
+        .filter((key) => key.startsWith("refs/"))
+        .sort();
+    },
   };
 }

@@ -215,38 +215,32 @@ export function determineWants(
 /**
  * 获取本地 refs 的哈希映射
  *
- * 遍历 refs/heads/、refs/tags/ 和 HEAD 等已知前缀，
- * 避免使用 "refs/" 顶级前缀（不满足 validateRefPrefix 要求）。
+ * 扫描 refs/ 下所有命名空间的引用，确保 fetch refspec 中
+ * 自定义目标命名空间（如 refs/mirrors/）也能被正确检测到。
  */
 export function getLocalRefs(refs: RefStore): Map<string, SHA1> {
   const map = new Map<string, SHA1>();
-  const prefixes = [HEADS_PREFIX, TAGS_PREFIX, "refs/remotes/"];
 
-  // 明确检查的引用
-  const explicitRefs = [HEAD_REF];
-
-  for (const prefix of prefixes) {
-    for (const refName of refs.listRaw(prefix)) {
-      const content = refs.readRaw(refName);
-      if (content && /^[0-9a-f]{40}$/.test(content)) {
-        try {
-          map.set(refName, sha1(content));
-        } catch {
-          // 忽略无效哈希
-        }
+  // 所有 refs/ 下的引用
+  for (const refName of refs.listAllRaw()) {
+    const content = refs.readRaw(refName);
+    if (content && /^[0-9a-f]{40}$/.test(content)) {
+      try {
+        map.set(refName, sha1(content));
+      } catch {
+        // 忽略无效哈希
       }
     }
   }
 
-  for (const refName of explicitRefs) {
-    try {
-      const hash = resolveRefHash(refs, refName);
-      if (hash) {
-        map.set(refName, hash);
-      }
-    } catch {
-      // 忽略解析失败（如循环引用）
+  // HEAD 可能指向 refs/ 外的引用（如 "HEAD" 自身）
+  try {
+    const hash = resolveRefHash(refs, HEAD_REF);
+    if (hash) {
+      map.set(HEAD_REF, hash);
     }
+  } catch {
+    // 忽略解析失败（如循环引用）
   }
 
   return map;
