@@ -502,21 +502,17 @@ describe("fetch() 增量 fetch 行为", () => {
       // 远程广告 refs/heads/main 指向 remoteTip
       const { packData } = createBlobPackfile("diverged content");
 
-      let capturedBody: Buffer | null = null;
       const transport = createMockTransport(
         [{ name: "refs/heads/main", hash: remoteTip }],
         { multi_ack: true, "side-band-64k": true, "ofs-delta": true },
-        (body) => {
-          capturedBody = body;
-          return packData;
-        },
+        () => packData,
       );
 
       return { objectStore, refStore, transport, oldTip, remoteTip };
     }
 
     test("非强制 refspec：非快进更新被阻止，ref 保持不变", async () => {
-      const { objectStore, refStore, transport, oldTip, remoteTip } = createDivergedScenario();
+      const { objectStore, refStore, transport, oldTip } = createDivergedScenario();
 
       // 使用不带 + 的 refspec
       const result = await fetch(objectStore, refStore, "dummy", {
@@ -560,14 +556,10 @@ describe("fetch() 增量 fetch 行为", () => {
       const refStore = createMemoryRefStore(new Map([["refs/remotes/origin/main", oldTip]]));
       const { packData } = createBlobPackfile("fast-forward content");
 
-      let capturedBody: Buffer | null = null;
       const transport = createMockTransport(
         [{ name: "refs/heads/main", hash: remoteTip }],
         { multi_ack: true, "side-band-64k": true, "ofs-delta": true },
-        (body) => {
-          capturedBody = body;
-          return packData;
-        },
+        () => packData,
       );
 
       // 使用不带 + 的 refspec
@@ -589,14 +581,10 @@ describe("fetch() 增量 fetch 行为", () => {
 
       const { entry, packData } = createBlobPackfile("new ref content");
 
-      let capturedBody: Buffer | null = null;
       const transport = createMockTransport(
         [{ name: "refs/heads/main", hash: remoteTip }],
         { multi_ack: true, "side-band-64k": true, "ofs-delta": true },
-        (body) => {
-          capturedBody = body;
-          return packData;
-        },
+        () => packData,
       );
 
       const result = await fetch(objectStore, refStore, "dummy", {
