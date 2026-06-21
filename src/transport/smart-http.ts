@@ -420,8 +420,9 @@ export function createSmartHttpClient(baseUrl: string, auth?: SmartHttpAuth): Sm
                     unpackError = unpackResult;
                   }
                 } else {
-                  // 其他 channel 1 数据（packfile 等），跳过
-                  continue;
+                  // 其他 channel 1 数据（可能是 pkt-line 编码的 report-status）
+                  // 收集起来后续用 parseReceivePackResult 统一解析
+                  reportStatusChunks.push(frameData);
                 }
               } else if (channel === 0x02) {
                 // Channel 2: 进度消息
@@ -440,15 +441,10 @@ export function createSmartHttpClient(baseUrl: string, auth?: SmartHttpAuth): Sm
             }
 
             // 如果通过直接解析未获得 report-status，尝试用 parseReceivePackResult 解析收集到的数据
+            // 注意：channel 1 的数据内部已经是 pkt-line 编码（包含 4 字节长度前缀），
+            // 因此直接拼接即可，无需额外包装
             if (refUpdates.length === 0 && reportStatusChunks.length > 0) {
-              // 重建 pkt-line 格式
-              const reconstructed = Buffer.concat(
-                reportStatusChunks.map((chunk) => {
-                  const len = chunk.length + 4;
-                  const prefix = len.toString(16).padStart(4, "0").toUpperCase();
-                  return Buffer.concat([Buffer.from(prefix, "utf-8"), chunk]);
-                }),
-              );
+              const reconstructed = Buffer.concat(reportStatusChunks);
               refUpdates = parseReceivePackResult(reconstructed);
             }
           } else {
