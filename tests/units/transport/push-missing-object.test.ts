@@ -398,11 +398,15 @@ describe("push() 本地对象缺失预检", () => {
       committer: { name: "T", email: "t@t", timestamp: 2000, timezone: "+0000" },
       message: "c",
     });
-    void bHash;
+    void rootHash;
 
     const refStore = createMemoryRefStore(new Map([["refs/heads/main", cHash]]));
     let postCalled = false;
-    const transport = createPushMockTransport([{ name: "refs/heads/main", hash: rootHash }], () => {
+    // 远端 tip 就是 shallow 边界 bHash——这是真实 shallow fetch 后的典型场景：
+    // 本地有 bHash（shallow boundary），其 parent 缺失；远端 tip 与 shallow
+    // 边界一致，因此 isAncestor(bHash, cHash) 可通过 current === peeledOld 判定，
+    // 无需依赖 shallow boundaries 来放行缺失的中间链。
+    const transport = createPushMockTransport([{ name: "refs/heads/main", hash: bHash }], () => {
       postCalled = true;
     });
 

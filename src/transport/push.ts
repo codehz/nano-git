@@ -384,7 +384,18 @@ export function checkFastForward(
       }
     }
 
-    if (!isAncestor(store, item.remoteHash, item.localHash, shallowBoundaries)) {
+    // 构建逐 ref 的独立边界集，仅包含本 ref 的远端 tip。
+    // 注意：此处不传递全局 shallowBoundaries 给 isAncestor，因为
+    // isAncestor 的"遇到边界即放行"语义对 push fast-forward 预检来说
+    // 过于宽松——任意缺失祖先只要落在边界集合中就会被错误放行。
+    // 只有本 ref 自身的 remoteHash 才是合法的缺失边界（服务端持有它，
+    // 且它在祖先链上就等于找到 peeledOld）。
+    const refBoundaries = new Set<SHA1>();
+    if (item.remoteHash) {
+      refBoundaries.add(item.remoteHash);
+    }
+
+    if (!isAncestor(store, item.remoteHash, item.localHash, refBoundaries)) {
       const shortRemote = item.remoteHash.slice(0, 8);
       const shortLocal = item.localHash.slice(0, 8);
       throw new PushError(
@@ -680,11 +691,15 @@ export async function push(
   }
 
   // 推送边界：shallow 边界 + 各 ref 远端当前 tip（本地可无对象，服务端仍持有）
+  // 注意：此合并边界仅用于对象收集（collectReachable），不可用于 fast-forward 预检。
   const pushBoundaries = mergePushBoundaries(shallowSet, pushRefs);
 
   // 6. non-fast-forward 预检
-  //    未设 force 的更新如果不是 fast-forward 则立即报错
-  checkFastForward(store, pushRefs, pushBoundaries);
+  //    未设 force 的更新如果不是 fast-forward 则立即报错。
+  //    此处的边界只传 shallowSet（不含所有 ref 的统一远端 tip 合并集），
+  //    逐 ref 的远端 tip 由 checkFastForward 内部按 item 独立加入边界，
+  //    避免 A ref 的缺失 parent 被 B ref 的远端 tip 错误放行。
+  checkFastForward(store, pushRefs, shallowSet);
 
   // 7. 收集需要发送的对象
   //    需要推送的对象 = 从推送 refs 可达的对象 - 从远程已有 refs 可达的对象

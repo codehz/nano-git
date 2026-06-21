@@ -425,6 +425,49 @@ describe("checkFastForward()", () => {
     expect(() => checkFastForward(store, items)).toThrow(PushError);
   });
 
+  test("多个更新共享边界集合时，不应把其他 ref 的远端 tip 当作当前 ref 的合法缺失边界", () => {
+    const boundaryHash = sha1("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+
+    const localForMain = store.write({
+      type: "commit" as const,
+      tree: store.write({ type: "tree", entries: [] }),
+      parents: [boundaryHash],
+      author: AUTHOR,
+      committer: AUTHOR,
+      message: "local main child of missing boundary",
+    });
+
+    const localForFeature = store.write({
+      type: "commit" as const,
+      tree: store.write({ type: "tree", entries: [] }),
+      parents: [boundaryHash],
+      author: AUTHOR,
+      committer: AUTHOR,
+      message: "local feature child of unrelated missing boundary",
+    });
+
+    const items = [
+      {
+        localRef: "refs/heads/main",
+        remoteRef: "refs/heads/main",
+        localHash: localForMain,
+        remoteHash: boundaryHash,
+        force: false,
+      },
+      {
+        localRef: "refs/heads/feature",
+        remoteRef: "refs/heads/feature",
+        localHash: localForFeature,
+        remoteHash: commits.c,
+        force: false,
+      },
+    ];
+
+    // boundaryHash 是 main 的远端 tip。它不能让 feature 的预检被误放行；
+    // 对 feature 而言，commits.c 并不是 localForFeature 的祖先，应拒绝。
+    expect(() => checkFastForward(store, items, new Set([boundaryHash]))).toThrow(PushError);
+  });
+
   test("所有更新都是 force 的 non-fast-forward 不抛错", () => {
     const items = [makeItem(commits.c, commits.a, true), makeItem(commits.b, commits.a, true)];
     expect(() => checkFastForward(store, items)).not.toThrow();
