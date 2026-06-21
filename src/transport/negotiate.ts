@@ -10,9 +10,7 @@
  *   deepen <n>\n                     （可选，shallow fetch）
  *   0000                             （flush，如果有 deepen）
  *   have <hash>\n                    （批量，每批 ≤ 32 条后加 flush）
- *   0000
  *   done\n
- *   0000
  *
  * @see https://git-scm.com/docs/git-upload-pack#_request
  */
@@ -112,7 +110,6 @@ export function collectHaveCommits(store: ObjectStore, tips: SHA1[]): SHA1[] {
  * // => "want 95d09f2b... multi_ack side-band-64k ofs-delta\n"
  * //   + "0000"
  * //   + "done\n"
- * //   + "0000"
  *
  * // Shallow clone
  * const shallow = buildUploadPackRequest(
@@ -126,7 +123,6 @@ export function collectHaveCommits(store: ObjectStore, tips: SHA1[]): SHA1[] {
  * //   + "deepen 3\n"
  * //   + "0000"
  * //   + "done\n"
- * //   + "0000"
  * ```
  */
 export function buildUploadPackRequest(
@@ -172,14 +168,8 @@ export function buildUploadPackRequest(
     chunks.push(encodePktLine(`have ${haves[i]!}\n`));
   }
 
-  // have 后的 flush（如果有 haves）
-  if (haves.length > 0) {
-    chunks.push(encodeFlushPkt());
-  }
-
   // done 命令
   chunks.push(encodePktLine("done\n"));
-  chunks.push(encodeFlushPkt());
 
   return Buffer.concat(chunks);
 }

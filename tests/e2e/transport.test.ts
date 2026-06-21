@@ -15,6 +15,8 @@ import { git, gitInit, createTempDir, cleanupDir, createFile, FIXED_AUTHOR } fro
 import { sha1 } from "../../src/core/types.ts";
 import { createCgiTransport } from "../../src/transport/cgi-transport.ts";
 import { initRepository } from "../../src/repository/index.ts";
+import { parsePktLines } from "../../src/transport/pkt-line.ts";
+import type { RemoteTransport } from "../../src/transport/types.ts";
 
 // ============================================================================
 // 常量
@@ -71,6 +73,41 @@ function createServerRepo(
   git(["push", repoDir, "main"], workDir);
 
   return { repoDir, projectRoot, commitHash, workDir };
+}
+
+/**
+ * 解析 upload-pack 请求中的命令文本
+ */
+function decodeUploadPackCommands(body: Buffer): string[] {
+  return parsePktLines(body)
+    .filter((line) => line.type === "data")
+    .map((line) => line.payload.toString("utf-8").trimEnd());
+}
+
+/**
+ * 包装 transport，记录每次 upload-pack 请求体
+ */
+function createUploadPackRecorder(
+  transport: RemoteTransport,
+): RemoteTransport & { uploadPackBodies: Buffer[] } {
+  const uploadPackBodies: Buffer[] = [];
+
+  return {
+    uploadPackBodies,
+    async getReceivePackRefs() {
+      return transport.getReceivePackRefs();
+    },
+    async postReceivePack(body: Buffer) {
+      return transport.postReceivePack(body);
+    },
+    async getRefAdvertisement() {
+      return transport.getRefAdvertisement();
+    },
+    async postUploadPack(body: Buffer) {
+      uploadPackBodies.push(Buffer.from(body));
+      return transport.postUploadPack(body);
+    },
+  };
 }
 
 // ============================================================================
@@ -148,12 +185,14 @@ describe("CgiTransport: upload-pack (fetch)", () => {
   let tempDir: string;
   let repoDir: string;
   let projectRoot: string;
+  let workDir: string;
 
   beforeEach(() => {
     tempDir = createTempDir("e2e-transport-fetch");
     const server = createServerRepo(tempDir, "test.git");
     repoDir = server.repoDir;
     projectRoot = server.projectRoot;
+    workDir = server.workDir;
   });
 
   afterEach(() => {
@@ -185,6 +224,46 @@ describe("CgiTransport: upload-pack (fetch)", () => {
 
     const result2 = await repo.fetch("dummy", { transport });
     expect(result2.objectCount).toBe(0);
+  });
+
+  test("CgiTransport 增量 fetch：远端推进后发送 haves 并仅拉取新增对象", async () => {
+    const localDir = join(tempDir, "local-incremental");
+    const repo = initRepository(localDir);
+    const baseTransport = createCgiTransport(repoDir, projectRoot, HTTP_BACKEND);
+    const transport = createUploadPackRecorder(baseTransport);
+
+    const initialHead = git(["rev-parse", "HEAD"], workDir);
+    const result1 = await repo.fetch("dummy", { transport });
+    expect(result1.objectCount).toBeGreaterThan(0);
+
+    const firstCommands = decodeUploadPackCommands(transport.uploadPackBodies[0]!);
+    expect(firstCommands.some((line) => line.startsWith("have "))).toBe(false);
+
+    createFile(workDir, "src/feature-a.ts", 'export const a = "a";\n');
+    git(["add", "src/feature-a.ts"], workDir);
+    git(["commit", "-m", "Add feature a"], workDir);
+
+    createFile(workDir, "src/feature-b.ts", 'export const b = "b";\n');
+    git(["add", "src/feature-b.ts"], workDir);
+    git(["commit", "-m", "Add feature b"], workDir);
+    const newHead = git(["rev-parse", "HEAD"], workDir);
+    git(["push", repoDir, "main"], workDir);
+    const expectedNewObjects = git(
+      ["rev-list", "--objects", "--no-object-names", `${initialHead}..${newHead}`],
+      workDir,
+    )
+      .split("\n")
+      .filter((line) => line.length > 0).length;
+
+    const result2 = await repo.fetch("dummy", { transport });
+
+    expect(result2.objectCount).toBeGreaterThan(0);
+    expect(result2.objectCount).toBe(expectedNewObjects);
+    expect(result2.fetchedRefs.get("refs/remotes/origin/main")).toBe(sha1(newHead));
+
+    const secondCommands = decodeUploadPackCommands(transport.uploadPackBodies[1]!);
+    expect(secondCommands.some((line) => line === `have ${initialHead}`)).toBe(true);
+    expect(secondCommands.some((line) => line.startsWith(`want ${newHead}`))).toBe(true);
   });
 
   test("CgiTransport: postUploadPack 返回正确 packfile", async () => {

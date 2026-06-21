@@ -158,8 +158,8 @@ describe("buildUploadPackRequest()", () => {
     const body = buildUploadPackRequest([hash1], [], ["multi_ack", "side-band-64k", "ofs-delta"]);
     const lines = parsePktLines(body);
 
-    // want + flush + done + flush = 4 帧
-    expect(lines).toHaveLength(4);
+    // want + flush + done = 3 帧
+    expect(lines).toHaveLength(3);
 
     // 第 1 帧：want 行带 capabilities
     const wantLine = dataPayload(lines[0]!);
@@ -171,16 +171,13 @@ describe("buildUploadPackRequest()", () => {
     // 第 3 帧：done
     const doneLine = dataPayload(lines[2]!);
     expect(doneLine).toBe("done\n");
-
-    // 第 4 帧：flush
-    expect(lines[3]!.type).toBe("flush");
   });
 
   test("初始 clone：单 want + 空 capabilities + done", () => {
     const body = buildUploadPackRequest([hash1], [], []);
     const lines = parsePktLines(body);
 
-    expect(lines).toHaveLength(4);
+    expect(lines).toHaveLength(3);
     const wantLine = dataPayload(lines[0]!);
     expect(wantLine).toBe(`want ${hash1}\n`);
   });
@@ -189,8 +186,8 @@ describe("buildUploadPackRequest()", () => {
     const body = buildUploadPackRequest([hash1, hash2], [], ["multi_ack"]);
     const lines = parsePktLines(body);
 
-    // 2 want + flush + done + flush = 5
-    expect(lines).toHaveLength(5);
+    // 2 want + flush + done = 4
+    expect(lines).toHaveLength(4);
 
     const want1 = dataPayload(lines[0]!);
     expect(want1).toBe(`want ${hash1} multi_ack\n`);
@@ -203,8 +200,8 @@ describe("buildUploadPackRequest()", () => {
     const body = buildUploadPackRequest([hash1], [hash2, hash3], ["multi_ack", "side-band-64k"]);
     const lines = parsePktLines(body);
 
-    // want + flush + 2 have + flush(haves结束) + done + flush(done后) = 7
-    expect(lines).toHaveLength(7);
+    // want + flush + 2 have + done = 5
+    expect(lines).toHaveLength(5);
 
     expect(lines[0]!.type).toBe("data");
     const wantLine = dataPayload(lines[0]!);
@@ -215,12 +212,8 @@ describe("buildUploadPackRequest()", () => {
     expect(dataPayload(lines[2]!)).toBe(`have ${hash2}\n`);
     expect(dataPayload(lines[3]!)).toBe(`have ${hash3}\n`);
 
-    expect(lines[4]!.type).toBe("flush");
-
-    expect(lines[5]!.type).toBe("data");
-    expect(dataPayload(lines[5]!)).toBe("done\n");
-
-    expect(lines[6]!.type).toBe("flush");
+    expect(lines[4]!.type).toBe("data");
+    expect(dataPayload(lines[4]!)).toBe("done\n");
   });
 
   test("大量 have 自动分批（每批 ≤ 32）", () => {
@@ -235,7 +228,7 @@ describe("buildUploadPackRequest()", () => {
     const body = buildUploadPackRequest([hash1], haves, ["multi_ack"]);
     const lines = parsePktLines(body);
 
-    // want + flush + 35 have + flush(分批) + flush(haves结束) + done + flush
+    // want + flush + 35 have + flush(分批) + done
     let dataCount = 0;
     let flushCount = 0;
     for (const line of lines) {
@@ -245,8 +238,8 @@ describe("buildUploadPackRequest()", () => {
 
     // 35 have + 1 want + 1 done = 37 data 帧
     expect(dataCount).toBe(37);
-    // 1 (want后) + 1 (32批后, i=32时) + 1 (haves结束) + 1 (done后) = 4 flush
-    expect(flushCount).toBe(4);
+    // 1 (want后) + 1 (32批后, i=32时) = 2 flush
+    expect(flushCount).toBe(2);
   });
 
   test("刚好 32 个 have：第 32 条后应有 flush", () => {
@@ -260,15 +253,14 @@ describe("buildUploadPackRequest()", () => {
     const body = buildUploadPackRequest([hash1], haves, ["multi_ack"]);
     const lines = parsePktLines(body);
 
-    // want(0) + flush(1) + 32 have(2-33) + flush(haves结束, 34) + done(35) + flush(done后, 36)
+    // want(0) + flush(1) + 32 have(2-33) + done(34)
     const flushPositions: number[] = [];
     lines.forEach((line, idx) => {
       if (line.type === "flush") flushPositions.push(idx);
     });
 
-    // flush 应该在位置: 1(want后), 34(haves结束), 36(done后)
-    // (32 的倍数时 i=32 不会进入循环，所以没有中间 batch flush)
-    expect(flushPositions).toEqual([1, 34, 36]);
+    // flush 应该仅在 want 后；32 的倍数时不会额外插入批次 flush
+    expect(flushPositions).toEqual([1]);
   });
 
   test("空 wants 应抛出错误", () => {
@@ -282,12 +274,12 @@ describe("buildUploadPackRequest()", () => {
   // ============================================================================
 
   describe("shallow fetch (deepen)", () => {
-    test("shallow clone：want + flush + deepen + flush + done + flush", () => {
+    test("shallow clone：want + flush + deepen + flush + done", () => {
       const body = buildUploadPackRequest([hash1], [], ["multi_ack"], 3);
       const lines = parsePktLines(body);
 
-      // want + flush + deepen + flush + done + flush = 6
-      expect(lines).toHaveLength(6);
+      // want + flush + deepen + flush + done = 5
+      expect(lines).toHaveLength(5);
 
       expect(lines[0]!.type).toBe("data");
       expect(dataPayload(lines[0]!)).toBe(`want ${hash1} multi_ack\n`);
@@ -301,25 +293,21 @@ describe("buildUploadPackRequest()", () => {
 
       expect(lines[4]!.type).toBe("data");
       expect(dataPayload(lines[4]!)).toBe("done\n");
-
-      expect(lines[5]!.type).toBe("flush");
     });
 
     test("shallow + incremental：deepen 出现在 haves 之前", () => {
       const body = buildUploadPackRequest([hash1], [hash2], [], 5);
       const lines = parsePktLines(body);
 
-      // want + flush + deepen + flush + 1 have + flush(haves结束) + done + flush = 8
-      expect(lines).toHaveLength(8);
+      // want + flush + deepen + flush + 1 have + done = 6
+      expect(lines).toHaveLength(6);
 
       expect(dataPayload(lines[0]!)).toBe(`want ${hash1}\n`);
       expect(lines[1]!.type).toBe("flush");
       expect(dataPayload(lines[2]!)).toBe("deepen 5\n");
       expect(lines[3]!.type).toBe("flush");
       expect(dataPayload(lines[4]!)).toBe(`have ${hash2}\n`);
-      expect(lines[5]!.type).toBe("flush");
-      expect(dataPayload(lines[6]!)).toBe("done\n");
-      expect(lines[7]!.type).toBe("flush");
+      expect(dataPayload(lines[5]!)).toBe("done\n");
     });
 
     test("depth 为 0 应抛出错误", () => {

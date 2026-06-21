@@ -84,6 +84,7 @@ function callGitHttpBackend(
   queryString?: string,
   body?: Buffer,
 ): CgiResponse {
+  const contentLength = body?.length ?? 0;
   const contentType =
     method === "POST"
       ? pathInfo.includes("git-receive-pack")
@@ -97,6 +98,7 @@ function callGitHttpBackend(
     GIT_PROJECT_ROOT: projectRoot,
     PATH_INFO: pathInfo,
     CONTENT_TYPE: contentType,
+    CONTENT_LENGTH: method === "POST" ? String(contentLength) : "0",
     QUERY_STRING: queryString ?? "",
   };
 
@@ -105,10 +107,29 @@ function callGitHttpBackend(
     input: body,
   });
 
+  if (result.error) {
+    throw new Error(`Failed to execute git http-backend: ${result.error.message}`);
+  }
+
+  if (result.status !== 0) {
+    const stderr = result.stderr?.toString() ?? "";
+    throw new Error(
+      `git http-backend exited with code ${result.status}\n` +
+        `stderr: ${stderr}\n` +
+        `repo: ${repoDir}`,
+    );
+  }
+
   const stdout = result.stdout ?? Buffer.alloc(0);
   const stderr = result.stderr?.toString() ?? "";
 
-  const headerEndIndex = stdout.indexOf("\r\n\r\n");
+  let headerEndIndex = stdout.indexOf("\r\n\r\n");
+  let separatorLength = 4;
+  if (headerEndIndex === -1) {
+    headerEndIndex = stdout.indexOf("\n\n");
+    separatorLength = 2;
+  }
+
   if (headerEndIndex === -1) {
     throw new Error(
       `CGI output has no header/body separator\n` +
@@ -118,11 +139,11 @@ function callGitHttpBackend(
   }
 
   const headerSection = stdout.subarray(0, headerEndIndex).toString("utf-8");
-  const bodyBuffer = stdout.subarray(headerEndIndex + 4);
+  const bodyBuffer = stdout.subarray(headerEndIndex + separatorLength);
   const headers: Record<string, string> = {};
   let status = 200;
 
-  for (const line of headerSection.split("\r\n")) {
+  for (const line of headerSection.split(/\r?\n/)) {
     const trimmedLine = line.trim();
     if (trimmedLine.length === 0) continue;
     if (trimmedLine.startsWith("Status: ")) {
