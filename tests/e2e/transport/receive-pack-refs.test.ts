@@ -5,10 +5,11 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
 import { git, gitInit, createTempDir, cleanupDir, createFile } from "../helpers.ts";
-import { createServerRepo } from "./helpers.ts";
+import { createServerRepo, enableReceivePack } from "./helpers.ts";
 import { startGitHttpBackendServer } from "./http-server.ts";
 import { sha1 } from "@/core/types.ts";
 import { createSmartHttpClient } from "@/transport/smart-http.ts";
@@ -63,5 +64,20 @@ describe("receive-pack ref advertisement", () => {
 
     const featureRef = adv.refs.find((r) => r.name === "refs/heads/feature");
     expect(featureRef).toBeDefined();
+  });
+
+  test("空仓库的 receive-pack ref advertisement 应返回 capabilities 但无 refs", async () => {
+    const emptyDir = join(tempDir, "empty-receive.git");
+    mkdirSync(emptyDir);
+    git(["init", "--bare"], emptyDir);
+    enableReceivePack(emptyDir);
+
+    await using emptyServer = startGitHttpBackendServer(tempDir, "/empty-receive.git");
+    const transport = createSmartHttpClient(emptyServer.url);
+    const adv = await transport.getReceivePackRefs();
+
+    expect(adv.refs).toHaveLength(0);
+    expect(adv.capabilities["report-status"]).toBe(true);
+    expect(adv.capabilities["delete-refs"]).toBe(true);
   });
 });

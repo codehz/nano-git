@@ -144,6 +144,34 @@ describe("push() 端到端", () => {
     expect(serverRef).toBe(commitHash);
   });
 
+  test("首次 push 到空远端仓库", async () => {
+    const emptyRepoDir = join(tempDir, "empty-push.git");
+    mkdirSync(emptyRepoDir);
+    git(["init", "--bare"], emptyRepoDir);
+    enableReceivePack(emptyRepoDir);
+
+    await using emptyServer = startGitHttpBackendServer(tempDir, "/empty-push.git");
+
+    const repo = createMemoryRepository();
+    const author = { ...FIXED_AUTHOR };
+
+    const fileHash = repo.writeBlob(Buffer.from("initial empty remote push"));
+    const treeHash = repo.createTree([{ mode: "100644", name: "README.md", hash: fileHash }]);
+    const commitHash = repo.createCommit(treeHash, [], "Initial push to empty remote", author);
+    repo.updateRef("refs/heads/main", commitHash);
+
+    const result = await repo.push(emptyServer.url, {
+      refSpecs: ["refs/heads/main:refs/heads/main"],
+    });
+
+    expect(result.refUpdates).toHaveLength(1);
+    expect(result.refUpdates[0]!.success).toBe(true);
+    expect(result.refUpdates[0]!.refName).toBe("refs/heads/main");
+
+    const remoteMain = git(["--git-dir", emptyRepoDir, "rev-parse", "refs/heads/main"], tempDir);
+    expect(remoteMain).toBe(commitHash);
+  });
+
   test("通过 push 删除远程分支", async () => {
     // 1. 先用系统 git 创建 feature 分支并推送到服务端
     createFile(workDir, "FEATURE.md", "# Feature\n");

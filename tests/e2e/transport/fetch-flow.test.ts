@@ -131,4 +131,20 @@ describe("完整 fetch 流程", () => {
     expect(result3.objectCount).toBe(0);
     expect(result3.fetchedRefs.get("refs/remotes/origin/main")).toBe(sha1(featureHash));
   });
+
+  test("空仓库 fetch：返回空结果且不写入 remote-tracking refs", async () => {
+    const emptyRepoDir = join(tempDir, "empty-fetch.git");
+    mkdirSync(emptyRepoDir);
+    git(["init", "--bare"], emptyRepoDir);
+
+    await using emptyServer = startGitHttpBackendServer(tempDir, "/empty-fetch.git");
+
+    const localDir = join(tempDir, "local-empty-fetch");
+    const repo = initRepository(localDir);
+    const result = await repo.fetch(emptyServer.url);
+
+    expect(result.objectCount).toBe(0);
+    expect(result.fetchedRefs.size).toBe(0);
+    expect(repo.refs.readRaw("refs/remotes/origin/main")).toBeNull();
+  });
 });
