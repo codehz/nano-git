@@ -588,6 +588,18 @@ export async function push(
   // 8. 确定可用能力
   const caps = extractCapabilities(adv.capabilities);
 
+  // 8b. 校验 report-status capability
+  //     push 完成后依赖 report-status 获取每条命令的执行结果，
+  //     若服务端不支持此能力则无法可靠判断 push 是否成功，
+  //     因此在发送请求前提前报错以避免不可恢复的半完成状态。
+  if (!caps.includes("report-status")) {
+    throw new PushError(
+      "Remote server does not advertise 'report-status' capability. " +
+        "This client requires report-status to reliably determine push results. " +
+        "Please use a Git server that supports report-status.",
+    );
+  }
+
   // 9. 构造 receive-pack 命令
   //    删除操作时 newHash 用零哈希表示
   const commands = pushRefs.map((r) => ({

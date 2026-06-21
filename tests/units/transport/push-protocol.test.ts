@@ -299,4 +299,52 @@ describe("push() 服务端响应完整性校验", () => {
     expect(pushPromise).rejects.toThrow(/incomplete status/i);
     expect(postCalled).toBe(true);
   });
+
+  test("服务端未报告 report-status capability 时提前报错", async () => {
+    const store = createMemoryObjectStore();
+    const refStore = createMemoryRefStore(new Map());
+    const author = { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" };
+
+    // 创建本地分支
+    const emptyTree = store.write({ type: "tree", entries: [] });
+    const hash = store.write({
+      type: "commit" as const,
+      tree: emptyTree,
+      parents: [],
+      author,
+      committer: author,
+      message: "test",
+    });
+    refStore.writeRaw("refs/heads/main", hash);
+
+    // Mock transport：远端不广告 report-status capability
+    let postReceivePackCalled = false;
+    const transport: RemoteTransport = {
+      getReceivePackRefs: async () => ({
+        capabilities: { "side-band-64k": true, "ofs-delta": true },
+        refs: [],
+      }),
+      postReceivePack: async () => {
+        postReceivePackCalled = true;
+        return { data: Buffer.alloc(0), refUpdates: [], progress: [] };
+      },
+      getRefAdvertisement: async () => {
+        throw new Error("not used");
+      },
+      postUploadPack: async () => {
+        throw new Error("not used");
+      },
+    };
+
+    const pushPromise = push(store, refStore, "dummy", {
+      transport,
+      refSpecs: ["refs/heads/main:refs/heads/main"],
+    });
+
+    // 应因缺少 report-status 提前报错，而非等到发送请求后才失败
+    expect(pushPromise).rejects.toThrow(PushError);
+    expect(pushPromise).rejects.toThrow(/report-status/i);
+    // 不应调用 postReceivePack（提前检测到问题）
+    expect(postReceivePackCalled).toBe(false);
+  });
 });
