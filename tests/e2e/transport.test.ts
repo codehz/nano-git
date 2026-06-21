@@ -1,8 +1,8 @@
 /**
- * CgiTransport 集成测试
+ * HTTP 传输层集成测试
  *
- * 通过 CgiTransport 将 fetch/push 高层 API 接入 git http-backend CGI，
- * 验证 ref advertisement、upload-pack（fetch）、receive-pack（push）的完整流程。
+ * 通过真实 HTTP 服务器代理 git http-backend，验证 ref advertisement、
+ * upload-pack（fetch）、receive-pack（push）的完整流程。
  */
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
@@ -20,10 +20,9 @@ import {
 } from "./helpers.ts";
 
 import { sha1 } from "../../src/core/types.ts";
-import { createCgiTransport } from "../../src/transport/cgi-transport.ts";
+import { createSmartHttpClient } from "../../src/transport/smart-http.ts";
 import { initRepository } from "../../src/repository/index.ts";
 import { parsePktLines } from "../../src/transport/pkt-line.ts";
-import type { RemoteTransport } from "../../src/transport/types.ts";
 
 // ============================================================================
 // 常量
@@ -80,32 +79,6 @@ function decodeUploadPackCommands(body: Buffer): string[] {
 }
 
 /**
- * 包装 transport，记录每次 upload-pack 请求体
- */
-function createUploadPackRecorder(
-  transport: RemoteTransport,
-): RemoteTransport & { uploadPackBodies: Buffer[] } {
-  const uploadPackBodies: Buffer[] = [];
-
-  return {
-    uploadPackBodies,
-    async getReceivePackRefs() {
-      return transport.getReceivePackRefs();
-    },
-    async postReceivePack(body: Buffer) {
-      return transport.postReceivePack(body);
-    },
-    async getRefAdvertisement() {
-      return transport.getRefAdvertisement();
-    },
-    async postUploadPack(body: Buffer) {
-      uploadPackBodies.push(Buffer.from(body));
-      return transport.postUploadPack(body);
-    },
-  };
-}
-
-/**
  * 统计 upload-pack 请求中的 flush 数量
  */
 function countFlushPackets(body: Buffer): number {
@@ -122,29 +95,32 @@ function getUploadPackRequests(requests: GitHttpRequestRecord[]): GitHttpRequest
 }
 
 // ============================================================================
-// Ref Advertisement 测试
+// Ref Advertisement 测试（通过 HTTP）
 // ============================================================================
 
-describe("CgiTransport: ref advertisement", () => {
+describe("HTTP ref advertisement", () => {
   let tempDir: string;
   let repoDir: string;
-  let projectRoot: string;
+  let serverUrl: string;
   let commitHash: string;
+  let server: ReturnType<typeof startGitHttpBackendServer>;
 
   beforeEach(() => {
-    tempDir = createTempDir("e2e-transport");
-    const server = createServerRepo(tempDir, "test.git");
-    repoDir = server.repoDir;
-    projectRoot = server.projectRoot;
-    commitHash = server.commitHash;
+    tempDir = createTempDir("e2e-http-refs");
+    const created = createServerRepo(tempDir, "test.git");
+    repoDir = created.repoDir;
+    commitHash = created.commitHash;
+    server = startGitHttpBackendServer(tempDir, "/test.git", HTTP_BACKEND);
+    serverUrl = server.url;
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await server?.stop();
     cleanupDir(tempDir);
   });
 
   test("解析 ref advertisement 并验证 refs", async () => {
-    const transport = createCgiTransport(repoDir, projectRoot, HTTP_BACKEND);
+    const transport = createSmartHttpClient(serverUrl);
     const adv = await transport.getRefAdvertisement();
 
     expect(adv.refs.length).toBeGreaterThanOrEqual(1);
@@ -160,7 +136,6 @@ describe("CgiTransport: ref advertisement", () => {
   });
 
   test("解析带多个分支的 ref advertisement", async () => {
-    // 创建额外分支：用系统 git 从另一个工作目录 push
     const branchDir = join(tempDir, "branch-work");
     gitInit(branchDir);
     createFile(branchDir, "feature.md", "# Feature\n");
@@ -168,7 +143,7 @@ describe("CgiTransport: ref advertisement", () => {
     git(["commit", "-m", "Feature commit"], branchDir);
     git(["push", repoDir, "HEAD:refs/heads/feature"], branchDir);
 
-    const transport = createCgiTransport(repoDir, projectRoot, HTTP_BACKEND);
+    const transport = createSmartHttpClient(serverUrl);
     const adv = await transport.getRefAdvertisement();
 
     const featureRef = adv.refs.find((r) => r.name === "refs/heads/feature");
@@ -180,204 +155,46 @@ describe("CgiTransport: ref advertisement", () => {
     mkdirSync(emptyDir);
     git(["init", "--bare"], emptyDir);
 
-    const transport = createCgiTransport(emptyDir, tempDir, HTTP_BACKEND);
-    const adv = await transport.getRefAdvertisement();
+    const emptyServer = startGitHttpBackendServer(tempDir, "/empty.git", HTTP_BACKEND);
+    try {
+      const transport = createSmartHttpClient(emptyServer.url);
+      const adv = await transport.getRefAdvertisement();
 
-    expect(adv.refs).toHaveLength(0);
-    expect(Object.keys(adv.capabilities).length).toBeGreaterThan(0);
-  });
-});
-
-// ============================================================================
-// Upload-Pack (Fetch) 测试
-// ============================================================================
-
-describe("CgiTransport: upload-pack (fetch)", () => {
-  let tempDir: string;
-  let repoDir: string;
-  let projectRoot: string;
-  let workDir: string;
-
-  beforeEach(() => {
-    tempDir = createTempDir("e2e-transport-fetch");
-    const server = createServerRepo(tempDir, "test.git");
-    repoDir = server.repoDir;
-    projectRoot = server.projectRoot;
-    workDir = server.workDir;
-  });
-
-  afterEach(() => {
-    cleanupDir(tempDir);
-  });
-
-  test("CgiTransport 配合 repo.fetch() 完成拉取", async () => {
-    // CgiTransport 注入给 initRepository 的 repo
-    const localDir = join(tempDir, "local");
-    const repo = initRepository(localDir);
-    const transport = createCgiTransport(repoDir, projectRoot, HTTP_BACKEND);
-
-    const result = await repo.fetch("dummy", { transport });
-
-    expect(result.objectCount).toBeGreaterThan(0);
-
-    const mainRef = repo.refs.readRaw("refs/remotes/origin/main");
-    expect(mainRef).not.toBeNull();
-    expect(mainRef!.length).toBe(40);
-  });
-
-  test("CgiTransport fetch 到已存在对象的仓库（增量场景）", async () => {
-    const localDir = join(tempDir, "local2");
-    const repo = initRepository(localDir);
-    const transport = createCgiTransport(repoDir, projectRoot, HTTP_BACKEND);
-
-    const result1 = await repo.fetch("dummy", { transport });
-    expect(result1.objectCount).toBeGreaterThan(0);
-
-    const result2 = await repo.fetch("dummy", { transport });
-    expect(result2.objectCount).toBe(0);
-  });
-
-  test("CgiTransport 增量 fetch：远端推进后发送 haves 并仅拉取新增对象", async () => {
-    const localDir = join(tempDir, "local-incremental");
-    const repo = initRepository(localDir);
-    const baseTransport = createCgiTransport(repoDir, projectRoot, HTTP_BACKEND);
-    const transport = createUploadPackRecorder(baseTransport);
-
-    const initialHead = git(["rev-parse", "HEAD"], workDir);
-    const result1 = await repo.fetch("dummy", { transport });
-    expect(result1.objectCount).toBeGreaterThan(0);
-
-    const firstCommands = decodeUploadPackCommands(transport.uploadPackBodies[0]!);
-    expect(firstCommands.some((line) => line.startsWith("have "))).toBe(false);
-
-    createFile(workDir, "src/feature-a.ts", 'export const a = "a";\n');
-    git(["add", "src/feature-a.ts"], workDir);
-    git(["commit", "-m", "Add feature a"], workDir);
-
-    createFile(workDir, "src/feature-b.ts", 'export const b = "b";\n');
-    git(["add", "src/feature-b.ts"], workDir);
-    git(["commit", "-m", "Add feature b"], workDir);
-    const newHead = git(["rev-parse", "HEAD"], workDir);
-    git(["push", repoDir, "main"], workDir);
-    const expectedNewObjects = git(
-      ["rev-list", "--objects", "--no-object-names", `${initialHead}..${newHead}`],
-      workDir,
-    )
-      .split("\n")
-      .filter((line) => line.length > 0).length;
-
-    const result2 = await repo.fetch("dummy", { transport });
-
-    expect(result2.objectCount).toBeGreaterThan(0);
-    expect(result2.objectCount).toBe(expectedNewObjects);
-    expect(result2.fetchedRefs.get("refs/remotes/origin/main")).toBe(sha1(newHead));
-
-    const secondCommands = decodeUploadPackCommands(transport.uploadPackBodies[1]!);
-    expect(secondCommands.some((line) => line === `have ${initialHead}`)).toBe(true);
-    expect(secondCommands.some((line) => line.startsWith(`want ${newHead}`))).toBe(true);
-  });
-
-  test("CgiTransport 增量 fetch：超过 32 个 haves 时使用多轮 Consecutive 协商", async () => {
-    const localDir = join(tempDir, "local-batched-haves");
-    const repo = initRepository(localDir);
-    const baseTransport = createCgiTransport(repoDir, projectRoot, HTTP_BACKEND);
-    const transport = createUploadPackRecorder(baseTransport);
-
-    const totalInitialCommits = 36;
-    for (let i = 0; i < totalInitialCommits; i++) {
-      createFile(workDir, `history/commit-${i}.txt`, `commit-${i}\n`);
-      git(["add", `history/commit-${i}.txt`], workDir);
-      git(["commit", "-m", `History commit ${i}`], workDir);
+      expect(adv.refs).toHaveLength(0);
+      expect(Object.keys(adv.capabilities).length).toBeGreaterThan(0);
+    } finally {
+      await emptyServer.stop();
     }
-    git(["push", repoDir, "main"], workDir);
-
-    const result1 = await repo.fetch("dummy", { transport });
-    expect(result1.objectCount).toBeGreaterThan(totalInitialCommits);
-
-    const _oldHead = git(["rev-parse", "HEAD"], workDir);
-
-    createFile(workDir, "history/new-a.txt", "new-a\n");
-    git(["add", "history/new-a.txt"], workDir);
-    git(["commit", "-m", "New history a"], workDir);
-
-    createFile(workDir, "history/new-b.txt", "new-b\n");
-    git(["add", "history/new-b.txt"], workDir);
-    git(["commit", "-m", "New history b"], workDir);
-
-    const newHead = git(["rev-parse", "HEAD"], workDir);
-    git(["push", repoDir, "main"], workDir);
-
-    const result2 = await repo.fetch("dummy", { transport });
-
-    expect(result2.objectCount).toBeGreaterThan(0);
-    expect(result2.objectCount).toBeLessThan(result1.objectCount);
-    expect(result2.fetchedRefs.get("refs/remotes/origin/main")).toBe(sha1(newHead));
-
-    expect(transport.uploadPackBodies).toHaveLength(3);
-
-    const secondBody = transport.uploadPackBodies[1]!;
-    const thirdBody = transport.uploadPackBodies[2]!;
-    const secondCommands = decodeUploadPackCommands(secondBody);
-    const thirdCommands = decodeUploadPackCommands(thirdBody);
-    const sentHaves = [...secondCommands, ...thirdCommands].filter((line) =>
-      line.startsWith("have "),
-    );
-
-    expect(secondCommands.filter((line) => line.startsWith("have "))).toHaveLength(32);
-    expect(countFlushPackets(secondBody)).toBe(2);
-    expect(secondCommands.at(-1)).not.toBe("done");
-
-    expect(thirdCommands.filter((line) => line.startsWith("have ")).length).toBeGreaterThan(0);
-    expect(sentHaves.length).toBeGreaterThan(32);
-    expect(new Set(sentHaves).size).toBe(sentHaves.length);
-    expect(countFlushPackets(thirdBody)).toBe(1);
-    expect(thirdCommands.at(-1)).toBe("done");
-
-    const mainRef = repo.refs.readRaw("refs/remotes/origin/main");
-    expect(mainRef).toBe(newHead);
-    expect(repo.objects.read(sha1(newHead)).type).toBe("commit");
-  });
-
-  test("CgiTransport: postUploadPack 返回正确 packfile", async () => {
-    const transport = createCgiTransport(repoDir, projectRoot, HTTP_BACKEND);
-    const adv = await transport.getRefAdvertisement();
-    const mainRef = adv.refs.find((r) => r.name === "refs/heads/main");
-    expect(mainRef).toBeDefined();
-
-    const { buildUploadPackRequest } = await import("../../src/transport/negotiate.ts");
-    const caps = ["multi_ack", "side-band-64k", "ofs-delta"];
-    const body = buildUploadPackRequest([mainRef!.hash], [], caps);
-
-    const result = await transport.postUploadPack(body);
-    expect(result.packfile.length).toBeGreaterThan(0);
-    expect(result.packfile.subarray(0, 4).toString("utf-8")).toBe("PACK");
   });
 });
 
 // ============================================================================
-// Receive-Pack (Push) 测试
+// Receive-Pack Ref 测试（通过 HTTP）
 // ============================================================================
 
-describe("CgiTransport: receive-pack (push)", () => {
+describe("HTTP receive-pack ref advertisement", () => {
   let tempDir: string;
   let repoDir: string;
-  let projectRoot: string;
+  let serverUrl: string;
   let commitHash: string;
+  let server: ReturnType<typeof startGitHttpBackendServer>;
 
   beforeEach(() => {
-    tempDir = createTempDir("e2e-transport-push");
-    const server = createServerRepo(tempDir, "test.git", true);
-    repoDir = server.repoDir;
-    projectRoot = server.projectRoot;
-    commitHash = server.commitHash;
+    tempDir = createTempDir("e2e-http-receive-pack");
+    const created = createServerRepo(tempDir, "test.git", true);
+    repoDir = created.repoDir;
+    commitHash = created.commitHash;
+    server = startGitHttpBackendServer(tempDir, "/test.git", HTTP_BACKEND);
+    serverUrl = server.url;
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await server?.stop();
     cleanupDir(tempDir);
   });
 
   test("解析 receive-pack ref advertisement", async () => {
-    const transport = createCgiTransport(repoDir, projectRoot, HTTP_BACKEND);
+    const transport = createSmartHttpClient(serverUrl);
     const adv = await transport.getReceivePackRefs();
 
     expect(adv.refs.length).toBeGreaterThanOrEqual(1);
@@ -393,7 +210,6 @@ describe("CgiTransport: receive-pack (push)", () => {
   });
 
   test("解析带多个分支的 receive-pack ref advertisement", async () => {
-    // 创建额外分支：用系统 git 从另一个工作目录 push
     const branchDir = join(tempDir, "branch-work");
     gitInit(branchDir);
     createFile(branchDir, "feature.md", "# Feature\n");
@@ -401,11 +217,48 @@ describe("CgiTransport: receive-pack (push)", () => {
     git(["commit", "-m", "Feature commit"], branchDir);
     git(["push", repoDir, "HEAD:refs/heads/feature"], branchDir);
 
-    const transport = createCgiTransport(repoDir, projectRoot, HTTP_BACKEND);
+    const transport = createSmartHttpClient(serverUrl);
     const adv = await transport.getReceivePackRefs();
 
     const featureRef = adv.refs.find((r) => r.name === "refs/heads/feature");
     expect(featureRef).toBeDefined();
+  });
+});
+
+// ============================================================================
+// Upload-Pack 直接调用（通过 HTTP）
+// ============================================================================
+
+describe("HTTP upload-pack 直接调用", () => {
+  let tempDir: string;
+  let serverUrl: string;
+  let server: ReturnType<typeof startGitHttpBackendServer>;
+
+  beforeEach(() => {
+    tempDir = createTempDir("e2e-http-upload-pack-direct");
+    createServerRepo(tempDir, "test.git");
+    server = startGitHttpBackendServer(tempDir, "/test.git", HTTP_BACKEND);
+    serverUrl = server.url;
+  });
+
+  afterEach(async () => {
+    await server?.stop();
+    cleanupDir(tempDir);
+  });
+
+  test("postUploadPack 返回正确 packfile", async () => {
+    const transport = createSmartHttpClient(serverUrl);
+    const adv = await transport.getRefAdvertisement();
+    const mainRef = adv.refs.find((r) => r.name === "refs/heads/main");
+    expect(mainRef).toBeDefined();
+
+    const { buildUploadPackRequest } = await import("../../src/transport/negotiate.ts");
+    const caps = ["multi_ack", "side-band-64k", "ofs-delta"];
+    const body = buildUploadPackRequest([mainRef!.hash], [], caps);
+
+    const result = await transport.postUploadPack(body);
+    expect(result.packfile.length).toBeGreaterThan(0);
+    expect(result.packfile.subarray(0, 4).toString("utf-8")).toBe("PACK");
   });
 });
 

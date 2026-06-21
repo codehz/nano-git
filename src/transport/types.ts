@@ -21,8 +21,7 @@ import type { SHA1 } from "../core/types.ts";
  * 远程传输层接口
  *
  * 定义 push/fetch 编排函数所需的远程交互原语。
- * SmartHttpClient（smart-http.ts）和 CgiTransport（cgi-transport.ts）
- * 都实现此接口，允许在测试中注入 CGI 传输层。
+ * SmartHttpClient（smart-http.ts）实现了此接口。
  */
 export interface RemoteTransport {
   /** 获取 receive-pack ref 广告 */
@@ -127,7 +126,7 @@ export interface FetchOptions {
    * 可选的远程传输层实现
    *
    * 默认使用 Smart HTTP（调用 createSmartHttpClient）。
-   * 传入此字段可注入替代实现（如 CgiTransport）用于测试。
+   * 传入此字段可注入替代实现用于测试。
    */
   transport?: RemoteTransport;
 }
@@ -184,7 +183,7 @@ export interface PushOptions {
    * 可选的远程传输层实现
    *
    * 默认使用 Smart HTTP（调用 createSmartHttpClient）。
-   * 传入此字段可注入替代实现（如 CgiTransport）用于测试。
+   * 传入此字段可注入替代实现用于测试。
    */
   transport?: RemoteTransport;
 }
