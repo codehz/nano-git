@@ -54,6 +54,9 @@ interface CgiResponse {
   body: Buffer;
 }
 
+/** 后端执行失败时返回的诊断头 */
+const BACKEND_ERROR_HEADER = "x-nano-git-backend-error";
+
 /** 真实 HTTP 请求记录 */
 export interface GitHttpRequestRecord {
   /** 请求方法 */
@@ -125,6 +128,19 @@ function parseCgiResponse(stdout: Buffer): CgiResponse {
 function toHeaderRecord(headers: Headers): Record<string, string> {
   const entries = Array.from(headers.entries()).map(([key, value]) => [key.toLowerCase(), value]);
   return Object.fromEntries(entries);
+}
+
+/**
+ * 构造测试后端失败响应，避免请求处理阶段直接抛异常导致连接被中断
+ */
+function createBackendErrorResponse(message: string): Response {
+  return new Response(message, {
+    status: 500,
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
+      [BACKEND_ERROR_HEADER]: "1",
+    },
+  });
 }
 
 /**
@@ -234,6 +250,11 @@ export function startGitHttpBackendServer(
     },
     fetch() {
       return new Response("Not Found", { status: 404 });
+    },
+    error(error) {
+      const message =
+        error instanceof Error ? error.message : `Unknown backend error: ${String(error)}`;
+      return createBackendErrorResponse(message);
     },
   });
 
