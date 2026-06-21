@@ -181,4 +181,25 @@ describe("push() 端到端", () => {
     const serverRef = git(["--git-dir", serverRepoDir, "rev-parse", "refs/heads/main"], tempDir);
     expect(serverRef).toBe(forceHash);
   });
+
+  test("通过 push 推送 tag 到远端", async () => {
+    const repo = makeRepo();
+    const author = makeAuthor();
+
+    const fileHash = repo.writeBlob(Buffer.from("tagged content"));
+    const treeHash = repo.createTree([{ mode: "100644", name: "tagged.txt", hash: fileHash }]);
+    const commitHash = repo.createCommit(treeHash, [], "Tagged commit", author);
+    repo.updateRef("refs/tags/v1", commitHash);
+
+    const result = await repo.push(serverUrl, {
+      refSpecs: ["refs/tags/v1:refs/tags/v1"],
+    });
+
+    expect(result.refUpdates).toHaveLength(1);
+    expect(result.refUpdates[0]!.success).toBe(true);
+    expect(result.refUpdates[0]!.refName).toBe("refs/tags/v1");
+
+    const serverRef = git(["--git-dir", serverRepoDir, "rev-parse", "refs/tags/v1"], tempDir);
+    expect(serverRef).toBe(commitHash);
+  });
 });

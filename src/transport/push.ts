@@ -22,7 +22,7 @@
 
 import type { ObjectStore } from "../odb/types.ts";
 import type { RefStore } from "../refs/types.ts";
-import { HEADS_PREFIX, HEAD_REF, resolveRefHash } from "../refs/index.ts";
+import { HEADS_PREFIX, HEAD_REF, TAGS_PREFIX, resolveRefHash } from "../refs/index.ts";
 import type { SHA1 } from "../core/types.ts";
 import { sha1 } from "../core/types.ts";
 import { createPackWriter } from "../odb/pack/pack-writer.ts";
@@ -349,6 +349,18 @@ function getLocalRefs(refs: RefStore): Map<string, SHA1> {
 
   // 遍历 refs/heads/
   for (const refName of refs.listRaw(HEADS_PREFIX)) {
+    const content = refs.readRaw(refName);
+    if (content && /^[0-9a-f]{40}$/.test(content)) {
+      try {
+        map.set(refName, sha1(content));
+      } catch {
+        // 忽略无效哈希
+      }
+    }
+  }
+
+  // 遍历 refs/tags/
+  for (const refName of refs.listRaw(TAGS_PREFIX)) {
     const content = refs.readRaw(refName);
     if (content && /^[0-9a-f]{40}$/.test(content)) {
       try {
