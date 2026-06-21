@@ -6,8 +6,9 @@ import { InvalidPackError } from "../../core/errors.ts";
 import { hashObject } from "../../core/hash.ts";
 import { numberToObjectType } from "./constants.ts";
 import { applyDelta } from "./delta.ts";
-import type { PackObject } from "./pack-reader-types.ts";
 import { readCompressedData } from "./pack-reader-utils.ts";
+
+import type { PackObject } from "./pack-reader-types.ts";
 
 /**
  * 解析普通对象

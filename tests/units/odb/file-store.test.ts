@@ -4,11 +4,12 @@
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, rmSync, existsSync } from "node:fs";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 
-import { createFileObjectStore } from "../../../src/odb/index.ts";
 import { sha1 } from "../../../src/core/types.ts";
+import { createFileObjectStore } from "../../../src/odb/index.ts";
+
 import type { GitBlob, GitTree, GitCommit, GitAuthor } from "../../../src/core/types.ts";
 
 const testAuthor: GitAuthor = {

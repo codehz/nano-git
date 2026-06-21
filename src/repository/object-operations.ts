@@ -3,7 +3,15 @@
  */
 
 import { readFileSync } from "node:fs";
+
 import { hashObject } from "../core/hash.ts";
+import {
+  patchTree as patchTreeImpl,
+  type TreePatchOp,
+  type TreePatchResult,
+} from "./tree-patch.ts";
+import { writeTreeRecursive } from "./tree-writer.ts";
+
 import type {
   GitAuthor,
   GitBlob,
@@ -15,12 +23,6 @@ import type {
 } from "../core/types.ts";
 import type { ObjectStore } from "../odb/types.ts";
 import type { RepositoryObjectOperations } from "./object-types.ts";
-import { writeTreeRecursive } from "./tree-writer.ts";
-import {
-  patchTree as patchTreeImpl,
-  type TreePatchOp,
-  type TreePatchResult,
-} from "./tree-patch.ts";
 
 /**
  * 创建仓库对象相关操作

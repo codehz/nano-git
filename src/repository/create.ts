@@ -2,14 +2,15 @@
  * 仓库实例创建逻辑
  */
 
-import type { RepositoryBackend } from "./backend/index.ts";
-import type { Repository } from "./types.ts";
+import { fetch as transportFetch } from "../transport/fetch.ts";
+import { push as transportPush } from "../transport/push.ts";
 import { createMaintenanceRepositoryOperations } from "./maintenance-operations.ts";
 import { createObjectRepositoryOperations } from "./object-operations.ts";
 import { createRefRepositoryOperations } from "./ref-operations.ts";
-import { fetch as transportFetch } from "../transport/fetch.ts";
-import { push as transportPush } from "../transport/push.ts";
+
 import type { FetchOptions, FetchResult, PushOptions, PushResult } from "../transport/types.ts";
+import type { RepositoryBackend } from "./backend/index.ts";
+import type { Repository } from "./types.ts";
 
 /**
  * 基于显式后端创建仓库实例

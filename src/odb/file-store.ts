@@ -8,16 +8,18 @@
  */
 
 import { join } from "node:path";
-import type { GitObject, SHA1 } from "../core/types.ts";
+
 import { hashObject } from "../core/hash.ts";
 import { serializeContent } from "../objects/index.ts";
-import type { ObjectStore } from "./types.ts";
 import {
   hasLooseObject,
   listLooseObjects,
   readLooseObject,
   writeLooseObject,
 } from "./file-store-utils.ts";
+
+import type { GitObject, SHA1 } from "../core/types.ts";
+import type { ObjectStore } from "./types.ts";
 
 /**
  * 创建基于文件系统的对象存储

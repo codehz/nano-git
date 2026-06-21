@@ -4,8 +4,9 @@
  * 提供 SHA-1 与 loose object 相对路径之间的转换能力。
  */
 
-import type { SHA1 } from "./types.ts";
 import { sha1 } from "./types.ts";
+
+import type { SHA1 } from "./types.ts";
 
 /**
  * 将 SHA-1 哈希转换为对象存储路径

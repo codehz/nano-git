@@ -5,8 +5,10 @@
  */
 
 import { readFileSync } from "node:fs";
-import type { SHA1 } from "./types.ts";
+
 import { hashObject } from "./hash-digest.ts";
+
+import type { SHA1 } from "./types.ts";
 
 /**
  * 计算文件的 SHA-1 哈希（作为 blob 对象）

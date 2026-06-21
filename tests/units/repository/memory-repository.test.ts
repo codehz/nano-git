@@ -4,8 +4,9 @@
 
 import { describe, test, expect, beforeEach } from "bun:test";
 
-import { createMemoryRepository, type Repository } from "../../../src/repository/index.ts";
 import { sha1 } from "../../../src/core/types.ts";
+import { createMemoryRepository, type Repository } from "../../../src/repository/index.ts";
+
 import type { GitAuthor } from "../../../src/core/types.ts";
 
 const testAuthor: GitAuthor = {

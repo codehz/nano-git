@@ -5,12 +5,12 @@
  * 底层对象存储、引用存储和仓库布局信息通过 Backend 注入。
  */
 
-import type { RefStore } from "../../refs/types.ts";
-import type { ObjectSource, ObjectStore } from "../../odb/types.ts";
+import type { GitObject, SHA1 } from "../../core/types.ts";
 import type { PackBuildResult } from "../../odb/pack/pack-builder.ts";
 import type { PackBuilder } from "../../odb/pack/pack-builder.ts";
 import type { PackObjectStore } from "../../odb/pack/pack-store.ts";
-import type { GitObject, SHA1 } from "../../core/types.ts";
+import type { ObjectSource, ObjectStore } from "../../odb/types.ts";
+import type { RefStore } from "../../refs/types.ts";
 
 /** 仓库级 repack 选项 */
 export interface RepositoryRepackOptions {

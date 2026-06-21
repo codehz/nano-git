@@ -6,6 +6,10 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { sha1, type SHA1, type GitBlob, type GitCommit } from "../../../src/core/types.ts";
+import { createMemoryObjectStore } from "../../../src/odb/memory-store.ts";
+import { toEncodedPackObject, buildEncodedPack } from "../../../src/odb/pack/pack-encoding.ts";
+import { createMemoryRefStore } from "../../../src/refs/stores/memory.ts";
 import {
   parseRefSpec,
   matchesRefSpec,
@@ -13,13 +17,10 @@ import {
   determineWants,
   fetch,
 } from "../../../src/transport/fetch.ts";
+import { parsePktLines } from "../../../src/transport/pkt-line.ts";
+
 import type { RemoteRef } from "../../../src/transport/types.ts";
 import type { RemoteTransport } from "../../../src/transport/types.ts";
-import { sha1, type SHA1, type GitBlob, type GitCommit } from "../../../src/core/types.ts";
-import { createMemoryObjectStore } from "../../../src/odb/memory-store.ts";
-import { createMemoryRefStore } from "../../../src/refs/stores/memory.ts";
-import { toEncodedPackObject, buildEncodedPack } from "../../../src/odb/pack/pack-encoding.ts";
-import { parsePktLines } from "../../../src/transport/pkt-line.ts";
 
 // ============================================================================
 // 辅助函数

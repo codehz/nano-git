@@ -2,15 +2,16 @@
  * 仓库打包与维护操作组装
  */
 
+import { listReachableObjects } from "./reachability.ts";
+
+import type { SHA1 } from "../core/types.ts";
 import type { ObjectStore } from "../odb/types.ts";
 import type { RefStore } from "../refs/types.ts";
-import type { SHA1 } from "../core/types.ts";
 import type {
   RepositoryGCOptions,
   RepositoryPackSupport,
   RepositoryRepackOptions,
 } from "./backend/index.ts";
-import { listReachableObjects } from "./reachability.ts";
 import type { RepositoryMaintenanceOperations } from "./maintenance-types.ts";
 
 /**

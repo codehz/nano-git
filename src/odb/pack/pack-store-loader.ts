@@ -4,8 +4,10 @@
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+
 import { PackIndexReader } from "./pack-index.ts";
 import { PackReader } from "./pack-reader.ts";
+
 import type { PackFileInfo, PackPair } from "./pack-store-types.ts";
 
 /**

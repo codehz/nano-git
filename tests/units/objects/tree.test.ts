@@ -4,8 +4,9 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { serialize, deserialize } from "../../../src/objects/index.ts";
 import { sha1 } from "../../../src/core/types.ts";
+import { serialize, deserialize } from "../../../src/objects/index.ts";
+
 import type { GitTree } from "../../../src/core/types.ts";
 
 describe("Tree 序列化", () => {

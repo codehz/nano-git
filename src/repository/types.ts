@@ -7,11 +7,11 @@
  */
 
 import type { RepositoryContext } from "./context-types.ts";
+import type { RepositoryFetchOperations } from "./fetch-types.ts";
 import type { RepositoryMaintenanceOperations } from "./maintenance-types.ts";
 import type { RepositoryObjectOperations } from "./object-types.ts";
-import type { RepositoryRefOperations } from "./ref-types.ts";
-import type { RepositoryFetchOperations } from "./fetch-types.ts";
 import type { RepositoryPushOperations } from "./push-types.ts";
+import type { RepositoryRefOperations } from "./ref-types.ts";
 
 /**
  * Git 仓库接口

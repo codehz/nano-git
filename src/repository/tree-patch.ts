@@ -13,8 +13,8 @@
  * - 不存在的路径 delete/rename 会抛出异常
  */
 
-import type { ObjectStore } from "../odb/types.ts";
 import type { GitTree, SHA1, TreeEntry } from "../core/types.ts";
+import type { ObjectStore } from "../odb/types.ts";
 
 // ============================================================================
 // 类型定义

@@ -7,12 +7,11 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { join } from "node:path";
 
-import { git, gitInit, createTempDir, cleanupDir, createFile } from "../helpers.ts";
-import { startGitHttpBackendServer } from "./http-server.ts";
-
 import { sha1 } from "../../../src/core/types.ts";
 import { createSmartHttpClient } from "../../../src/transport/smart-http.ts";
+import { git, gitInit, createTempDir, cleanupDir, createFile } from "../helpers.ts";
 import { createServerRepo } from "./helpers.ts";
+import { startGitHttpBackendServer } from "./http-server.ts";
 
 describe("receive-pack ref advertisement", () => {
   let tempDir: string;

@@ -4,6 +4,7 @@
 
 import { createHash } from "node:crypto";
 import { inflateSync } from "node:zlib";
+
 import { InvalidPackError } from "../../core/errors.ts";
 import { PACK_CHECKSUM_SIZE, PACK_HEADER_SIZE, PACK_SIGNATURE, PACK_VERSION } from "./constants.ts";
 

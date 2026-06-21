@@ -4,12 +4,13 @@
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, rmSync, existsSync, writeFileSync, symlinkSync, chmodSync } from "node:fs";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { hashToPath } from "../../../src/core/hash.ts";
 import { createPackBuilder } from "../../../src/odb/pack/index.ts";
 import { initRepository, openRepository, type Repository } from "../../../src/repository/index.ts";
+
 import type { GitAuthor, TreeEntry } from "../../../src/core/types.ts";
 
 const testAuthor: GitAuthor = {

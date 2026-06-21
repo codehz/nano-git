@@ -19,8 +19,9 @@
  * ```
  */
 
-import type { GitObject, SHA1 } from "../../core/types.ts";
 import { buildEncodedPack, type EncodedPackObject, toEncodedPackObject } from "./pack-encoding.ts";
+
+import type { GitObject, SHA1 } from "../../core/types.ts";
 
 // ============================================================================
 // Packfile 写入器

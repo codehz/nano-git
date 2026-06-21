@@ -4,15 +4,15 @@
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 
-import { createRepository, initRepository, openRepository } from "../../../src/repository/index.ts";
 import {
   createFileRepositoryBackend,
   createMemoryRepositoryBackend,
   type RepositoryBackend,
 } from "../../../src/repository/backend/index.ts";
+import { createRepository, initRepository, openRepository } from "../../../src/repository/index.ts";
 
 describe("initRepository()", () => {
   let tempDir: string;

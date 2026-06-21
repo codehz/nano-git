@@ -5,6 +5,7 @@
 import { describe, test, expect } from "bun:test";
 
 import { deserialize, serializeContent, deserializeContent } from "../../../src/objects/index.ts";
+
 import type { GitBlob } from "../../../src/core/types.ts";
 
 describe("反序列化错误处理", () => {

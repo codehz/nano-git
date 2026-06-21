@@ -4,11 +4,12 @@
  * 提供完整对象格式与对象内容格式之间的转换能力。
  */
 
-import type { GitObject, ObjectType } from "../core/types.ts";
 import { serializeBlob, deserializeBlob } from "./blob.ts";
-import { serializeTree, deserializeTree } from "./tree.ts";
 import { serializeCommit, deserializeCommit } from "./commit.ts";
 import { serializeTag, deserializeTag } from "./tag.ts";
+import { serializeTree, deserializeTree } from "./tree.ts";
+
+import type { GitObject, ObjectType } from "../core/types.ts";
 
 // ============================================================================
 // 完整对象编解码

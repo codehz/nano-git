@@ -8,9 +8,9 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { sha1, type SHA1 } from "../../../src/core/types.ts";
 import { parseRefSpec } from "../../../src/transport/fetch.ts";
 import { determinePushRefs } from "../../../src/transport/push.ts";
-import { sha1, type SHA1 } from "../../../src/core/types.ts";
 
 // ============================================================================
 // 常量

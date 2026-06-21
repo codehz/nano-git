@@ -13,6 +13,7 @@
  */
 
 import { encodePktLine, encodeFlushPkt } from "./pkt-line.ts";
+
 import type { SHA1 } from "../core/types.ts";
 
 // ============================================================================

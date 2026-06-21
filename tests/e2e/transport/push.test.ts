@@ -12,10 +12,10 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { sha1 } from "../../../src/core/types.ts";
+import { createMemoryRepository } from "../../../src/repository/index.ts";
 import { git, gitInit, createTempDir, cleanupDir, createFile, FIXED_AUTHOR } from "../helpers.ts";
 import { startGitHttpBackendServer } from "./http-server.ts";
-import { createMemoryRepository } from "../../../src/repository/index.ts";
-import { sha1 } from "../../../src/core/types.ts";
 
 // ============================================================================
 // 辅助函数

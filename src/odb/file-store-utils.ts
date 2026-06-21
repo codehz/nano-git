@@ -7,10 +7,12 @@
 import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { deflateSync, inflateSync } from "node:zlib";
-import type { GitObject, SHA1 } from "../core/types.ts";
-import { sha1 } from "../core/types.ts";
+
 import { hashToPath } from "../core/hash.ts";
+import { sha1 } from "../core/types.ts";
 import { serialize, deserialize } from "../objects/index.ts";
+
+import type { GitObject, SHA1 } from "../core/types.ts";
 
 /**
  * 计算 loose object 文件路径

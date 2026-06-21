@@ -5,8 +5,10 @@
  */
 
 import { createHash } from "node:crypto";
-import type { ObjectType, SHA1 } from "./types.ts";
+
 import { sha1 } from "./types.ts";
+
+import type { ObjectType, SHA1 } from "./types.ts";
 
 /**
  * 计算原始数据的 SHA-1 哈希

@@ -13,9 +13,10 @@
  * ```
  */
 
-import type { GitCommit, SHA1 } from "../core/types.ts";
 import { sha1 } from "../core/types.ts";
 import { formatAuthor, parseAuthor } from "./author.ts";
+
+import type { GitCommit, SHA1 } from "../core/types.ts";
 
 /**
  * 序列化 Commit 对象

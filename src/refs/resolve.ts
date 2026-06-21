@@ -2,11 +2,12 @@
  * Refs 解析工具
  */
 
-import type { SHA1 } from "../core/types.ts";
-import { sha1 } from "../core/types.ts";
 import { CircularReferenceError } from "../core/errors.ts";
-import type { RefStore } from "./types.ts";
+import { sha1 } from "../core/types.ts";
 import { HEAD_REF } from "./types.ts";
+
+import type { SHA1 } from "../core/types.ts";
+import type { RefStore } from "./types.ts";
 
 /**
  * 解析引用为 SHA-1 哈希

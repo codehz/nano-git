@@ -12,9 +12,10 @@
  * ```
  */
 
-import type { GitTag, ObjectType, SHA1 } from "../core/types.ts";
 import { sha1 } from "../core/types.ts";
 import { formatAuthor, parseAuthor } from "./author.ts";
+
+import type { GitTag, ObjectType, SHA1 } from "../core/types.ts";
 
 /**
  * 序列化 Tag 对象

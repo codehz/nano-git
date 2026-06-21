@@ -15,10 +15,11 @@
  * @see https://git-scm.com/docs/pack-protocol#_reference_discovery
  */
 
+import { sha1, type SHA1 } from "../core/types.ts";
 import { parsePktLines, PktLineError } from "./pkt-line.ts";
+
 import type { PktLineData } from "./pkt-line.ts";
 import type { RemoteRef, RefAdvertisement } from "./types.ts";
-import { sha1, type SHA1 } from "../core/types.ts";
 
 /** 服务端能力声明键值对 */
 type Capabilities = Record<string, string | true>;

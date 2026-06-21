@@ -7,8 +7,9 @@
 
 import { spawnSync } from "node:child_process";
 import { mkdirSync, rmSync, existsSync, writeFileSync, chmodSync } from "node:fs";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { sha1, type SHA1 } from "../../src/core/types.ts";
 
 // ============================================================================

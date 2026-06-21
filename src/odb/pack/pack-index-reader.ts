@@ -2,15 +2,16 @@
  * Packfile 索引读取
  */
 
-import type { SHA1 } from "../../core/types.ts";
-import { sha1 } from "../../core/types.ts";
 import { PackIndexError } from "../../core/errors.ts";
+import { sha1 } from "../../core/types.ts";
 import {
   IDX_V2_FANOUT_SIZE,
   IDX_V2_HEADER_SIZE,
   IDX_V2_SIGNATURE,
   IDX_V2_VERSION,
 } from "./constants.ts";
+
+import type { SHA1 } from "../../core/types.ts";
 import type { PackIndexEntry } from "./pack-index-types.ts";
 
 /**

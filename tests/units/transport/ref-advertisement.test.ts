@@ -13,12 +13,12 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { sha1 } from "../../../src/core/types.ts";
+import { encodePktLine, encodeFlushPkt } from "../../../src/transport/pkt-line.ts";
 import {
   parseRefAdvertisement,
   RefAdvertisementError,
 } from "../../../src/transport/ref-advertisement.ts";
-import { encodePktLine, encodeFlushPkt } from "../../../src/transport/pkt-line.ts";
-import { sha1 } from "../../../src/core/types.ts";
 
 // ============================================================================
 // 辅助函数

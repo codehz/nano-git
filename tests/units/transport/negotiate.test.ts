@@ -13,6 +13,9 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { sha1, type SHA1, type GitCommit } from "../../../src/core/types.ts";
+import { serialize } from "../../../src/objects/index.ts";
+import { createMemoryObjectStore } from "../../../src/odb/memory-store.ts";
 import {
   buildUploadPackNegotiationRound,
   buildUploadPackRequest,
@@ -20,9 +23,6 @@ import {
   parseUploadPackNegotiationResponse,
 } from "../../../src/transport/negotiate.ts";
 import { parsePktLines, encodePktLine } from "../../../src/transport/pkt-line.ts";
-import { sha1, type SHA1, type GitCommit } from "../../../src/core/types.ts";
-import { createMemoryObjectStore } from "../../../src/odb/memory-store.ts";
-import { serialize } from "../../../src/objects/index.ts";
 
 // ============================================================================
 // 辅助函数

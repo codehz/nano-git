@@ -19,14 +19,11 @@
  * ```
  */
 
-import type { ObjectStore } from "../odb/types.ts";
-import type { RefStore } from "../refs/types.ts";
-import { HEADS_PREFIX, TAGS_PREFIX, HEAD_REF } from "../refs/types.ts";
-import type { SHA1 } from "../core/types.ts";
+import { GitError } from "../core/errors.ts";
 import { sha1 } from "../core/types.ts";
-import { createPackReader } from "../odb/pack/pack-reader.ts";
 import { deserializeContent } from "../objects/codec.ts";
-import { createSmartHttpClient } from "./smart-http.ts";
+import { createPackReader } from "../odb/pack/pack-reader.ts";
+import { HEADS_PREFIX, TAGS_PREFIX, HEAD_REF } from "../refs/types.ts";
 import {
   buildUploadPackNegotiationRound,
   buildUploadPackRequest,
@@ -34,9 +31,13 @@ import {
   MAX_HAVES_PER_ROUND,
   parseUploadPackNegotiationResponse,
 } from "./negotiate.ts";
+import { createSmartHttpClient } from "./smart-http.ts";
+
+import type { SHA1 } from "../core/types.ts";
+import type { ObjectStore } from "../odb/types.ts";
+import type { RefStore } from "../refs/types.ts";
 import type { FetchOptions, FetchResult } from "./types.ts";
 import type { RemoteRef } from "./types.ts";
-import { GitError } from "../core/errors.ts";
 
 // ============================================================================
 // 错误类型

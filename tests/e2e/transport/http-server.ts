@@ -5,8 +5,8 @@
  * 用于传输层端到端测试。
  */
 
-import { spawnSync } from "node:child_process";
 import { Buffer } from "node:buffer";
+import { spawnSync } from "node:child_process";
 
 /** CGI 响应解析结果 */
 interface CgiResponse {

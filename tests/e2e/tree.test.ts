@@ -8,8 +8,8 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { symlinkSync } from "node:fs";
 import { join } from "node:path";
 
-import { openRepository } from "../../src/repository/index.ts";
 import { sha1 } from "../../src/core/types.ts";
+import { openRepository } from "../../src/repository/index.ts";
 import {
   git,
   gitInit,

@@ -4,8 +4,9 @@
 
 import { readFileSync, readdirSync, lstatSync, readlinkSync } from "node:fs";
 import { join } from "node:path";
-import type { ObjectStore } from "../odb/index.ts";
+
 import type { GitBlob, GitTree, TreeEntry, SHA1 } from "../core/types.ts";
+import type { ObjectStore } from "../odb/index.ts";
 
 /**
  * 递归将目录写入 tree 对象

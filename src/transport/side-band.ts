@@ -12,8 +12,8 @@
  * @see https://git-scm.com/docs/pack-protocol#_side_channel
  */
 
-import { parsePktLines } from "./pkt-line.ts";
 import { GitError } from "../core/errors.ts";
+import { parsePktLines } from "./pkt-line.ts";
 
 // ============================================================================
 // 常量

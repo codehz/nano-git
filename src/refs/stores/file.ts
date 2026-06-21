@@ -4,10 +4,12 @@
 
 import { mkdirSync, readFileSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
 import { join, dirname } from "node:path";
+
 import { RefNotFoundError } from "../../core/errors.ts";
-import type { RefStore } from "../types.ts";
-import { validateRefName, validateRefPrefix } from "../names.ts";
 import { listLooseRefsRecursive } from "../fs-utils.ts";
+import { validateRefName, validateRefPrefix } from "../names.ts";
+
+import type { RefStore } from "../types.ts";
 
 function readPackedRefs(gitDir: string): Map<string, string> {
   const packedRefsPath = join(gitDir, "packed-refs");

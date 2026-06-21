@@ -23,18 +23,19 @@
  * 当前文件只保留对象遍历与 delta 解析主流程。
  */
 
-import type { GitObject, SHA1 } from "../../core/types.ts";
-import { deserializeContent } from "../../objects/index.ts";
 import { InvalidPackError } from "../../core/errors.ts";
+import { deserializeContent } from "../../objects/index.ts";
 import { PACK_HEADER_SIZE, PACK_CHECKSUM_SIZE, OBJ_OFS_DELTA, OBJ_REF_DELTA } from "./constants.ts";
-import { decodeObjectHeader, decodeOfsDeltaOffset } from "./utils.ts";
-import type { PackObject } from "./pack-reader-types.ts";
-import { parsePackHeader } from "./pack-reader-utils.ts";
 import {
   resolveOfsDeltaPackObject,
   resolvePlainPackObject,
   resolveRefDeltaPackObject,
 } from "./pack-reader-resolver.ts";
+import { parsePackHeader } from "./pack-reader-utils.ts";
+import { decodeObjectHeader, decodeOfsDeltaOffset } from "./utils.ts";
+
+import type { GitObject, SHA1 } from "../../core/types.ts";
+import type { PackObject } from "./pack-reader-types.ts";
 
 export type { PackObject } from "./pack-reader-types.ts";
 

@@ -6,11 +6,10 @@
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 
-import { createTempDir, cleanupDir } from "../helpers.ts";
-import { startGitHttpBackendServer } from "./http-server.ts";
-
 import { createSmartHttpClient } from "../../../src/transport/smart-http.ts";
+import { createTempDir, cleanupDir } from "../helpers.ts";
 import { createServerRepo } from "./helpers.ts";
+import { startGitHttpBackendServer } from "./http-server.ts";
 
 describe("upload-pack 直接调用", () => {
   let tempDir: string;

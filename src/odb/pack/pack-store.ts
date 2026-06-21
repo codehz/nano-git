@@ -19,10 +19,12 @@
  */
 
 import { join } from "node:path";
-import type { GitObject, SHA1 } from "../../core/types.ts";
+
 import { ObjectNotFoundError } from "../../core/errors.ts";
-import type { ObjectSource } from "../types.ts";
 import { getPackReader, loadPackPairs, toPackFileInfo } from "./pack-store-loader.ts";
+
+import type { GitObject, SHA1 } from "../../core/types.ts";
+import type { ObjectSource } from "../types.ts";
 import type { PackFileInfo, PackPair } from "./pack-store-types.ts";
 
 export type { PackFileInfo } from "./pack-store-types.ts";

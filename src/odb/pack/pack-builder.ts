@@ -18,10 +18,12 @@
 
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import type { GitObject, SHA1 } from "../../core/types.ts";
-import { PackIndexWriter } from "./pack-index.ts";
-import type { PackBuildResult } from "./pack-builder-types.ts";
+
 import { buildEncodedPack, type EncodedPackObject, toEncodedPackObject } from "./pack-encoding.ts";
+import { PackIndexWriter } from "./pack-index.ts";
+
+import type { GitObject, SHA1 } from "../../core/types.ts";
+import type { PackBuildResult } from "./pack-builder-types.ts";
 
 export type { PackBuildResult } from "./pack-builder-types.ts";
 

@@ -16,9 +16,10 @@
  */
 
 import { encodePktLine, encodeFlushPkt, parsePktLines } from "./pkt-line.ts";
-import type { PktLine } from "./pkt-line.ts";
+
 import type { SHA1 } from "../core/types.ts";
 import type { ObjectStore } from "../odb/types.ts";
+import type { PktLine } from "./pkt-line.ts";
 
 /** 遍历提交图时的最大深度限制 */
 const MAX_HAVE_DEPTH = 65536;

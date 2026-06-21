@@ -3,8 +3,9 @@
  */
 
 import { RefNotFoundError } from "../../core/errors.ts";
-import type { RefStore } from "../types.ts";
 import { validateRefName, validateRefPrefix } from "../names.ts";
+
+import type { RefStore } from "../types.ts";
 
 /**
  * 创建基于内存的 Refs 存储
