@@ -260,7 +260,7 @@ export async function fetch(
   const haveHashes: SHA1[] = wants
     .map((w) => w.localHash)
     .filter((h): h is SHA1 => h !== undefined);
-  const body = buildUploadPackRequest(wantHashes, haveHashes, caps);
+  const body = buildUploadPackRequest(wantHashes, haveHashes, caps, options?.depth);
 
   // 7. 发送请求
   const { packfile } = await client.postUploadPack(body);

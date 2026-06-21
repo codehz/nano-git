@@ -7,6 +7,8 @@
  *   want <hash> <capabilities>\n    （首行带 capabilities）
  *   want <hash>\n                    （后续 want）
  *   0000                             （flush）
+ *   deepen <n>\n                     （可选，shallow fetch）
+ *   0000                             （flush，如果有 deepen）
  *   have <hash>\n                    （批量，每批 ≤ 32 条后加 flush）
  *   0000
  *   done\n
@@ -25,16 +27,22 @@ import type { SHA1 } from "../core/types.ts";
 /** 每批 have 的最大数量（Git 协议建议 ≤ 32） */
 const MAX_HAVES_PER_BATCH = 32;
 
+// ============================================================================
+// 请求生成
+// ============================================================================
+
 /**
  * 构建 upload-pack 请求 body
  *
  * @param wants - 请求的 want 对象哈希列表（至少一个）
  * @param haves - 已有的 have 对象哈希列表（增量 fetch 时用）
  * @param capabilities - 能力列表（如 ["multi_ack", "side-band-64k", "ofs-delta"]）
+ * @param depth - 可选 shallow clone 深度（设置后添加 deepen 命令）
  * @returns pkt-line 编码的请求 body Buffer
  *
  * @example
  * ```ts
+ * // 初始 clone
  * const body = buildUploadPackRequest(
  *   [sha1("95d09f2b...")],
  *   [],
@@ -44,15 +52,34 @@ const MAX_HAVES_PER_BATCH = 32;
  * //   + "0000"
  * //   + "done\n"
  * //   + "0000"
+ *
+ * // Shallow clone
+ * const shallow = buildUploadPackRequest(
+ *   [sha1("95d09f2b...")],
+ *   [],
+ *   [],
+ *   3,
+ * );
+ * // => "want 95d09f2b...\n"
+ * //   + "0000"
+ * //   + "deepen 3\n"
+ * //   + "0000"
+ * //   + "done\n"
+ * //   + "0000"
  * ```
  */
 export function buildUploadPackRequest(
   wants: SHA1[],
   haves: SHA1[],
   capabilities: string[],
+  depth?: number,
 ): Buffer {
   if (wants.length === 0) {
     throw new Error("At least one want is required");
+  }
+
+  if (depth !== undefined && depth < 1) {
+    throw new Error("Depth must be a positive integer");
   }
 
   const chunks: Buffer[] = [];
@@ -69,6 +96,12 @@ export function buildUploadPackRequest(
 
   // want 后的 flush
   chunks.push(encodeFlushPkt());
+
+  // deepen 命令（shallow fetch 时添加）
+  if (depth !== undefined) {
+    chunks.push(encodePktLine(`deepen ${depth}\n`));
+    chunks.push(encodeFlushPkt());
+  }
 
   // have 行：批量发送，每批 MAX_HAVES_PER_BATCH 条后加 flush
   for (let i = 0; i < haves.length; i++) {

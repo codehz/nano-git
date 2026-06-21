@@ -275,4 +275,35 @@ describe("fetch() 增量 fetch 行为", () => {
     expect(result.objectCount).toBe(0);
     expect(result.fetchedRefs.size).toBe(0);
   });
+
+  test("shallow fetch：depth 传递到请求体中", async () => {
+    const objectStore = createMemoryObjectStore();
+    const refStore = createMemoryRefStore();
+
+    const { entry, packData } = createBlobPackfile("shallow content");
+
+    let capturedBody: Buffer | null = null;
+    const transport = createMockTransport(
+      [{ name: "refs/heads/main", hash: newHash }],
+      { multi_ack: true, "side-band-64k": true, "ofs-delta": true },
+      (body) => {
+        capturedBody = body;
+        return packData;
+      },
+    );
+
+    const result = await fetch(objectStore, refStore, "dummy", {
+      transport,
+      refSpecs: ["+refs/heads/*:refs/remotes/origin/*"],
+      depth: 3,
+    });
+
+    // 请求体必须包含 deepen 命令
+    const bodyStr = capturedBody!.toString("utf-8");
+    expect(bodyStr).toContain("deepen 3\n");
+
+    // 对象仍能正确写入
+    expect(objectStore.exists(entry.hash)).toBe(true);
+    expect(result.objectCount).toBe(1);
+  });
 });

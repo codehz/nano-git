@@ -161,4 +161,62 @@ describe("buildUploadPackRequest()", () => {
       "At least one want is required",
     );
   });
+
+  // ============================================================================
+  // Shallow fetch (deepen)
+  // ============================================================================
+
+  describe("shallow fetch (deepen)", () => {
+    test("shallow clone：want + flush + deepen + flush + done + flush", () => {
+      const body = buildUploadPackRequest([hash1], [], ["multi_ack"], 3);
+      const lines = parsePktLines(body);
+
+      // want + flush + deepen + flush + done + flush = 6
+      expect(lines).toHaveLength(6);
+
+      expect(lines[0]!.type).toBe("data");
+      expect(dataPayload(lines[0]!)).toBe(`want ${hash1} multi_ack\n`);
+
+      expect(lines[1]!.type).toBe("flush");
+
+      expect(lines[2]!.type).toBe("data");
+      expect(dataPayload(lines[2]!)).toBe("deepen 3\n");
+
+      expect(lines[3]!.type).toBe("flush");
+
+      expect(lines[4]!.type).toBe("data");
+      expect(dataPayload(lines[4]!)).toBe("done\n");
+
+      expect(lines[5]!.type).toBe("flush");
+    });
+
+    test("shallow + incremental：deepen 出现在 haves 之前", () => {
+      const body = buildUploadPackRequest([hash1], [hash2], [], 5);
+      const lines = parsePktLines(body);
+
+      // want + flush + deepen + flush + 1 have + flush(haves结束) + done + flush = 8
+      expect(lines).toHaveLength(8);
+
+      expect(dataPayload(lines[0]!)).toBe(`want ${hash1}\n`);
+      expect(lines[1]!.type).toBe("flush");
+      expect(dataPayload(lines[2]!)).toBe("deepen 5\n");
+      expect(lines[3]!.type).toBe("flush");
+      expect(dataPayload(lines[4]!)).toBe(`have ${hash2}\n`);
+      expect(lines[5]!.type).toBe("flush");
+      expect(dataPayload(lines[6]!)).toBe("done\n");
+      expect(lines[7]!.type).toBe("flush");
+    });
+
+    test("depth 为 0 应抛出错误", () => {
+      expect(() => buildUploadPackRequest([hash1], [], [], 0)).toThrow(
+        "Depth must be a positive integer",
+      );
+    });
+
+    test("depth 为负数应抛出错误", () => {
+      expect(() => buildUploadPackRequest([hash1], [], [], -1)).toThrow(
+        "Depth must be a positive integer",
+      );
+    });
+  });
 });
