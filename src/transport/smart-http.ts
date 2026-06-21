@@ -16,7 +16,12 @@ import { GitError } from "../core/errors.ts";
 import { parsePktLines } from "./pkt-line.ts";
 import { parseReceivePackResult } from "./receive-pack-result.ts";
 import { parseRefAdvertisement, RefAdvertisementError } from "./ref-advertisement.ts";
-import { extractPackfile, extractProgress, extractRawPackfile } from "./side-band.ts";
+import {
+  extractPackfile,
+  extractProgress,
+  extractRawPackfile,
+  extractSideBandFatal,
+} from "./side-band.ts";
 
 import type { PktLineData } from "./pkt-line.ts";
 import type { RefAdvertisement, PushRefUpdate, RemoteTransport } from "./types.ts";
@@ -244,6 +249,12 @@ export function createSmartHttpClient(baseUrl: string, auth?: SmartHttpAuth): Sm
       }
 
       // 响应可能是 side-band 编码或纯 pkt-line
+      // 先检查 side-band channel 3 致命错误
+      const fatalMsg = extractSideBandFatal(data);
+      if (fatalMsg !== null) {
+        throw new SmartHttpError(`Server reported fatal error: ${fatalMsg}`);
+      }
+
       // 先尝试提取 packfile（side-band 编码时提取 channel 1）
       // 如果提取失败（无 channel 1 数据），可能是纯 NAK/ACK 响应
       let packfile: Buffer;

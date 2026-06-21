@@ -143,6 +143,38 @@ export function extractRawPackfile(data: Buffer): Buffer {
   return trailing;
 }
 
+/**
+ * 从 side-band 编码的响应中提取服务器端致命错误消息
+ *
+ * 遍历所有 pkt-line 帧，查找 channel 3（致命错误）的消息。
+ * 如果找到则返回错误文本，否则返回 null。
+ * 用于在 side-band 提取逻辑之前提前检测服务器报告的错误。
+ *
+ * @param data - 包含 side-band pkt-line 帧的完整响应数据
+ * @returns 服务器错误消息，如无则返回 null
+ *
+ * @example
+ * ```ts
+ * const msg = extractSideBandFatal(data);
+ * if (msg !== null) {
+ *   throw new Error(`Server error: ${msg}`);
+ * }
+ * ```
+ */
+export function extractSideBandFatal(data: Buffer): string | null {
+  const pktLines = parsePktLines(data);
+
+  for (const line of pktLines) {
+    if (line.type !== "data") continue;
+    const payload = line.payload;
+    if (payload.length >= 2 && payload[0] === CHANNEL_FATAL) {
+      return payload.subarray(1).toString("utf-8");
+    }
+  }
+
+  return null;
+}
+
 // ============================================================================
 // 内部类型与实现
 // ============================================================================
