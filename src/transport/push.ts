@@ -618,6 +618,17 @@ export async function push(
     );
   }
 
+  // 8c. 校验 delete-refs capability
+  //     删除操作（localHash === null）要求服务端支持 delete-refs。
+  //     服务端未广告时在发送请求前立即报错，避免徒劳的协议往返。
+  const hasDeleteCommand = pushRefs.some((r) => r.localHash === null);
+  if (hasDeleteCommand && !caps.includes("delete-refs")) {
+    throw new PushError(
+      "Remote server does not advertise 'delete-refs' capability, " +
+        "but the push includes a delete ref operation.",
+    );
+  }
+
   // 9. 构造 receive-pack 命令
   //    删除操作时 newHash 用零哈希表示
   const commands = pushRefs.map((r) => ({

@@ -675,3 +675,122 @@ describe("push() 通配符 refspec 无匹配本地引用", () => {
     expect(result.refUpdates[0]!.success).toBe(true);
   });
 });
+
+// ============================================================================
+// push() delete-refs capability 校验
+// ============================================================================
+
+describe("push() delete-refs capability 校验", () => {
+  test("服务端未广告 delete-refs 时删除操作抛出 PushError", async () => {
+    const store = createMemoryObjectStore();
+    const refStore = createMemoryRefStore();
+    const remoteRefHash = sha1("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+
+    let postCalled = false;
+    const transport: RemoteTransport = {
+      getReceivePackRefs: async () => ({
+        capabilities: { "report-status": true, "side-band-64k": true },
+        refs: [{ name: "refs/heads/feature", hash: remoteRefHash }],
+      }),
+      postReceivePack: async () => {
+        postCalled = true;
+        throw new Error("should not be called");
+      },
+      getRefAdvertisement: async () => {
+        throw new Error("not used");
+      },
+      postUploadPack: async () => {
+        throw new Error("not used");
+      },
+    };
+
+    const pushPromise = push(store, refStore, "dummy", {
+      transport,
+      refSpecs: [":refs/heads/feature"],
+    });
+
+    expect(pushPromise).rejects.toThrow(PushError);
+    expect(pushPromise).rejects.toThrow(/delete-refs/);
+    expect(postCalled).toBe(false);
+  });
+
+  test("服务端广告 delete-refs 时删除操作正常通过", async () => {
+    const store = createMemoryObjectStore();
+    const refStore = createMemoryRefStore();
+    const remoteRefHash = sha1("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+
+    const transport: RemoteTransport = {
+      getReceivePackRefs: async () => ({
+        capabilities: { "report-status": true, "side-band-64k": true, "delete-refs": true },
+        refs: [{ name: "refs/heads/feature", hash: remoteRefHash }],
+      }),
+      postReceivePack: async () => {
+        const data = Buffer.concat([
+          encodePktLine("unpack ok\n"),
+          encodePktLine("ok refs/heads/feature\n"),
+          encodeFlushPkt(),
+        ]);
+        return { data, refUpdates: parseReceivePackResult(data), progress: [] };
+      },
+      getRefAdvertisement: async () => {
+        throw new Error("not used");
+      },
+      postUploadPack: async () => {
+        throw new Error("not used");
+      },
+    };
+
+    const result = await push(store, refStore, "dummy", {
+      transport,
+      refSpecs: [":refs/heads/feature"],
+    });
+
+    expect(result.refUpdates).toHaveLength(1);
+    expect(result.refUpdates[0]!.success).toBe(true);
+  });
+
+  test("服务端未广告 delete-refs 但 push 不含删除操作时正常通过", async () => {
+    const store = createMemoryObjectStore();
+    const author = { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" };
+    const emptyTree = store.write({ type: "tree", entries: [] });
+    const commitHash = store.write({
+      type: "commit" as const,
+      tree: emptyTree,
+      parents: [],
+      author,
+      committer: author,
+      message: "test",
+    });
+
+    const refStore = createMemoryRefStore(new Map([["refs/heads/main", commitHash]]));
+
+    const transport: RemoteTransport = {
+      getReceivePackRefs: async () => ({
+        capabilities: { "report-status": true, "side-band-64k": true },
+        refs: [],
+      }),
+      postReceivePack: async () => {
+        const data = Buffer.concat([
+          encodePktLine("unpack ok\n"),
+          encodePktLine("ok refs/heads/main\n"),
+          encodeFlushPkt(),
+        ]);
+        return { data, refUpdates: parseReceivePackResult(data), progress: [] };
+      },
+      getRefAdvertisement: async () => {
+        throw new Error("not used");
+      },
+      postUploadPack: async () => {
+        throw new Error("not used");
+      },
+    };
+
+    const result = await push(store, refStore, "dummy", {
+      transport,
+      refSpecs: ["refs/heads/main:refs/heads/main"],
+    });
+
+    expect(result.refUpdates).toHaveLength(1);
+    expect(result.refUpdates[0]!.success).toBe(true);
+  });
+});
