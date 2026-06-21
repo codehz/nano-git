@@ -374,13 +374,17 @@ export async function fetch(
   }
 
   // 9. 更新远程跟踪引用（非强制 refspec 需满足快进条件）
+  //    先校验所有 wanted tip 的对象都存在，确保完全落地后才写 ref
+  for (const { remote } of wants) {
+    if (!store.exists(remote.hash)) {
+      throw new FetchError(
+        `Remote ref "${remote.name}" (${remote.hash}) was advertised but its object ` +
+          `was not received in the packfile. The fetch may have been truncated or corrupted.`,
+      );
+    }
+  }
   const fetchedRefs = new Map<string, SHA1>();
   for (const { localName, remote, localHash, force } of wants) {
-    // 确保目标对象已在对象存储中，避免写入悬空 ref
-    if (!store.exists(remote.hash)) {
-      continue;
-    }
-
     // 非强制且本地已有值：仅当更新为快进时才写入
     if (!force && localHash !== undefined) {
       if (!isAncestor(store, localHash, remote.hash)) {

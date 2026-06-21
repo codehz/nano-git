@@ -16,6 +16,7 @@ import {
   mapRefName,
   determineWants,
   fetch,
+  FetchError,
   selectHaveTips,
   getLocalRefs,
 } from "@/transport/fetch.ts";
@@ -608,7 +609,7 @@ describe("fetch() 增量 fetch 行为", () => {
   });
 
   describe("fetch 后 ref 指向的目标对象存在性校验", () => {
-    test("packfile 不含 tip 对象时拒绝写入 ref", async () => {
+    test("packfile 不含 tip 对象时整体失败并抛出 FetchError", async () => {
       const objectStore = createMemoryObjectStore();
 
       // 远程广告的 commit hash——但不把这个对象写入 store
@@ -627,17 +628,19 @@ describe("fetch() 增量 fetch 行为", () => {
         () => packData,
       );
 
-      const result = await fetch(objectStore, refStore, "dummy", {
+      const fetchPromise = fetch(objectStore, refStore, "dummy", {
         transport,
         refSpecs: ["+refs/heads/*:refs/remotes/origin/*"],
       });
 
-      // blob 应被写入
+      expect(fetchPromise).rejects.toThrow(FetchError);
+      expect(fetchPromise).rejects.toThrow(/not received in the packfile/i);
+
+      // blob 仍应被写入（对象写入发生在 ref 更新之前）
       expect(objectStore.exists(entry.hash)).toBe(true);
 
-      // 但 fakeCommitHash 不存在，ref 不应被写入
+      // ref 不应被写入
       expect(refStore.read("refs/remotes/origin/main")).toBeNull();
-      expect(result.fetchedRefs.has("refs/remotes/origin/main")).toBe(false);
     });
 
     test("packfile 包含 tip 对象时正常写入 ref", async () => {
@@ -670,6 +673,47 @@ describe("fetch() 增量 fetch 行为", () => {
       // 且远程 commit 存在，ref 应正常写入
       expect(refStore.read("refs/remotes/origin/main")).toBe(remoteCommit);
       expect(result.fetchedRefs.get("refs/remotes/origin/main")).toBe(remoteCommit);
+    });
+
+    test("多 ref：部分 tip 缺失时整体失败", async () => {
+      const objectStore = createMemoryObjectStore();
+
+      // 两个远程 tip：一个在 store 中（模拟 pack 中收到了），另一个是假的（未收到）
+      const receivedCommit = createTestCommit(objectStore, [], 100);
+      const missingHash = sha1("ffffffffffffffffffffffffffffffffffffffff");
+
+      const refStore = createMemoryRefStore();
+
+      const blob: GitBlob = { type: "blob", content: Buffer.from("extra data") };
+      const entry = toEncodedPackObject(blob);
+      const { packData } = buildEncodedPack([entry]);
+
+      const transport = createMockTransport(
+        [
+          { name: "refs/heads/received", hash: receivedCommit },
+          { name: "refs/heads/missing", hash: missingHash },
+        ],
+        { multi_ack: true, "side-band-64k": true, "ofs-delta": true },
+        () => packData,
+      );
+
+      const fetchPromise = fetch(objectStore, refStore, "dummy", {
+        transport,
+        refSpecs: [
+          "+refs/heads/received:refs/remotes/origin/received",
+          "+refs/heads/missing:refs/remotes/origin/missing",
+        ],
+      });
+
+      expect(fetchPromise).rejects.toThrow(FetchError);
+      expect(fetchPromise).rejects.toThrow(/refs\/heads\/missing/);
+
+      // 已写入的对象不受影响
+      expect(objectStore.exists(entry.hash)).toBe(true);
+
+      // 但所有 ref（包括 tip 存在的）都应不更新
+      expect(refStore.read("refs/remotes/origin/received")).toBeNull();
+      expect(refStore.read("refs/remotes/origin/missing")).toBeNull();
     });
   });
 
