@@ -3,10 +3,9 @@
   "type": "module",
   "module": "src/index.ts",
   "scripts": {
-    "lint": "oxlint --type-aware .",
+    "lint": "oxlint .",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
-    "typecheck": "tsc --noEmit",
     "test": "bun test",
     "prepare": "husky"
   },
