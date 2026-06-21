@@ -559,6 +559,123 @@ describe("checkFastForward()", () => {
     expect(() => checkFastForward(store, items)).toThrow(PushError);
   });
 
+  test("自定义命名空间 non-commit（同 blob, 不同 tag）应拒绝", () => {
+    const blobHash = store.write({
+      type: "blob",
+      content: Buffer.from("same blob"),
+    });
+    const t1Hash = store.write({
+      type: "tag",
+      object: blobHash,
+      objectType: "blob",
+      tag: "t1",
+      tagger: AUTHOR,
+      message: "t1\n",
+    });
+    const t2Hash = store.write({
+      type: "tag",
+      object: blobHash,
+      objectType: "blob",
+      tag: "t2",
+      tagger: AUTHOR,
+      message: "t2\n",
+    });
+
+    const items = [
+      {
+        localRef: "refs/custom/blob-target",
+        remoteRef: "refs/custom/blob-target",
+        localHash: t2Hash,
+        remoteHash: t1Hash,
+        force: false,
+      },
+    ];
+    // 即使解引用后指向同一 blob，Git 也要求 force（非 commit 对象）
+    expect(() => checkFastForward(store, items)).toThrow(PushError);
+  });
+
+  test("自定义命名空间 non-commit（同 blob, 不同 tag）设 force 可通过", () => {
+    const blobHash = store.write({
+      type: "blob",
+      content: Buffer.from("same blob"),
+    });
+    const t1Hash = store.write({
+      type: "tag",
+      object: blobHash,
+      objectType: "blob",
+      tag: "t1",
+      tagger: AUTHOR,
+      message: "t1\n",
+    });
+    const t2Hash = store.write({
+      type: "tag",
+      object: blobHash,
+      objectType: "blob",
+      tag: "t2",
+      tagger: AUTHOR,
+      message: "t2\n",
+    });
+
+    const items = [
+      {
+        localRef: "refs/custom/blob-target",
+        remoteRef: "refs/custom/blob-target",
+        localHash: t2Hash,
+        remoteHash: t1Hash,
+        force: true,
+      },
+    ];
+    expect(() => checkFastForward(store, items)).not.toThrow();
+  });
+
+  test("自定义命名空间 non-commit（轻量 blob→blob）应拒绝", () => {
+    const blobA = store.write({ type: "blob", content: Buffer.from("blob A") });
+
+    const items = [
+      {
+        localRef: "refs/custom/raw-blob",
+        remoteRef: "refs/custom/raw-blob",
+        localHash: blobA,
+        remoteHash: blobA,
+        force: false,
+      },
+    ];
+    // 相同哈希是 no-op，应跳过
+    expect(() => checkFastForward(store, items)).not.toThrow();
+  });
+
+  test("自定义命名空间 non-commit（不同 blob）应拒绝", () => {
+    const blobA = store.write({ type: "blob", content: Buffer.from("blob A") });
+    const blobB = store.write({ type: "blob", content: Buffer.from("blob B") });
+
+    const items = [
+      {
+        localRef: "refs/custom/raw-blob",
+        remoteRef: "refs/custom/raw-blob",
+        localHash: blobB,
+        remoteHash: blobA,
+        force: false,
+      },
+    ];
+    expect(() => checkFastForward(store, items)).toThrow(PushError);
+  });
+
+  test("自定义命名空间 non-commit（不同 blob）设 force 可通过", () => {
+    const blobA = store.write({ type: "blob", content: Buffer.from("blob A") });
+    const blobB = store.write({ type: "blob", content: Buffer.from("blob B") });
+
+    const items = [
+      {
+        localRef: "refs/custom/raw-blob",
+        remoteRef: "refs/custom/raw-blob",
+        localHash: blobB,
+        remoteHash: blobA,
+        force: true,
+      },
+    ];
+    expect(() => checkFastForward(store, items)).not.toThrow();
+  });
+
   test("自定义命名空间 annotated tag 嵌套链 fast-forward 应通过", () => {
     const t3Hash = store.write({
       type: "tag",

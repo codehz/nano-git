@@ -342,6 +342,33 @@ export function checkFastForward(
       );
     }
 
+    // Non-commit 对象检查：fast-forward 概念只适用于 commit 对象。
+    // 如果 remote 或 local 解引用后不是 commit，必须使用 --force。
+    const peeledRemote = peelTagChain(store, item.remoteHash, shallowBoundaries);
+    const peeledLocal = peelTagChain(store, item.localHash, shallowBoundaries);
+
+    if (store.exists(peeledRemote)) {
+      const remoteObj = store.read(peeledRemote);
+      if (remoteObj.type !== "commit") {
+        throw new PushError(
+          `Update rejected for "${item.remoteRef}": ` +
+            `remote object is a ${remoteObj.type}, expected commit. ` +
+            `Use --force or +refspec to override.`,
+        );
+      }
+    }
+
+    if (store.exists(peeledLocal)) {
+      const localObj = store.read(peeledLocal);
+      if (localObj.type !== "commit") {
+        throw new PushError(
+          `Update rejected for "${item.remoteRef}": ` +
+            `local object is a ${localObj.type}, expected commit. ` +
+            `Use --force or +refspec to override.`,
+        );
+      }
+    }
+
     if (!isAncestor(store, item.remoteHash, item.localHash, shallowBoundaries)) {
       const shortRemote = item.remoteHash.slice(0, 8);
       const shortLocal = item.localHash.slice(0, 8);
