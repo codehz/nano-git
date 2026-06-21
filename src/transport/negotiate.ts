@@ -9,7 +9,7 @@
  *   0000                             （flush）
  *   deepen <n>\n                     （可选，shallow fetch）
  *   0000                             （flush，如果有 deepen）
- *   have <hash>\n                    （批量，每批 ≤ 32 条后加 flush）
+ *   have <hash>\n                    （当前实现一次性发送所有 haves）
  *   done\n
  *
  * @see https://git-scm.com/docs/git-upload-pack#_request
@@ -18,13 +18,6 @@
 import { encodePktLine, encodeFlushPkt } from "./pkt-line.ts";
 import type { SHA1 } from "../core/types.ts";
 import type { ObjectStore } from "../odb/types.ts";
-
-// ============================================================================
-// 常量
-// ============================================================================
-
-/** 每批 have 的最大数量（Git 协议建议 ≤ 32） */
-const MAX_HAVES_PER_BATCH = 32;
 
 /** 遍历提交图时的最大深度限制 */
 const MAX_HAVE_DEPTH = 65536;
@@ -160,11 +153,9 @@ export function buildUploadPackRequest(
     chunks.push(encodeFlushPkt());
   }
 
-  // have 行：批量发送，每批 MAX_HAVES_PER_BATCH 条后加 flush
+  // have 行：当前 fetch 编排使用单次 stateless-rpc 请求，
+  // 一次性发送完整 have 列表，避免中间 flush 提前结束协商阶段。
   for (let i = 0; i < haves.length; i++) {
-    if (i > 0 && i % MAX_HAVES_PER_BATCH === 0) {
-      chunks.push(encodeFlushPkt());
-    }
     chunks.push(encodePktLine(`have ${haves[i]!}\n`));
   }
 

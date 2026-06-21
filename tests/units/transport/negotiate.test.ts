@@ -216,7 +216,7 @@ describe("buildUploadPackRequest()", () => {
     expect(dataPayload(lines[4]!)).toBe("done\n");
   });
 
-  test("大量 have 自动分批（每批 ≤ 32）", () => {
+  test("大量 have：单次请求中不插入中间 flush", () => {
     // 创建 35 个 have 哈希（每个都是合法的 40 位十六进制）
     const manyHaves: string[] = [];
     for (let i = 0; i < 35; i++) {
@@ -228,7 +228,7 @@ describe("buildUploadPackRequest()", () => {
     const body = buildUploadPackRequest([hash1], haves, ["multi_ack"]);
     const lines = parsePktLines(body);
 
-    // want + flush + 35 have + flush(分批) + done
+    // want + flush + 35 have + done
     let dataCount = 0;
     let flushCount = 0;
     for (const line of lines) {
@@ -238,11 +238,11 @@ describe("buildUploadPackRequest()", () => {
 
     // 35 have + 1 want + 1 done = 37 data 帧
     expect(dataCount).toBe(37);
-    // 1 (want后) + 1 (32批后, i=32时) = 2 flush
-    expect(flushCount).toBe(2);
+    // 仅保留 want 后的 flush
+    expect(flushCount).toBe(1);
   });
 
-  test("刚好 32 个 have：第 32 条后应有 flush", () => {
+  test("刚好 32 个 have：仍然只保留 want 后的 flush", () => {
     const manyHaves: string[] = [];
     for (let i = 0; i < 32; i++) {
       const idx = i.toString(16).padStart(2, "0");
@@ -259,7 +259,7 @@ describe("buildUploadPackRequest()", () => {
       if (line.type === "flush") flushPositions.push(idx);
     });
 
-    // flush 应该仅在 want 后；32 的倍数时不会额外插入批次 flush
+    // flush 应该仅在 want 后
     expect(flushPositions).toEqual([1]);
   });
 

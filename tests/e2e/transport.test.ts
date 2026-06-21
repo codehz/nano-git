@@ -110,6 +110,13 @@ function createUploadPackRecorder(
   };
 }
 
+/**
+ * 统计 upload-pack 请求中的 flush 数量
+ */
+function countFlushPackets(body: Buffer): number {
+  return parsePktLines(body).filter((line) => line.type === "flush").length;
+}
+
 // ============================================================================
 // Ref Advertisement 测试
 // ============================================================================
@@ -264,6 +271,58 @@ describe("CgiTransport: upload-pack (fetch)", () => {
     const secondCommands = decodeUploadPackCommands(transport.uploadPackBodies[1]!);
     expect(secondCommands.some((line) => line === `have ${initialHead}`)).toBe(true);
     expect(secondCommands.some((line) => line.startsWith(`want ${newHead}`))).toBe(true);
+  });
+
+  test("CgiTransport 增量 fetch：超过 32 个 haves 时仍能完成单次请求协商", async () => {
+    const localDir = join(tempDir, "local-batched-haves");
+    const repo = initRepository(localDir);
+    const baseTransport = createCgiTransport(repoDir, projectRoot, HTTP_BACKEND);
+    const transport = createUploadPackRecorder(baseTransport);
+
+    const totalInitialCommits = 36;
+    for (let i = 0; i < totalInitialCommits; i++) {
+      createFile(workDir, `history/commit-${i}.txt`, `commit-${i}\n`);
+      git(["add", `history/commit-${i}.txt`], workDir);
+      git(["commit", "-m", `History commit ${i}`], workDir);
+    }
+    git(["push", repoDir, "main"], workDir);
+
+    const result1 = await repo.fetch("dummy", { transport });
+    expect(result1.objectCount).toBeGreaterThan(totalInitialCommits);
+
+    const oldHead = git(["rev-parse", "HEAD"], workDir);
+
+    createFile(workDir, "history/new-a.txt", "new-a\n");
+    git(["add", "history/new-a.txt"], workDir);
+    git(["commit", "-m", "New history a"], workDir);
+
+    createFile(workDir, "history/new-b.txt", "new-b\n");
+    git(["add", "history/new-b.txt"], workDir);
+    git(["commit", "-m", "New history b"], workDir);
+
+    const newHead = git(["rev-parse", "HEAD"], workDir);
+    git(["push", repoDir, "main"], workDir);
+
+    const expectedNewObjects = git(
+      ["rev-list", "--objects", "--no-object-names", `${oldHead}..${newHead}`],
+      workDir,
+    )
+      .split("\n")
+      .filter((line) => line.length > 0).length;
+
+    const result2 = await repo.fetch("dummy", { transport });
+
+    expect(result2.objectCount).toBe(expectedNewObjects);
+    expect(result2.fetchedRefs.get("refs/remotes/origin/main")).toBe(sha1(newHead));
+
+    const secondBody = transport.uploadPackBodies[1]!;
+    const secondCommands = decodeUploadPackCommands(secondBody);
+    const haveCount = secondCommands.filter((line) => line.startsWith("have ")).length;
+
+    expect(haveCount).toBeGreaterThan(32);
+    expect(countFlushPackets(secondBody)).toBe(1);
+    expect(secondCommands.some((line) => line === `have ${oldHead}`)).toBe(true);
+    expect(secondCommands.at(-1)).toBe("done");
   });
 
   test("CgiTransport: postUploadPack 返回正确 packfile", async () => {
