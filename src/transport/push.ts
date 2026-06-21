@@ -622,6 +622,18 @@ export async function push(
     );
   }
 
+  // 11b. 校验服务端返回的状态行是否覆盖了所有已发送命令
+  //      report-status 协议要求每条命令有对应的 ok/ng 行，
+  //      缺少状态行说明服务端响应不完整或下层解析存在分片异常。
+  if (commands.length !== refUpdates.length) {
+    const receivedRefNames = new Set(refUpdates.map((u) => u.refName));
+    const missingRefs = commands.filter((c) => !receivedRefNames.has(c.refName));
+    throw new PushError(
+      `Server returned incomplete status: expected ${commands.length} status line(s) ` +
+        `but got ${refUpdates.length}. Missing status for: ${missingRefs.map((r) => r.refName).join(", ")}`,
+    );
+  }
+
   // 12. 将服务端返回的 report-status 与我们的推送引用关联，补充 refName/oldHash/newHash 信息
   const pushRefMap = new Map<string, PushRefItem>();
   for (const item of pushRefs) {

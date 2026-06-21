@@ -8,7 +8,10 @@
 import { describe, test, expect } from "bun:test";
 
 import { sha1 } from "@/core/types.ts";
+import { createMemoryObjectStore } from "@/odb/memory-store.ts";
+import { createMemoryRefStore } from "@/refs/stores/memory.ts";
 import { parsePktLines, encodePktLine, encodeFlushPkt } from "@/transport/pkt-line.ts";
+import { push, PushError } from "@/transport/push.ts";
 import {
   buildReceivePackRequest,
   type ReceivePackCommand,
@@ -16,6 +19,7 @@ import {
 import { parseReceivePackResult, ReceivePackResultError } from "@/transport/receive-pack-result.ts";
 
 import type { PktLineData } from "@/transport/pkt-line.ts";
+import type { RemoteTransport } from "@/transport/types.ts";
 
 // ============================================================================
 // 常量
@@ -223,5 +227,76 @@ describe("parseReceivePackResult", () => {
     const data = Buffer.concat([encodePktLine("unknown data\n"), encodeFlushPkt()]);
 
     expect(() => parseReceivePackResult(data)).toThrow(ReceivePackResultError);
+  });
+});
+
+// ============================================================================
+// push() 服务端响应完整性校验测试
+// ============================================================================
+
+describe("push() 服务端响应完整性校验", () => {
+  test("服务端返回的 refUpdates 条数少于推送命令数时报错", async () => {
+    const store = createMemoryObjectStore();
+    const refStore = createMemoryRefStore(new Map());
+    const author = { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" };
+
+    // 创建两个本地分支
+    const emptyTree = store.write({ type: "tree", entries: [] });
+
+    const hashA = store.write({
+      type: "commit" as const,
+      tree: emptyTree,
+      parents: [],
+      author,
+      committer: author,
+      message: "a",
+    });
+    refStore.writeRaw("refs/heads/feature-a", hashA);
+
+    const hashB = store.write({
+      type: "commit" as const,
+      tree: emptyTree,
+      parents: [],
+      author,
+      committer: author,
+      message: "b",
+    });
+    refStore.writeRaw("refs/heads/feature-b", hashB);
+
+    // Mock transport：远端无 refs，postReceivePack 只返回 1 条状态（少于 2 条命令）
+    let postCalled = false;
+    const transport: RemoteTransport = {
+      getReceivePackRefs: async () => ({
+        capabilities: { "report-status": true },
+        refs: [],
+      }),
+      postReceivePack: async () => {
+        postCalled = true;
+        const data = Buffer.concat([
+          encodePktLine("unpack ok\n"),
+          encodePktLine("ok refs/heads/feature-a\n"),
+          encodeFlushPkt(),
+        ]);
+        return { data, refUpdates: parseReceivePackResult(data), progress: [] };
+      },
+      getRefAdvertisement: async () => {
+        throw new Error("not used");
+      },
+      postUploadPack: async () => {
+        throw new Error("not used");
+      },
+    };
+
+    const pushPromise = push(store, refStore, "dummy", {
+      transport,
+      refSpecs: [
+        "refs/heads/feature-a:refs/heads/feature-a",
+        "refs/heads/feature-b:refs/heads/feature-b",
+      ],
+    });
+
+    expect(pushPromise).rejects.toThrow(PushError);
+    expect(pushPromise).rejects.toThrow(/incomplete status/i);
+    expect(postCalled).toBe(true);
   });
 });

@@ -362,9 +362,8 @@ export function createSmartHttpClient(baseUrl: string, auth?: SmartHttpAuth): Sm
           firstPayload.length > 0 &&
           (firstPayload[0] === 0x01 || firstPayload[0] === 0x02 || firstPayload[0] === 0x03)
         ) {
-          // Side-band 编码：从 channel 1 提取 report-status，从 channel 2 提取进度
+          // Side-band 编码：收集 channel 1 数据统一用 parseReceivePackResult 解析
           const reportStatusChunks: Buffer[] = [];
-          let unpackError: string | null = null;
 
           for (const line of pktLines) {
             if (line.type !== "data") continue;
@@ -375,60 +374,10 @@ export function createSmartHttpClient(baseUrl: string, auth?: SmartHttpAuth): Sm
             const frameData = payload.subarray(1);
 
             if (channel === 0x01) {
-              // Channel 1: packfile 数据或 report-status 文本
-              // report-status 行以 "ok " 或 "ng " 开头
-              if (
-                frameData.length >= 3 &&
-                frameData[0] === 0x6f &&
-                frameData[1] === 0x6b &&
-                frameData[2] === 0x20 // "ok "
-              ) {
-                // ok <ref-name>
-                const refName = frameData.subarray(3).toString("utf-8").trimEnd();
-                refUpdates.push({
-                  refName,
-                  oldHash: null,
-                  newHash: null,
-                  success: true,
-                  forced: false,
-                });
-              } else if (
-                frameData.length >= 3 &&
-                frameData[0] === 0x6e &&
-                frameData[1] === 0x67 &&
-                frameData[2] === 0x20 // "ng "
-              ) {
-                // ng <ref-name> <error-msg>
-                const rest = frameData.subarray(3).toString("utf-8").trimEnd();
-                const spaceIndex = rest.indexOf(" ");
-                if (spaceIndex !== -1) {
-                  refUpdates.push({
-                    refName: rest.substring(0, spaceIndex),
-                    oldHash: null,
-                    newHash: null,
-                    success: false,
-                    error: rest.substring(spaceIndex + 1),
-                    forced: false,
-                  });
-                } else {
-                  // 格式异常，整段作为 report-status 数据收集
-                  reportStatusChunks.push(frameData);
-                }
-              } else if (
-                frameData.length >= 6 &&
-                frameData.subarray(0, 6).toString("utf-8") === "unpack"
-              ) {
-                // "unpack ok" / "unpack <error>"
-                const unpackText = frameData.toString("utf-8").trimEnd();
-                const unpackResult = unpackText.slice("unpack ".length);
-                if (unpackResult !== "ok") {
-                  unpackError = unpackResult;
-                }
-              } else {
-                // 其他 channel 1 数据（可能是 pkt-line 编码的 report-status）
-                // 收集起来后续用 parseReceivePackResult 统一解析
-                reportStatusChunks.push(frameData);
-              }
+              // Channel 1: report-status 数据（pkt-line 编码）
+              // 收集所有 channel 1 数据后用 parseReceivePackResult 统一解析，
+              // 避免内联逐行解析在跨 pkt-line 分片时遗漏状态行
+              reportStatusChunks.push(frameData);
             } else if (channel === 0x02) {
               // Channel 2: 进度消息
               progress.push(frameData.toString("utf-8").trimEnd());
@@ -440,15 +389,8 @@ export function createSmartHttpClient(baseUrl: string, auth?: SmartHttpAuth): Sm
             }
           }
 
-          // side-band 解析完成：如果 unpack 失败，立即报错
-          if (unpackError !== null) {
-            throw new SmartHttpError(`Server failed to unpack packfile: ${unpackError}`);
-          }
-
-          // 如果通过直接解析未获得 report-status，尝试用 parseReceivePackResult 解析收集到的数据
-          // 注意：channel 1 的数据内部已经是 pkt-line 编码（包含 4 字节长度前缀），
-          // 因此直接拼接即可，无需额外包装
-          if (refUpdates.length === 0 && reportStatusChunks.length > 0) {
+          // 统一用 parseReceivePackResult 解析 report-status
+          if (reportStatusChunks.length > 0) {
             const reconstructed = Buffer.concat(reportStatusChunks);
             refUpdates = parseReceivePackResult(reconstructed);
           }
