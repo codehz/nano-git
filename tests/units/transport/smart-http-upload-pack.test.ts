@@ -48,7 +48,7 @@ describe("postUploadPack side-band 致命错误", () => {
 
     // 应抛出包含服务端错误消息的异常，而非静默返回空 packfile
     const promise = client.postUploadPack(body);
-    await expect(promise).rejects.toThrow("fatal: repository 'my-repo' not found");
+    expect(promise).rejects.toThrow("fatal: repository 'my-repo' not found");
 
     globalThis.fetch = originalFetch;
   });
@@ -75,7 +75,7 @@ describe("postUploadPack side-band 致命错误", () => {
     const body = Buffer.from("test body");
 
     const promise = client.postUploadPack(body);
-    await expect(promise).rejects.toThrow("unable to access");
+    expect(promise).rejects.toThrow("unable to access");
 
     globalThis.fetch = originalFetch;
   });
@@ -135,7 +135,7 @@ describe("postUploadPack 协议错误应传播而非吞掉", () => {
 
     // 应抛出 SmartHttpError，而非返回空 packfile
     const promise = client.postUploadPack(body);
-    await expect(promise).rejects.toThrow(SmartHttpError);
+    expect(promise).rejects.toThrow(SmartHttpError);
 
     globalThis.fetch = originalFetch;
   });

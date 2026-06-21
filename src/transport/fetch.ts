@@ -24,7 +24,7 @@ import { sha1 } from "../core/types.ts";
 import { deserializeContent } from "../objects/codec.ts";
 import { createPackReader } from "../odb/pack/pack-reader.ts";
 import { resolveRefHash } from "../refs/resolve.ts";
-import { HEADS_PREFIX, TAGS_PREFIX, HEAD_REF } from "../refs/types.ts";
+import { HEAD_REF } from "../refs/types.ts";
 import {
   buildUploadPackRequestPrefix,
   buildUploadPackNegotiationRequest,
