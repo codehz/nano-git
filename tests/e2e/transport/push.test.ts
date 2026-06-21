@@ -597,6 +597,33 @@ describe("push() 端到端", () => {
     expect(secondResult.objectCount).toBe(0);
   });
 
+  test("everything-up-to-date：已有 lightweight tag 同哈希重推仍返回成功", async () => {
+    // 验证 refs/tags/* 的 no-op 推送不应被误判为非法替换
+    const repo = createMemoryRepository();
+    const author = { ...FIXED_AUTHOR };
+
+    const fileHash = repo.writeBlob(Buffer.from("tag up to date"));
+    const treeHash = repo.createTree([{ mode: "100644", name: "tagged.txt", hash: fileHash }]);
+    const commitHash = repo.createCommit(treeHash, [], "Tag commit", author);
+    repo.updateRef("refs/tags/v-up2date", commitHash);
+
+    // 1. 第一次推送：创建远程 tag
+    const firstResult = await repo.push(serverUrl, {
+      refSpecs: ["refs/tags/v-up2date:refs/tags/v-up2date"],
+    });
+    expect(firstResult.refUpdates).toHaveLength(1);
+    expect(firstResult.refUpdates[0]!.success).toBe(true);
+
+    // 2. 第二次推送完全相同的内容（no-op）
+    const secondResult = await repo.push(serverUrl, {
+      refSpecs: ["refs/tags/v-up2date:refs/tags/v-up2date"],
+    });
+    expect(secondResult.refUpdates).toHaveLength(1);
+    expect(secondResult.refUpdates[0]!.success).toBe(true);
+    expect(secondResult.refUpdates[0]!.refName).toBe("refs/tags/v-up2date");
+    expect(secondResult.objectCount).toBe(0);
+  });
+
   test("多次推送累积 commit", async () => {
     const repo = createMemoryRepository();
     const author = { ...FIXED_AUTHOR };

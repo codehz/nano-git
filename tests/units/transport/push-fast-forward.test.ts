@@ -381,4 +381,30 @@ describe("checkFastForward()", () => {
     ];
     expect(() => checkFastForward(store, items)).not.toThrow();
   });
+
+  test("lightweight tag 同哈希重推（已是最新）不应拒绝", () => {
+    const items = [
+      {
+        localRef: "refs/tags/v1",
+        remoteRef: "refs/tags/v1",
+        localHash: commits.a,
+        remoteHash: commits.a,
+        force: false,
+      },
+    ];
+    expect(() => checkFastForward(store, items)).not.toThrow();
+  });
+
+  test("lightweight tag 同哈希重推（已是最新）设 force 也不抛错", () => {
+    const items = [
+      {
+        localRef: "refs/tags/v1",
+        remoteRef: "refs/tags/v1",
+        localHash: commits.a,
+        remoteHash: commits.a,
+        force: true,
+      },
+    ];
+    expect(() => checkFastForward(store, items)).not.toThrow();
+  });
 });
