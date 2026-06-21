@@ -40,7 +40,7 @@ import { isAncestor } from "./push.ts";
 import { createSmartHttpClient } from "./smart-http.ts";
 
 import type { SHA1 } from "../core/types.ts";
-import type { ObjectStore } from "../odb/types.ts";
+import type { ObjectSource, ObjectStore } from "../odb/types.ts";
 import type { RefStore } from "../refs/types.ts";
 import type { FetchOptions, FetchResult } from "./types.ts";
 import type { RemoteRef } from "./types.ts";
@@ -178,12 +178,14 @@ export function mapRefName(refName: string, spec: ParsedRefSpec): string {
  * @param remoteRefs - 远程引用列表
  * @param localRefs - 本地 ref → hash 映射
  * @param refSpecs - refspec 列表
+ * @param store - 可选的对象存储，用于校验本地对象是否存在
  * @returns wants（需要拉取的远程引用及其本地 ref 名）
  */
 export function determineWants(
   remoteRefs: RemoteRef[],
   localRefs: Map<string, SHA1>,
   refSpecs: ParsedRefSpec[],
+  store?: ObjectSource,
 ): Array<{ remote: RemoteRef; localName: string; localHash?: SHA1; force: boolean }> {
   const wants: Array<{ remote: RemoteRef; localName: string; localHash?: SHA1; force: boolean }> =
     [];
@@ -199,10 +201,10 @@ export function determineWants(
       if (seen.has(localName)) continue;
       seen.add(localName);
 
-      // 检查本地是否已是最新
+      // 检查本地是否已是最新（仅当本地对象实际存在时）
       const localHash = localRefs.get(localName);
-      if (localHash === ref.hash) {
-        continue; // 已是最新，跳过
+      if (localHash === ref.hash && (!store || store.exists(localHash))) {
+        continue; // 已是最新且对象存在，跳过
       }
 
       wants.push({ remote: ref, localName, localHash, force: spec.force });
@@ -291,7 +293,7 @@ export async function fetch(
   const localRefs = getLocalRefs(refs);
 
   // 4. 确定 wants
-  const wants = determineWants(adv.refs, localRefs, parsedSpecs);
+  const wants = determineWants(adv.refs, localRefs, parsedSpecs, store);
 
   if (wants.length === 0) {
     return {

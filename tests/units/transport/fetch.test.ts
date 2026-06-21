@@ -263,6 +263,65 @@ describe("determineWants()", () => {
     const devWants = wants.filter((w) => w.remote.name === "refs/heads/develop");
     expect(devWants).toHaveLength(1);
   });
+
+  describe("对象存在性校验", () => {
+    const hash = sha1("95d09f2b10159347eece71399a7e2e907ea3df4f");
+
+    test("hash 匹配且对象存在时跳过（不传 store 时保持向后兼容）", () => {
+      const refs: RemoteRef[] = [makeRef("refs/heads/main", hash)];
+      const localRefs = new Map<string, SHA1>([["refs/remotes/origin/main", hash]]);
+      // 不传 store —— 旧行为，hash 匹配即跳过
+      const wants = determineWants(refs, localRefs, [defaultSpec]);
+      expect(wants).toHaveLength(0);
+    });
+
+    test("hash 匹配但对象不存在时仍产生 want", () => {
+      const refs: RemoteRef[] = [makeRef("refs/heads/main", hash)];
+      const localRefs = new Map<string, SHA1>([["refs/remotes/origin/main", hash]]);
+      // 传一个空 store（什么都不存在）
+      const wants = determineWants(refs, localRefs, [defaultSpec], createMemoryObjectStore());
+      // 对象不存在，应仍产生 want
+      expect(wants).toHaveLength(1);
+      expect(wants[0]!.localName).toBe("refs/remotes/origin/main");
+      expect(wants[0]!.localHash).toBe(hash);
+      expect(wants[0]!.force).toBe(true);
+    });
+
+    test("hash 匹配且对象存在时跳过（传 store 且对象存在）", () => {
+      const refs: RemoteRef[] = [makeRef("refs/heads/main", hash)];
+      const localRefs = new Map<string, SHA1>([["refs/remotes/origin/main", hash]]);
+      // 在 store 里写入一个假对象让 exists 返回 true
+      const store = createMemoryObjectStore();
+      const blob: GitBlob = { type: "blob", content: Buffer.from("dummy") };
+      store.write(blob);
+      // hash 对应的对象不存在于 store 中，所以仍应产生 want
+      const wants = determineWants(refs, localRefs, [defaultSpec], store);
+      // hash 是个假哈希，store 里没有，所以仍 want
+      expect(wants).toHaveLength(1);
+    });
+
+    test("hash 匹配且对象确实存在时跳过", () => {
+      const store = createMemoryObjectStore();
+      // 写入真正的对象使 exists 返回 true
+      const realHash = createTestCommit(store, [], 100);
+      const realRefs: RemoteRef[] = [makeRef("refs/heads/main", realHash)];
+      const realLocalRefs = new Map<string, SHA1>([["refs/remotes/origin/main", realHash]]);
+      const wants = determineWants(realRefs, realLocalRefs, [defaultSpec], store);
+      // 对象存在，应跳过
+      expect(wants).toHaveLength(0);
+    });
+  });
+
+  describe("store 参数向后兼容", () => {
+    const hash = sha1("95d09f2b10159347eece71399a7e2e907ea3df4f");
+
+    test("不传 store 时 behavior 不变", () => {
+      const refs: RemoteRef[] = [makeRef("refs/heads/main", hash)];
+      const localRefs = new Map<string, SHA1>([["refs/remotes/origin/main", hash]]);
+      const wants = determineWants(refs, localRefs, [defaultSpec]);
+      expect(wants).toHaveLength(0);
+    });
+  });
 });
 
 // ============================================================================
