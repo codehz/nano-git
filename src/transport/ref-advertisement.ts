@@ -135,6 +135,11 @@ export function parseRefAdvertisement(
         .join(" ")
         .trim();
 
+      // Git 空仓库以 capabilities^{} 伪 ref 承载 capabilities，跳过即可
+      if (tagName === "capabilities") {
+        continue;
+      }
+
       if (refs.length === 0) {
         throw new RefAdvertisementError(`Orphaned peeled tag line "${refLine}": no preceding ref`);
       }

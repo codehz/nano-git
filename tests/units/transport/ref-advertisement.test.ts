@@ -225,3 +225,38 @@ describe("peeled tag 校验", () => {
     expect(() => parseRefAdvertisement(data, "git-upload-pack")).toThrow(RefAdvertisementError);
   });
 });
+
+// ============================================================================
+// 空仓库 ref advertisement 测试
+// ============================================================================
+
+describe("空仓库 ref advertisement", () => {
+  test("capabilities^{} 伪 ref 应被跳过，返回空 refs 和 capabilities", () => {
+    const zeroHash = "0000000000000000000000000000000000000000";
+    const caps = "multi_ack thin-pack side-band-64k ofs-delta";
+    const data = Buffer.concat([
+      refLineWithCaps(zeroHash, "capabilities^{}", caps),
+      encodeFlushPkt(),
+    ]);
+    const adv = parseRefAdvertisement(data, "git-upload-pack");
+    expect(adv.refs).toHaveLength(0);
+    expect(adv.capabilities["multi_ack"]).toBe(true);
+    expect(adv.capabilities["side-band-64k"]).toBe(true);
+    expect(adv.capabilities["ofs-delta"]).toBe(true);
+  });
+
+  test("capabilities^{} 行后跟普通 ref 应正常解析", () => {
+    const zeroHash = "0000000000000000000000000000000000000000";
+    const hash = "95d09f2b10159347eece71399a7e2e907ea3df4f";
+    const caps = "multi_ack";
+    const data = Buffer.concat([
+      refLineWithCaps(zeroHash, "capabilities^{}", caps),
+      refLine(hash, "refs/heads/main"),
+      encodeFlushPkt(),
+    ]);
+    const adv = parseRefAdvertisement(data, "git-upload-pack");
+    expect(adv.refs).toHaveLength(1);
+    expect(adv.refs[0]!.name).toBe("refs/heads/main");
+    expect(adv.capabilities["multi_ack"]).toBe(true);
+  });
+});
