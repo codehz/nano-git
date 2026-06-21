@@ -10,7 +10,7 @@ import { describe, test, expect } from "bun:test";
 
 import { sha1, type SHA1 } from "@/core/types.ts";
 import { parseRefSpec } from "@/transport/fetch.ts";
-import { determinePushRefs } from "@/transport/push.ts";
+import { determinePushRefs, PushError } from "@/transport/push.ts";
 
 // ============================================================================
 // 常量
@@ -160,25 +160,27 @@ describe("determinePushRefs 正常 refspec（回归测试）", () => {
     expect(items[1]!.localHash).toBe(HASH_B);
   });
 
-  test("通配符 refspec：无匹配本地引用时抛错", () => {
+  test("仅 wildcard refspec 且无匹配时抛出 PushError", () => {
     const specs = [parseRefSpec("refs/heads/nope/*:refs/heads/*")];
-    expect(() => determinePushRefs(localRefs, new Map(), specs)).toThrow(/Local ref not found/i);
-    expect(() => determinePushRefs(localRefs, new Map(), specs)).toThrow(/refs\/heads\/nope/);
+    expect(() => determinePushRefs(localRefs, new Map(), specs)).toThrow(PushError);
+    expect(() => determinePushRefs(localRefs, new Map(), specs)).toThrow(
+      /does not match any local ref/,
+    );
   });
 
-  test("精确 refspec 与通配符 refspec 混用：通配符无匹配时抛错", () => {
+  test("精确 refspec 与 wildcard 混用：wildcard 无匹配时精确 refspec 仍正常推送", () => {
     const localRefsMulti = new Map<string, SHA1>([
       ["refs/heads/main", HASH_A],
       ["refs/heads/feature", HASH_B],
     ]);
     const specs = [
       parseRefSpec("refs/heads/main:refs/heads/main"), // 匹配
-      parseRefSpec("refs/heads/nope/*:refs/heads/*"), // 无匹配
+      parseRefSpec("refs/heads/nope/*:refs/heads/*"), // 无匹配，但整体有推送项
     ];
-    expect(() => determinePushRefs(localRefsMulti, new Map(), specs)).toThrow(
-      /Local ref not found/i,
-    );
-    expect(() => determinePushRefs(localRefsMulti, new Map(), specs)).toThrow(/refs\/heads\/nope/);
+    const items = determinePushRefs(localRefsMulti, new Map(), specs);
+    // 只有 refs/heads/main 被推送
+    expect(items).toHaveLength(1);
+    expect(items[0]!.remoteRef).toBe("refs/heads/main");
   });
 
   test("通配符 refspec 仅匹配 ignored 或 excluded 路径也会视为匹配", () => {

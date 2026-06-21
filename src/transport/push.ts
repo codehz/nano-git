@@ -341,17 +341,16 @@ export function determinePushRefs(
 ): PushRefItem[] {
   const items: PushRefItem[] = [];
   const seen = new Set<string>();
-  // 跟踪未匹配到任何本地引用的通配符 refspec 索引
-  const unmatchedWildcards = new Set<number>();
+  // 跟踪整组 refspec 是否包含未匹配到任何本地 ref 的 wildcard
+  let hasUnmatchedWildcard = false;
 
-  for (let i = 0; i < specs.length; i++) {
-    const spec = specs[i]!;
+  for (const spec of specs) {
     if (spec.isWildcard) {
       // 通配符 refspec：匹配所有以 srcPattern 开头的本地引用
-      let matched = false;
+      let matchedAny = false;
       for (const [localRef, localHash] of localRefs) {
         if (!localRef.startsWith(spec.srcPattern)) continue;
-        matched = true;
+        matchedAny = true;
 
         const suffix = localRef.slice(spec.srcPattern.length);
         const remoteRef = `${spec.dstPattern}${suffix}`;
@@ -370,8 +369,8 @@ export function determinePushRefs(
           force: spec.force,
         });
       }
-      if (!matched) {
-        unmatchedWildcards.add(i);
+      if (!matchedAny) {
+        hasUnmatchedWildcard = true;
       }
     } else if (spec.srcPattern === "") {
       // 删除引用：refspec 源为空，如 ":refs/heads/feature"
@@ -416,15 +415,9 @@ export function determinePushRefs(
     }
   }
 
-  // 校验通配符 refspec 是否至少匹配了一个本地引用
-  if (unmatchedWildcards.size > 0) {
-    const unmatched = [...unmatchedWildcards].map((i) => specs[i]!);
-    // 取首个未匹配的 refspec 报错，与 Git CLI 行为一致
-    const spec = unmatched[0]!;
-    const pattern = spec.srcPattern.endsWith("/") ? `${spec.srcPattern}*` : spec.srcPattern;
-    throw new PushError(
-      `Local ref not found: "${pattern}" (specified in refspec "${pattern}:${spec.dstPattern}*")`,
-    );
+  // 整次 push 未产生任何推送项且原因是有 wildcard 未匹配到本地 ref
+  if (items.length === 0 && hasUnmatchedWildcard) {
+    throw new PushError("src refspec does not match any local ref");
   }
 
   return items;

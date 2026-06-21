@@ -594,11 +594,11 @@ describe("push() 服务端 ng 响应处理", () => {
 });
 
 // ============================================================================
-// push() 通配符 refspec 无匹配测试
+// push() 通配符 refspec 无匹配行为
 // ============================================================================
 
 describe("push() 通配符 refspec 无匹配本地引用", () => {
-  test("通配符 refspec 无匹配本地引用时抛出 PushError 且不发送 receive-pack", async () => {
+  test("通配符 refspec 单独使用且无匹配时抛出 PushError", async () => {
     const store = createMemoryObjectStore();
     const refStore = createMemoryRefStore();
 
@@ -626,7 +626,7 @@ describe("push() 通配符 refspec 无匹配本地引用", () => {
     });
 
     expect(pushPromise).rejects.toThrow(PushError);
-    expect(pushPromise).rejects.toThrow(/Local ref not found/i);
+    expect(pushPromise).rejects.toThrow(/does not match any local ref/);
     expect(postCalled).toBe(false);
   });
 
