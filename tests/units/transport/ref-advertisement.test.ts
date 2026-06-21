@@ -94,6 +94,21 @@ describe("parseRefAdvertisement()", () => {
     expect(adv.capabilities["agent"]).toBe("git/2.45.1");
   });
 
+  test("HEAD 广告行应解析出 symrefTarget", () => {
+    const hash = "95d09f2b10159347eece71399a7e2e907ea3df4f";
+    const caps = "symref=HEAD:refs/heads/main agent=git/2.45.1";
+    const data = Buffer.concat([
+      refLineWithCaps(hash, "HEAD", caps),
+      refLine(hash, "refs/heads/main"),
+      encodeFlushPkt(),
+    ]);
+
+    const adv = parseRefAdvertisement(data, "git-upload-pack");
+
+    expect(adv.refs[0]!.name).toBe("HEAD");
+    expect(adv.refs[0]!.symrefTarget).toBe("refs/heads/main");
+  });
+
   test("解析 peeled tag", () => {
     const tagHash = "95d09f2b10159347eece71399a7e2e907ea3df4f";
     const peeledHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -174,7 +189,7 @@ describe("parseRefAdvertisement()", () => {
     // HEAD 引用
     expect(adv.refs[0]!.name).toBe("HEAD");
     expect(adv.refs[0]!.hash).toBe(sha1(hash1));
-    expect(adv.refs[0]!.symrefTarget).toBeUndefined();
+    expect(adv.refs[0]!.symrefTarget).toBe("refs/heads/main");
 
     // 普通分支
     expect(adv.refs[1]!.name).toBe("refs/heads/main");

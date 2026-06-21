@@ -455,6 +455,9 @@ export async function fetch(
     fetchedRefs.set(localName, writeHash);
   }
 
+  // 根据远端 symref=HEAD:<target> 更新本地 HEAD
+  updateHeadFromSymref(refs, adv.capabilities, parsedSpecs, fetchedRefs);
+
   return {
     fetchedRefs,
     objectCount,
@@ -477,6 +480,69 @@ function extractCapabilities(serverCaps: Record<string, string | true>): string[
   const supported = new Set<string>(DEFAULT_CAPABILITIES);
   // 只使用服务端也支持的能力
   return Object.keys(serverCaps).filter((cap) => supported.has(cap));
+}
+
+/**
+ * 根据远端 symref=HEAD:<target> 能力更新本地 HEAD
+ *
+ * Git 服务端通过 symref 能力声明默认分支（如 `symref=HEAD:refs/heads/develop`）。
+ * clone/fetch 后需要据此更新本地 HEAD，使其指向正确的默认分支。
+ *
+ * 处理逻辑：
+ * 1. 从 capabilities 提取 `symref=HEAD:<remoteTarget>`
+ * 2. 将 remoteTarget 通过 refspecs 映射为本地 tracking ref 名
+ * 3. 若该 tracking ref 已被 fetch，以 remoteTarget 为名创建本地分支引用并更新 HEAD
+ *
+ * 例如：远端 `symref=HEAD:refs/heads/develop`，默认 refspec 映射到 `refs/remotes/origin/develop`，
+ * 则创建 `refs/heads/develop` 并设置 `HEAD -> ref: refs/heads/develop`。
+ *
+ * @param refs - 本地引用存储
+ * @param capabilities - 服务端 capabilities
+ * @param refSpecs - 已解析的 refspec 列表
+ * @param fetchedRefs - 本次 fetch 写入的本地 ref → hash 映射
+ */
+function updateHeadFromSymref(
+  refs: RefStore,
+  capabilities: Record<string, string | true>,
+  refSpecs: ParsedRefSpec[],
+  fetchedRefs: Map<string, SHA1>,
+): void {
+  const symref = capabilities["symref"];
+  if (typeof symref !== "string") return;
+
+  // symref 格式：HEAD:<target>（例如 "HEAD:refs/heads/main"）
+  const colonIndex = symref.indexOf(":");
+  if (colonIndex === -1) return;
+
+  const headName = symref.substring(0, colonIndex);
+  if (headName !== "HEAD") return;
+
+  const remoteTarget = symref.substring(colonIndex + 1);
+
+  // 将远程目标通过 refspecs 映射到本地 tracking ref 名
+  for (const spec of refSpecs) {
+    if (
+      !matchesRefSpec(
+        { hash: sha1("0000000000000000000000000000000000000000"), name: remoteTarget },
+        spec,
+      )
+    ) {
+      continue;
+    }
+
+    const localTrackingRef = mapRefName(remoteTarget, spec);
+
+    // 仅当该 tracking ref 已被 fetch 时才更新 HEAD
+    const hash = fetchedRefs.get(localTrackingRef);
+    if (hash === undefined) return;
+
+    // 以远端目标名为名创建本地分支引用（如 refs/heads/develop）
+    refs.write(remoteTarget, hash);
+
+    // 更新 HEAD 指向该本地分支
+    refs.write("HEAD", `ref: ${remoteTarget}`);
+    return;
+  }
 }
 
 /**

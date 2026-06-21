@@ -1086,3 +1086,197 @@ describe("fetch() refspec 未匹配远端引用", () => {
     expect(result.fetchedRefs.size).toBe(0);
   });
 });
+
+// ============================================================================
+// fetch() symref=HEAD 更新本地 HEAD
+// ============================================================================
+
+describe("fetch() symref=HEAD 更新本地 HEAD", () => {
+  function createBlobPackfile(content: string) {
+    const blob: GitBlob = { type: "blob", content: Buffer.from(content) };
+    const entry = toEncodedPackObject(blob);
+    const { packData } = buildEncodedPack([entry]);
+    return { entry, packData };
+  }
+
+  test("clone 时远端 symref=HEAD:refs/heads/develop 应将本地 HEAD 指向对应本地分支", async () => {
+    const objectStore = createMemoryObjectStore();
+    const remoteCommit = createTestCommit(objectStore, [], 100);
+    const refStore = createMemoryRefStore(); // 空 refs（模拟 init 后的 clone）
+
+    const { packData } = createBlobPackfile("develop branch content");
+
+    const transport: RemoteTransport = {
+      getReceivePackRefs: async () => {
+        throw new Error("not used in fetch");
+      },
+      postReceivePack: async () => {
+        throw new Error("not used in fetch");
+      },
+      getRefAdvertisement: async () => ({
+        capabilities: {
+          multi_ack: true,
+          "side-band-64k": true,
+          "ofs-delta": true,
+          symref: "HEAD:refs/heads/develop",
+        },
+        refs: [
+          { name: "HEAD", hash: remoteCommit },
+          { name: "refs/heads/develop", hash: remoteCommit },
+        ],
+      }),
+      postUploadPack: async () => {
+        return { data: packData, packfile: packData, progress: [] };
+      },
+    };
+
+    await fetch(objectStore, refStore, "dummy", {
+      transport,
+      refSpecs: ["+refs/heads/*:refs/remotes/origin/*"],
+    });
+
+    // 远程跟踪 ref 应被创建
+    expect(refStore.read("refs/remotes/origin/develop")).toBe(remoteCommit);
+
+    // 本地 HEAD 应指向 refs/heads/develop（不是默认的 refs/heads/main）
+    expect(refStore.read("HEAD")).toBe("ref: refs/heads/develop");
+
+    // 本地 refs/heads/develop 也应被创建
+    expect(refStore.read("refs/heads/develop")).toBe(remoteCommit);
+  });
+
+  test("fetch 时远端 symref=HEAD:refs/heads/main 且本地 HEAD 已指向 main 则无需调整", async () => {
+    const objectStore = createMemoryObjectStore();
+    const remoteCommit = createTestCommit(objectStore, [], 100);
+
+    // 本地 HEAD 已指向 refs/heads/main（initRepository 的默认值）
+    const refStore = createMemoryRefStore(new Map([["HEAD", "ref: refs/heads/main"]]));
+
+    const { packData } = createBlobPackfile("main branch content");
+
+    const transport: RemoteTransport = {
+      getReceivePackRefs: async () => {
+        throw new Error("not used in fetch");
+      },
+      postReceivePack: async () => {
+        throw new Error("not used in fetch");
+      },
+      getRefAdvertisement: async () => ({
+        capabilities: {
+          multi_ack: true,
+          "side-band-64k": true,
+          "ofs-delta": true,
+          symref: "HEAD:refs/heads/main",
+        },
+        refs: [
+          { name: "HEAD", hash: remoteCommit },
+          { name: "refs/heads/main", hash: remoteCommit },
+        ],
+      }),
+      postUploadPack: async () => {
+        return { data: packData, packfile: packData, progress: [] };
+      },
+    };
+
+    await fetch(objectStore, refStore, "dummy", {
+      transport,
+      refSpecs: ["+refs/heads/*:refs/remotes/origin/*"],
+    });
+
+    // HEAD 应保持指向 refs/heads/main
+    expect(refStore.read("HEAD")).toBe("ref: refs/heads/main");
+
+    // refs/heads/main 应被创建
+    expect(refStore.read("refs/heads/main")).toBe(remoteCommit);
+  });
+
+  test("远端无 symref capability 时不应修改 HEAD", async () => {
+    const objectStore = createMemoryObjectStore();
+    const remoteCommit = createTestCommit(objectStore, [], 100);
+
+    // 本地 HEAD 指向 refs/heads/main（initRepository 的默认值）
+    const refStore = createMemoryRefStore(new Map([["HEAD", "ref: refs/heads/main"]]));
+
+    const { packData } = createBlobPackfile("no symref content");
+
+    const transport: RemoteTransport = {
+      getReceivePackRefs: async () => {
+        throw new Error("not used in fetch");
+      },
+      postReceivePack: async () => {
+        throw new Error("not used in fetch");
+      },
+      getRefAdvertisement: async () => ({
+        capabilities: {
+          multi_ack: true,
+          "side-band-64k": true,
+          "ofs-delta": true,
+          // 无 symref
+        },
+        refs: [{ name: "refs/heads/main", hash: remoteCommit }],
+      }),
+      postUploadPack: async () => {
+        return { data: packData, packfile: packData, progress: [] };
+      },
+    };
+
+    await fetch(objectStore, refStore, "dummy", {
+      transport,
+      refSpecs: ["+refs/heads/*:refs/remotes/origin/*"],
+    });
+
+    // HEAD 不应被修改
+    expect(refStore.read("HEAD")).toBe("ref: refs/heads/main");
+  });
+
+  test("远端 symref 指向的分支不在 fetchedRefs 中时不应创建本地分支", async () => {
+    const objectStore = createMemoryObjectStore();
+
+    // 远程有 develop 分支（symref 指向它），但我们只 fetch main
+    const mainCommit = createTestCommit(objectStore, [], 100);
+    const developCommit = createTestCommit(objectStore, [], 200);
+    const refStore = createMemoryRefStore();
+
+    const { packData } = createBlobPackfile("partial fetch content");
+
+    const transport: RemoteTransport = {
+      getReceivePackRefs: async () => {
+        throw new Error("not used in fetch");
+      },
+      postReceivePack: async () => {
+        throw new Error("not used in fetch");
+      },
+      getRefAdvertisement: async () => ({
+        capabilities: {
+          multi_ack: true,
+          "side-band-64k": true,
+          "ofs-delta": true,
+          symref: "HEAD:refs/heads/develop",
+        },
+        refs: [
+          { name: "HEAD", hash: developCommit },
+          { name: "refs/heads/main", hash: mainCommit },
+          { name: "refs/heads/develop", hash: developCommit },
+        ],
+      }),
+      postUploadPack: async () => {
+        return { data: packData, packfile: packData, progress: [] };
+      },
+    };
+
+    // 只 fetch main 分支
+    await fetch(objectStore, refStore, "dummy", {
+      transport,
+      refSpecs: ["refs/heads/main:refs/remotes/origin/main"],
+    });
+
+    // 远程跟踪 ref 只有 main
+    expect(refStore.read("refs/remotes/origin/main")).toBe(mainCommit);
+
+    // HEAD 不应被修改（develop 分支未被 fetch）
+    expect(refStore.read("HEAD")).toBeNull();
+
+    // develop 的本地分支不应被创建
+    expect(refStore.read("refs/heads/develop")).toBeNull();
+  });
+});

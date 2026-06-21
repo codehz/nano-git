@@ -177,6 +177,9 @@ export function parseRefAdvertisement(
     refs.push(ref);
   }
 
+  // 从 capabilities 中提取 symref=HEAD:<target>，填充到 HEAD ref 的 symrefTarget
+  applySymrefToRefs(capabilities, refs);
+
   return { capabilities, refs };
 }
 
@@ -249,4 +252,33 @@ function parseCapabilities(capsStr: string): Capabilities {
   }
 
   return caps;
+}
+
+/**
+ * 从 capabilities 中提取 symref=HEAD:<target>，填充到 refs 中 HEAD ref 的 symrefTarget
+ *
+ * Git 服务端通过 `symref=HEAD:refs/heads/main` 能力声明默认分支。
+ * 解析后将目标写入对应 HEAD ref 的 `symrefTarget` 字段，供 fetch 层据此设置本地 HEAD。
+ *
+ * @param capabilities - 解析后的 capabilities 对象
+ * @param refs - refs 数组（原地修改 HEAD ref 的 symrefTarget）
+ */
+function applySymrefToRefs(capabilities: Capabilities, refs: RemoteRef[]): void {
+  const symref = capabilities["symref"];
+  if (typeof symref !== "string") return;
+
+  // symref 格式：HEAD:<target>（例如 "HEAD:refs/heads/main"）
+  const colonIndex = symref.indexOf(":");
+  if (colonIndex === -1) return;
+
+  const headName = symref.substring(0, colonIndex);
+  const target = symref.substring(colonIndex + 1);
+
+  // 找到名为 HEAD 的 ref，设置其 symrefTarget
+  for (const ref of refs) {
+    if (ref.name === headName) {
+      ref.symrefTarget = target;
+      return;
+    }
+  }
 }
