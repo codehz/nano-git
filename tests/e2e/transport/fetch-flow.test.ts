@@ -121,11 +121,11 @@ describe("完整 fetch 流程", () => {
 
     expect(result.objectCount).toBeGreaterThan(0);
 
-    const mainRef = repo.refs.readRaw("refs/remotes/origin/main");
+    const mainRef = repo.refs.read("refs/remotes/origin/main");
     expect(mainRef).not.toBeNull();
     expect(mainRef!.length).toBe(40);
 
-    const headRef = repo.refs.readRaw("HEAD");
+    const headRef = repo.refs.read("HEAD");
     expect(headRef).not.toBeNull();
 
     const commitObj = repo.objects.read(sha1(mainRef!));
@@ -151,7 +151,7 @@ describe("完整 fetch 流程", () => {
     const result = await repo.fetch(serverUrl, { depth: 1 });
 
     expect(result.objectCount).toBeGreaterThan(0);
-    expect(repo.refs.readRaw("refs/remotes/origin/main")).not.toBeNull();
+    expect(repo.refs.read("refs/remotes/origin/main")).not.toBeNull();
   });
 
   test("增量 fetch：本地通过其他 ref 持有目标 commit 时不重复下载", async () => {
@@ -162,7 +162,7 @@ describe("完整 fetch 流程", () => {
     const result1 = await repo.fetch(serverUrl);
     expect(result1.objectCount).toBeGreaterThan(0);
 
-    const oldMainHash = repo.refs.readRaw("refs/remotes/origin/main")!;
+    const oldMainHash = repo.refs.read("refs/remotes/origin/main")!;
 
     // 2. 在服务端创建 feature 分支并推一个新提交
     const workDir = join(tempDir, "work-feature");
@@ -176,8 +176,8 @@ describe("完整 fetch 流程", () => {
     // 3. 第二次 fetch：获取 feature 分支到本地
     const result2 = await repo.fetch(serverUrl);
     expect(result2.fetchedRefs.has("refs/remotes/origin/feature")).toBe(true);
-    expect(repo.refs.readRaw("refs/remotes/origin/feature")).toBe(featureHash);
-    expect(repo.refs.readRaw("refs/remotes/origin/main")).toBe(oldMainHash);
+    expect(repo.refs.read("refs/remotes/origin/feature")).toBe(featureHash);
+    expect(repo.refs.read("refs/remotes/origin/main")).toBe(oldMainHash);
 
     // 4. 服务端将 main 快进到 feature 指向的同一个 commit
     git(["update-ref", "refs/heads/main", featureHash], serverRepoDir);
@@ -206,7 +206,7 @@ describe("完整 fetch 流程", () => {
 
     expect(result.objectCount).toBe(0);
     expect(result.fetchedRefs.size).toBe(0);
-    expect(repo.refs.readRaw("refs/remotes/origin/main")).toBeNull();
+    expect(repo.refs.read("refs/remotes/origin/main")).toBeNull();
   });
 
   test("显式 tag refspec：fetch 注解 tag 到本地 tags 命名空间", async () => {
@@ -221,9 +221,9 @@ describe("完整 fetch 流程", () => {
     });
 
     expect(result.objectCount).toBeGreaterThan(0);
-    const tagHash = repo.refs.readRaw("refs/tags/v1.0");
+    const tagHash = repo.refs.read("refs/tags/v1.0");
     expect(tagHash).not.toBeNull();
-    expect(repo.refs.readRaw("refs/remotes/origin/main")).toBeNull();
+    expect(repo.refs.read("refs/remotes/origin/main")).toBeNull();
 
     const tagObject = repo.objects.read(sha1(tagHash!));
     expect(tagObject.type).toBe("tag");
@@ -242,8 +242,8 @@ describe("完整 fetch 流程", () => {
     const result = await repo.fetch(serverUrl);
 
     expect(result.objectCount).toBeGreaterThan(0);
-    expect(repo.refs.readRaw("refs/remotes/origin/main")).not.toBeNull();
-    expect(repo.refs.readRaw("refs/tags/v-include")).toBeNull();
+    expect(repo.refs.read("refs/remotes/origin/main")).not.toBeNull();
+    expect(repo.refs.read("refs/tags/v-include")).toBeNull();
     expect(repo.objects.exists(sha1(remoteTagHash))).toBe(true);
     expect(repo.objects.read(sha1(remoteTagHash)).type).toBe("tag");
   });
@@ -277,10 +277,10 @@ describe("完整 fetch 流程", () => {
     });
 
     expect(result.objectCount).toBeGreaterThan(0);
-    expect(repo.refs.readRaw("refs/remotes/origin/main")).not.toBeNull();
-    expect(repo.refs.readRaw("refs/remotes/origin/feature")).toBeNull();
-    expect(repo.refs.readRaw("refs/tags/v-main-only")).not.toBeNull();
-    expect(repo.refs.readRaw("refs/tags/v-feature")).toBeNull();
+    expect(repo.refs.read("refs/remotes/origin/main")).not.toBeNull();
+    expect(repo.refs.read("refs/remotes/origin/feature")).toBeNull();
+    expect(repo.refs.read("refs/tags/v-main-only")).not.toBeNull();
+    expect(repo.refs.read("refs/tags/v-feature")).toBeNull();
   });
 
   test("tag-only 远端：默认 refspec fetch 返回空结果", async () => {
@@ -294,8 +294,8 @@ describe("完整 fetch 流程", () => {
 
     expect(result.objectCount).toBe(0);
     expect(result.fetchedRefs.size).toBe(0);
-    expect(repo.refs.readRaw("refs/remotes/origin/main")).toBeNull();
-    expect(repo.refs.readRaw("refs/tags/v-tag-only")).toBeNull();
+    expect(repo.refs.read("refs/remotes/origin/main")).toBeNull();
+    expect(repo.refs.read("refs/tags/v-tag-only")).toBeNull();
   });
 
   test("tag-only 远端：显式 tag refspec 仍可 fetch 注解 tag", async () => {
@@ -310,9 +310,9 @@ describe("完整 fetch 流程", () => {
     });
 
     expect(result.objectCount).toBeGreaterThan(0);
-    const tagHash = repo.refs.readRaw("refs/tags/v-tag-only-fetch");
+    const tagHash = repo.refs.read("refs/tags/v-tag-only-fetch");
     expect(tagHash).not.toBeNull();
-    expect(repo.refs.readRaw("refs/remotes/origin/main")).toBeNull();
+    expect(repo.refs.read("refs/remotes/origin/main")).toBeNull();
     expect(repo.objects.read(sha1(tagHash!)).type).toBe("tag");
   });
 
@@ -337,7 +337,7 @@ describe("完整 fetch 流程", () => {
     const result = await repo.fetch(serverHandle.url);
 
     expect(result.objectCount).toBeGreaterThan(0);
-    const mainRef = repo.refs.readRaw("refs/remotes/origin/main");
+    const mainRef = repo.refs.read("refs/remotes/origin/main");
     expect(mainRef).not.toBeNull();
     expect(repo.objects.read(sha1(mainRef!)).type).toBe("commit");
   });
@@ -363,7 +363,7 @@ describe("完整 fetch 流程", () => {
     const result = await repo.fetch(serverHandle.url);
 
     expect(result.objectCount).toBeGreaterThan(0);
-    const mainRef = repo.refs.readRaw("refs/remotes/origin/main");
+    const mainRef = repo.refs.read("refs/remotes/origin/main");
     expect(mainRef).not.toBeNull();
     expect(repo.objects.read(sha1(mainRef!)).type).toBe("commit");
   });

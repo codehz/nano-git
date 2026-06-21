@@ -23,13 +23,13 @@ function ensureRefDoesNotExist(
   kind: "Branch" | "Tag",
   name: string,
 ): void {
-  if (backend.refs.readRaw(ref) !== null) {
+  if (backend.refs.read(ref) !== null) {
     throw new Error(`${kind} already exists: ${name}`);
   }
 }
 
 function listShortRefs(backend: RepositoryBackend, prefix: string): string[] {
-  return backend.refs.listRaw(prefix).map((ref) => ref.slice(prefix.length));
+  return backend.refs.list(prefix).map((ref) => ref.slice(prefix.length));
 }
 
 /**
@@ -55,7 +55,7 @@ export function createRefRepositoryOperations(backend: RepositoryBackend): Repos
 
   return {
     updateRef(ref: string, hash: SHA1): void {
-      refs.writeRaw(ref, hash);
+      refs.write(ref, hash);
     },
 
     readRef(ref: string): SHA1 | null {
@@ -67,7 +67,7 @@ export function createRefRepositoryOperations(backend: RepositoryBackend): Repos
     createBranch(name: string, hash?: SHA1): void {
       const ref = branchNameToRef(name);
       ensureRefDoesNotExist(backend, ref, "Branch", name);
-      refs.writeRaw(ref, resolveTargetHash(refs, hash));
+      refs.write(ref, resolveTargetHash(refs, hash));
     },
 
     readBranch(name: string): SHA1 | null {
@@ -83,13 +83,13 @@ export function createRefRepositoryOperations(backend: RepositoryBackend): Repos
         throw new Error(`Cannot delete current branch: ${name}`);
       }
 
-      refs.deleteRaw(branchNameToRef(name));
+      refs.delete(branchNameToRef(name));
     },
 
     createTag(name: string, hash?: SHA1): void {
       const ref = tagNameToRef(name);
       ensureRefDoesNotExist(backend, ref, "Tag", name);
-      refs.writeRaw(ref, resolveTargetHash(refs, hash));
+      refs.write(ref, resolveTargetHash(refs, hash));
     },
 
     createAnnotatedTag(
@@ -112,7 +112,7 @@ export function createRefRepositoryOperations(backend: RepositoryBackend): Repos
         message,
       };
       const tagHash = objects.write(tag);
-      refs.writeRaw(ref, tagHash);
+      refs.write(ref, tagHash);
       return tagHash;
     },
 
@@ -125,7 +125,7 @@ export function createRefRepositoryOperations(backend: RepositoryBackend): Repos
     },
 
     deleteTag(name: string): void {
-      refs.deleteRaw(tagNameToRef(name));
+      refs.delete(tagNameToRef(name));
     },
   };
 }

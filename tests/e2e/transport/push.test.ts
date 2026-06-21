@@ -723,7 +723,7 @@ describe("push() 端到端", () => {
     const author = { ...FIXED_AUTHOR };
 
     // 将 HEAD 指向 feature 分支
-    repo.refs.writeRaw(HEAD_REF, `ref: ${HEADS_PREFIX}feature`);
+    repo.refs.write(HEAD_REF, `ref: ${HEADS_PREFIX}feature`);
 
     // 获取服务端初始 commit
     const initialCommit = sha1(
@@ -796,7 +796,7 @@ describe("push() 端到端", () => {
     const commitHash = repo.createCommit(treeHash, [], "Detached commit", author);
 
     // HEAD 直接指向 commit（detached HEAD 状态）
-    repo.refs.writeRaw(HEAD_REF, commitHash);
+    repo.refs.write(HEAD_REF, commitHash);
 
     // 不传 refSpecs 时，detached HEAD 应该报错
     const pushPromise = repo.push(serverUrl);

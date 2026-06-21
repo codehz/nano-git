@@ -27,7 +27,7 @@ export function resolveRefHash(
   }
 
   seen.add(ref);
-  const content = store.readRaw(ref);
+  const content = store.read(ref);
   if (content === null) {
     return null;
   }
@@ -57,7 +57,7 @@ export function resolveSymbolicRef(
   }
 
   seen.add(ref);
-  const content = store.readRaw(ref);
+  const content = store.read(ref);
   if (content === null || !content.startsWith("ref: ")) {
     return null;
   }

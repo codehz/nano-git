@@ -26,19 +26,19 @@ describe("createMemoryRefStore()", () => {
 
     initial.set("refs/heads/main", "1111111111111111111111111111111111111111");
 
-    expect(store.readRaw("refs/heads/main")).toBeNull();
+    expect(store.read("refs/heads/main")).toBeNull();
   });
 
-  test("deleteRaw() 对不存在的引用抛出 RefNotFoundError", () => {
+  test("delete() 对不存在的引用抛出 RefNotFoundError", () => {
     const store = createMemoryRefStore();
 
-    expect(() => store.deleteRaw("refs/heads/missing")).toThrow(RefNotFoundError);
+    expect(() => store.delete("refs/heads/missing")).toThrow(RefNotFoundError);
   });
 
-  test("listRaw() 会校验前缀格式", () => {
+  test("list() 会校验前缀格式", () => {
     const store = createMemoryRefStore();
 
-    expect(() => store.listRaw("refs/heads")).toThrow("Invalid ref prefix");
+    expect(() => store.list("refs/heads")).toThrow("Invalid ref prefix");
   });
 });
 
@@ -83,52 +83,52 @@ describe("createFileRefStore()", () => {
     }
   });
 
-  test("writeRaw() 只规范化末尾换行，不移除前导空白", () => {
+  test("write() 只规范化末尾换行，不移除前导空白", () => {
     const store = createFileRefStore(tempDir);
 
-    store.writeRaw("refs/heads/main", " 1111111111111111111111111111111111111111\n");
+    store.write("refs/heads/main", " 1111111111111111111111111111111111111111\n");
 
     expect(readFileSync(join(tempDir, "refs", "heads", "main"), "utf-8")).toBe(
       " 1111111111111111111111111111111111111111\n",
     );
-    expect(store.readRaw("refs/heads/main")).toBe(" 1111111111111111111111111111111111111111");
+    expect(store.read("refs/heads/main")).toBe(" 1111111111111111111111111111111111111111");
   });
 
-  test("deleteRaw() 对不存在的引用抛出 RefNotFoundError", () => {
+  test("delete() 对不存在的引用抛出 RefNotFoundError", () => {
     const store = createFileRefStore(tempDir);
 
-    expect(() => store.deleteRaw("refs/heads/missing")).toThrow(RefNotFoundError);
+    expect(() => store.delete("refs/heads/missing")).toThrow(RefNotFoundError);
   });
 
-  test("listRaw() 返回排序后的引用并校验前缀", () => {
+  test("list() 返回排序后的引用并校验前缀", () => {
     const store = createFileRefStore(tempDir);
 
-    store.writeRaw("refs/heads/z-last", "1111111111111111111111111111111111111111");
-    store.writeRaw("refs/heads/feature/api", "2222222222222222222222222222222222222222");
+    store.write("refs/heads/z-last", "1111111111111111111111111111111111111111");
+    store.write("refs/heads/feature/api", "2222222222222222222222222222222222222222");
 
-    expect(store.listRaw("refs/heads/")).toEqual(["refs/heads/feature/api", "refs/heads/z-last"]);
-    expect(() => store.listRaw("refs/heads")).toThrow("Invalid ref prefix");
+    expect(store.list("refs/heads/")).toEqual(["refs/heads/feature/api", "refs/heads/z-last"]);
+    expect(() => store.list("refs/heads")).toThrow("Invalid ref prefix");
   });
 
-  test("readRaw() 支持读取 packed-refs 中的引用", () => {
+  test("read() 支持读取 packed-refs 中的引用", () => {
     writeFileSync(
       join(tempDir, "packed-refs"),
       "# pack-refs with: peeled fully-peeled sorted\n1111111111111111111111111111111111111111 refs/heads/main\n",
     );
     const store = createFileRefStore(tempDir);
 
-    expect(store.readRaw("refs/heads/main")).toBe("1111111111111111111111111111111111111111");
+    expect(store.read("refs/heads/main")).toBe("1111111111111111111111111111111111111111");
   });
 
-  test("listRaw() 会合并 loose refs 和 packed-refs", () => {
+  test("list() 会合并 loose refs 和 packed-refs", () => {
     writeFileSync(
       join(tempDir, "packed-refs"),
       "1111111111111111111111111111111111111111 refs/heads/main\n2222222222222222222222222222222222222222 refs/heads/release\n",
     );
     const store = createFileRefStore(tempDir);
-    store.writeRaw("refs/heads/feature/api", "3333333333333333333333333333333333333333");
+    store.write("refs/heads/feature/api", "3333333333333333333333333333333333333333");
 
-    expect(store.listRaw("refs/heads/")).toEqual([
+    expect(store.list("refs/heads/")).toEqual([
       "refs/heads/feature/api",
       "refs/heads/main",
       "refs/heads/release",

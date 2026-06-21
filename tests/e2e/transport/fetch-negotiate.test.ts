@@ -142,7 +142,7 @@ describe("fetch 协商流程", () => {
     expect(countFlushPackets(thirdBody)).toBe(1);
     expect(thirdCommands.at(-1)).toBe("done");
 
-    const mainRef = repo.refs.readRaw("refs/remotes/origin/main");
+    const mainRef = repo.refs.read("refs/remotes/origin/main");
     expect(mainRef).toBe(newHead);
     expect(repo.objects.read(sha1(newHead)).type).toBe("commit");
   });
@@ -159,7 +159,7 @@ describe("fetch 协商流程", () => {
     expect(result1.objectCount).toBeGreaterThan(0);
 
     // 2. 在本地仓库创建与 fetch 无关的 tag（pointer to old commit）
-    const mainHash = repo.refs.readRaw("refs/remotes/origin/main")!;
+    const mainHash = repo.refs.read("refs/remotes/origin/main")!;
     // 使用 git 创建 lightweight tag（不会干扰 nano-git 的操作）
     git(["tag", "e2e-old-tag", mainHash], localDir);
 
@@ -236,7 +236,7 @@ describe("fetch 协商流程", () => {
     // 2. 初始 fetch，设 maxCandidates=10
     const result1 = await repo.fetch(serverUrl, { maxCandidates: 10 });
     expect(result1.objectCount).toBeGreaterThan(0);
-    expect(repo.refs.readRaw("refs/remotes/origin/main")).not.toBeNull();
+    expect(repo.refs.read("refs/remotes/origin/main")).not.toBeNull();
 
     // 3. 新增 2 个提交
     createFile(workDir, "max-cand-new-a.txt", "new-a\n");
@@ -281,7 +281,7 @@ describe("fetch 协商流程", () => {
     }
 
     // 最终仓库完整性检查
-    const finalMain = repo.refs.readRaw("refs/remotes/origin/main");
+    const finalMain = repo.refs.read("refs/remotes/origin/main");
     expect(finalMain).toBe(git(["rev-parse", "HEAD"], workDir));
 
     // 用 git fsck 验证对象完整性

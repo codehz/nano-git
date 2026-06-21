@@ -420,8 +420,8 @@ function getLocalRefs(refs: RefStore): Map<string, SHA1> {
   const map = new Map<string, SHA1>();
 
   // 所有 refs/ 下的引用
-  for (const refName of refs.listAllRaw()) {
-    const content = refs.readRaw(refName);
+  for (const refName of refs.listAll()) {
+    const content = refs.read(refName);
     if (content && /^[0-9a-f]{40}$/.test(content)) {
       try {
         map.set(refName, sha1(content));

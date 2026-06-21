@@ -335,7 +335,7 @@ describe("fetch() 增量 fetch 行为", () => {
     expect(bodyStr).toContain(`have ${c2}`);
 
     // 验证 ref 已更新
-    const updatedRef = refStore.readRaw("refs/remotes/origin/main");
+    const updatedRef = refStore.read("refs/remotes/origin/main");
     expect(updatedRef).toBe(c3);
 
     expect(objectStore.exists(entry.hash)).toBe(true);
@@ -408,7 +408,7 @@ describe("fetch() 增量 fetch 行为", () => {
     expect(bodyStr).not.toContain("have ");
 
     // 验证 ref 已创建
-    expect(refStore.readRaw("refs/remotes/origin/main")).toBe(remoteCommit);
+    expect(refStore.read("refs/remotes/origin/main")).toBe(remoteCommit);
     expect(objectStore.exists(entry.hash)).toBe(true);
     expect(result.objectCount).toBe(1);
   });
@@ -584,7 +584,7 @@ describe("fetch() 增量 fetch 行为", () => {
       });
 
       // ref 应保持原值（未被覆盖）
-      expect(refStore.readRaw("refs/remotes/origin/main")).toBe(oldTip);
+      expect(refStore.read("refs/remotes/origin/main")).toBe(oldTip);
       // fetchedRefs 中不应包含被拒绝的 ref
       expect(result.fetchedRefs.has("refs/remotes/origin/main")).toBe(false);
       // 对象仍被写入
@@ -601,7 +601,7 @@ describe("fetch() 增量 fetch 行为", () => {
       });
 
       // ref 应更新为远程值
-      expect(refStore.readRaw("refs/remotes/origin/main")).toBe(remoteTip);
+      expect(refStore.read("refs/remotes/origin/main")).toBe(remoteTip);
       expect(result.fetchedRefs.get("refs/remotes/origin/main")).toBe(remoteTip);
       expect(result.objectCount).toBe(1);
     });
@@ -632,7 +632,7 @@ describe("fetch() 增量 fetch 行为", () => {
       });
 
       // ref 应更新为远程值（快进允许）
-      expect(refStore.readRaw("refs/remotes/origin/main")).toBe(remoteTip);
+      expect(refStore.read("refs/remotes/origin/main")).toBe(remoteTip);
       expect(result.fetchedRefs.get("refs/remotes/origin/main")).toBe(remoteTip);
       expect(result.objectCount).toBe(1);
     });
@@ -656,7 +656,7 @@ describe("fetch() 增量 fetch 行为", () => {
       });
 
       // 新 ref 应被创建
-      expect(refStore.readRaw("refs/remotes/origin/main")).toBe(remoteTip);
+      expect(refStore.read("refs/remotes/origin/main")).toBe(remoteTip);
       expect(result.objectCount).toBe(1);
       expect(objectStore.exists(entry.hash)).toBe(true);
     });

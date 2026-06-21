@@ -675,7 +675,7 @@ describe("fetch() 起点裁剪行为", () => {
     // 如果有 tag 作为额外 tip，collectHaveCommits 的 seen 不会变化
     // 因为 tagHash 已经是 chain 的一部分
     // 验证 fetch 成功完成即可
-    expect(refStore.readRaw("refs/remotes/origin/main")).toBe(remoteHead);
+    expect(refStore.read("refs/remotes/origin/main")).toBe(remoteHead);
   });
 
   test("不同远端命名空间的 remote-tracking refs 不会混入 haves", async () => {
@@ -726,7 +726,7 @@ describe("fetch() 起点裁剪行为", () => {
     // upstream 链的 commit 不应出现在 haves 中
     // （selectHaveTips 的第二优先只匹配同一远端前缀 origin）
     expect(bodyStr).not.toContain(upstreamTip);
-    expect(refStore.readRaw("refs/remotes/origin/main")).toBe(remoteHead);
+    expect(refStore.read("refs/remotes/origin/main")).toBe(remoteHead);
   });
 
   test("maxCandidates 防止候选集过大", async () => {
@@ -768,6 +768,6 @@ describe("fetch() 起点裁剪行为", () => {
     const haveCount = (bodyStr.match(/have [0-9a-f]{40}/g) ?? []).length;
     // 最多 50 个 have（受 maxCandidates 限制）
     expect(haveCount).toBeLessThanOrEqual(50);
-    expect(refStore.readRaw("refs/remotes/origin/main")).toBe(remoteHead);
+    expect(refStore.read("refs/remotes/origin/main")).toBe(remoteHead);
   });
 });

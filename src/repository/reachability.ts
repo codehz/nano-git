@@ -13,11 +13,11 @@ import type { RefStore } from "../refs/index.ts";
 function listRootRefs(refs: RefStore): string[] {
   const rootRefs = new Set<string>([HEAD_REF]);
 
-  for (const ref of refs.listRaw(HEADS_PREFIX)) {
+  for (const ref of refs.list(HEADS_PREFIX)) {
     rootRefs.add(ref);
   }
 
-  for (const ref of refs.listRaw(TAGS_PREFIX)) {
+  for (const ref of refs.list(TAGS_PREFIX)) {
     rootRefs.add(ref);
   }
 

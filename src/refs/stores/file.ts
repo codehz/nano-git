@@ -48,7 +48,7 @@ function readPackedRefs(gitDir: string): Map<string, string> {
  */
 export function createFileRefStore(gitDir: string): RefStore {
   return {
-    readRaw(ref: string): string | null {
+    read(ref: string): string | null {
       validateRefName(ref);
       const refPath = join(gitDir, ref);
       if (existsSync(refPath)) {
@@ -58,14 +58,14 @@ export function createFileRefStore(gitDir: string): RefStore {
       return readPackedRefs(gitDir).get(ref) ?? null;
     },
 
-    writeRaw(ref: string, content: string): void {
+    write(ref: string, content: string): void {
       validateRefName(ref);
       const refPath = join(gitDir, ref);
       mkdirSync(dirname(refPath), { recursive: true });
       writeFileSync(refPath, `${content.trimEnd()}\n`);
     },
 
-    deleteRaw(ref: string): void {
+    delete(ref: string): void {
       validateRefName(ref);
       const refPath = join(gitDir, ref);
       if (!existsSync(refPath)) {
@@ -75,7 +75,7 @@ export function createFileRefStore(gitDir: string): RefStore {
       unlinkSync(refPath);
     },
 
-    listRaw(prefix: string): string[] {
+    list(prefix: string): string[] {
       validateRefPrefix(prefix);
       const baseDir = join(gitDir, prefix);
       const refs = new Set<string>();
@@ -95,7 +95,7 @@ export function createFileRefStore(gitDir: string): RefStore {
       return Array.from(refs).sort();
     },
 
-    listAllRaw(): string[] {
+    listAll(): string[] {
       const refs = new Set<string>();
       const refsDir = join(gitDir, "refs");
 

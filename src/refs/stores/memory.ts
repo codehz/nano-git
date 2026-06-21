@@ -19,17 +19,17 @@ export function createMemoryRefStore(initial?: Map<string, string>): RefStore {
   const store = new Map(initial);
 
   return {
-    readRaw(ref: string): string | null {
+    read(ref: string): string | null {
       validateRefName(ref);
       return store.get(ref) ?? null;
     },
 
-    writeRaw(ref: string, content: string): void {
+    write(ref: string, content: string): void {
       validateRefName(ref);
       store.set(ref, content.trimEnd());
     },
 
-    deleteRaw(ref: string): void {
+    delete(ref: string): void {
       validateRefName(ref);
       if (!store.has(ref)) {
         throw new RefNotFoundError(ref);
@@ -38,14 +38,14 @@ export function createMemoryRefStore(initial?: Map<string, string>): RefStore {
       store.delete(ref);
     },
 
-    listRaw(prefix: string): string[] {
+    list(prefix: string): string[] {
       validateRefPrefix(prefix);
       return Array.from(store.keys())
         .filter((key) => key.startsWith(prefix))
         .sort();
     },
 
-    listAllRaw(): string[] {
+    listAll(): string[] {
       return Array.from(store.keys())
         .filter((key) => key.startsWith("refs/"))
         .sort();

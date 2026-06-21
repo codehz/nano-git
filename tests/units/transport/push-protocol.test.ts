@@ -252,7 +252,7 @@ describe("push() 服务端响应完整性校验", () => {
       committer: author,
       message: "a",
     });
-    refStore.writeRaw("refs/heads/feature-a", hashA);
+    refStore.write("refs/heads/feature-a", hashA);
 
     const hashB = store.write({
       type: "commit" as const,
@@ -262,7 +262,7 @@ describe("push() 服务端响应完整性校验", () => {
       committer: author,
       message: "b",
     });
-    refStore.writeRaw("refs/heads/feature-b", hashB);
+    refStore.write("refs/heads/feature-b", hashB);
 
     // Mock transport：远端无 refs，postReceivePack 只返回 1 条状态（少于 2 条命令）
     let postCalled = false;
@@ -316,7 +316,7 @@ describe("push() 服务端响应完整性校验", () => {
       committer: author,
       message: "test",
     });
-    refStore.writeRaw("refs/heads/main", hash);
+    refStore.write("refs/heads/main", hash);
 
     // Mock transport：远端不广告 report-status capability
     let postReceivePackCalled = false;
@@ -508,7 +508,7 @@ describe("push() 服务端 ng 响应处理", () => {
       committer: author,
       message: "test",
     });
-    refStore.writeRaw("refs/heads/main", commitHash);
+    refStore.write("refs/heads/main", commitHash);
 
     // 模拟服务端：ok 一条、ng 一条
     let postCalled = false;
@@ -560,7 +560,7 @@ describe("push() 服务端 ng 响应处理", () => {
       committer: author,
       message: "test",
     });
-    refStore.writeRaw("refs/heads/main", commitHash);
+    refStore.write("refs/heads/main", commitHash);
 
     const transport: RemoteTransport = {
       getReceivePackRefs: async () => ({

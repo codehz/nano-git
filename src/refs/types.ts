@@ -34,7 +34,7 @@ export interface RefStore {
    * @param ref - 完整引用路径，如 "refs/heads/main"
    * @returns 引用内容，不存在时返回 null
    */
-  readRaw(ref: string): string | null;
+  read(ref: string): string | null;
 
   /**
    * 写入引用
@@ -42,7 +42,7 @@ export interface RefStore {
    * @param ref - 完整引用路径
    * @param content - 引用内容（末尾换行会被自动规范化）
    */
-  writeRaw(ref: string, content: string): void;
+  write(ref: string, content: string): void;
 
   /**
    * 删除引用
@@ -50,7 +50,7 @@ export interface RefStore {
    * @param ref - 完整引用路径
    * @throws 如果引用不存在
    */
-  deleteRaw(ref: string): void;
+  delete(ref: string): void;
 
   /**
    * 列出指定前缀下的所有引用
@@ -58,7 +58,7 @@ export interface RefStore {
    * @param prefix - 引用前缀，如 "refs/heads/"
    * @returns 完整的引用路径列表（已排序）
    */
-  listRaw(prefix: string): string[];
+  list(prefix: string): string[];
 
   /**
    * 列出所有引用（不限命名空间）
@@ -68,5 +68,5 @@ export interface RefStore {
    *
    * @returns 所有引用的完整路径列表（已排序）
    */
-  listAllRaw(): string[];
+  listAll(): string[];
 }
