@@ -425,15 +425,14 @@ describe("push() 本地对象缺失预检", () => {
       postCalled = true;
     });
 
-    // 传入一个无关的 shallowBoundary，当前 bug：代码走 "skip" 分支，
-    // 导致缺失 blob 被静默跳过，postReceivePack 被误调用
+    // 传入一个无关的 shallowBoundary，不应放宽 tree/blob 缺失检查
     const pushPromise = push(store, refStore, "dummy", {
       transport,
       refSpecs: ["refs/heads/main:refs/heads/main"],
       shallowBoundaries: [sha1("0000000000000000000000000000000000000099")],
     });
 
-    // 应抛出 PushError 而非静默发送不完整 pack
+    // 应抛出 PushError，而不是静默发送不完整 pack
     expect(pushPromise).rejects.toBeInstanceOf(PushError);
     // 不应发送 receive-pack 请求
     expect(postCalled).toBe(false);

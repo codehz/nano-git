@@ -185,10 +185,7 @@ describe("完整 fetch 流程", () => {
     // 5. 第三次 fetch：main 已前进到 feature commit，但该 commit 已在本地存储中
     const result3 = await repo.fetch(serverUrl);
 
-    // BUG: 由于 have 列表只用了旧 refs/remotes/origin/main 而非所有本地 ref，
-    //      导致 collectHaveCommits 没有遍历到 feature commit，
-    //      服务端仍会重新发送 feature commit 的所有对象。
-    // 修复后应为 0。
+    // feature commit 已通过另一个本地 ref 持有，不应重复下载对象。
     expect(result3.objectCount).toBe(0);
     expect(result3.fetchedRefs.get("refs/remotes/origin/main")).toBe(sha1(featureHash));
   });
