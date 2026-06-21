@@ -82,6 +82,83 @@ function rewriteReceivePackResponseAsSplitSideBand(
   };
 }
 
+function stripCapabilityFromAdvertisement(
+  response: GitHttpBackendResponse,
+  capability: string,
+): GitHttpBackendResponse {
+  const lines = parsePktLines(response.body);
+  const chunks: Buffer[] = [];
+  let rewritten = false;
+
+  for (const line of lines) {
+    if (line.type === "flush") {
+      chunks.push(encodeFlushPkt());
+      continue;
+    }
+
+    if (line.type !== "data") {
+      continue;
+    }
+
+    if (!rewritten) {
+      const nullIndex = line.payload.indexOf(0);
+      if (nullIndex !== -1) {
+        const refPart = line.payload.subarray(0, nullIndex);
+        const caps = line.payload
+          .subarray(nullIndex + 1)
+          .toString("utf-8")
+          .split(" ")
+          .filter((token) => token.length > 0 && token !== capability);
+        const payload = Buffer.concat([
+          refPart,
+          Buffer.from([0]),
+          Buffer.from(caps.join(" "), "utf-8"),
+        ]);
+        chunks.push(encodePktLine(payload));
+        rewritten = true;
+        continue;
+      }
+    }
+
+    chunks.push(encodePktLine(line.payload));
+  }
+
+  return {
+    ...response,
+    body: Buffer.concat(chunks),
+  };
+}
+
+function rewriteReceivePackResponseAsPlainReportStatus(
+  response: GitHttpBackendResponse,
+): GitHttpBackendResponse {
+  const outerLines = parsePktLines(response.body);
+  const channel1Chunks: Buffer[] = [];
+
+  for (const line of outerLines) {
+    if (line.type !== "data" || line.payload.length === 0) {
+      continue;
+    }
+    if (line.payload[0] === 0x01) {
+      channel1Chunks.push(line.payload.subarray(1));
+    }
+  }
+
+  const reportStatus = Buffer.concat(channel1Chunks);
+  if (reportStatus.length === 0) {
+    return response;
+  }
+
+  return {
+    ...response,
+    body: reportStatus,
+    headers: {
+      ...response.headers,
+      "Content-Type": "application/x-git-receive-pack-result",
+    },
+  };
+}
+
 // ============================================================================
 // 测试
 // ============================================================================
@@ -195,6 +272,46 @@ describe("push() 端到端", () => {
 
     const branchList = git(["--git-dir", serverRepoDir, "branch", "-a"], tempDir);
     expect(branchList).not.toContain("feature");
+  });
+
+  test("协议降级：receive-pack 返回纯 report-status 时仍能正确解析 push 结果", async () => {
+    await using downgradedServer = startGitHttpBackendServer(tempDir, "/server.git", undefined, {
+      transformResponse(response, request) {
+        if (
+          request.method === "GET" &&
+          request.path.endsWith("/info/refs") &&
+          request.query === "service=git-receive-pack"
+        ) {
+          return stripCapabilityFromAdvertisement(response, "side-band-64k");
+        }
+        if (request.method === "POST" && request.path.endsWith("/git-receive-pack")) {
+          return rewriteReceivePackResponseAsPlainReportStatus(response);
+        }
+        return response;
+      },
+    });
+
+    const repo = createMemoryRepository();
+    const author = { ...FIXED_AUTHOR };
+
+    const fileHash = repo.writeBlob(Buffer.from("plain report-status"));
+    const treeHash = repo.createTree([{ mode: "100644", name: "plain.txt", hash: fileHash }]);
+    const commitHash = repo.createCommit(treeHash, [], "Plain report-status", author);
+    repo.updateRef("refs/heads/plain-status", commitHash);
+
+    const result = await repo.push(downgradedServer.url, {
+      refSpecs: ["refs/heads/plain-status:refs/heads/plain-status"],
+    });
+
+    expect(result.refUpdates).toHaveLength(1);
+    expect(result.refUpdates[0]!.success).toBe(true);
+    expect(result.progress).toEqual([]);
+
+    const remoteRef = git(
+      ["--git-dir", serverRepoDir, "rev-parse", "refs/heads/plain-status"],
+      tempDir,
+    );
+    expect(remoteRef).toBe(commitHash);
   });
 
   test("non-fast-forward 推送到远端被本地预检拒绝", async () => {

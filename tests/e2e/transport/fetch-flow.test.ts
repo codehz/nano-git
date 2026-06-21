@@ -12,10 +12,61 @@ import { git, gitInit, createTempDir, cleanupDir, createFile } from "../helpers.
 import { startGitHttpBackendServer } from "./http-server.ts";
 import { sha1 } from "@/core/types.ts";
 import { initRepository } from "@/repository/index.ts";
+import { encodeFlushPkt, encodePktLine, parsePktLines } from "@/transport/pkt-line.ts";
+
+import type { GitHttpBackendResponse, GitHttpRequestRecord } from "./http-server.ts";
+
+function stripCapabilityFromAdvertisement(
+  response: GitHttpBackendResponse,
+  capability: string,
+): GitHttpBackendResponse {
+  const lines = parsePktLines(response.body);
+  const chunks: Buffer[] = [];
+  let rewritten = false;
+
+  for (const line of lines) {
+    if (line.type === "flush") {
+      chunks.push(encodeFlushPkt());
+      continue;
+    }
+
+    if (line.type !== "data") {
+      continue;
+    }
+
+    if (!rewritten) {
+      const nullIndex = line.payload.indexOf(0);
+      if (nullIndex !== -1) {
+        const refPart = line.payload.subarray(0, nullIndex);
+        const caps = line.payload
+          .subarray(nullIndex + 1)
+          .toString("utf-8")
+          .split(" ")
+          .filter((token) => token.length > 0 && token !== capability);
+        const payload = Buffer.concat([
+          refPart,
+          Buffer.from([0]),
+          Buffer.from(caps.join(" "), "utf-8"),
+        ]);
+        chunks.push(encodePktLine(payload));
+        rewritten = true;
+        continue;
+      }
+    }
+
+    chunks.push(encodePktLine(line.payload));
+  }
+
+  return {
+    ...response,
+    body: Buffer.concat(chunks),
+  };
+}
 
 describe("完整 fetch 流程", () => {
   let tempDir: string;
   let serverRepoDir: string;
+  let workDir: string;
   let serverUrl: string;
   let server: ReturnType<typeof startGitHttpBackendServer>;
 
@@ -28,7 +79,7 @@ describe("完整 fetch 流程", () => {
     git(["init", "--bare"], serverRepoDir);
 
     // 2. 创建并推送提交
-    const workDir = join(tempDir, "work");
+    workDir = join(tempDir, "work");
     gitInit(workDir);
     createFile(workDir, "README.md", "# Hello\n");
     createFile(workDir, "src/index.js", 'console.log("hello");\n');
@@ -146,5 +197,51 @@ describe("完整 fetch 流程", () => {
     expect(result.objectCount).toBe(0);
     expect(result.fetchedRefs.size).toBe(0);
     expect(repo.refs.readRaw("refs/remotes/origin/main")).toBeNull();
+  });
+
+  test("显式 tag refspec：fetch 注解 tag 到本地 tags 命名空间", async () => {
+    git(["tag", "-a", "v1.0", "-m", "release v1.0"], workDir);
+    git(["push", serverRepoDir, "refs/tags/v1.0"], workDir);
+
+    const localDir = join(tempDir, "local-tag-fetch");
+    const repo = initRepository(localDir);
+
+    const result = await repo.fetch(serverUrl, {
+      refSpecs: ["+refs/tags/*:refs/tags/*"],
+    });
+
+    expect(result.objectCount).toBeGreaterThan(0);
+    const tagHash = repo.refs.readRaw("refs/tags/v1.0");
+    expect(tagHash).not.toBeNull();
+    expect(repo.refs.readRaw("refs/remotes/origin/main")).toBeNull();
+
+    const tagObject = repo.objects.read(sha1(tagHash!));
+    expect(tagObject.type).toBe("tag");
+  });
+
+  test("协议降级：服务端不走 side-band-64k 时 fetch 仍成功", async () => {
+    const downgradedServer = startGitHttpBackendServer(tempDir, "/server.git", undefined, {
+      transformResponse(response: GitHttpBackendResponse, request: GitHttpRequestRecord) {
+        if (
+          request.method === "GET" &&
+          request.path.endsWith("/info/refs") &&
+          request.query === "service=git-upload-pack"
+        ) {
+          return stripCapabilityFromAdvertisement(response, "side-band-64k");
+        }
+        return response;
+      },
+    });
+
+    await using serverHandle = downgradedServer;
+    const localDir = join(tempDir, "local-raw-pack-fetch");
+    const repo = initRepository(localDir);
+
+    const result = await repo.fetch(serverHandle.url);
+
+    expect(result.objectCount).toBeGreaterThan(0);
+    const mainRef = repo.refs.readRaw("refs/remotes/origin/main");
+    expect(mainRef).not.toBeNull();
+    expect(repo.objects.read(sha1(mainRef!)).type).toBe("commit");
   });
 });
