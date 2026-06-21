@@ -40,6 +40,7 @@ import { isAncestor } from "./push.ts";
 import { createSmartHttpClient } from "./smart-http.ts";
 
 import type { SHA1 } from "../core/types.ts";
+import type { GitObject } from "../core/types.ts";
 import type { ObjectSource, ObjectStore } from "../odb/types.ts";
 import type { RefStore } from "../refs/types.ts";
 import type { FetchOptions, FetchResult } from "./types.ts";
@@ -365,22 +366,20 @@ export async function fetch(
   }
 
   // 8. 解析 packfile 并写入对象
+  //     先全部解析并反序列化到内存数组，再批量写入 store，
+  //     确保不因中途错误留下部分写入的孤立对象（原子语义）。
   const reader = createPackReader(packfile);
-  let objectCount = 0;
+  const pendingObjects: Array<{ hash: SHA1; obj: GitObject }> = [];
 
   for (const packObj of reader.objects()) {
-    try {
-      const gitObj = deserializeContent(packObj.type, packObj.data);
-      store.write(gitObj);
-      objectCount++;
-    } catch (err) {
-      // 如果某个对象写入失败，继续处理其余对象
-      // 但记录错误以便调试
-      if (err instanceof Error) {
-        throw new FetchError(`Failed to write object ${packObj.hash}: ${err.message}`);
-      }
-    }
+    const gitObj = deserializeContent(packObj.type, packObj.data);
+    pendingObjects.push({ hash: packObj.hash, obj: gitObj });
   }
+
+  for (const { obj } of pendingObjects) {
+    store.write(obj);
+  }
+  const objectCount = pendingObjects.length;
 
   // 9. 更新远程跟踪引用（非强制 refspec 需满足快进条件）
   //    先校验所有 wanted tip 的对象都存在，确保完全落地后才写 ref

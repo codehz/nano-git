@@ -787,6 +787,42 @@ describe("fetch() 增量 fetch 行为", () => {
       expect(refStore.read("refs/remotes/origin/received")).toBeNull();
       expect(refStore.read("refs/remotes/origin/missing")).toBeNull();
     });
+
+    test("pack 中途出错时已有对象不被写入 store（原子语义）", async () => {
+      const objectStore = createMemoryObjectStore();
+      const refStore = createMemoryRefStore();
+
+      const blob1: GitBlob = { type: "blob", content: Buffer.from("first blob") };
+      const entry1 = toEncodedPackObject(blob1);
+      const blob2: GitBlob = { type: "blob", content: Buffer.from("second blob") };
+      const entry2 = toEncodedPackObject(blob2);
+      const blob3: GitBlob = { type: "blob", content: Buffer.from("third blob") };
+      const entry3 = toEncodedPackObject(blob3);
+
+      const { packData: fullPack } = buildEncodedPack([entry1, entry2, entry3]);
+
+      // 截断 packfile——删除尾部 20 字节校验和+部分数据，使 parseAll 中途失败
+      const truncatedPack = fullPack.subarray(0, fullPack.length - 30);
+
+      const fakeCommitHash = sha1("ffffffffffffffffffffffffffffffffffffffff");
+      const transport = createMockTransport(
+        [{ name: "refs/heads/main", hash: fakeCommitHash }],
+        { multi_ack: true, "side-band-64k": true, "ofs-delta": true },
+        () => Buffer.from(truncatedPack),
+      );
+
+      const fetchPromise = fetch(objectStore, refStore, "dummy", {
+        transport,
+        refSpecs: ["+refs/heads/*:refs/remotes/origin/*"],
+      });
+
+      expect(fetchPromise).rejects.toThrow();
+
+      // 没有任何对象应被写入 store（原子语义保障）
+      expect(objectStore.exists(entry1.hash)).toBe(false);
+      expect(objectStore.exists(entry2.hash)).toBe(false);
+      expect(objectStore.exists(entry3.hash)).toBe(false);
+    });
   });
 
   describe("force 语义", () => {
