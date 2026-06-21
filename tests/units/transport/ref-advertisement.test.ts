@@ -260,3 +260,48 @@ describe("空仓库 ref advertisement", () => {
     expect(adv.capabilities["multi_ack"]).toBe(true);
   });
 });
+
+// ============================================================================
+// 服务头校验测试
+// ============================================================================
+
+describe("服务头校验", () => {
+  test("服务头 service 名称不匹配应抛出错误", () => {
+    const hash = "95d09f2b10159347eece71399a7e2e907ea3df4f";
+    const caps = "multi_ack";
+    const data = Buffer.concat([
+      serviceHeader("git-receive-pack"), // 错误 service
+      encodeFlushPkt(),
+      refLineWithCaps(hash, "refs/heads/main", caps),
+      encodeFlushPkt(),
+    ]);
+    expect(() => parseRefAdvertisement(data, "git-upload-pack")).toThrow(RefAdvertisementError);
+    expect(() => parseRefAdvertisement(data, "git-upload-pack")).toThrow(
+      /service.*git-upload-pack/i,
+    );
+  });
+
+  test("服务头后缺少 flush-pkt 应抛出错误", () => {
+    const hash = "95d09f2b10159347eece71399a7e2e907ea3df4f";
+    const caps = "multi_ack";
+    const data = Buffer.concat([
+      serviceHeader("git-upload-pack"),
+      // 缺少 flush-pkt，直接跟 ref 行
+      refLineWithCaps(hash, "refs/heads/main", caps),
+      encodeFlushPkt(),
+    ]);
+    expect(() => parseRefAdvertisement(data, "git-upload-pack")).toThrow(RefAdvertisementError);
+    expect(() => parseRefAdvertisement(data, "git-upload-pack")).toThrow(/flush/i);
+  });
+
+  test("无服务头（原生 Git 协议）仍能正常解析", () => {
+    const hash = "95d09f2b10159347eece71399a7e2e907ea3df4f";
+    const data = Buffer.concat([
+      refLineWithCaps(hash, "refs/heads/main", "multi_ack"),
+      encodeFlushPkt(),
+    ]);
+    const adv = parseRefAdvertisement(data, "git-upload-pack");
+    expect(adv.refs).toHaveLength(1);
+    expect(adv.refs[0]!.name).toBe("refs/heads/main");
+  });
+});

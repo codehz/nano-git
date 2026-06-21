@@ -71,7 +71,7 @@ const PEELED_TAG_SUFFIX = "^{}";
  */
 export function parseRefAdvertisement(
   data: Buffer,
-  _service: "git-upload-pack" | "git-receive-pack",
+  service: "git-upload-pack" | "git-receive-pack",
 ): RefAdvertisement {
   const pktLines = parsePktLines(data);
 
@@ -82,14 +82,25 @@ export function parseRefAdvertisement(
   let idx = 0;
 
   // 1. 检查并跳过服务头信息
+  //    Smart HTTP 协议要求：如果存在服务头，则服务名必须匹配，且其后紧跟 flush-pkt。
+  //    原生 Git 协议无服务头，直接解析 refs。
   if (pktLines[idx]!.type === "data") {
     const firstPayload = (pktLines[idx] as PktLineData).payload.toString("utf-8");
     if (firstPayload.startsWith(SERVICE_HEADER_PREFIX)) {
-      idx++; // 跳过服务头
-      // 服务头后应跟一个 flush-pkt
-      if (idx < pktLines.length && pktLines[idx]!.type === "flush") {
-        idx++; // 跳过 flush
+      // 提取服务名（# service=<name>\n）
+      const headerService = firstPayload.slice(SERVICE_HEADER_PREFIX.length).trim();
+      if (headerService !== service) {
+        throw new RefAdvertisementError(`Expected service "${service}" but got "${headerService}"`);
       }
+      idx++; // 跳过服务头
+
+      // 服务头后必须跟一个 flush-pkt
+      if (idx >= pktLines.length || pktLines[idx]!.type !== "flush") {
+        throw new RefAdvertisementError(
+          `Expected flush-pkt after service header "# service=${service}"`,
+        );
+      }
+      idx++; // 跳过 flush
     }
   }
 
