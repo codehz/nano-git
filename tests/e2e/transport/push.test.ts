@@ -433,4 +433,27 @@ describe("push() 端到端", () => {
 
     expect(pushPromise).rejects.toThrow("Local ref not found");
   });
+
+  test("tree 引用缺失 blob 时在客户端失败，不向 git-http-backend 发送不完整 pack", async () => {
+    const repo = createMemoryRepository();
+    const author = { ...FIXED_AUTHOR };
+
+    const hashA = repo.writeBlob(Buffer.from("present blob"));
+    const missingBlob = repo.hashObject(Buffer.from("missing blob"));
+    const treeHash = repo.createTree([
+      { mode: "100644", name: "ok.txt", hash: hashA },
+      { mode: "100644", name: "missing.txt", hash: missingBlob },
+    ]);
+    const commitHash = repo.createCommit(treeHash, [], "Corrupt tree commit", author);
+    repo.updateRef("refs/heads/corrupt-tree", commitHash);
+
+    const pushPromise = repo.push(serverUrl, {
+      refSpecs: ["refs/heads/corrupt-tree:refs/heads/corrupt-tree"],
+    });
+
+    expect(pushPromise).rejects.toThrow(/missing from the local store/i);
+
+    const branchList = git(["--git-dir", serverRepoDir, "branch", "-a"], tempDir);
+    expect(branchList).not.toContain("corrupt-tree");
+  });
 });

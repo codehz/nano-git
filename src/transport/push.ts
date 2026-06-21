@@ -81,6 +81,31 @@ const ZERO_HASH = "0000000000000000000000000000000000000000";
  * @param hash - 起始对象哈希
  * @param reachable - 用于收集结果的可达集合
  */
+/** collectReachable 遇到缺失对象时的策略 */
+export type CollectReachableMissing = "throw" | "skip" | "skip-commit-parents";
+
+function throwIfMissingObject(
+  objects: ObjectStore,
+  hash: SHA1,
+  missing: CollectReachableMissing,
+  viaCommitParent: boolean,
+): void {
+  if (objects.exists(hash)) {
+    return;
+  }
+
+  const shouldThrow =
+    missing === "throw" || (missing === "skip-commit-parents" && !viaCommitParent);
+
+  if (shouldThrow) {
+    throw new PushError(
+      `Object ${hash} is missing from the local store. ` +
+        `The local repository may be incomplete or corrupted. ` +
+        `Try fetching or running a repair before pushing.`,
+    );
+  }
+}
+
 /**
  * 从指定哈希出发，递归收集所有可达对象哈希
  *
@@ -89,26 +114,23 @@ const ZERO_HASH = "0000000000000000000000000000000000000000";
  * @param reachable - 用于收集结果的可达集合
  * @param missing - 遇到缺失对象时的行为：
  *   - `"skip"`（默认）：静默跳过，用于远程排除计算
- *   - `"throw"`：抛出 PushError，用于本地可达性校验
+ *   - `"throw"`：任意缺失均抛出 PushError
+ *   - `"skip-commit-parents"`：仅沿 commit parent 边缺失时跳过（shallow push）
+ * @param viaCommitParent - 当前边是否来自 commit 的 parent 引用
  */
 function collectReachableFrom(
   objects: ObjectStore,
   hash: SHA1,
   reachable: Set<SHA1>,
-  missing: "throw" | "skip" = "skip",
+  missing: CollectReachableMissing = "skip",
+  viaCommitParent = false,
 ): void {
   if (reachable.has(hash)) {
     return;
   }
 
   if (!objects.exists(hash)) {
-    if (missing === "throw") {
-      throw new PushError(
-        `Object ${hash} is missing from the local store. ` +
-          `The local repository may be incomplete or corrupted. ` +
-          `Try fetching or running a repair before pushing.`,
-      );
-    }
+    throwIfMissingObject(objects, hash, missing, viaCommitParent);
     return;
   }
 
@@ -120,17 +142,17 @@ function collectReachableFrom(
       return;
     case "tree":
       for (const entry of obj.entries) {
-        collectReachableFrom(objects, entry.hash, reachable, missing);
+        collectReachableFrom(objects, entry.hash, reachable, missing, false);
       }
       return;
     case "commit":
-      collectReachableFrom(objects, obj.tree, reachable, missing);
+      collectReachableFrom(objects, obj.tree, reachable, missing, false);
       for (const parent of obj.parents) {
-        collectReachableFrom(objects, parent, reachable, missing);
+        collectReachableFrom(objects, parent, reachable, missing, true);
       }
       return;
     case "tag":
-      collectReachableFrom(objects, obj.object, reachable, missing);
+      collectReachableFrom(objects, obj.object, reachable, missing, false);
       return;
   }
 }
@@ -145,11 +167,11 @@ function collectReachableFrom(
 export function collectReachable(
   objects: ObjectStore,
   roots: SHA1[],
-  missing: "throw" | "skip" = "skip",
+  missing: CollectReachableMissing = "skip",
 ): Set<SHA1> {
   const reachable = new Set<SHA1>();
   for (const hash of roots) {
-    collectReachableFrom(objects, hash, reachable, missing);
+    collectReachableFrom(objects, hash, reachable, missing, false);
   }
   return reachable;
 }
@@ -474,10 +496,8 @@ export async function push(
   const localRoots = pushRefs
     .filter((r): r is PushRefItem & { localHash: SHA1 } => r.localHash !== null)
     .map((r) => r.localHash);
-  // 本地可达性使用 skip 模式：shallow fetch 场景下上游 commit 缺失是正常的，
-  // 无需报错——缺失的上游对象服务端已有，实际需要发送的只有本地新增对象。
-  // 后续 pack 构建阶段 store.read() 仍会捕获真正的本地对象损坏。
-  const reachableLocal = collectReachable(store, localRoots, "skip");
+  // 本地可达性：tree/blob/tag 缺失视为损坏；仅 commit parent 缺失视为 shallow 边界
+  const reachableLocal = collectReachable(store, localRoots, "skip-commit-parents");
 
   // 收集远程已有 refs 的可达对象（用于排除已存在的对象）
   // 此处使用 skip 模式：远程对象在本地缺失是正常情况
@@ -495,8 +515,7 @@ export async function push(
     }
   }
 
-  // 7. 构建 packfile
-  //    此时 objectsToSend 中的对象已由遍历验证过存在性，无需额外容错
+  // 7. 构建 packfile（objectsToSend 已在本地可达性遍历中校验存在）
   const packWriter = createPackWriter();
   for (const hash of objectsToSend) {
     const obj = store.read(hash);
