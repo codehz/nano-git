@@ -87,6 +87,8 @@ export interface ParsedRefSpec {
   force: boolean;
   srcPattern: string;
   dstPattern: string;
+  /** 原始 refspec 是否包含通配符 * */
+  isWildcard: boolean;
 }
 
 // ============================================================================
@@ -103,7 +105,7 @@ export interface ParsedRefSpec {
  * @example
  * ```ts
  * parseRefSpec("+refs/heads/*:refs/remotes/origin/*")
- * // => { force: true, srcPattern: "refs/heads/", dstPattern: "refs/remotes/origin/" }
+ * // => { force: true, srcPattern: "refs/heads/", dstPattern: "refs/remotes/origin/", isWildcard: true }
  * ```
  */
 export function parseRefSpec(refSpec: string): ParsedRefSpec {
@@ -118,18 +120,27 @@ export function parseRefSpec(refSpec: string): ParsedRefSpec {
   const src = spec.substring(0, colonIndex);
   const dst = spec.substring(colonIndex + 1);
 
-  // 处理通配符
+  // 是否包含通配符（* 只允许出现在末尾，由外层调用确保）
+  const isWildcard = src.endsWith("*") && dst.endsWith("*");
+
+  // 处理通配符：去掉尾部 *
   const srcPattern = src.replace(/\*$/, "");
   const dstPattern = dst.replace(/\*$/, "");
 
-  return { force, srcPattern, dstPattern };
+  return { force, srcPattern, dstPattern, isWildcard };
 }
 
 /**
  * 判断远程引用是否匹配 refspec 源模式
+ *
+ * 通配符 refspec 使用 startsWith 匹配前缀，
+ * 精确 refspec 需要完全相等。
  */
 export function matchesRefSpec(ref: RemoteRef, spec: ParsedRefSpec): boolean {
-  return ref.name.startsWith(spec.srcPattern);
+  if (spec.isWildcard) {
+    return ref.name.startsWith(spec.srcPattern);
+  }
+  return ref.name === spec.srcPattern;
 }
 
 /**

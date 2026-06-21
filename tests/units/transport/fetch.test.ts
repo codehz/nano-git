@@ -106,6 +106,14 @@ describe("matchesRefSpec / mapRefName", () => {
     expect(matchesRefSpec(ref, defaultSpec)).toBe(false);
   });
 
+  test("精确 refspec 按字面匹配，不做前缀匹配", () => {
+    const exactSpec = parseRefSpec("+refs/heads/main:refs/remotes/origin/main");
+    const matchingRef = makeRef("refs/heads/main");
+    const nonMatchingRef = makeRef("refs/heads/main-old");
+    expect(matchesRefSpec(matchingRef, exactSpec)).toBe(true);
+    expect(matchesRefSpec(nonMatchingRef, exactSpec)).toBe(false);
+  });
+
   test("映射 ref 名", () => {
     expect(mapRefName("refs/heads/main", defaultSpec)).toBe("refs/remotes/origin/main");
     expect(mapRefName("refs/heads/feature/xyz", defaultSpec)).toBe(
@@ -178,6 +186,18 @@ describe("determineWants()", () => {
   test("空远程返回空 wants", () => {
     const wants = determineWants([], new Map(), [defaultSpec]);
     expect(wants).toHaveLength(0);
+  });
+
+  test("精确 refspec 不会因前缀匹配引入多余 wants", () => {
+    const exactSpec = parseRefSpec("+refs/heads/main:refs/remotes/origin/main");
+    const refs: RemoteRef[] = [
+      makeRef("refs/heads/main", "95d09f2b10159347eece71399a7e2e907ea3df4f"),
+      makeRef("refs/heads/main-old", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+    ];
+    const wants = determineWants(refs, new Map(), [exactSpec]);
+    expect(wants).toHaveLength(1);
+    expect(wants[0]!.remote.name).toBe("refs/heads/main");
+    expect(wants[0]!.localName).toBe("refs/remotes/origin/main");
   });
 });
 

@@ -347,9 +347,7 @@ export function determinePushRefs(
   const items: PushRefItem[] = [];
 
   for (const spec of specs) {
-    const isWildcard = spec.srcPattern.endsWith("/");
-
-    if (isWildcard) {
+    if (spec.isWildcard) {
       // 通配符 refspec：匹配所有以 srcPattern 开头的本地引用
       for (const [localRef, localHash] of localRefs) {
         if (!localRef.startsWith(spec.srcPattern)) continue;
