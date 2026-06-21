@@ -8,11 +8,19 @@
  *   want <hash>\n                    （后续 want）
  *   0000                             （flush）
  *   deepen <n>\n                     （可选，shallow fetch）
- *   0000                             （flush，如果有 deepen）
- *   have <hash>\n                    （当前实现一次性发送所有 haves）
- *   done\n
+ *   shallow <hash>\n                 （可选，已有 shallow 边界）
+ *   0000                             （flush）
+ *   have <hash>\n                    （重放已确认 common + 本轮新 have）
+ *   done\n                           （最终轮）
+ *
+ * 多轮 stateless-rpc 语义：
+ * - 每轮 HTTP POST 都是独立的，服务端不维持状态
+ * - 每轮必须重发完整前缀（want/deepen/shallow）
+ * - 已确认 common 的 have 需要重放（但不需要重放全部历史 have）
+ * - 最终轮以 done 结尾，中间轮以 flush 结尾
  *
  * @see https://git-scm.com/docs/git-upload-pack#_request
+ * @see https://git-scm.com/docs/http-protocol
  */
 
 import { encodePktLine, encodeFlushPkt, parsePktLines } from "./pkt-line.ts";
@@ -85,68 +93,46 @@ export function collectHaveCommits(store: ObjectStore, tips: SHA1[]): SHA1[] {
 }
 
 // ============================================================================
-// 请求生成
+// 请求前缀构造
 // ============================================================================
 
 /**
- * 构建 upload-pack 请求 body
+ * upload-pack 请求前缀选项
+ */
+export interface UploadPackRequestPrefixOptions {
+  /** 请求的 want 对象哈希列表（至少一个） */
+  wants: SHA1[];
+  /** 能力列表（如 ["multi_ack", "side-band-64k", "ofs-delta"]） */
+  capabilities: string[];
+  /** 可选 shallow clone 深度 */
+  depth?: number;
+  /** 可选已有 shallow 边界 commit 列表 */
+  shallow?: SHA1[];
+}
+
+/**
+ * 构建 upload-pack 请求前缀
  *
- * @param wants - 请求的 want 对象哈希列表（至少一个）
- * @param haves - 已有的 have 对象哈希列表（增量 fetch 时用）
- * @param capabilities - 能力列表（如 ["multi_ack", "side-band-64k", "ofs-delta"]）
- * @param depth - 可选 shallow clone 深度（设置后添加 deepen 命令）
- * @param shallow - 可选已有 shallow 边界 commit 列表（设置后添加 shallow 行）
- * @returns pkt-line 编码的请求 body Buffer
+ * 生成包含 want、deepen、shallow 行的固定前缀部分，以 flush 结尾。
+ * 此前缀在多轮 stateless-rpc 协商中每轮都必须重发。
+ * 不包含任何 have 行。
+ *
+ * @param options - 前缀选项
+ * @returns pkt-line 编码的前缀 Buffer
  *
  * @example
  * ```ts
- * // 初始 clone
- * const body = buildUploadPackRequest(
- *   [sha1("95d09f2b...")],
- *   [],
- *   ["multi_ack", "side-band-64k", "ofs-delta"],
- * );
- * // => "want 95d09f2b... multi_ack side-band-64k ofs-delta\n"
+ * const prefix = buildUploadPackRequestPrefix({
+ *   wants: [sha1("95d09f2b...")],
+ *   capabilities: ["multi_ack", "side-band-64k"],
+ * });
+ * // => "want 95d09f2b... multi_ack side-band-64k\n"
  * //   + "0000"
- * //   + "done\n"
- *
- * // Shallow clone
- * const shallow = buildUploadPackRequest(
- *   [sha1("95d09f2b...")],
- *   [],
- *   [],
- *   3,
- * );
- * // => "want 95d09f2b...\n"
- * //   + "0000"
- * //   + "deepen 3\n"
- * //   + "0000"
- * //   + "done\n"
- *
- * // 增量 shallow fetch：带上已有 shallow 边界
- * const followUp = buildUploadPackRequest(
- *   [sha1("new-commit...")],
- *   [sha1("old-commit...")],
- *   [],
- *   3,
- *   [sha1("existing-shallow-boundary...")],
- * );
- * // => "want new-commit...\n"
- * //   + "0000"
- * //   + "deepen 3\n"
- * //   + "shallow existing-shallow-boundary...\n"
- * //   + "0000"
- * //   + "have old-commit...\n"
- * //   + "done\n"
  * ```
  */
-export function buildUploadPackRequest(
-  wants: SHA1[],
-  haves: SHA1[],
-  capabilities: string[],
-  depth?: number,
-  shallow?: SHA1[],
-): Buffer {
+export function buildUploadPackRequestPrefix(options: UploadPackRequestPrefixOptions): Buffer {
+  const { wants, capabilities, depth, shallow } = options;
+
   if (wants.length === 0) {
     throw new Error("At least one want is required");
   }
@@ -167,7 +153,7 @@ export function buildUploadPackRequest(
     }
   }
 
-  // deepen 命令（shallow fetch 时添加，必须在 flush 之前）
+  // deepen 命令（shallow fetch 时添加）
   if (depth !== undefined) {
     chunks.push(encodePktLine(`deepen ${depth}\n`));
   }
@@ -182,27 +168,111 @@ export function buildUploadPackRequest(
   // wants + deepen + shallow 之后的 flush
   chunks.push(encodeFlushPkt());
 
-  // have 行：当前 fetch 编排使用单次 stateless-rpc 请求，
-  // 一次性发送完整 have 列表，避免中间 flush 提前结束协商阶段。
-  for (let i = 0; i < haves.length; i++) {
-    chunks.push(encodePktLine(`have ${haves[i]!}\n`));
-  }
-
-  // done 命令
-  chunks.push(encodePktLine("done\n"));
-
   return Buffer.concat(chunks);
 }
 
 /**
- * 构建不带 done 的 upload-pack 协商轮次请求
+ * 构建 upload-pack 协商轮次请求（完整 body）
  *
- * @param wants - want 列表
- * @param haves - 本轮发送的 have 列表
+ * 在已构建的前缀后追加 have 行和结束标记。
+ * 适用于多轮 stateless-rpc 协商场景。
+ *
+ * @param prefix - 由 buildUploadPackRequestPrefix 生成的前缀
+ * @param replayHaves - 需要重放的已确认 common 的 have 列表
+ * @param newHaves - 本轮新增的 have 列表
+ * @param done - 是否为最终轮（true 时以 done\n 结尾，false 时以 flush 结尾）
+ * @returns pkt-line 编码的完整请求 body Buffer
+ *
+ * @example
+ * ```ts
+ * // 中间轮次
+ * const body = buildUploadPackNegotiationRequest(prefix, [commonHash], [newHash], false);
+ * // => prefix + "have <common>\n" + "have <new>\n" + "0000"
+ *
+ * // 最终轮次
+ * const finalBody = buildUploadPackNegotiationRequest(prefix, [commonHash], [], true);
+ * // => prefix + "have <common>\n" + "done\n"
+ * ```
+ */
+export function buildUploadPackNegotiationRequest(
+  prefix: Buffer,
+  replayHaves: SHA1[],
+  newHaves: SHA1[],
+  done: boolean,
+): Buffer {
+  const chunks: Buffer[] = [prefix];
+
+  for (const hash of replayHaves) {
+    chunks.push(encodePktLine(`have ${hash}\n`));
+  }
+
+  for (const hash of newHaves) {
+    chunks.push(encodePktLine(`have ${hash}\n`));
+  }
+
+  if (done) {
+    chunks.push(encodePktLine("done\n"));
+  } else {
+    chunks.push(encodeFlushPkt());
+  }
+
+  return Buffer.concat(chunks);
+}
+
+// ============================================================================
+// 请求构造（单轮便捷包装）
+// ============================================================================
+
+/**
+ * 构建单轮 upload-pack 请求 body
+ *
+ * 便捷包装函数，内部调用 buildUploadPackRequestPrefix 和
+ * buildUploadPackNegotiationRequest。适用于一次性请求场景
+ *（如初始 clone 或 haves 数量不超过 MAX_HAVES_PER_ROUND 的增量 fetch）。
+ *
+ * @param wants - 请求的 want 对象哈希列表（至少一个）
+ * @param haves - 已有的 have 对象哈希列表
  * @param capabilities - 能力列表
- * @param depth - shallow 深度
+ * @param depth - 可选 shallow clone 深度
  * @param shallow - 可选已有 shallow 边界 commit 列表
- * @returns pkt-line 编码请求体
+ * @returns pkt-line 编码的请求 body Buffer（始终以 done 结尾）
+ *
+ * @example
+ * ```ts
+ * // 初始 clone
+ * const body = buildUploadPackRequest(
+ *   [sha1("95d09f2b...")],
+ *   [],
+ *   ["multi_ack", "side-band-64k", "ofs-delta"],
+ * );
+ * // => "want 95d09f2b... multi_ack side-band-64k ofs-delta\n"
+ * //   + "0000"
+ * //   + "done\n"
+ *
+ * // 增量 shallow fetch：带上已有 shallow 边界
+ * const followUp = buildUploadPackRequest(
+ *   [sha1("new-commit...")],
+ *   [sha1("old-commit...")],
+ *   ["shallow"],
+ *   3,
+ *   [sha1("existing-shallow-boundary...")],
+ * );
+ * ```
+ */
+export function buildUploadPackRequest(
+  wants: SHA1[],
+  haves: SHA1[],
+  capabilities: string[],
+  depth?: number,
+  shallow?: SHA1[],
+): Buffer {
+  const prefix = buildUploadPackRequestPrefix({ wants, capabilities, depth, shallow });
+  return buildUploadPackNegotiationRequest(prefix, [], haves, true);
+}
+
+/**
+ * @deprecated 请使用 buildUploadPackRequestPrefix + buildUploadPackNegotiationRequest
+ *             替代。此函数在内部构造前缀并追加 haves，但不支持 replayHaves。
  */
 export function buildUploadPackNegotiationRound(
   wants: SHA1[],
@@ -211,47 +281,113 @@ export function buildUploadPackNegotiationRound(
   depth?: number,
   shallow?: SHA1[],
 ): Buffer {
-  if (wants.length === 0) {
-    throw new Error("At least one want is required");
-  }
+  const prefix = buildUploadPackRequestPrefix({ wants, capabilities, depth, shallow });
+  return buildUploadPackNegotiationRequest(prefix, [], haves, false);
+}
 
-  if (depth !== undefined && depth < 1) {
-    throw new Error("Depth must be a positive integer");
-  }
+// ============================================================================
+// 协商状态
+// ============================================================================
 
-  const chunks: Buffer[] = [];
+/**
+ * 多轮 stateless-rpc 协商状态
+ *
+ * 跨 HTTP POST 维护协商上下文，确保每轮请求都能正确
+ * 重放服务端已确认的公共点（common）。
+ */
+export interface NegotiationState {
+  /** 下一轮必须重放的、已被服务端确认的公共点 */
+  commonToReplay: SHA1[];
+  /** common 去重集合 */
+  commonSet: Set<SHA1>;
+  /** 已发送过 have 的 commit 集合，避免重复 */
+  sentSet: Set<SHA1>;
+  /** have 候选列表的遍历偏移 */
+  offset: number;
+  /** 跨轮累计的 shallow 边界 */
+  shallow: SHA1[];
+  /** 跨轮累计的 unshallow 边界 */
+  unshallow: SHA1[];
+}
 
-  for (let i = 0; i < wants.length; i++) {
-    const hash = wants[i]!;
-    if (i === 0 && capabilities.length > 0) {
-      chunks.push(encodePktLine(`want ${hash} ${capabilities.join(" ")}\n`));
-    } else {
-      chunks.push(encodePktLine(`want ${hash}\n`));
+/**
+ * 创建初始协商状态
+ */
+export function createNegotiationState(): NegotiationState {
+  return {
+    commonToReplay: [],
+    commonSet: new Set(),
+    sentSet: new Set(),
+    offset: 0,
+    shallow: [],
+    unshallow: [],
+  };
+}
+
+/**
+ * 吸收 ACK 回复中的 common/ready 信息到协商状态
+ *
+ * 将服务端确认的公共点加入 commonToReplay，
+ * 确保下一轮请求会重放这些 have。
+ *
+ * @param state - 协商状态
+ * @param ack - ACK 回复条目
+ */
+export function absorbAckCommon(
+  state: NegotiationState,
+  ack: { hash: SHA1; status: UploadPackAckStatus },
+): void {
+  if (ack.status === "common" || ack.status === "ready") {
+    if (!state.commonSet.has(ack.hash)) {
+      state.commonSet.add(ack.hash);
+      state.commonToReplay.push(ack.hash);
     }
   }
+}
 
-  // deepen 命令（shallow fetch 时添加，必须在 flush 之前）
-  if (depth !== undefined) {
-    chunks.push(encodePktLine(`deepen ${depth}\n`));
-  }
-
-  // shallow 行（已有 shallow 边界，在 deepen 之后、flush 之前）
-  if (shallow !== undefined && shallow.length > 0) {
-    for (const hash of shallow) {
-      chunks.push(encodePktLine(`shallow ${hash}\n`));
+/**
+ * 合并 shallow/unshallow 信息到协商状态
+ *
+ * @param state - 协商状态
+ * @param response - 本轮协商响应
+ */
+export function mergeShallowInfo(
+  state: NegotiationState,
+  response: UploadPackNegotiationResponse,
+): void {
+  for (const h of response.shallow) {
+    if (!state.shallow.includes(h)) {
+      state.shallow.push(h);
     }
   }
-
-  // wants + deepen + shallow 之后的 flush
-  chunks.push(encodeFlushPkt());
-
-  for (const hash of haves) {
-    chunks.push(encodePktLine(`have ${hash}\n`));
+  for (const h of response.unshallow) {
+    if (!state.unshallow.includes(h)) {
+      state.unshallow.push(h);
+    }
   }
+}
 
-  chunks.push(encodeFlushPkt());
-
-  return Buffer.concat(chunks);
+/**
+ * 获取下一批待发送的 have 候选
+ *
+ * 从 haves 列表中按顺序取出最多 maxPerRound 个未发送过的 commit。
+ *
+ * @param haves - 完整 have 候选列表（Consecutive 排序）
+ * @param state - 协商状态
+ * @param maxPerRound - 每轮最大发送数量
+ * @returns 本轮新增的 have 列表
+ */
+export function nextHaveChunk(haves: SHA1[], state: NegotiationState, maxPerRound: number): SHA1[] {
+  const chunk: SHA1[] = [];
+  while (state.offset < haves.length && chunk.length < maxPerRound) {
+    const hash = haves[state.offset]!;
+    state.offset++;
+    if (!state.sentSet.has(hash)) {
+      state.sentSet.add(hash);
+      chunk.push(hash);
+    }
+  }
+  return chunk;
 }
 
 /**

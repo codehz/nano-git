@@ -25,9 +25,13 @@ import { deserializeContent } from "../objects/codec.ts";
 import { createPackReader } from "../odb/pack/pack-reader.ts";
 import { HEADS_PREFIX, TAGS_PREFIX, HEAD_REF } from "../refs/types.ts";
 import {
-  buildUploadPackNegotiationRound,
-  buildUploadPackRequest,
+  buildUploadPackRequestPrefix,
+  buildUploadPackNegotiationRequest,
   collectHaveCommits,
+  createNegotiationState,
+  absorbAckCommon,
+  mergeShallowInfo,
+  nextHaveChunk,
   MAX_HAVES_PER_ROUND,
   parseUploadPackNegotiationResponse,
 } from "./negotiate.ts";
@@ -343,7 +347,14 @@ function extractCapabilities(serverCaps: Record<string, string | true>): string[
 }
 
 /**
- * 执行 Consecutive 协商并返回最终 packfile 及 shallow 信息
+ * 执行多轮 stateless-rpc 协商并返回最终 packfile 及 shallow 信息
+ *
+ * 多轮语义：
+ * - 每轮 HTTP POST 都是独立的，服务端不维持状态
+ * - 每轮重发完整前缀（want/deepen/shallow）
+ * - 已确认 common 的 have 在后续轮次中重放（无需重放全部历史 have）
+ * - 最终轮以 done 结尾，中间轮以 flush 结尾
+ * - shallow/unshallow 跨轮累计
  */
 async function negotiateAndFetchPackfile(
   client: import("./types.ts").RemoteTransport,
@@ -353,41 +364,74 @@ async function negotiateAndFetchPackfile(
   depth?: number,
   shallow?: SHA1[],
 ): Promise<{ packfile: Buffer; shallow: SHA1[]; unshallow: SHA1[] }> {
+  // 构建固定前缀（包含 want/deepen/shallow + flush）
+  const prefix = buildUploadPackRequestPrefix({
+    wants,
+    capabilities,
+    depth,
+    // shallow 边界只在 deepen 请求时发送
+    shallow: depth !== undefined ? shallow : undefined,
+  });
+
+  const state = createNegotiationState();
+
+  // 辅助函数：发送一轮请求并解析响应
   async function sendRound(
-    body: Buffer,
-  ): Promise<{ packfile: Buffer; shallow: SHA1[]; unshallow: SHA1[] }> {
+    replayHaves: SHA1[],
+    newHaves: SHA1[],
+    done: boolean,
+  ): Promise<{
+    response: import("./negotiate.ts").UploadPackNegotiationResponse;
+    packfile: Buffer;
+  }> {
+    const body = buildUploadPackNegotiationRequest(prefix, replayHaves, newHaves, done);
     const { data, packfile } = await client.postUploadPack(body);
-    if (packfile.length > 0) {
-      const response = parseUploadPackNegotiationResponse(data);
-      return { packfile, shallow: response.shallow, unshallow: response.unshallow };
-    }
     const response = parseUploadPackNegotiationResponse(data);
-    return { packfile, shallow: response.shallow, unshallow: response.unshallow };
+
+    // 累计 shallow/unshallow 信息
+    mergeShallowInfo(state, response);
+
+    // 吸收 ACK common/ready 到 replay 集合
+    for (const ack of response.acknowledgements) {
+      absorbAckCommon(state, ack);
+    }
+
+    return { response, packfile };
   }
 
+  // 初始 clone：无 haves，直接发 done 请求
   if (haves.length === 0) {
-    return sendRound(buildUploadPackRequest(wants, [], capabilities, depth, shallow));
+    const { packfile } = await sendRound([], [], true);
+    return { packfile, shallow: state.shallow, unshallow: state.unshallow };
   }
 
-  let offset = 0;
-  while (offset < haves.length) {
-    const chunk = haves.slice(offset, offset + MAX_HAVES_PER_ROUND);
-    const isLastRound = offset + chunk.length >= haves.length;
-    const body = isLastRound
-      ? buildUploadPackRequest(wants, chunk, capabilities, depth, shallow)
-      : buildUploadPackNegotiationRound(wants, chunk, capabilities, depth, shallow);
+  // 多轮增量协商
+  while (true) {
+    const newChunk = nextHaveChunk(haves, state, MAX_HAVES_PER_ROUND);
+    const isLast = state.offset >= haves.length;
 
-    const result = await sendRound(body);
-    if (result.packfile.length > 0) {
-      return result;
+    const { response, packfile } = await sendRound(state.commonToReplay, newChunk, isLast);
+
+    // 如果服务端返回了 packfile，直接返回
+    if (packfile.length > 0) {
+      return { packfile, shallow: state.shallow, unshallow: state.unshallow };
     }
 
-    if (isLastRound) {
-      return result;
+    // 如果服务端说 "ready"，立即发最终 done 请求
+    if (response.acknowledgements.some((a) => a.status === "ready")) {
+      const { packfile: finalPackfile } = await sendRound(state.commonToReplay, [], true);
+      return {
+        packfile: finalPackfile,
+        shallow: state.shallow,
+        unshallow: state.unshallow,
+      };
     }
 
-    offset += chunk.length;
+    // 如果是最后一轮且服务端仍未返回 packfile，维持当前行为
+    if (isLast) {
+      return { packfile, shallow: state.shallow, unshallow: state.unshallow };
+    }
+
+    // 继续下一轮
   }
-
-  return { packfile: Buffer.alloc(0), shallow: [], unshallow: [] };
 }
