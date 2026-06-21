@@ -13,7 +13,7 @@
  */
 
 import { GitError } from "../core/errors.ts";
-import { parsePktLines } from "./pkt-line.ts";
+import { parsePktLines, splitPktLinesFromBuffer } from "./pkt-line.ts";
 
 // ============================================================================
 // 常量
@@ -111,6 +111,36 @@ export function extractProgress(data: Buffer): string[] {
   });
 
   return messages;
+}
+
+/**
+ * 从非 side-band 编码的响应中提取原始 packfile 数据
+ *
+ * Git 协议中，若未协商 side-band-64k，upload-pack 的响应格式为：
+ * `<pkt-line 头部（NAK/ACK）> + <原始 packfile 数据>`。
+ * 此函数解析头部 pkt-lines，将剩余原始数据作为 packfile 返回。
+ *
+ * @param data - 非 side-band 响应的完整数据
+ * @returns 原始 packfile buffer
+ * @throws {SideBandError} 当尾部无 packfile 数据时
+ *
+ * @example
+ * ```ts
+ * const response = Buffer.concat([
+ *   encodePktLine("NAK\n"),
+ *   rawPackfileData,
+ * ]);
+ * const packfile = extractRawPackfile(response);
+ * ```
+ */
+export function extractRawPackfile(data: Buffer): Buffer {
+  const { trailing } = splitPktLinesFromBuffer(data);
+
+  if (trailing.length === 0) {
+    throw new SideBandError("No packfile data found in non-side-band response");
+  }
+
+  return trailing;
 }
 
 // ============================================================================

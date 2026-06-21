@@ -16,7 +16,7 @@ import { GitError } from "../core/errors.ts";
 import { parsePktLines } from "./pkt-line.ts";
 import { parseReceivePackResult, ReceivePackResultError } from "./receive-pack-result.ts";
 import { parseRefAdvertisement, RefAdvertisementError } from "./ref-advertisement.ts";
-import { extractPackfile, extractProgress } from "./side-band.ts";
+import { extractPackfile, extractProgress, extractRawPackfile } from "./side-band.ts";
 
 import type { PktLineData } from "./pkt-line.ts";
 import type { RefAdvertisement, PushRefUpdate, RemoteTransport } from "./types.ts";
@@ -253,8 +253,8 @@ export function createSmartHttpClient(baseUrl: string, auth?: SmartHttpAuth): Sm
         packfile = extractPackfile(data);
         progress = extractProgress(data);
       } catch {
-        // 非 side-band 响应（如纯 NAK），返回空 packfile
-        packfile = Buffer.alloc(0);
+        // 非 side-band 响应（如 NAK + 原始 packfile），尝试直接从 pkt-line 尾部提取
+        packfile = extractRawPackfile(data);
         progress = [];
       }
 

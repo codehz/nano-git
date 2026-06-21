@@ -13,7 +13,12 @@
 import { describe, test, expect } from "bun:test";
 
 import { encodePktLine } from "@/transport/pkt-line.ts";
-import { extractPackfile, extractProgress, SideBandError } from "@/transport/side-band.ts";
+import {
+  extractPackfile,
+  extractProgress,
+  extractRawPackfile,
+  SideBandError,
+} from "@/transport/side-band.ts";
 
 // ============================================================================
 // 辅助函数
@@ -146,5 +151,81 @@ describe("未知 channel", () => {
   test("仅包含未知 channel 应有错误", () => {
     const data = Buffer.concat([sideBandFrame(4, "unknown")]);
     expect(() => extractPackfile(data)).toThrow(SideBandError);
+  });
+});
+
+// ============================================================================
+// extractRawPackfile（非 side-band 响应解析）
+// ============================================================================
+
+describe("extractRawPackfile()", () => {
+  /** 构造一个最小 packfile（12 字节头部 + 20 字节校验和） */
+  function createMinimalPackfile(): Buffer {
+    const header = Buffer.alloc(12);
+    header.write("PACK", 0, "utf-8"); // 签名
+    header.writeUInt32BE(2, 4); // 版本
+    header.writeUInt32BE(0, 8); // 对象数 = 0（空 packfile）
+    // 不需要真实校验和，测试只关心提取逻辑
+    return header;
+  }
+
+  test("从 NAK + raw PACK 响应中提取 packfile", () => {
+    const rawPack = createMinimalPackfile();
+    const nakLine = encodePktLine("NAK\n");
+    const data = Buffer.concat([nakLine, rawPack]);
+
+    const result = extractRawPackfile(data);
+    expect(result).toBeInstanceOf(Buffer);
+    expect(result.length).toBe(rawPack.length);
+    expect(result.toString("utf-8").startsWith("PACK")).toBe(true);
+  });
+
+  test("从 flush-pkt + raw PACK 响应中提取 packfile", () => {
+    const rawPack = createMinimalPackfile();
+    const nakLine = encodePktLine("NAK\n");
+    const flushPkt = Buffer.from("0000", "utf-8");
+    const data = Buffer.concat([nakLine, flushPkt, rawPack]);
+
+    const result = extractRawPackfile(data);
+    expect(result.length).toBe(rawPack.length);
+    expect(result.toString("utf-8").startsWith("PACK")).toBe(true);
+  });
+
+  test("packfile 数据保持完整不变", () => {
+    const rawPack = createMinimalPackfile();
+    const ackLine = encodePktLine("ACK somehash\n");
+    const data = Buffer.concat([ackLine, rawPack]);
+
+    const result = extractRawPackfile(data);
+    expect(Buffer.compare(result, rawPack)).toBe(0);
+  });
+
+  test("仅有 pkt-lines 无 packfile 应抛出 SideBandError", () => {
+    const data = encodePktLine("NAK\n");
+    expect(() => extractRawPackfile(data)).toThrow(SideBandError);
+  });
+
+  test("空数据应抛出 SideBandError", () => {
+    expect(() => extractRawPackfile(Buffer.alloc(0))).toThrow(SideBandError);
+  });
+
+  test("无前导 pkt-lines 的纯 packfile 数据也能提取", () => {
+    const rawPack = createMinimalPackfile();
+    const result = extractRawPackfile(rawPack);
+    expect(Buffer.compare(result, rawPack)).toBe(0);
+  });
+
+  test("多行 ACK + flush-pkt + packfile", () => {
+    const rawPack = createMinimalPackfile();
+    const lines = [
+      encodePktLine("ACK 1111111111111111111111111111111111111111\n"),
+      encodePktLine("ACK 2222222222222222222222222222222222222222\n"),
+      Buffer.from("0000", "utf-8"),
+      rawPack,
+    ];
+    const data = Buffer.concat(lines);
+
+    const result = extractRawPackfile(data);
+    expect(Buffer.compare(result, rawPack)).toBe(0);
   });
 });

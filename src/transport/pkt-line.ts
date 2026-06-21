@@ -221,3 +221,85 @@ export function parsePktLines(data: Buffer): PktLine[] {
 
   return result;
 }
+
+// ============================================================================
+// 带尾部数据的 pkt-line 解析
+// ============================================================================
+
+/**
+ * 解析 pkt-line 编码的数据流，将有效帧与尾部原始二进制数据分离
+ *
+ * 与 {@link parsePktLines} 不同，此函数不会因尾部存在非 pkt-line 原始数据而抛出错误，
+ * 而是将剩余数据作为 trailing 返回。适用于解析非 side-band 编码的 upload-pack 响应：
+ * pkt-line 头部（ACK/NAK）+ 尾部原始 packfile 数据。
+ *
+ * @param data - 可能包含尾部原始数据的 pkt-line 编码 buffer
+ * @returns 解析出的帧列表和尾部原始数据
+ *
+ * @example
+ * ```ts
+ * const { lines, trailing } = splitPktLinesFromBuffer(
+ *   Buffer.concat([encodePktLine("NAK\n"), rawPackfile]),
+ * );
+ * // lines[0] = { type: "data", payload: Buffer("NAK\n") }
+ * // trailing = <raw packfile>
+ * ```
+ */
+export function splitPktLinesFromBuffer(data: Buffer): { lines: PktLine[]; trailing: Buffer } {
+  const lines: PktLine[] = [];
+  let offset = 0;
+
+  while (offset < data.length) {
+    // 检查是否有足够的字节存放 4 字符长度前缀
+    if (offset + LENGTH_PREFIX_BYTES > data.length) {
+      break;
+    }
+
+    const hex = data.subarray(offset, offset + LENGTH_PREFIX_BYTES).toString("utf-8");
+
+    // 非有效十六进制长度前缀 → 视为尾部原始数据，停止解析
+    if (!/^[0-9a-fA-F]{4}$/.test(hex)) {
+      break;
+    }
+
+    const length = parseInt(hex, 16);
+
+    // 特殊帧
+    if (length === 0) {
+      lines.push({ type: "flush" });
+      offset += LENGTH_PREFIX_BYTES;
+      continue;
+    }
+    if (length === 1) {
+      lines.push({ type: "delimiter" });
+      offset += LENGTH_PREFIX_BYTES;
+      continue;
+    }
+    if (length === 2) {
+      lines.push({ type: "response-end" });
+      offset += LENGTH_PREFIX_BYTES;
+      continue;
+    }
+
+    // 数据帧校验
+    if (length < LENGTH_PREFIX_BYTES || length > MAX_PACKET_SIZE) {
+      break;
+    }
+
+    const payloadLength = length - LENGTH_PREFIX_BYTES;
+
+    if (offset + LENGTH_PREFIX_BYTES + payloadLength > data.length) {
+      break;
+    }
+
+    const payload = data.subarray(
+      offset + LENGTH_PREFIX_BYTES,
+      offset + LENGTH_PREFIX_BYTES + payloadLength,
+    );
+    lines.push({ type: "data", payload });
+    offset += LENGTH_PREFIX_BYTES + payloadLength;
+  }
+
+  const trailing = Buffer.from(data.subarray(offset));
+  return { lines, trailing };
+}
