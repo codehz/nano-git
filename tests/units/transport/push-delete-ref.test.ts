@@ -159,4 +159,33 @@ describe("determinePushRefs 正常 refspec（回归测试）", () => {
     expect(items[1]!.remoteRef).toBe("refs/heads/feature");
     expect(items[1]!.localHash).toBe(HASH_B);
   });
+
+  test("通配符 refspec：无匹配本地引用时抛错", () => {
+    const specs = [parseRefSpec("refs/heads/nope/*:refs/heads/*")];
+    expect(() => determinePushRefs(localRefs, new Map(), specs)).toThrow(/Local ref not found/i);
+    expect(() => determinePushRefs(localRefs, new Map(), specs)).toThrow(/refs\/heads\/nope/);
+  });
+
+  test("精确 refspec 与通配符 refspec 混用：通配符无匹配时抛错", () => {
+    const localRefsMulti = new Map<string, SHA1>([
+      ["refs/heads/main", HASH_A],
+      ["refs/heads/feature", HASH_B],
+    ]);
+    const specs = [
+      parseRefSpec("refs/heads/main:refs/heads/main"), // 匹配
+      parseRefSpec("refs/heads/nope/*:refs/heads/*"), // 无匹配
+    ];
+    expect(() => determinePushRefs(localRefsMulti, new Map(), specs)).toThrow(
+      /Local ref not found/i,
+    );
+    expect(() => determinePushRefs(localRefsMulti, new Map(), specs)).toThrow(/refs\/heads\/nope/);
+  });
+
+  test("通配符 refspec 仅匹配 ignored 或 excluded 路径也会视为匹配", () => {
+    // 即使 refs/others/test 在实际情况下不会被推送，它也是一个匹配
+    const localRefsCustom = new Map<string, SHA1>([["refs/others/test", HASH_A]]);
+    const specs = [parseRefSpec("refs/others/*:refs/others/*")];
+    const items = determinePushRefs(localRefsCustom, new Map(), specs);
+    expect(items).toHaveLength(1);
+  });
 });

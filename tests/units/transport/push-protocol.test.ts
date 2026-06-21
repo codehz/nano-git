@@ -592,3 +592,86 @@ describe("push() 服务端 ng 响应处理", () => {
     expect(pushPromise).rejects.toThrow(/hook declined/);
   });
 });
+
+// ============================================================================
+// push() 通配符 refspec 无匹配测试
+// ============================================================================
+
+describe("push() 通配符 refspec 无匹配本地引用", () => {
+  test("通配符 refspec 无匹配本地引用时抛出 PushError 且不发送 receive-pack", async () => {
+    const store = createMemoryObjectStore();
+    const refStore = createMemoryRefStore();
+
+    let postCalled = false;
+    const transport: RemoteTransport = {
+      getReceivePackRefs: async () => ({
+        capabilities: { "report-status": true, "side-band-64k": true },
+        refs: [],
+      }),
+      postReceivePack: async () => {
+        postCalled = true;
+        throw new Error("should not be called");
+      },
+      getRefAdvertisement: async () => {
+        throw new Error("not used");
+      },
+      postUploadPack: async () => {
+        throw new Error("not used");
+      },
+    };
+
+    const pushPromise = push(store, refStore, "dummy", {
+      transport,
+      refSpecs: ["refs/heads/nope/*:refs/heads/*"],
+    });
+
+    expect(pushPromise).rejects.toThrow(PushError);
+    expect(pushPromise).rejects.toThrow(/Local ref not found/i);
+    expect(postCalled).toBe(false);
+  });
+
+  test("通配符 refspec 匹配到本地引用时正常通过", async () => {
+    const store = createMemoryObjectStore();
+    const author = { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" };
+    const emptyTree = store.write({ type: "tree", entries: [] });
+    const commitHash = store.write({
+      type: "commit" as const,
+      tree: emptyTree,
+      parents: [],
+      author,
+      committer: author,
+      message: "test",
+    });
+
+    const refStore = createMemoryRefStore(new Map([["refs/heads/main", commitHash]]));
+
+    const transport: RemoteTransport = {
+      getReceivePackRefs: async () => ({
+        capabilities: { "report-status": true, "side-band-64k": true },
+        refs: [],
+      }),
+      postReceivePack: async () => {
+        const data = Buffer.concat([
+          encodePktLine("unpack ok\n"),
+          encodePktLine("ok refs/heads/main\n"),
+          encodeFlushPkt(),
+        ]);
+        return { data, refUpdates: parseReceivePackResult(data), progress: [] };
+      },
+      getRefAdvertisement: async () => {
+        throw new Error("not used");
+      },
+      postUploadPack: async () => {
+        throw new Error("not used");
+      },
+    };
+
+    const result = await push(store, refStore, "dummy", {
+      transport,
+      refSpecs: ["refs/heads/*:refs/heads/*"],
+    });
+
+    expect(result.refUpdates).toHaveLength(1);
+    expect(result.refUpdates[0]!.success).toBe(true);
+  });
+});

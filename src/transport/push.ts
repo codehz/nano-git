@@ -341,12 +341,17 @@ export function determinePushRefs(
 ): PushRefItem[] {
   const items: PushRefItem[] = [];
   const seen = new Set<string>();
+  // 跟踪未匹配到任何本地引用的通配符 refspec 索引
+  const unmatchedWildcards = new Set<number>();
 
-  for (const spec of specs) {
+  for (let i = 0; i < specs.length; i++) {
+    const spec = specs[i]!;
     if (spec.isWildcard) {
       // 通配符 refspec：匹配所有以 srcPattern 开头的本地引用
+      let matched = false;
       for (const [localRef, localHash] of localRefs) {
         if (!localRef.startsWith(spec.srcPattern)) continue;
+        matched = true;
 
         const suffix = localRef.slice(spec.srcPattern.length);
         const remoteRef = `${spec.dstPattern}${suffix}`;
@@ -364,6 +369,9 @@ export function determinePushRefs(
           remoteHash,
           force: spec.force,
         });
+      }
+      if (!matched) {
+        unmatchedWildcards.add(i);
       }
     } else if (spec.srcPattern === "") {
       // 删除引用：refspec 源为空，如 ":refs/heads/feature"
@@ -406,6 +414,17 @@ export function determinePushRefs(
         force: spec.force,
       });
     }
+  }
+
+  // 校验通配符 refspec 是否至少匹配了一个本地引用
+  if (unmatchedWildcards.size > 0) {
+    const unmatched = [...unmatchedWildcards].map((i) => specs[i]!);
+    // 取首个未匹配的 refspec 报错，与 Git CLI 行为一致
+    const spec = unmatched[0]!;
+    const pattern = spec.srcPattern.endsWith("/") ? `${spec.srcPattern}*` : spec.srcPattern;
+    throw new PushError(
+      `Local ref not found: "${pattern}" (specified in refspec "${pattern}:${spec.dstPattern}*")`,
+    );
   }
 
   return items;
