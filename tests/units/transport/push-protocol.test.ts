@@ -7,11 +7,12 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { sha1 } from "@/core/types.ts";
+import { sha1, type SHA1 } from "@/core/types.ts";
 import { createMemoryObjectStore } from "@/odb/memory-store.ts";
 import { createMemoryRefStore } from "@/refs/stores/memory.ts";
+import { parseRefSpec } from "@/transport/fetch.ts";
 import { parsePktLines, encodePktLine, encodeFlushPkt } from "@/transport/pkt-line.ts";
-import { push, PushError } from "@/transport/push.ts";
+import { push, PushError, determinePushRefs } from "@/transport/push.ts";
 import {
   buildReceivePackRequest,
   type ReceivePackCommand,
@@ -346,5 +347,33 @@ describe("push() 服务端响应完整性校验", () => {
     expect(pushPromise).rejects.toThrow(/report-status/i);
     // 不应调用 postReceivePack（提前检测到问题）
     expect(postReceivePackCalled).toBe(false);
+  });
+});
+
+// ============================================================================
+// determinePushRefs 去重测试
+// ============================================================================
+
+describe("determinePushRefs() 重叠 refspec 去重", () => {
+  test("重叠 refspec 应去重，同一 remoteRef 只生成一个 push item", () => {
+    const hashA = sha1("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    const hashB = sha1("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+    const localRefs = new Map<string, SHA1>([
+      ["refs/heads/main", hashA],
+      ["refs/heads/develop", hashB],
+    ]);
+    const remoteRefs = new Map<string, SHA1>();
+
+    const wildSpec = parseRefSpec("refs/heads/*:refs/heads/*");
+    const exactSpec = parseRefSpec("refs/heads/main:refs/heads/main");
+
+    const items = determinePushRefs(localRefs, remoteRefs, [wildSpec, exactSpec]);
+    // main 和 develop 来自通配符，main 另由精确 spec 匹配但应去重
+    // => main x1 + develop x1 = 2
+    expect(items).toHaveLength(2);
+    const mainItems = items.filter((i) => i.remoteRef === "refs/heads/main");
+    expect(mainItems).toHaveLength(1);
+    const devItems = items.filter((i) => i.remoteRef === "refs/heads/develop");
+    expect(devItems).toHaveLength(1);
   });
 });

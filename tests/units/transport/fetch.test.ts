@@ -246,6 +246,23 @@ describe("determineWants()", () => {
     expect(wants[0]!.remote.name).toBe("refs/heads/main");
     expect(wants[0]!.localName).toBe("refs/remotes/origin/main");
   });
+
+  test("重叠 refspec 应去重，同一 remote ref 只生成一个 want", () => {
+    const wildSpec = parseRefSpec("+refs/heads/*:refs/remotes/origin/*");
+    const exactSpec = parseRefSpec("+refs/heads/main:refs/remotes/origin/main");
+    const refs: RemoteRef[] = [
+      makeRef("refs/heads/main", "95d09f2b10159347eece71399a7e2e907ea3df4f"),
+      makeRef("refs/heads/develop", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+    ];
+    const wants = determineWants(refs, new Map(), [wildSpec, exactSpec]);
+    // main 和 develop 来自通配符，main 另由精确 spec 匹配但应去重
+    // => main x1 + develop x1 = 2
+    expect(wants).toHaveLength(2);
+    const mainWants = wants.filter((w) => w.remote.name === "refs/heads/main");
+    expect(mainWants).toHaveLength(1);
+    const devWants = wants.filter((w) => w.remote.name === "refs/heads/develop");
+    expect(devWants).toHaveLength(1);
+  });
 });
 
 // ============================================================================

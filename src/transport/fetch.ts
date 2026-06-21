@@ -187,12 +187,17 @@ export function determineWants(
 ): Array<{ remote: RemoteRef; localName: string; localHash?: SHA1; force: boolean }> {
   const wants: Array<{ remote: RemoteRef; localName: string; localHash?: SHA1; force: boolean }> =
     [];
+  const seen = new Set<string>();
 
   for (const ref of remoteRefs) {
     for (const spec of refSpecs) {
       if (!matchesRefSpec(ref, spec)) continue;
 
       const localName = mapRefName(ref.name, spec);
+
+      // 重叠 refspec 去重：同一 localName 只保留首个
+      if (seen.has(localName)) continue;
+      seen.add(localName);
 
       // 检查本地是否已是最新
       const localHash = localRefs.get(localName);

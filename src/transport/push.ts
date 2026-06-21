@@ -345,6 +345,7 @@ export function determinePushRefs(
   specs: ParsedRefSpec[],
 ): PushRefItem[] {
   const items: PushRefItem[] = [];
+  const seen = new Set<string>();
 
   for (const spec of specs) {
     if (spec.isWildcard) {
@@ -354,6 +355,11 @@ export function determinePushRefs(
 
         const suffix = localRef.slice(spec.srcPattern.length);
         const remoteRef = `${spec.dstPattern}${suffix}`;
+
+        // 重叠 refspec 去重：同一 remoteRef 只保留首个
+        if (seen.has(remoteRef)) continue;
+        seen.add(remoteRef);
+
         const remoteHash = remoteRefs.get(remoteRef) ?? null;
 
         items.push({
@@ -366,7 +372,13 @@ export function determinePushRefs(
       }
     } else if (spec.srcPattern === "") {
       // 删除引用：refspec 源为空，如 ":refs/heads/feature"
-      const remoteHash = remoteRefs.get(spec.dstPattern) ?? null;
+      const remoteRef = spec.dstPattern;
+
+      // 重叠 refspec 去重
+      if (seen.has(remoteRef)) continue;
+      seen.add(remoteRef);
+
+      const remoteHash = remoteRefs.get(remoteRef) ?? null;
       items.push({
         localRef: "",
         remoteRef: spec.dstPattern,
@@ -377,6 +389,11 @@ export function determinePushRefs(
     } else {
       // 精确 refspec
       const remoteRef = spec.dstPattern;
+
+      // 重叠 refspec 去重
+      if (seen.has(remoteRef)) continue;
+      seen.add(remoteRef);
+
       const localHash = localRefs.get(spec.srcPattern) ?? null;
 
       if (!localHash) {
