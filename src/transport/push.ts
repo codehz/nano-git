@@ -23,7 +23,13 @@
 import { GitError } from "../core/errors.ts";
 import { sha1 } from "../core/types.ts";
 import { createPackWriter } from "../odb/pack/pack-writer.ts";
-import { HEADS_PREFIX, HEAD_REF, TAGS_PREFIX, resolveRefHash } from "../refs/index.ts";
+import {
+  HEADS_PREFIX,
+  HEAD_REF,
+  TAGS_PREFIX,
+  resolveRefHash,
+  resolveSymbolicRef,
+} from "../refs/index.ts";
 import { parseRefSpec } from "./fetch.ts";
 import { buildReceivePackRequest } from "./receive-pack-request.ts";
 import { ReceivePackResultError } from "./receive-pack-result.ts";
@@ -52,9 +58,6 @@ export class PushError extends GitError {
 // ============================================================================
 // 常量
 // ============================================================================
-
-/** 默认 refspec */
-const DEFAULT_REFSPEC = "HEAD:refs/heads/main";
 
 /** Git 协议 v1 receive-pack 常用能力 */
 const DEFAULT_CAPABILITIES = [
@@ -455,6 +458,34 @@ function remoteRefsToMap(refs: Array<{ name: string; hash: SHA1 }>): Map<string,
 // ============================================================================
 
 /**
+ * 生成默认 refspec
+ *
+ * 等价于 `git push <url>` 的默认行为：将当前分支推送到远端同名分支。
+ * - HEAD 指向 `refs/heads/<name>` 时，返回 `"HEAD:refs/heads/<name>"`
+ * - HEAD 为 detached 状态时，抛出 PushError
+ *
+ * @param refs - 本地引用存储
+ * @returns 形如 `"HEAD:refs/heads/<branch>"` 的 refspec
+ * @throws PushError 当 HEAD 处于 detached 状态时
+ */
+function resolveDefaultRefSpec(refs: RefStore): string {
+  const target = resolveSymbolicRef(refs, HEAD_REF);
+  if (target === null) {
+    throw new PushError(
+      "HEAD is detached — cannot determine current branch. " +
+        'Specify a refspec explicitly (e.g. { refSpecs: ["HEAD:refs/heads/main"] })',
+    );
+  }
+  if (!target.startsWith(HEADS_PREFIX)) {
+    throw new PushError(
+      `HEAD points to "${target}" which is not a branch. ` +
+        "Specify a refspec explicitly when pushing from a non-branch ref.",
+    );
+  }
+  return `HEAD:${target}`;
+}
+
+/**
  * 执行 push 操作
  *
  * 将本地对象推送到远程 Git 仓库。
@@ -487,8 +518,8 @@ export async function push(
   // 1. 获取远程 receive-pack ref 广告
   const adv = await client.getReceivePackRefs();
 
-  // 2. 解析 refspec
-  const refSpecStr = options?.refSpecs ?? [DEFAULT_REFSPEC];
+  // 2. 解析 refspec（未提供时按 HEAD 指向的分支动态生成）
+  const refSpecStr = options?.refSpecs ?? [resolveDefaultRefSpec(refs)];
   const parsedSpecs = refSpecStr.map(parseRefSpec);
 
   // 对 force 选项的处理：如果 PushOptions.force 为 true，将所有 force 标志设置为 true

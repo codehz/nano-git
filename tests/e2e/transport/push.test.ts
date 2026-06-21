@@ -15,6 +15,7 @@ import { join } from "node:path";
 import { git, gitInit, createTempDir, cleanupDir, createFile, FIXED_AUTHOR } from "../helpers.ts";
 import { startGitHttpBackendServer } from "./http-server.ts";
 import { sha1 } from "@/core/types.ts";
+import { HEAD_REF, HEADS_PREFIX } from "@/refs/index.ts";
 import { createMemoryRepository } from "@/repository/index.ts";
 
 // ============================================================================
@@ -455,5 +456,90 @@ describe("push() 端到端", () => {
 
     const branchList = git(["--git-dir", serverRepoDir, "branch", "-a"], tempDir);
     expect(branchList).not.toContain("corrupt-tree");
+  });
+
+  test("默认 refspec 推送当前分支（非 main）到同名远端分支", async () => {
+    const repo = createMemoryRepository();
+    const author = { ...FIXED_AUTHOR };
+
+    // 将 HEAD 指向 feature 分支
+    repo.refs.writeRaw(HEAD_REF, `ref: ${HEADS_PREFIX}feature`);
+
+    // 获取服务端初始 commit
+    const initialCommit = sha1(
+      git(["--git-dir", serverRepoDir, "rev-parse", "refs/heads/main"], tempDir),
+    );
+
+    // 在 feature 分支上创建 commit（基于服务端初始 commit，通过 fast-forward 预检）
+    const fileHash = repo.writeBlob(Buffer.from("feature branch content"));
+    const treeHash = repo.createTree([{ mode: "100644", name: "feature.txt", hash: fileHash }]);
+    const commitHash = repo.createCommit(
+      treeHash,
+      [initialCommit],
+      "Feature branch commit",
+      author,
+    );
+    repo.updateRef("refs/heads/feature", commitHash);
+
+    // 不传 refSpecs，使用默认行为
+    const result = await repo.push(serverUrl);
+
+    expect(result.refUpdates).toHaveLength(1);
+    expect(result.refUpdates[0]!.success).toBe(true);
+    expect(result.refUpdates[0]!.refName).toBe("refs/heads/feature");
+
+    // 验证服务端 refs/heads/feature 被正确更新
+    const serverRef = git(["--git-dir", serverRepoDir, "rev-parse", "refs/heads/feature"], tempDir);
+    expect(serverRef).toBe(commitHash);
+
+    // 验证服务端 main 没有被意外修改
+    const serverMainRef = git(
+      ["--git-dir", serverRepoDir, "rev-parse", "refs/heads/main"],
+      tempDir,
+    );
+    expect(serverMainRef).toBe(initialCommit);
+  });
+
+  test("默认 refspec 在 HEAD 在 main 分支时正确推送到 main", async () => {
+    const repo = createMemoryRepository();
+    const author = { ...FIXED_AUTHOR };
+
+    // 获取服务端初始 commit
+    const initialCommit = sha1(
+      git(["--git-dir", serverRepoDir, "rev-parse", "refs/heads/main"], tempDir),
+    );
+
+    // 在 main 上创建新 commit
+    const fileHash = repo.writeBlob(Buffer.from("main update"));
+    const treeHash = repo.createTree([{ mode: "100644", name: "update.txt", hash: fileHash }]);
+    const commitHash = repo.createCommit(treeHash, [initialCommit], "Main update", author);
+    repo.updateRef("refs/heads/main", commitHash);
+
+    // HEAD 默认指向 main，不传 refSpecs 应推送到 main
+    const result = await repo.push(serverUrl);
+
+    expect(result.refUpdates).toHaveLength(1);
+    expect(result.refUpdates[0]!.success).toBe(true);
+    expect(result.refUpdates[0]!.refName).toBe("refs/heads/main");
+
+    const serverRef = git(["--git-dir", serverRepoDir, "rev-parse", "refs/heads/main"], tempDir);
+    expect(serverRef).toBe(commitHash);
+  });
+
+  test("默认 refspec 在 detached HEAD 时抛出错误", async () => {
+    const repo = createMemoryRepository();
+    const author = { ...FIXED_AUTHOR };
+
+    // 创建一个 commit
+    const fileHash = repo.writeBlob(Buffer.from("detached content"));
+    const treeHash = repo.createTree([{ mode: "100644", name: "detached.txt", hash: fileHash }]);
+    const commitHash = repo.createCommit(treeHash, [], "Detached commit", author);
+
+    // HEAD 直接指向 commit（detached HEAD 状态）
+    repo.refs.writeRaw(HEAD_REF, commitHash);
+
+    // 不传 refSpecs 时，detached HEAD 应该报错
+    const pushPromise = repo.push(serverUrl);
+    expect(pushPromise).rejects.toThrow(/detached HEAD|not on a branch|current branch/i);
   });
 });

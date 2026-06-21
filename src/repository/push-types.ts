@@ -16,7 +16,8 @@ export interface RepositoryPushOperations {
   /**
    * 推送到远程仓库
    *
-   * 等价于 `git push <url>`
+   * 等价于 `git push <url>`：将当前分支推送到远端同名分支。
+   * HEAD 处于 detached 状态时必须通过 options.refSpecs 显式指定 refspec。
    *
    * @param url - 远程仓库 URL（如 "https://github.com/user/repo"）
    * @param options - 可选配置（refspec、token 等）

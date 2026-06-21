@@ -175,7 +175,7 @@ export interface FetchResult {
 export interface PushOptions {
   /**
    * refspec 列表，格式如 "refs/heads/main:refs/heads/main"
-   * 默认为 ["HEAD:refs/heads/main"]
+   * 默认为将当前分支推送到远端同名分支（等价于 `git push <url>`）
    */
   refSpecs?: string[];
 
