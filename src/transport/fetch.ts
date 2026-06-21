@@ -425,8 +425,10 @@ export async function fetch(
   for (const { localName, remote, localHash, force } of wants) {
     // 纯 deepen 场景：不更新 ref（tip 无变化）
     if (wantsFromShallowOptions) continue;
-    // 非强制且本地已有值：仅当更新为快进时才写入
-    if (!force && localHash !== undefined) {
+    // 非强制且本地已有值：仅目标为 refs/heads/* 或 refs/tags/* 时要求快进
+    // Git 语义：refs/{heads,tags}/* 之外的命名空间（如 refs/remotes/*、refs/mirrors/*）
+    // 即使没有 + 也接受非快进更新。参见 git-fetch 文档 <refspec> 章节。
+    if (!force && localHash !== undefined && isRefNamespaceRequiringFastForward(localName)) {
       if (!isAncestor(store, localHash, remote.hash)) {
         continue; // 非快进，跳过此 ref 的更新
       }
@@ -623,4 +625,25 @@ async function negotiateAndFetchPackfile(
 
     // 继续下一轮
   }
+}
+
+// ============================================================================
+// 辅助函数：ref 更新快进检查
+// ============================================================================
+
+/**
+ * 判断指定 ref 是否属于需要 fast-forward 检查的命名空间
+ *
+ * Git fetch 语义：仅 refs/heads/* 和 refs/tags/* 在没有 + 的 refspec 下
+ * 要求更新为快进（新 tip 必须是旧 tip 的子孙）。
+ * 其他命名空间（如 refs/remotes/*、refs/mirrors/* 等）即使没有 + 也接受
+ * 非快进更新。
+ *
+ * @param refName - 本地 ref 完整名称
+ * @returns 是否需要 fast-forward 检查
+ *
+ * @see https://git-scm.com/docs/git-fetch#_lt_refspec_gt
+ */
+function isRefNamespaceRequiringFastForward(refName: string): boolean {
+  return refName.startsWith("refs/heads/") || refName.startsWith("refs/tags/");
 }

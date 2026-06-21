@@ -900,7 +900,7 @@ describe("fetch() 增量 fetch 行为", () => {
   });
 
   describe("force 语义", () => {
-    function createDivergedScenario() {
+    function createDivergedScenario(targetRefName: string = "refs/remotes/origin/main") {
       const objectStore = createMemoryObjectStore();
 
       // 本地分支：root ← oldTip
@@ -910,8 +910,8 @@ describe("fetch() 增量 fetch 行为", () => {
       // 远程分支：root ← remoteTip（与 oldTip 分叉，非快进）
       const remoteTip = createTestCommit(objectStore, [root], 300);
 
-      // 先设置本地 remote-tracking ref 指向 oldTip
-      const refStore = createMemoryRefStore(new Map([["refs/remotes/origin/main", oldTip]]));
+      // 先设置本地 ref 指向 oldTip
+      const refStore = createMemoryRefStore(new Map([[targetRefName, oldTip]]));
 
       // 远程广告 refs/heads/main 指向 remoteTip
       const { packData } = createBlobPackfile("diverged content");
@@ -925,20 +925,52 @@ describe("fetch() 增量 fetch 行为", () => {
       return { objectStore, refStore, transport, oldTip, remoteTip };
     }
 
-    test("非强制 refspec：非快进更新被阻止，ref 保持不变", async () => {
-      const { objectStore, refStore, transport, oldTip } = createDivergedScenario();
+    test("非强制 refspec：refs/heads/* 非快进更新被阻止", async () => {
+      const { objectStore, refStore, transport, oldTip } =
+        createDivergedScenario("refs/heads/main");
 
-      // 使用不带 + 的 refspec
+      // 使用不带 + 的 refspec，目标在 refs/heads/* 中
+      const result = await fetch(objectStore, refStore, "dummy", {
+        transport,
+        refSpecs: ["refs/heads/*:refs/heads/*"],
+      });
+
+      // ref 应保持原值（非快进被拒绝）
+      expect(refStore.read("refs/heads/main")).toBe(oldTip);
+      expect(result.fetchedRefs.has("refs/heads/main")).toBe(false);
+      // 对象仍被写入
+      expect(result.objectCount).toBe(1);
+    });
+
+    test("非强制 refspec：refs/remotes/* 非快进更新仍被允许", async () => {
+      const { objectStore, refStore, transport, remoteTip } = createDivergedScenario(
+        "refs/remotes/origin/main",
+      );
+
+      // 使用不带 + 的 refspec，目标在 refs/remotes/* 中（Git 不要求 fast-forward）
       const result = await fetch(objectStore, refStore, "dummy", {
         transport,
         refSpecs: ["refs/heads/*:refs/remotes/origin/*"],
       });
 
-      // ref 应保持原值（未被覆盖）
-      expect(refStore.read("refs/remotes/origin/main")).toBe(oldTip);
-      // fetchedRefs 中不应包含被拒绝的 ref
-      expect(result.fetchedRefs.has("refs/remotes/origin/main")).toBe(false);
-      // 对象仍被写入
+      // ref 应更新——refs/remotes/* 不要求 fast-forward
+      expect(refStore.read("refs/remotes/origin/main")).toBe(remoteTip);
+      expect(result.fetchedRefs.get("refs/remotes/origin/main")).toBe(remoteTip);
+      expect(result.objectCount).toBe(1);
+    });
+
+    test("非强制 refspec：自定义 namespace（refs/mirrors/*）非快进更新仍被允许", async () => {
+      const { objectStore, refStore, transport, remoteTip } =
+        createDivergedScenario("refs/mirrors/main");
+
+      const result = await fetch(objectStore, refStore, "dummy", {
+        transport,
+        refSpecs: ["refs/heads/*:refs/mirrors/*"],
+      });
+
+      // ref 应更新——refs/mirrors/* 不要求 fast-forward
+      expect(refStore.read("refs/mirrors/main")).toBe(remoteTip);
+      expect(result.fetchedRefs.get("refs/mirrors/main")).toBe(remoteTip);
       expect(result.objectCount).toBe(1);
     });
 
