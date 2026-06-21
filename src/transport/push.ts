@@ -131,12 +131,12 @@ function collectReachable(objects: ObjectStore, roots: SHA1[]): Set<SHA1> {
  * 要推送的引用项
  */
 interface PushRefItem {
-  /** 本地引用名称 */
+  /** 本地引用名称（删除操作时为空字符串） */
   localRef: string;
   /** 远程目标引用名称 */
   remoteRef: string;
-  /** 本地 ref 当前指向的哈希 */
-  localHash: SHA1;
+  /** 本地 ref 当前指向的哈希（null 表示删除远程引用） */
+  localHash: SHA1 | null;
   /** 远程 ref 当前指向的哈希（null 表示新建） */
   remoteHash: SHA1 | null;
   /** 是否强制推送 */
@@ -152,8 +152,10 @@ interface PushRefItem {
  * @param remoteRefs - 远程 ref → hash 映射
  * @param specs - 解析后的 refspec 列表
  * @returns 要推送的引用项列表
+ *
+ * @internal 导出仅用于测试
  */
-function determinePushRefs(
+export function determinePushRefs(
   localRefs: Map<string, SHA1>,
   remoteRefs: Map<string, SHA1>,
   specs: ParsedRefSpec[],
@@ -180,6 +182,16 @@ function determinePushRefs(
           force: spec.force,
         });
       }
+    } else if (spec.srcPattern === "") {
+      // 删除引用：refspec 源为空，如 ":refs/heads/feature"
+      const remoteHash = remoteRefs.get(spec.dstPattern) ?? null;
+      items.push({
+        localRef: "",
+        remoteRef: spec.dstPattern,
+        localHash: null,
+        remoteHash,
+        force: spec.force,
+      });
     } else {
       // 精确 refspec
       const remoteRef = spec.dstPattern;
@@ -317,7 +329,10 @@ export async function push(
 
   // 5. 收集需要发送的对象
   //    需要推送的对象 = 从推送 refs 可达的对象 - 从远程已有 refs 可达的对象
-  const localRoots = pushRefs.map((r) => r.localHash);
+  //    删除操作（localHash === null）跳过对象收集
+  const localRoots = pushRefs
+    .filter((r): r is PushRefItem & { localHash: SHA1 } => r.localHash !== null)
+    .map((r) => r.localHash);
   const reachableLocal = collectReachable(store, localRoots);
 
   // 收集远程已有 refs 的可达对象（用于排除已存在的对象）
@@ -352,9 +367,10 @@ export async function push(
   const caps = extractCapabilities(adv.capabilities);
 
   // 8. 构造 receive-pack 命令
+  //    删除操作时 newHash 用零哈希表示
   const commands = pushRefs.map((r) => ({
     oldHash: r.remoteHash ?? (ZERO_HASH as SHA1),
-    newHash: r.localHash,
+    newHash: r.localHash ?? (ZERO_HASH as SHA1),
     refName: r.remoteRef,
   }));
 

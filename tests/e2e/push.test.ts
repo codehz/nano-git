@@ -17,15 +17,20 @@ import { join } from "node:path";
 
 import { git, gitInit, createTempDir, cleanupDir, createFile, FIXED_AUTHOR } from "./helpers.ts";
 
-import { sha1 } from "../../src/core/types.ts";
+import { sha1, type SHA1 } from "../../src/core/types.ts";
 import { buildReceivePackRequest } from "../../src/transport/receive-pack-request.ts";
 import { parseReceivePackResult } from "../../src/transport/receive-pack-result.ts";
 import { extractPackfile } from "../../src/transport/side-band.ts";
 import { parsePktLines, encodePktLine, encodeFlushPkt } from "../../src/transport/pkt-line.ts";
+import { parseRefSpec } from "../../src/transport/fetch.ts";
+import { determinePushRefs } from "../../src/transport/push.ts";
 
 // ============================================================================
 // 常量
 // ============================================================================
+
+/** 零哈希（表示新建引用或删除引用） */
+const ZERO_HASH = "0000000000000000000000000000000000000000";
 
 /** git http-backend 的路径 */
 const HTTP_BACKEND = "/usr/lib/git-core/git-http-backend";
@@ -310,7 +315,6 @@ describe("CGI: push (receive-pack) 端到端", () => {
       },
     ];
 
-    const ZERO_HASH = "0000000000000000000000000000000000000000" as const;
     const deletePackResult = spawnSync(
       "git",
       ["-C", workDir, "pack-objects", "--stdout", "--revs"],
@@ -351,5 +355,78 @@ describe("CGI: push (receive-pack) 端到端", () => {
     // 4. 验证远程分支已被删除
     const branchList = git(["--git-dir", serverRepoDir, "branch", "-a"], tempDir);
     expect(branchList).not.toContain("feature");
+  });
+
+  test("通过 determinePushRefs 路径删除远程分支", () => {
+    // 本测试走 parseRefSpec → determinePushRefs → 命令构造路径，
+    // 即 transport/push.ts 中 push() 内部使用的逻辑，验证高层 API
+    // 的删除分支路径能正确生成 receive-pack 命令。
+
+    // 1. 先推送一个新分支
+    createFile(workDir, "DELETE_ME.md", "# Delete me\n");
+    git(["add", "DELETE_ME.md"], workDir);
+    git(["commit", "-m", "Branch to delete"], workDir);
+    const branchHash = git(["rev-parse", "HEAD"], workDir);
+    git(["push", serverRepoDir, `HEAD:refs/heads/to-delete`], workDir);
+
+    // 验证分支存在
+    const branchRef = git(
+      ["--git-dir", serverRepoDir, "rev-parse", "refs/heads/to-delete"],
+      tempDir,
+    );
+    expect(branchRef).toBe(branchHash);
+
+    // 2. 构造 refspec 和 ref 映射（模拟 push() 内部行为）
+    const deleteSpec = parseRefSpec(":refs/heads/to-delete");
+    const localRefs = new Map<string, SHA1>();
+    const remoteRefs = new Map<string, SHA1>([
+      ["refs/heads/main", sha1(serverCommitHash)],
+      ["refs/heads/to-delete", sha1(branchHash)],
+    ]);
+    const items = determinePushRefs(localRefs, remoteRefs, [deleteSpec]);
+
+    expect(items).toHaveLength(1);
+    expect(items[0]!.localHash).toBeNull();
+    expect(items[0]!.remoteRef).toBe("refs/heads/to-delete");
+
+    // 3. 从 determinePushRefs 的结果构造 receive-pack 命令
+    const commands = items.map((r) => ({
+      oldHash: r.remoteHash ?? (ZERO_HASH as SHA1),
+      newHash: r.localHash ?? (ZERO_HASH as SHA1),
+      refName: r.remoteRef,
+    }));
+
+    // 删除操作不需要发送 packfile 对象
+    const emptyPackfile = Buffer.alloc(0);
+    const caps = ["report-status", "side-band-64k", "ofs-delta", "delete-refs"];
+    const body = buildReceivePackRequest(commands, emptyPackfile, caps);
+
+    // 4. 通过 CGI 发送
+    const deleteResult = callGitHttpBackend(
+      serverRepoDir,
+      projectRoot,
+      "POST",
+      `/${repoName(serverRepoDir)}/git-receive-pack`,
+      undefined,
+      body,
+    );
+    expect(deleteResult.status).toBe(200);
+
+    // 5. 解析 report-status
+    let refUpdates;
+    try {
+      const packfileData = extractPackfile(deleteResult.body);
+      refUpdates = parseReceivePackResult(packfileData);
+    } catch {
+      refUpdates = parseReceivePackResult(deleteResult.body);
+    }
+
+    const deleteUpdate = refUpdates.find((u) => u.refName === "refs/heads/to-delete");
+    expect(deleteUpdate).toBeDefined();
+    expect(deleteUpdate!.success).toBe(true);
+
+    // 6. 验证远程分支已被删除
+    const branchList = git(["--git-dir", serverRepoDir, "branch", "-a"], tempDir);
+    expect(branchList).not.toContain("to-delete");
   });
 });
