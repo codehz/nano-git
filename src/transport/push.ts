@@ -154,6 +154,98 @@ export function collectReachable(
 }
 
 // ============================================================================
+// Fast-forward 预检
+// ============================================================================
+
+/**
+ * 检查 oldHash 是否为 newHash 的祖先 commit（或二者相等）
+ *
+ * 从 newHash 出发沿 parent 链回溯，若能找到 oldHash 则返回 true。
+ * 用于 non-fast-forward 预检：当 force 未设置时，若返回 false 则应拒绝推送。
+ *
+ * @param store - 对象存储
+ * @param oldHash - 远程 ref 当前指向的 commit
+ * @param newHash - 本地要推送的目标 commit
+ * @returns oldHash 是否为 newHash 的祖先
+ *
+ * @internal 导出仅用于测试
+ */
+export function isAncestor(store: ObjectStore, oldHash: SHA1, newHash: SHA1): boolean {
+  // 相同哈希 trivially 是 fast-forward
+  if (oldHash === newHash) {
+    return true;
+  }
+
+  // 将可达性遍历限制在 commit 链上
+  const visited = new Set<SHA1>();
+  const queue: SHA1[] = [newHash];
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+
+    if (current === oldHash) {
+      return true;
+    }
+
+    if (visited.has(current)) {
+      continue;
+    }
+    visited.add(current);
+
+    try {
+      const obj = store.read(current);
+
+      if (obj.type !== "commit") {
+        // 遍历中遇到非 commit 对象（tree/blob/tag），不继续沿此路径回溯
+        continue;
+      }
+
+      for (const parent of obj.parents) {
+        if (!visited.has(parent)) {
+          queue.push(parent);
+        }
+      }
+    } catch {
+      // 对象缺失视为此路径不可达，继续遍历其他路径
+      continue;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * 预检所有推送项是否为 fast-forward，不通过的（且未设 force）立即报错
+ *
+ * @throws PushError 如果存在 non-fast-forward 更新且未设 force
+ *
+ * @internal 导出仅用于测试
+ */
+export function checkFastForward(store: ObjectStore, items: PushRefItem[]): void {
+  for (const item of items) {
+    // 删除操作（newHash === null）或新建操作（remoteHash === null）总是安全
+    if (item.localHash === null || item.remoteHash === null) {
+      continue;
+    }
+
+    // force 跳过预检
+    if (item.force) {
+      continue;
+    }
+
+    if (!isAncestor(store, item.remoteHash, item.localHash)) {
+      const shortRemote = item.remoteHash.slice(0, 8);
+      const shortLocal = item.localHash.slice(0, 8);
+      throw new PushError(
+        `Non-fast-forward update rejected for "${item.remoteRef}": ` +
+          `remote ${shortRemote} is not an ancestor of local ${shortLocal}. ` +
+          `Use force (--force or +refspec) to override.`,
+      );
+    }
+  }
+}
+
+// ============================================================================
 // 推送引用解析
 // ============================================================================
 
@@ -357,7 +449,11 @@ export async function push(
     };
   }
 
-  // 5. 收集需要发送的对象
+  // 5. non-fast-forward 预检
+  //    未设 force 的更新如果不是 fast-forward 则立即报错
+  checkFastForward(store, pushRefs);
+
+  // 6. 收集需要发送的对象
   //    需要推送的对象 = 从推送 refs 可达的对象 - 从远程已有 refs 可达的对象
   //    删除操作（localHash === null）跳过对象收集
   const localRoots = pushRefs
@@ -382,7 +478,7 @@ export async function push(
     }
   }
 
-  // 6. 构建 packfile
+  // 7. 构建 packfile
   //    此时 objectsToSend 中的对象已由遍历验证过存在性，无需额外容错
   const packWriter = createPackWriter();
   for (const hash of objectsToSend) {
@@ -391,10 +487,10 @@ export async function push(
   }
   const packfile = packWriter.build();
 
-  // 7. 确定可用能力
+  // 8. 确定可用能力
   const caps = extractCapabilities(adv.capabilities);
 
-  // 8. 构造 receive-pack 命令
+  // 9. 构造 receive-pack 命令
   //    删除操作时 newHash 用零哈希表示
   const commands = pushRefs.map((r) => ({
     oldHash: r.remoteHash ?? (ZERO_HASH as SHA1),
@@ -402,7 +498,7 @@ export async function push(
     refName: r.remoteRef,
   }));
 
-  // 9. 构建请求
+  // 10. 构建请求
   const body = buildReceivePackRequest(commands, packfile, caps);
 
   // 10. 发送请求
