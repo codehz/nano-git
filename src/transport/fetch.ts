@@ -312,11 +312,38 @@ export async function fetch(
     }
   }
 
+  const hasShallowOptions = options?.depth !== undefined || (options?.shallow ?? []).length > 0;
+  let wantsFromShallowOptions = false;
+
   if (wants.length === 0) {
-    return {
-      fetchedRefs: new Map(),
-      objectCount: 0,
-    };
+    if (!hasShallowOptions) {
+      return {
+        fetchedRefs: new Map(),
+        objectCount: 0,
+      };
+    }
+    // shallow deepen/unshallow：即使 tip 无变化，仍需发送 deepen/shallow 命令
+    // 此处用远程广告中匹配 refspec 的 ref 构造合成 wants，使协商能正常执行
+    wantsFromShallowOptions = true;
+    for (const ref of adv.refs) {
+      for (const spec of parsedSpecs) {
+        if (!matchesRefSpec(ref, spec)) continue;
+        const localName = mapRefName(ref.name, spec);
+        wants.push({
+          remote: ref,
+          localName,
+          localHash: localRefs.get(localName),
+          force: spec.force,
+        });
+        break;
+      }
+    }
+    if (wants.length === 0) {
+      return {
+        fetchedRefs: new Map(),
+        objectCount: 0,
+      };
+    }
   }
 
   // 5. 从服务端 capabilities 中确定可用能力
@@ -383,16 +410,21 @@ export async function fetch(
 
   // 9. 更新远程跟踪引用（非强制 refspec 需满足快进条件）
   //    先校验所有 wanted tip 的对象都存在，确保完全落地后才写 ref
-  for (const { remote } of wants) {
-    if (!store.exists(remote.hash)) {
-      throw new FetchError(
-        `Remote ref "${remote.name}" (${remote.hash}) was advertised but its object ` +
-          `was not received in the packfile. The fetch may have been truncated or corrupted.`,
-      );
+  //    纯 deepen 场景（wantsFromShallowOptions）跳过：tip 无变化，无需校验和更新 ref
+  if (!wantsFromShallowOptions) {
+    for (const { remote } of wants) {
+      if (!store.exists(remote.hash)) {
+        throw new FetchError(
+          `Remote ref "${remote.name}" (${remote.hash}) was advertised but its object ` +
+            `was not received in the packfile. The fetch may have been truncated or corrupted.`,
+        );
+      }
     }
   }
   const fetchedRefs = new Map<string, SHA1>();
   for (const { localName, remote, localHash, force } of wants) {
+    // 纯 deepen 场景：不更新 ref（tip 无变化）
+    if (wantsFromShallowOptions) continue;
     // 非强制且本地已有值：仅当更新为快进时才写入
     if (!force && localHash !== undefined) {
       if (!isAncestor(store, localHash, remote.hash)) {

@@ -20,7 +20,7 @@ import {
   selectHaveTips,
   getLocalRefs,
 } from "@/transport/fetch.ts";
-import { parsePktLines } from "@/transport/pkt-line.ts";
+import { encodeFlushPkt, encodePktLine, parsePktLines } from "@/transport/pkt-line.ts";
 
 import type { RemoteRef } from "@/transport/types.ts";
 import type { RemoteTransport } from "@/transport/types.ts";
@@ -578,7 +578,81 @@ describe("fetch() 增量 fetch 行为", () => {
     expect(fetchPromise).rejects.toThrow(/does not support shallow fetch/i);
   });
 
-  test("shallow fetch：depth+shallow 都不设置时不受 shallow capability 校验影响", async () => {
+  test("shallow deepen：tip 无变化时仍发送 deepen 请求并返回 shallow/unshallow 信息", async () => {
+    const objectStore = createMemoryObjectStore();
+
+    // 构造本地已有提交链：c1(100) ← c2(200)
+    const c1 = createTestCommit(objectStore, [], 100);
+    const c2 = createTestCommit(objectStore, [c1], 200);
+
+    // 模拟第一次 depth=1 fetch 后的状态：本地已有 c2（tip），c1 是 shallow 边界
+    const refStore = createMemoryRefStore(new Map([["refs/remotes/origin/main", c2]]));
+
+    // packfile 包含一个额外的 blob
+    const blob: GitBlob = { type: "blob", content: Buffer.from("deepen content") };
+    const entry = toEncodedPackObject(blob);
+    const { packData } = buildEncodedPack([entry]);
+
+    let capturedBody: Buffer | null = null;
+    let postUploadPackCalled = false;
+
+    const transport: RemoteTransport = {
+      getReceivePackRefs: async () => {
+        throw new Error("not used in fetch");
+      },
+      postReceivePack: async () => {
+        throw new Error("not used in fetch");
+      },
+      getRefAdvertisement: async () => ({
+        capabilities: {
+          multi_ack: true,
+          "side-band-64k": true,
+          "ofs-delta": true,
+          shallow: true,
+        },
+        // 远程广告的 hash 与本地相同 —— tip 无变化
+        refs: [{ name: "refs/heads/main", hash: c2 }],
+      }),
+      postUploadPack: async (body: Buffer) => {
+        postUploadPackCalled = true;
+        capturedBody = body;
+        // 模拟服务端返回 shallow 信息 + packfile
+        const data = Buffer.concat([encodePktLine(`shallow ${c1}\n`), encodeFlushPkt(), packData]);
+        return { data, packfile: packData, progress: [] };
+      },
+    };
+
+    const result = await fetch(objectStore, refStore, "dummy", {
+      transport,
+      refSpecs: ["+refs/heads/*:refs/remotes/origin/*"],
+      depth: 2,
+      shallow: [c1],
+    });
+
+    // 必须调用了 postUploadPack（关键验证：不能因 wants 为空而提前返回）
+    expect(postUploadPackCalled).toBe(true);
+
+    // 请求体必须包含 deepen 和 shallow 行
+    const bodyStr = capturedBody!.toString("utf-8");
+    expect(bodyStr).toContain("deepen 2");
+    expect(bodyStr).toContain(`shallow ${c1}`);
+
+    // 对象被正常写入
+    expect(objectStore.exists(entry.hash)).toBe(true);
+    expect(result.objectCount).toBe(1);
+
+    // ref 不应被报告为已更新（tip 无变化）
+    expect(result.fetchedRefs.size).toBe(0);
+
+    // ref 值不变
+    expect(refStore.read("refs/remotes/origin/main")).toBe(c2);
+
+    // 返回了 shallow 信息
+    expect(result.shallow).toBeDefined();
+    expect(result.shallow).toContain(c1);
+  });
+
+  test("shallow deepen：depth+shallow 都不设置时不受 shallow capability 校验影响", async () => {
     const objectStore = createMemoryObjectStore();
     const refStore = createMemoryRefStore();
 
