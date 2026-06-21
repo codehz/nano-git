@@ -688,6 +688,25 @@ export async function push(
     );
   }
 
+  // 11b-2. 校验服务端返回的 ref 名称集合与发送命令完全一致
+  //        即使数量相同，服务端仍可能返回不匹配的 ref 名称（协议异常）。
+  //        例如发送 refs/heads/main 却收到 ok refs/heads/other，
+  //        这会将错误 ref 名当作成功返回给调用方，使协议异常被静默掩盖。
+  const commandRefNames = new Set(commands.map((c) => c.refName));
+  const updateRefNames = new Set(refUpdates.map((u) => u.refName));
+  const unexpectedRefs = [...updateRefNames].filter((n) => !commandRefNames.has(n));
+  const missingRefs = [...commandRefNames].filter((n) => !updateRefNames.has(n));
+  if (unexpectedRefs.length > 0 || missingRefs.length > 0) {
+    const parts: string[] = [];
+    if (unexpectedRefs.length > 0) {
+      parts.push(`unexpected ref(s): ${unexpectedRefs.join(", ")}`);
+    }
+    if (missingRefs.length > 0) {
+      parts.push(`missing ref(s): ${missingRefs.join(", ")}`);
+    }
+    throw new PushError(`Server returned mismatched ref status: ${parts.join("; ")}`);
+  }
+
   // 11c. 服务端返回 ng（拒绝）时立即抛出 PushError，而非让调用方自行检查 success
   const rejectedUpdates = refUpdates.filter((u) => !u.success);
   if (rejectedUpdates.length > 0) {

@@ -27,6 +27,56 @@ import type { RemoteTransport } from "@/transport/types.ts";
 // ============================================================================
 
 describe("push() 服务端响应完整性校验", () => {
+  test("服务端返回错误 ref 名称时抛出 PushError（协议异常伪装成功）", async () => {
+    const store = createMemoryObjectStore();
+    const refStore = createMemoryRefStore(new Map());
+    const author = { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" };
+
+    const emptyTree = store.write({ type: "tree", entries: [] });
+    const commitHash = store.write({
+      type: "commit" as const,
+      tree: emptyTree,
+      parents: [],
+      author,
+      committer: author,
+      message: "test",
+    });
+    refStore.write("refs/heads/main", commitHash);
+
+    let postCalled = false;
+    const transport: RemoteTransport = {
+      getReceivePackRefs: async () => ({
+        capabilities: { "report-status": true },
+        refs: [{ name: "refs/heads/main", hash: commitHash }],
+      }),
+      postReceivePack: async () => {
+        postCalled = true;
+        // 服务端返回错误的 ref 名称（应返回 refs/heads/main）
+        const data = Buffer.concat([
+          encodePktLine("unpack ok\n"),
+          encodePktLine("ok refs/heads/other\n"),
+          encodeFlushPkt(),
+        ]);
+        return { data, refUpdates: parseReceivePackResult(data), progress: [] };
+      },
+      getRefAdvertisement: async () => {
+        throw new Error("not used");
+      },
+      postUploadPack: async () => {
+        throw new Error("not used");
+      },
+    };
+
+    const pushPromise = push(store, refStore, "dummy", {
+      transport,
+      refSpecs: ["refs/heads/main:refs/heads/main"],
+    });
+
+    expect(pushPromise).rejects.toThrow(PushError);
+    expect(pushPromise).rejects.toThrow(/mismatched ref/i);
+    expect(postCalled).toBe(true);
+  });
+
   test("服务端返回的 refUpdates 条数少于推送命令数时报错", async () => {
     const store = createMemoryObjectStore();
     const refStore = createMemoryRefStore(new Map());
