@@ -61,6 +61,8 @@ export interface GitHttpBackendServer {
   clearRequests(): void;
   /** 停止服务 */
   stop(): Promise<void>;
+  /** 释放资源，等效于 await stop() */
+  [Symbol.asyncDispose](): Promise<void>;
 }
 
 /** git http-backend 可执行文件 */
@@ -271,6 +273,9 @@ export function startGitHttpBackendServer(
       requests.length = 0;
     },
     stop() {
+      return server.stop(true);
+    },
+    [Symbol.asyncDispose]() {
       return server.stop(true);
     },
   };

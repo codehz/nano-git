@@ -71,15 +71,11 @@ describe("ref advertisement", () => {
     mkdirSync(emptyDir);
     git(["init", "--bare"], emptyDir);
 
-    const emptyServer = startGitHttpBackendServer(tempDir, "/empty.git");
-    try {
-      const transport = createSmartHttpClient(emptyServer.url);
-      const adv = await transport.getRefAdvertisement();
+    await using emptyServer = startGitHttpBackendServer(tempDir, "/empty.git");
+    const transport = createSmartHttpClient(emptyServer.url);
+    const adv = await transport.getRefAdvertisement();
 
-      expect(adv.refs).toHaveLength(0);
-      expect(Object.keys(adv.capabilities).length).toBeGreaterThan(0);
-    } finally {
-      await emptyServer.stop();
-    }
+    expect(adv.refs).toHaveLength(0);
+    expect(Object.keys(adv.capabilities).length).toBeGreaterThan(0);
   });
 });
