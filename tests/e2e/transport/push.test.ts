@@ -516,6 +516,65 @@ describe("push() 端到端", () => {
     expect(serverTaggedObject).toContain("tag v1.0");
   });
 
+  test("自定义 ref 指向 non-commit 对象时：non-force 拒绝，force 允许", async () => {
+    const repo = createMemoryRepository();
+    const author = { ...FIXED_AUTHOR };
+
+    const blobHash = repo.writeBlob(Buffer.from("blob payload for custom ref"));
+    const firstTagHash = repo.createAnnotatedTag(
+      "blobtag-v1",
+      blobHash,
+      "Blob tag v1",
+      author,
+      "blob",
+    );
+
+    const firstResult = await repo.push(serverUrl, {
+      refSpecs: ["refs/tags/blobtag-v1:refs/custom/blob-target"],
+    });
+    expect(firstResult.refUpdates).toHaveLength(1);
+    expect(firstResult.refUpdates[0]!.success).toBe(true);
+
+    const remoteAfterFirstPush = git(
+      ["--git-dir", serverRepoDir, "rev-parse", "refs/custom/blob-target"],
+      tempDir,
+    );
+    expect(remoteAfterFirstPush).toBe(firstTagHash);
+    expect(git(["--git-dir", serverRepoDir, "cat-file", "-t", firstTagHash], tempDir)).toBe("tag");
+
+    const secondTagHash = repo.createAnnotatedTag(
+      "blobtag-v2",
+      blobHash,
+      "Blob tag v2",
+      { ...author, timestamp: author.timestamp + 60 },
+      "blob",
+    );
+
+    const rejectedPush = repo.push(serverUrl, {
+      refSpecs: ["refs/tags/blobtag-v2:refs/custom/blob-target"],
+    });
+    expect(rejectedPush).rejects.toThrow(/Use force|expected commit|non-commit/i);
+
+    const remoteAfterReject = git(
+      ["--git-dir", serverRepoDir, "rev-parse", "refs/custom/blob-target"],
+      tempDir,
+    );
+    expect(remoteAfterReject).toBe(firstTagHash);
+
+    const forcedResult = await repo.push(serverUrl, {
+      refSpecs: ["+refs/tags/blobtag-v2:refs/custom/blob-target"],
+    });
+    expect(forcedResult.refUpdates).toHaveLength(1);
+    expect(forcedResult.refUpdates[0]!.success).toBe(true);
+    expect(forcedResult.refUpdates[0]!.forced).toBe(true);
+
+    const remoteAfterForce = git(
+      ["--git-dir", serverRepoDir, "rev-parse", "refs/custom/blob-target"],
+      tempDir,
+    );
+    expect(remoteAfterForce).toBe(secondTagHash);
+  });
+
   test("通过 push 删除远程 tag", async () => {
     // 1. 先用系统 git 创建 tag 并推送到服务端
     createFile(workDir, "to-delete.txt", "will be deleted\n");

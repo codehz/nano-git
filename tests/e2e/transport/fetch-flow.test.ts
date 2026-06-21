@@ -313,6 +313,21 @@ describe("完整 fetch 流程", () => {
     expect(repo.objects.read(sha1(tagHash!)).type).toBe("tag");
   });
 
+  test("annotated tag fetch 到 refs/heads/* 时失败，且不写入本地 branch ref", async () => {
+    git(["tag", "-a", "v-branch-invalid", "-m", "branch invalid tag"], workDir);
+    git(["push", serverRepoDir, "refs/tags/v-branch-invalid"], workDir);
+
+    const localDir = join(tempDir, "local-invalid-branch-target");
+    const repo = initRepository(localDir);
+
+    const fetchPromise = repo.fetch(serverUrl, {
+      refSpecs: ["+refs/tags/v-branch-invalid:refs/heads/from-tag"],
+    });
+
+    expect(fetchPromise).rejects.toThrow(/tag object|expected commit|refs\/heads/i);
+    expect(repo.refs.read("refs/heads/from-tag")).toBeNull();
+  });
+
   test("非强制 fetch 更新已有 lightweight tag 应被拒绝（但 force 可以）", async () => {
     // 1. 在服务端创建 lightweight tag
     const initialCommit = git(["rev-parse", "HEAD"], workDir);
