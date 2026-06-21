@@ -313,6 +313,46 @@ describe("完整 fetch 流程", () => {
     expect(repo.objects.read(sha1(tagHash!)).type).toBe("tag");
   });
 
+  test("非强制 fetch 更新已有 lightweight tag 应被拒绝（但 force 可以）", async () => {
+    // 1. 在服务端创建 lightweight tag
+    const initialCommit = git(["rev-parse", "HEAD"], workDir);
+    git(["tag", "-f", "v-update", initialCommit], workDir);
+    git(["push", serverRepoDir, "refs/tags/v-update"], workDir);
+
+    // 2. 用 + 先在本地创建 lightweight tag
+    const localDir = join(tempDir, "local-tag-update");
+    const repo = initRepository(localDir);
+    const firstResult = await repo.fetch(serverUrl, {
+      refSpecs: ["+refs/tags/*:refs/tags/*"],
+    });
+    expect(firstResult.fetchedRefs.has("refs/tags/v-update")).toBe(true);
+
+    // 3. 创建新的 commit 并推送到服务端
+    createFile(workDir, "new-tag-file.txt", "new content\n");
+    git(["add", "new-tag-file.txt"], workDir);
+    git(["commit", "-m", "New commit for tag update"], workDir);
+    git(["push", serverRepoDir, "main"], workDir);
+    // 在服务端将 lightweight tag 移到新的 commit
+    const newCommit = git(["rev-parse", "HEAD"], workDir);
+    git(["--git-dir", serverRepoDir, "tag", "-f", "v-update", newCommit], tempDir);
+
+    // 4. 非强制 fetch——应拒绝更新已有 tag
+    const secondResult = await repo.fetch(serverUrl, {
+      refSpecs: ["refs/tags/*:refs/tags/*"],
+    });
+    const localTagHash = repo.refs.read("refs/tags/v-update");
+    expect(localTagHash).toBe(initialCommit);
+    expect(secondResult.fetchedRefs.has("refs/tags/v-update")).toBe(false);
+
+    // 5. 强制 fetch——应更新 tag
+    const thirdResult = await repo.fetch(serverUrl, {
+      refSpecs: ["+refs/tags/*:refs/tags/*"],
+    });
+    const updatedTagHash = repo.refs.read("refs/tags/v-update");
+    expect(updatedTagHash).toBe(newCommit);
+    expect(thirdResult.fetchedRefs.get("refs/tags/v-update")).toBe(sha1(newCommit));
+  });
+
   test("协议降级：服务端不走 side-band-64k 时 fetch 仍成功", async () => {
     const downgradedServer = startGitHttpBackendServer(tempDir, "/server.git", undefined, {
       transformResponse(response: GitHttpBackendResponse, request: GitHttpRequestRecord) {

@@ -1043,6 +1043,84 @@ describe("fetch() 增量 fetch 行为", () => {
       expect(result.objectCount).toBe(1);
       expect(objectStore.exists(entry.hash)).toBe(true);
     });
+
+    test("非强制 refspec：已有 lightweight tag 的 fast-forward update 被拒绝", async () => {
+      const objectStore = createMemoryObjectStore();
+
+      const root = createTestCommit(objectStore, [], 100);
+      const oldTagHash = root;
+
+      // 远程 tag 指向 root 的后代（fast-forward 关系）
+      const remoteTag = createTestCommit(objectStore, [root], 200);
+
+      const refStore = createMemoryRefStore(new Map([["refs/tags/v1", oldTagHash]]));
+      const { packData } = createBlobPackfile("tag update content");
+
+      const transport = createMockTransport(
+        [{ name: "refs/tags/v1", hash: remoteTag }],
+        { multi_ack: true, "side-band-64k": true, "ofs-delta": true },
+        () => packData,
+      );
+
+      const result = await fetch(objectStore, refStore, "dummy", {
+        transport,
+        refSpecs: ["refs/tags/*:refs/tags/*"],
+      });
+
+      // ref 应保持原值（不允许更新）
+      expect(refStore.read("refs/tags/v1")).toBe(oldTagHash);
+      expect(result.fetchedRefs.has("refs/tags/v1")).toBe(false);
+      expect(result.objectCount).toBe(1);
+    });
+
+    test("强制 refspec：已有 lightweight tag 的 update 被允许", async () => {
+      const objectStore = createMemoryObjectStore();
+
+      const root = createTestCommit(objectStore, [], 100);
+      const oldTagHash = root;
+      const remoteTag = createTestCommit(objectStore, [root], 200);
+
+      const refStore = createMemoryRefStore(new Map([["refs/tags/v1", oldTagHash]]));
+      const { packData } = createBlobPackfile("force tag content");
+
+      const transport = createMockTransport(
+        [{ name: "refs/tags/v1", hash: remoteTag }],
+        { multi_ack: true, "side-band-64k": true, "ofs-delta": true },
+        () => packData,
+      );
+
+      const result = await fetch(objectStore, refStore, "dummy", {
+        transport,
+        refSpecs: ["+refs/tags/*:refs/tags/*"],
+      });
+
+      expect(refStore.read("refs/tags/v1")).toBe(remoteTag);
+      expect(result.fetchedRefs.get("refs/tags/v1")).toBe(remoteTag);
+      expect(result.objectCount).toBe(1);
+    });
+
+    test("非强制 refspec：全新的 lightweight tag 仍可创建", async () => {
+      const objectStore = createMemoryObjectStore();
+      const remoteTag = createTestCommit(objectStore, [], 100);
+      const refStore = createMemoryRefStore();
+
+      const { packData } = createBlobPackfile("new tag content");
+
+      const transport = createMockTransport(
+        [{ name: "refs/tags/v2", hash: remoteTag }],
+        { multi_ack: true, "side-band-64k": true, "ofs-delta": true },
+        () => packData,
+      );
+
+      const result = await fetch(objectStore, refStore, "dummy", {
+        transport,
+        refSpecs: ["refs/tags/*:refs/tags/*"],
+      });
+
+      expect(refStore.read("refs/tags/v2")).toBe(remoteTag);
+      expect(result.fetchedRefs.get("refs/tags/v2")).toBe(remoteTag);
+      expect(result.objectCount).toBe(1);
+    });
   });
 });
 
