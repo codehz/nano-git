@@ -113,8 +113,12 @@ export function parseReceivePackResult(data: Buffer): PushRefUpdate[] {
         forced: false,
       });
     } else if (payload.startsWith("unpack ")) {
-      // "unpack ok" 或 "unpack <error>" — packfile 解包状态，跳过
-      // 由上层编排函数处理
+      // "unpack ok" 或 "unpack <error>"
+      // unpack 失败是致命错误，立即抛出而不等待后续 ref 行
+      const unpackResult = payload.slice("unpack ".length);
+      if (unpackResult !== "ok") {
+        throw new ReceivePackResultError(`Server failed to unpack packfile: ${unpackResult}`);
+      }
       continue;
     } else {
       throw new ReceivePackResultError(

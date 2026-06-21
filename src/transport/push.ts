@@ -28,7 +28,7 @@ import { sha1 } from "../core/types.ts";
 import { createPackWriter } from "../odb/pack/pack-writer.ts";
 import { createSmartHttpClient } from "./smart-http.ts";
 import { buildReceivePackRequest } from "./receive-pack-request.ts";
-import { parseReceivePackResult } from "./receive-pack-result.ts";
+import { ReceivePackResultError } from "./receive-pack-result.ts";
 import type { PushOptions, PushResult, PushRefUpdate } from "./types.ts";
 import { parseRefSpec, matchesRefSpec } from "./fetch.ts";
 import type { ParsedRefSpec } from "./fetch.ts";
@@ -406,7 +406,18 @@ export async function push(
   const body = buildReceivePackRequest(commands, packfile, caps);
 
   // 10. 发送请求
-  const { progress, refUpdates } = await client.postReceivePack(body);
+  let progress: string[];
+  let refUpdates: PushRefUpdate[];
+  try {
+    const result = await client.postReceivePack(body);
+    progress = result.progress;
+    refUpdates = result.refUpdates;
+  } catch (err: unknown) {
+    if (err instanceof ReceivePackResultError) {
+      throw new PushError(`Remote server rejected the push: ${err.message}`);
+    }
+    throw err;
+  }
 
   // 11. 将服务端返回的 report-status 与我们的推送引用关联，补充 refName/oldHash/newHash 信息
   const pushRefMap = new Map<string, PushRefItem>();

@@ -151,7 +151,7 @@ describe("parseReceivePackResult", () => {
     expect(result[0]!.error).toBe("non-fast-forward");
   });
 
-  test("跳过 unpack 行", () => {
+  test("unpack ok 行被跳过", () => {
     const data = Buffer.concat([
       encodePktLine("unpack ok\n"),
       encodePktLine("ok refs/heads/main\n"),
@@ -164,17 +164,21 @@ describe("parseReceivePackResult", () => {
     expect(result[0]!.success).toBe(true);
   });
 
-  test("跳过 unpack error 行", () => {
+  test("unpack error 行导致报错", () => {
+    const data = Buffer.concat([encodePktLine("unpack index error\n"), encodeFlushPkt()]);
+
+    expect(() => parseReceivePackResult(data)).toThrow(ReceivePackResultError);
+    expect(() => parseReceivePackResult(data)).toThrow("index error");
+  });
+
+  test("unpack error 后跟随 ng 行仍应先报 unpack 错误", () => {
     const data = Buffer.concat([
       encodePktLine("unpack index error\n"),
       encodePktLine("ng refs/heads/main unpack fail\n"),
       encodeFlushPkt(),
     ]);
 
-    const result = parseReceivePackResult(data);
-    expect(result).toHaveLength(1);
-    expect(result[0]!.success).toBe(false);
-    expect(result[0]!.error).toBe("unpack fail");
+    expect(() => parseReceivePackResult(data)).toThrow(ReceivePackResultError);
   });
 
   test("多行混合", () => {

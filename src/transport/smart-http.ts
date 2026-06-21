@@ -16,7 +16,7 @@ import { parseRefAdvertisement, RefAdvertisementError } from "./ref-advertisemen
 import { extractPackfile, extractProgress, SideBandError } from "./side-band.ts";
 import { parsePktLines } from "./pkt-line.ts";
 import type { PktLineData } from "./pkt-line.ts";
-import { parseReceivePackResult } from "./receive-pack-result.ts";
+import { parseReceivePackResult, ReceivePackResultError } from "./receive-pack-result.ts";
 import type { RefAdvertisement, PushRefUpdate } from "./types.ts";
 import { GitError } from "../core/errors.ts";
 
@@ -356,6 +356,7 @@ export function createSmartHttpClient(baseUrl: string, auth?: SmartHttpAuth): Sm
           ) {
             // Side-band 编码：从 channel 1 提取 report-status，从 channel 2 提取进度
             const reportStatusChunks: Buffer[] = [];
+            let unpackError: string | null = null;
 
             for (const line of pktLines) {
               if (line.type !== "data") continue;
@@ -409,8 +410,12 @@ export function createSmartHttpClient(baseUrl: string, auth?: SmartHttpAuth): Sm
                   frameData.length >= 6 &&
                   frameData.subarray(0, 6).toString("utf-8") === "unpack"
                 ) {
-                  // "unpack ok" / "unpack <error>" — 由上层编排函数处理
-                  continue;
+                  // "unpack ok" / "unpack <error>"
+                  const unpackText = frameData.toString("utf-8").trimEnd();
+                  const unpackResult = unpackText.slice("unpack ".length);
+                  if (unpackResult !== "ok") {
+                    unpackError = unpackResult;
+                  }
                 } else {
                   // 其他 channel 1 数据（packfile 等），跳过
                   continue;
@@ -424,6 +429,11 @@ export function createSmartHttpClient(baseUrl: string, auth?: SmartHttpAuth): Sm
                   `Server reported error: ${frameData.toString("utf-8").trimEnd()}`,
                 );
               }
+            }
+
+            // side-band 解析完成：如果 unpack 失败，立即报错
+            if (unpackError !== null) {
+              throw new SmartHttpError(`Server failed to unpack packfile: ${unpackError}`);
             }
 
             // 如果通过直接解析未获得 report-status，尝试用 parseReceivePackResult 解析收集到的数据
@@ -444,8 +454,11 @@ export function createSmartHttpClient(baseUrl: string, auth?: SmartHttpAuth): Sm
           }
         }
       } catch (err) {
-        // 解析失败时仍返回原始数据，不阻断整个流程
+        // SmartHttpError 和 ReceivePackResultError 是协议级错误，需要向上传递
         if (err instanceof SmartHttpError) {
+          throw err;
+        }
+        if (err instanceof ReceivePackResultError) {
           throw err;
         }
         // 非致命解析错误，返回空结果
