@@ -23,6 +23,7 @@ import { GitError } from "../core/errors.ts";
 import { sha1 } from "../core/types.ts";
 import { deserializeContent } from "../objects/codec.ts";
 import { createPackReader } from "../odb/pack/pack-reader.ts";
+import { resolveRefHash } from "../refs/resolve.ts";
 import { HEADS_PREFIX, TAGS_PREFIX, HEAD_REF } from "../refs/types.ts";
 import {
   buildUploadPackRequestPrefix,
@@ -192,7 +193,7 @@ export function determineWants(
  * 遍历 refs/heads/、refs/tags/ 和 HEAD 等已知前缀，
  * 避免使用 "refs/" 顶级前缀（不满足 validateRefPrefix 要求）。
  */
-function getLocalRefs(refs: RefStore): Map<string, SHA1> {
+export function getLocalRefs(refs: RefStore): Map<string, SHA1> {
   const map = new Map<string, SHA1>();
   const prefixes = [HEADS_PREFIX, TAGS_PREFIX, "refs/remotes/"];
 
@@ -213,13 +214,13 @@ function getLocalRefs(refs: RefStore): Map<string, SHA1> {
   }
 
   for (const refName of explicitRefs) {
-    const content = refs.readRaw(refName);
-    if (content && /^[0-9a-f]{40}$/.test(content)) {
-      try {
-        map.set(refName, sha1(content));
-      } catch {
-        // 忽略无效哈希
+    try {
+      const hash = resolveRefHash(refs, refName);
+      if (hash) {
+        map.set(refName, hash);
       }
+    } catch {
+      // 忽略解析失败（如循环引用）
     }
   }
 

@@ -17,6 +17,7 @@ import {
   determineWants,
   fetch,
   selectHaveTips,
+  getLocalRefs,
 } from "@/transport/fetch.ts";
 import { parsePktLines } from "@/transport/pkt-line.ts";
 
@@ -757,5 +758,32 @@ describe("selectHaveTips()", () => {
     const tips = selectHaveTips(localRefs, wants);
     // hashA 只出现一次
     expect(tips.filter((h) => h === hashA)).toHaveLength(1);
+  });
+});
+
+// ============================================================================
+// getLocalRefs
+// ============================================================================
+
+describe("getLocalRefs()", () => {
+  test("符号引用 HEAD 应解析为目标 ref 的哈希", () => {
+    const hash = sha1("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    const store = createMemoryRefStore(
+      new Map([
+        ["HEAD", "ref: refs/heads/main"],
+        ["refs/heads/main", hash],
+      ]),
+    );
+
+    const refs = getLocalRefs(store);
+    expect(refs.get("HEAD")).toBe(hash);
+  });
+
+  test("分离头指针（detached HEAD）也应解析", () => {
+    const hash = sha1("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+    const store = createMemoryRefStore(new Map([["HEAD", hash]]));
+
+    const refs = getLocalRefs(store);
+    expect(refs.get("HEAD")).toBe(hash);
   });
 });
