@@ -41,11 +41,24 @@ import type { PushOptions, PushResult, PushRefUpdate } from "./types.ts";
 
 /**
  * Push 操作错误
+ *
+ * 当服务端部分或全部拒绝更新时抛出。
+ * 即使抛出异常，`refUpdates` 属性仍会保留服务端返回的所有 ref 状态
+ * （包含成功和失败的），以便调用方在部分成功场景下做出相应处理。
  */
 export class PushError extends GitError {
-  constructor(message: string) {
+  /** 服务端返回的所有 ref 更新结果（包含成功和失败） */
+  refUpdates?: PushRefUpdate[];
+  /** 服务端返回的进度消息 */
+  progress?: string[];
+
+  constructor(message: string, extra?: { refUpdates?: PushRefUpdate[]; progress?: string[] }) {
     super(`Push error: ${message}`);
     this.name = "PushError";
+    if (extra) {
+      this.refUpdates = extra.refUpdates;
+      this.progress = extra.progress;
+    }
   }
 }
 
@@ -798,16 +811,9 @@ export async function push(
     throw new PushError(`Server returned mismatched ref status: ${parts.join("; ")}`);
   }
 
-  // 11c. 服务端返回 ng（拒绝）时立即抛出 PushError，而非让调用方自行检查 success
-  const rejectedUpdates = refUpdates.filter((u) => !u.success);
-  if (rejectedUpdates.length > 0) {
-    const details = rejectedUpdates
-      .map((u) => `${u.refName}: ${u.error ?? "unknown error"}`)
-      .join("; ");
-    throw new PushError(`Remote server rejected the push: ${details}`);
-  }
-
-  // 12. 将服务端返回的 report-status 与我们的推送引用关联，补充 refName/oldHash/newHash 信息
+  // 11c. 将服务端返回的 report-status 与我们的推送引用关联，补充 oldHash/newHash/forced 信息
+  //     必须在后续任何数据返回（包括错误时的 refUpdates）之前完成富化，
+  //     以确保调用方在部分成功场景下能拿到完整的 ref 状态。
   const pushRefMap = new Map<string, PushRefItem>();
   for (const item of pushRefs) {
     pushRefMap.set(item.remoteRef, item);
@@ -824,6 +830,20 @@ export async function push(
       forced: matched?.force ?? false,
     };
   });
+
+  // 11d. 检查是否有被服务端拒绝的更新
+  //      非 atomic 场景下服务端可能部分接受部分拒绝，此时 PushError
+  //      会携带完整的 refUpdates（含成功项）和 progress，供调用方决策。
+  const rejectedUpdates = enrichedUpdates.filter((u) => !u.success);
+  if (rejectedUpdates.length > 0) {
+    const details = rejectedUpdates
+      .map((u) => `${u.refName}: ${u.error ?? "unknown error"}`)
+      .join("; ");
+    throw new PushError(`Remote server rejected the push: ${details}`, {
+      refUpdates: enrichedUpdates,
+      progress,
+    });
+  }
 
   return {
     refUpdates: enrichedUpdates,

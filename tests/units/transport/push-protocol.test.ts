@@ -482,6 +482,72 @@ describe("push() 服务端 ng 响应处理", () => {
     expect(pushPromise).rejects.toThrow(PushError);
     expect(pushPromise).rejects.toThrow(/hook declined/);
   });
+
+  test("部分成功时仍应抛错，但错误对象必须保留完整 refUpdates", async () => {
+    const store = createMemoryObjectStore();
+    const refStore = createMemoryRefStore(new Map());
+    const author = { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" };
+    const emptyTree = store.write({ type: "tree", entries: [] });
+
+    const commitHash = store.write({
+      type: "commit" as const,
+      tree: emptyTree,
+      parents: [],
+      author,
+      committer: author,
+      message: "test",
+    });
+    refStore.write("refs/heads/main", commitHash);
+
+    const transport: RemoteTransport = {
+      getReceivePackRefs: async () => ({
+        capabilities: { "report-status": true },
+        refs: [],
+      }),
+      postReceivePack: async () => {
+        const data = Buffer.concat([
+          encodePktLine("unpack ok\n"),
+          encodePktLine("ok refs/heads/main\n"),
+          encodePktLine("ng refs/heads/feature non-fast-forward\n"),
+          encodeFlushPkt(),
+        ]);
+        return { data, refUpdates: parseReceivePackResult(data), progress: ["remote: progress"] };
+      },
+      getRefAdvertisement: async () => {
+        throw new Error("not used");
+      },
+      postUploadPack: async () => {
+        throw new Error("not used");
+      },
+    };
+
+    const pushPromise = push(store, refStore, "dummy", {
+      transport,
+      refSpecs: ["refs/heads/main:refs/heads/main", "refs/heads/main:refs/heads/feature"],
+    });
+
+    expect(pushPromise).rejects.toBeInstanceOf(PushError);
+
+    try {
+      await pushPromise;
+      throw new Error("Expected push() to reject on partial failure");
+    } catch (err) {
+      expect(err).toBeInstanceOf(PushError);
+
+      const details = err as PushError;
+
+      expect(details.refUpdates).toBeDefined();
+      expect(details.refUpdates).toHaveLength(2);
+      expect(details.refUpdates?.find((u) => u.refName === "refs/heads/main")?.success).toBe(true);
+      expect(details.refUpdates?.find((u) => u.refName === "refs/heads/feature")?.success).toBe(
+        false,
+      );
+      expect(details.refUpdates?.find((u) => u.refName === "refs/heads/feature")?.error).toBe(
+        "non-fast-forward",
+      );
+      expect(details.progress).toEqual(["remote: progress"]);
+    }
+  });
 });
 
 // ============================================================================
