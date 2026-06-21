@@ -93,8 +93,9 @@ function throwIfMissingObject(
     return;
   }
 
-  const shouldThrow =
-    missing === "throw" || (missing === "skip-commit-parents" && !viaCommitParent);
+  // "skip-commit-parents" 模式下仅在已知 shallow 边界中放行 commit parent 缺失；
+  // 其余所有缺失（含未在 shallowBoundaries 中的 commit parent）均按本地损坏报错
+  const shouldThrow = missing === "throw" || missing === "skip-commit-parents";
 
   if (shouldThrow) {
     throw new PushError(

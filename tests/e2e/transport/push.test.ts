@@ -742,7 +742,8 @@ describe("push() 端到端", () => {
     repo.updateRef("refs/heads/feature", commitHash);
 
     // 不传 refSpecs，使用默认行为
-    const result = await repo.push(serverUrl);
+    // 同时声明 initialCommit 为已知 shallow 边界，因为该 commit 对象仅在服务端存在
+    const result = await repo.push(serverUrl, { shallowBoundaries: [initialCommit] });
 
     expect(result.refUpdates).toHaveLength(1);
     expect(result.refUpdates[0]!.success).toBe(true);
@@ -776,7 +777,8 @@ describe("push() 端到端", () => {
     repo.updateRef("refs/heads/main", commitHash);
 
     // HEAD 默认指向 main，不传 refSpecs 应推送到 main
-    const result = await repo.push(serverUrl);
+    // 同时声明 initialCommit 为已知 shallow 边界，因为该 commit 对象仅在服务端存在
+    const result = await repo.push(serverUrl, { shallowBoundaries: [initialCommit] });
 
     expect(result.refUpdates).toHaveLength(1);
     expect(result.refUpdates[0]!.success).toBe(true);

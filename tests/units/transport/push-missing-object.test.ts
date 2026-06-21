@@ -253,7 +253,7 @@ describe('collectReachable(missing="skip-commit-parents")', () => {
     }).toThrow(PushError);
   });
 
-  test("shallow：仅 commit parent 缺失时静默跳过", () => {
+  test("shallow：已知 shallow 边界的 commit parent 缺失时静默跳过", () => {
     const store = createMemoryObjectStore();
     const emptyTree = store.write({ type: "tree", entries: [] });
 
@@ -268,10 +268,50 @@ describe('collectReachable(missing="skip-commit-parents")', () => {
     };
     const cHash = store.write(c);
 
-    const result = collectReachable(store, [cHash], "skip-commit-parents");
+    const shallowSet = new Set<SHA1>([bHash]);
+    const result = collectReachable(store, [cHash], "skip-commit-parents", shallowSet);
     expect(result.has(cHash)).toBe(true);
     expect(result.has(emptyTree)).toBe(true);
     expect(result.has(bHash)).toBe(false);
+  });
+
+  test("commit parent 缺失且不在 shallowBoundaries 时抛出 PushError", () => {
+    const store = createMemoryObjectStore();
+    const emptyTree = store.write({ type: "tree", entries: [] });
+
+    const missingParent = sha1("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+    const cHash = store.write({
+      type: "commit",
+      tree: emptyTree,
+      parents: [missingParent],
+      author: { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" },
+      committer: { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" },
+      message: "c",
+    });
+
+    expect(() => {
+      collectReachable(store, [cHash], "skip-commit-parents");
+    }).toThrow(PushError);
+  });
+
+  test("commit parent 缺失且 shallowBoundaries 不含该 hash 时抛出 PushError", () => {
+    const store = createMemoryObjectStore();
+    const emptyTree = store.write({ type: "tree", entries: [] });
+
+    const missingParent = sha1("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+    const cHash = store.write({
+      type: "commit",
+      tree: emptyTree,
+      parents: [missingParent],
+      author: { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" },
+      committer: { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" },
+      message: "c",
+    });
+
+    const unrelatedShallow = new Set<SHA1>([sha1("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]);
+    expect(() => {
+      collectReachable(store, [cHash], "skip-commit-parents", unrelatedShallow);
+    }).toThrow(PushError);
   });
 
   test("推送根 commit 缺失时仍抛出", () => {
