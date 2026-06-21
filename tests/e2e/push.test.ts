@@ -1,19 +1,26 @@
 /**
  * Push 高层 API 端到端测试
  *
- * 通过 CgiTransport 将 push() 的全套编排逻辑接入 git http-backend CGI：
+ * 通过真实 HTTP 服务将 push() 的全套编排逻辑接入 git http-backend：
  *   parseRefSpec → determinePushRefs → checkFastForward → collectReachable
  *   → createPackWriter → buildReceivePackRequest → postReceivePack → parseReceivePackResult
  *
- * 不依赖手工构造协议报文，完整验证高层 push() 函数的行为。
+ * 不依赖手工构造协议报文，完整验证高层 push() 函数的真实网络路径行为。
  */
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { git, gitInit, createTempDir, cleanupDir, createFile, FIXED_AUTHOR } from "./helpers.ts";
-import { createCgiTransport } from "../../src/transport/cgi-transport.ts";
+import {
+  git,
+  gitInit,
+  createTempDir,
+  cleanupDir,
+  createFile,
+  FIXED_AUTHOR,
+  startGitHttpBackendServer,
+} from "./helpers.ts";
 import { createMemoryRepository, type Repository } from "../../src/repository/index.ts";
 import { sha1 } from "../../src/core/types.ts";
 
@@ -48,18 +55,18 @@ function makeAuthor() {
 // 测试
 // ============================================================================
 
-describe("push() 端到端（CgiTransport）", () => {
+describe("push() 端到端（真实 HTTP）", () => {
   let tempDir: string;
   let serverRepoDir: string;
-  let projectRoot: string;
   let workDir: string;
+  let serverUrl: string;
+  let server: ReturnType<typeof startGitHttpBackendServer>;
 
   beforeEach(() => {
     tempDir = createTempDir("e2e-push-cgi");
 
     // 1. 创建服务端裸仓库
     serverRepoDir = join(tempDir, "server.git");
-    projectRoot = tempDir;
     mkdirSync(serverRepoDir);
     git(["init", "--bare"], serverRepoDir);
     enableReceivePack(serverRepoDir);
@@ -71,9 +78,14 @@ describe("push() 端到端（CgiTransport）", () => {
     git(["add", "README.md"], workDir);
     git(["commit", "-m", "Initial commit"], workDir);
     git(["push", serverRepoDir, "main"], workDir);
+
+    // 3. 启动真实 HTTP 服务
+    server = startGitHttpBackendServer(tempDir, "/server.git", HTTP_BACKEND);
+    serverUrl = server.url;
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await server?.stop();
     cleanupDir(tempDir);
   });
 
@@ -86,10 +98,8 @@ describe("push() 端到端（CgiTransport）", () => {
     const commitHash = repo.createCommit(treeHash, [], "New branch commit", author);
     repo.updateRef("refs/heads/new-feature", commitHash);
 
-    const transport = createCgiTransport(serverRepoDir, projectRoot, HTTP_BACKEND);
-    const result = await repo.push("dummy", {
+    const result = await repo.push(serverUrl, {
       refSpecs: ["refs/heads/new-feature:refs/heads/new-feature"],
-      transport,
     });
 
     expect(result.refUpdates).toHaveLength(1);
@@ -114,12 +124,10 @@ describe("push() 端到端（CgiTransport）", () => {
     const branchRef = git(["--git-dir", serverRepoDir, "rev-parse", "refs/heads/feature"], tempDir);
     expect(branchRef).toBe(branchHash);
 
-    // 2. 用 CgiTransport 删除远程分支
+    // 2. 用真实 HTTP push 删除远程分支
     const deleteRepo = makeRepo();
-    const deleteTransport = createCgiTransport(serverRepoDir, projectRoot, HTTP_BACKEND);
-    const deleteResult = await deleteRepo.push("dummy", {
+    const deleteResult = await deleteRepo.push(serverUrl, {
       refSpecs: [":refs/heads/feature"],
-      transport: deleteTransport,
     });
 
     expect(deleteResult.refUpdates).toHaveLength(1);
@@ -147,10 +155,8 @@ describe("push() 端到端（CgiTransport）", () => {
     const divergentHash = repo.createCommit(treeHash, [], "Divergent", author);
     repo.updateRef("refs/heads/main", divergentHash);
 
-    const transport = createCgiTransport(serverRepoDir, projectRoot, HTTP_BACKEND);
-    const pushPromise = repo.push("dummy", {
+    const pushPromise = repo.push(serverUrl, {
       refSpecs: ["refs/heads/main:refs/heads/main"],
-      transport,
     });
 
     await expect(pushPromise).rejects.toThrow("Non-fast-forward");
@@ -165,11 +171,9 @@ describe("push() 端到端（CgiTransport）", () => {
     const forceHash = repo.createCommit(treeHash, [], "Forced", author);
     repo.updateRef("refs/heads/main", forceHash);
 
-    const transport = createCgiTransport(serverRepoDir, projectRoot, HTTP_BACKEND);
-    const result = await repo.push("dummy", {
+    const result = await repo.push(serverUrl, {
       refSpecs: ["refs/heads/main:refs/heads/main"],
       force: true,
-      transport,
     });
 
     expect(result.refUpdates).toHaveLength(1);
