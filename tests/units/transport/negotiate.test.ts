@@ -355,4 +355,64 @@ describe("parseUploadPackNegotiationResponse()", () => {
     const result = parseUploadPackNegotiationResponse(data);
     expect(result.hasPackfile).toBe(true);
   });
+
+  // ====================================================================
+  // Shallow / Unshallow 响应解析（TODO: 暂未实现，此处测试标记预期失败）
+  // ====================================================================
+
+  test("解析 shallow 行：deepen 请求后服务器返回的 shallow 边界应被提取", () => {
+    const hash1 = sha1("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    const hash2 = sha1("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+
+    const data = Buffer.concat([
+      encodePktLine(`shallow ${hash1}\n`),
+      encodePktLine(`shallow ${hash2}\n`),
+      encodePktLine("NAK\n"),
+    ]);
+
+    const result = parseUploadPackNegotiationResponse(data);
+
+    // BUG: 当前实现忽略 shallow 行，result.shallow 为 undefined 或 []
+    // 修复后应返回 [hash1, hash2]
+    expect(result.shallow).toBeDefined();
+    expect(result.shallow).toEqual([hash1, hash2]);
+    expect(result.nak).toBe(true);
+  });
+
+  test("解析 unshallow 行：浅仓库增量 fetch 时服务器返回的 unshallow 应被提取", () => {
+    const hash1 = sha1("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+
+    const data = Buffer.concat([encodePktLine(`unshallow ${hash1}\n`), encodePktLine("NAK\n")]);
+
+    const result = parseUploadPackNegotiationResponse(data);
+
+    // BUG: 当前实现忽略 unshallow 行，result.unshallow 为 undefined 或 []
+    // 修复后应返回 [hash1]
+    expect(result.unshallow).toBeDefined();
+    expect(result.unshallow).toEqual([hash1]);
+    expect(result.nak).toBe(true);
+  });
+
+  test("解析 mixed 响应：shallow、unshallow、ACK 共存", () => {
+    const shallowHash = sha1("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    const unshallowHash = sha1("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+    const ackHash = sha1("cccccccccccccccccccccccccccccccccccccccc");
+
+    const data = Buffer.concat([
+      encodePktLine(`shallow ${shallowHash}\n`),
+      encodePktLine(`unshallow ${unshallowHash}\n`),
+      encodePktLine(`ACK ${ackHash} continue\n`),
+      encodePktLine("NAK\n"),
+    ]);
+
+    const result = parseUploadPackNegotiationResponse(data);
+
+    // BUG: 当前实现忽略 shallow/unshallow 行
+    expect(result.shallow).toBeDefined();
+    expect(result.shallow).toEqual([shallowHash]);
+    expect(result.unshallow).toBeDefined();
+    expect(result.unshallow).toEqual([unshallowHash]);
+    expect(result.acknowledgements).toEqual([{ hash: ackHash, status: "continue" }]);
+    expect(result.nak).toBe(true);
+  });
 });

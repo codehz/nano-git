@@ -95,6 +95,7 @@ export function collectHaveCommits(store: ObjectStore, tips: SHA1[]): SHA1[] {
  * @param haves - 已有的 have 对象哈希列表（增量 fetch 时用）
  * @param capabilities - 能力列表（如 ["multi_ack", "side-band-64k", "ofs-delta"]）
  * @param depth - 可选 shallow clone 深度（设置后添加 deepen 命令）
+ * @param shallow - 可选已有 shallow 边界 commit 列表（设置后添加 shallow 行）
  * @returns pkt-line 编码的请求 body Buffer
  *
  * @example
@@ -121,6 +122,22 @@ export function collectHaveCommits(store: ObjectStore, tips: SHA1[]): SHA1[] {
  * //   + "deepen 3\n"
  * //   + "0000"
  * //   + "done\n"
+ *
+ * // 增量 shallow fetch：带上已有 shallow 边界
+ * const followUp = buildUploadPackRequest(
+ *   [sha1("new-commit...")],
+ *   [sha1("old-commit...")],
+ *   [],
+ *   3,
+ *   [sha1("existing-shallow-boundary...")],
+ * );
+ * // => "want new-commit...\n"
+ * //   + "0000"
+ * //   + "deepen 3\n"
+ * //   + "shallow existing-shallow-boundary...\n"
+ * //   + "0000"
+ * //   + "have old-commit...\n"
+ * //   + "done\n"
  * ```
  */
 export function buildUploadPackRequest(
@@ -128,6 +145,7 @@ export function buildUploadPackRequest(
   haves: SHA1[],
   capabilities: string[],
   depth?: number,
+  shallow?: SHA1[],
 ): Buffer {
   if (wants.length === 0) {
     throw new Error("At least one want is required");
@@ -154,7 +172,14 @@ export function buildUploadPackRequest(
     chunks.push(encodePktLine(`deepen ${depth}\n`));
   }
 
-  // wants + deepen 之后的 flush
+  // shallow 行（已有 shallow 边界，在 deepen 之后、flush 之前）
+  if (shallow !== undefined && shallow.length > 0) {
+    for (const hash of shallow) {
+      chunks.push(encodePktLine(`shallow ${hash}\n`));
+    }
+  }
+
+  // wants + deepen + shallow 之后的 flush
   chunks.push(encodeFlushPkt());
 
   // have 行：当前 fetch 编排使用单次 stateless-rpc 请求，
@@ -176,6 +201,7 @@ export function buildUploadPackRequest(
  * @param haves - 本轮发送的 have 列表
  * @param capabilities - 能力列表
  * @param depth - shallow 深度
+ * @param shallow - 可选已有 shallow 边界 commit 列表
  * @returns pkt-line 编码请求体
  */
 export function buildUploadPackNegotiationRound(
@@ -183,6 +209,7 @@ export function buildUploadPackNegotiationRound(
   haves: SHA1[],
   capabilities: string[],
   depth?: number,
+  shallow?: SHA1[],
 ): Buffer {
   if (wants.length === 0) {
     throw new Error("At least one want is required");
@@ -208,7 +235,14 @@ export function buildUploadPackNegotiationRound(
     chunks.push(encodePktLine(`deepen ${depth}\n`));
   }
 
-  // wants + deepen 之后的 flush
+  // shallow 行（已有 shallow 边界，在 deepen 之后、flush 之前）
+  if (shallow !== undefined && shallow.length > 0) {
+    for (const hash of shallow) {
+      chunks.push(encodePktLine(`shallow ${hash}\n`));
+    }
+  }
+
+  // wants + deepen + shallow 之后的 flush
   chunks.push(encodeFlushPkt());
 
   for (const hash of haves) {
@@ -232,6 +266,10 @@ export interface UploadPackNegotiationResponse {
   acknowledgements: Array<{ hash: SHA1; status: UploadPackAckStatus }>;
   nak: boolean;
   hasPackfile: boolean;
+  /** shallow 边界 commit 哈希列表（deepen 请求后服务器返回） */
+  shallow: SHA1[];
+  /** 从 shallow 变为完整的 commit 哈希列表（增量 fetch 时服务器返回） */
+  unshallow: SHA1[];
 }
 
 /**
@@ -241,12 +279,14 @@ export function parseUploadPackNegotiationResponse(data: Buffer): UploadPackNego
   const acknowledgements: Array<{ hash: SHA1; status: UploadPackAckStatus }> = [];
   let nak = false;
   let hasPackfile = false;
+  const shallow: SHA1[] = [];
+  const unshallow: SHA1[] = [];
 
   let pktLines: PktLine[];
   try {
     pktLines = parsePktLines(data);
   } catch {
-    return { acknowledgements, nak, hasPackfile: data.includes("PACK") };
+    return { acknowledgements, nak, hasPackfile, shallow, unshallow };
   }
 
   for (const line of pktLines) {
@@ -269,6 +309,18 @@ export function parseUploadPackNegotiationResponse(data: Buffer): UploadPackNego
       continue;
     }
 
+    const shallowMatch = text.match(/^shallow ([0-9a-f]{40})$/);
+    if (shallowMatch) {
+      shallow.push(shallowMatch[1] as SHA1);
+      continue;
+    }
+
+    const unshallowMatch = text.match(/^unshallow ([0-9a-f]{40})$/);
+    if (unshallowMatch) {
+      unshallow.push(unshallowMatch[1] as SHA1);
+      continue;
+    }
+
     const match = text.match(/^ACK ([0-9a-f]{40})(?: (continue|common|ready))?$/);
     if (match) {
       acknowledgements.push({
@@ -282,5 +334,5 @@ export function parseUploadPackNegotiationResponse(data: Buffer): UploadPackNego
     hasPackfile = data.includes("PACK");
   }
 
-  return { acknowledgements, nak, hasPackfile };
+  return { acknowledgements, nak, hasPackfile, shallow, unshallow };
 }

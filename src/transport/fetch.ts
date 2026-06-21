@@ -276,12 +276,17 @@ export async function fetch(
   const localRefValues = Array.from(localRefs.values());
   const haveHashes = localRefValues.length > 0 ? collectHaveCommits(store, localRefValues) : [];
   // 7. 发送请求
-  const packfile = await negotiateAndFetchPackfile(
+  const {
+    packfile,
+    shallow: newShallow,
+    unshallow: newUnshallow,
+  } = await negotiateAndFetchPackfile(
     client,
     wantHashes,
     haveHashes,
     caps,
     options?.depth,
+    options?.shallow,
   );
 
   if (packfile.length === 0) {
@@ -316,6 +321,8 @@ export async function fetch(
   return {
     fetchedRefs,
     objectCount,
+    shallow: newShallow.length > 0 ? newShallow : undefined,
+    unshallow: newUnshallow.length > 0 ? newUnshallow : undefined,
   };
 }
 
@@ -336,7 +343,7 @@ function extractCapabilities(serverCaps: Record<string, string | true>): string[
 }
 
 /**
- * 执行 Consecutive 协商并返回最终 packfile
+ * 执行 Consecutive 协商并返回最终 packfile 及 shallow 信息
  */
 async function negotiateAndFetchPackfile(
   client: import("./types.ts").RemoteTransport,
@@ -344,12 +351,22 @@ async function negotiateAndFetchPackfile(
   haves: SHA1[],
   capabilities: string[],
   depth?: number,
-): Promise<Buffer> {
+  shallow?: SHA1[],
+): Promise<{ packfile: Buffer; shallow: SHA1[]; unshallow: SHA1[] }> {
+  async function sendRound(
+    body: Buffer,
+  ): Promise<{ packfile: Buffer; shallow: SHA1[]; unshallow: SHA1[] }> {
+    const { data, packfile } = await client.postUploadPack(body);
+    if (packfile.length > 0) {
+      const response = parseUploadPackNegotiationResponse(data);
+      return { packfile, shallow: response.shallow, unshallow: response.unshallow };
+    }
+    const response = parseUploadPackNegotiationResponse(data);
+    return { packfile, shallow: response.shallow, unshallow: response.unshallow };
+  }
+
   if (haves.length === 0) {
-    const { packfile } = await client.postUploadPack(
-      buildUploadPackRequest(wants, [], capabilities, depth),
-    );
-    return packfile;
+    return sendRound(buildUploadPackRequest(wants, [], capabilities, depth, shallow));
   }
 
   let offset = 0;
@@ -357,25 +374,20 @@ async function negotiateAndFetchPackfile(
     const chunk = haves.slice(offset, offset + MAX_HAVES_PER_ROUND);
     const isLastRound = offset + chunk.length >= haves.length;
     const body = isLastRound
-      ? buildUploadPackRequest(wants, chunk, capabilities, depth)
-      : buildUploadPackNegotiationRound(wants, chunk, capabilities, depth);
+      ? buildUploadPackRequest(wants, chunk, capabilities, depth, shallow)
+      : buildUploadPackNegotiationRound(wants, chunk, capabilities, depth, shallow);
 
-    const { data, packfile } = await client.postUploadPack(body);
-    if (packfile.length > 0) {
-      return packfile;
-    }
-
-    const response = parseUploadPackNegotiationResponse(data);
-    if (response.hasPackfile && packfile.length > 0) {
-      return packfile;
+    const result = await sendRound(body);
+    if (result.packfile.length > 0) {
+      return result;
     }
 
     if (isLastRound) {
-      return packfile;
+      return result;
     }
 
     offset += chunk.length;
   }
 
-  return Buffer.alloc(0);
+  return { packfile: Buffer.alloc(0), shallow: [], unshallow: [] };
 }

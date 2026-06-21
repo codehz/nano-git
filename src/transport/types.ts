@@ -104,6 +104,15 @@ export interface FetchOptions {
   depth?: number;
 
   /**
+   * 已有 shallow 边界 commit 哈希列表
+   *
+   * 进行增量 shallow fetch 时，传入之前保存的 shallow 边界哈希，
+   * 服务端会据此决定哪些 commit 需要 unshallow 或保持 shallow。
+   * 首次 shallow clone 时不需要设置此字段。
+   */
+  shallow?: SHA1[];
+
+  /**
    * 认证 Token
    *
    * 设置后在所有请求中添加 `Authorization: Bearer <token>` 头。
@@ -139,6 +148,10 @@ export interface FetchResult {
   fetchedRefs: Map<string, SHA1>;
   /** 获取的对象数量 */
   objectCount: number;
+  /** shallow 边界 commit 哈希列表（仅 shallow fetch 时存在） */
+  shallow?: SHA1[];
+  /** 从 shallow 变为完整的 commit 哈希列表（仅增量 shallow fetch 时存在） */
+  unshallow?: SHA1[];
 }
 
 // ============================================================================
