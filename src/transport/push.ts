@@ -184,14 +184,48 @@ export function collectReachable(
 // ============================================================================
 
 /**
+ * 沿 tag 链解引用到最底层的非 tag 对象
+ *
+ * 遍历 tag → object → 直到遇到非 tag 对象（commit/tree/blob）。
+ * 用于 fast-forward 预检：refs/{heads,tags} 之外的命名空间
+ * （如 refs/custom/*）允许存储 tag 对象，解引用后才能正确比较祖先关系。
+ *
+ * @param store - 对象存储
+ * @param hash - 起点哈希
+ * @param shallowBoundaries - 已知 shallow 边界集合（可选）
+ * @returns 解引用后的非 tag 对象哈希，若对象缺失返回 hash 本身
+ */
+function peelTagChain(store: ObjectStore, hash: SHA1, shallowBoundaries?: Set<SHA1>): SHA1 {
+  let current = hash;
+
+  while (true) {
+    if (!store.exists(current)) {
+      // shallow 边界：对象确实可能在本地不存在，返回当前 hash 让调用方处理
+      if (shallowBoundaries?.has(current)) {
+        return current;
+      }
+      return current;
+    }
+
+    const obj = store.read(current);
+    if (obj.type !== "tag") {
+      return current;
+    }
+    current = obj.object;
+  }
+}
+
+/**
  * 检查 oldHash 是否为 newHash 的祖先 commit（或二者相等）
  *
  * 从 newHash 出发沿 parent 链回溯，若能找到 oldHash 则返回 true。
- * 用于 non-fast-forward 预检：当 force 未设置时，若返回 false 则应拒绝推送。
+ * 支持 tag 对象解引用：非 refs/{heads,tags} 命名空间允许存储 tag 对象，
+ * 比较时将 oldHash 和 newHash 沿 tag 链解引用到最底层对象（应为 commit）。
  *
  * @param store - 对象存储
- * @param oldHash - 远程 ref 当前指向的 commit
- * @param newHash - 本地要推送的目标 commit
+ * @param oldHash - 远程 ref 当前指向的对象
+ * @param newHash - 本地要推送的目标对象
+ * @param shallowBoundaries - 已知 shallow 边界集合（可选）
  * @returns oldHash 是否为 newHash 的祖先
  *
  * @internal 导出仅用于测试
@@ -207,19 +241,24 @@ export function isAncestor(
     return true;
   }
 
-  // 如果起点 commit 不存在，无法判断
-  if (!store.exists(newHash)) {
-    return false;
+  // 对 tag 对象解引用到最底层对象，使得自定义命名空间（如 refs/custom/*）
+  // 中存储的 annotated tag 也能正确进行祖先比较
+  const peeledOld = peelTagChain(store, oldHash, shallowBoundaries);
+  const peeledNew = peelTagChain(store, newHash, shallowBoundaries);
+
+  // 解引用后相同则是 fast-forward
+  if (peeledOld === peeledNew) {
+    return true;
   }
 
   // 将可达性遍历限制在 commit 链上
   const visited = new Set<SHA1>();
-  const queue: SHA1[] = [newHash];
+  const queue: SHA1[] = [peeledNew];
 
   while (queue.length > 0) {
     const current = queue.shift()!;
 
-    if (current === oldHash) {
+    if (current === peeledOld) {
       return true;
     }
 

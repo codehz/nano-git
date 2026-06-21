@@ -188,6 +188,95 @@ describe("isAncestor()", () => {
     expect(isAncestor(store, fake, commits.a)).toBe(false);
   });
 
+  test("tag 对象 fast-forward：old=tag(t1→a), new=tag(t2→c), a 是 c 祖先", () => {
+    // 创建 tag t1 → commit a, tag t2 → commit c
+    const t1Hash = store.write({
+      type: "tag",
+      object: commits.a,
+      objectType: "commit",
+      tag: "t1",
+      tagger: AUTHOR,
+      message: "t1\n",
+    });
+    const t2Hash = store.write({
+      type: "tag",
+      object: commits.c,
+      objectType: "commit",
+      tag: "t2",
+      tagger: AUTHOR,
+      message: "t2\n",
+    });
+
+    // a（通过 t1 解引用）是 c（通过 t2 解引用）的祖先
+    expect(isAncestor(store, t1Hash, t2Hash)).toBe(true);
+  });
+
+  test("tag 对象 fast-forward：old=tag(t1→a), new=commit(b), a 是 b 祖先", () => {
+    const t1Hash = store.write({
+      type: "tag",
+      object: commits.a,
+      objectType: "commit",
+      tag: "t1",
+      tagger: AUTHOR,
+      message: "t1\n",
+    });
+
+    // old 是 tag(t1→a)，new 是 commit(b)，a 是 b 祖先
+    expect(isAncestor(store, t1Hash, commits.b)).toBe(true);
+  });
+
+  test("tag 对象 non-fast-forward：old=tag(t1→c), new=tag(t2→a), c 不是 a 祖先", () => {
+    const t1Hash = store.write({
+      type: "tag",
+      object: commits.c,
+      objectType: "commit",
+      tag: "t1",
+      tagger: AUTHOR,
+      message: "t1\n",
+    });
+    const t2Hash = store.write({
+      type: "tag",
+      object: commits.a,
+      objectType: "commit",
+      tag: "t2",
+      tagger: AUTHOR,
+      message: "t2\n",
+    });
+
+    // c（通过 t1）不是 a（通过 t2）的祖先
+    expect(isAncestor(store, t1Hash, t2Hash)).toBe(false);
+  });
+
+  test("tag 嵌套链：old=tag(t1→a), new=tag(t2→tag(t3→c)), a 是 c 祖先", () => {
+    const t3Hash = store.write({
+      type: "tag",
+      object: commits.c,
+      objectType: "commit",
+      tag: "t3",
+      tagger: AUTHOR,
+      message: "t3\n",
+    });
+    const t2Hash = store.write({
+      type: "tag",
+      object: t3Hash,
+      objectType: "tag",
+      tag: "t2",
+      tagger: AUTHOR,
+      message: "t2 → t3\n",
+    });
+    const t1Hash = store.write({
+      type: "tag",
+      object: commits.a,
+      objectType: "commit",
+      tag: "t1",
+      tagger: AUTHOR,
+      message: "t1\n",
+    });
+
+    // t1→a, t2→t3→c, a 是 c 祖先
+    expect(isAncestor(store, t1Hash, t2Hash)).toBe(true);
+  });
+
   test("shallow fetch：中间 commit 缺失时假定 fast-forward", () => {
     // 模拟 shallow fetch 后本地只有部分 commit 链的场景
     // 链为：root → a，但 a 的后续被截断；实际 remoteHash 在更深的上游
@@ -403,6 +492,106 @@ describe("checkFastForward()", () => {
         localHash: commits.a,
         remoteHash: commits.a,
         force: true,
+      },
+    ];
+    expect(() => checkFastForward(store, items)).not.toThrow();
+  });
+
+  test("自定义命名空间 annotated tag fast-forward 更新应通过", () => {
+    // 创建 tag t1 → commit a, tag t2 → commit c（c 是 a 后代）
+    const t1Hash = store.write({
+      type: "tag",
+      object: commits.a,
+      objectType: "commit",
+      tag: "t1",
+      tagger: AUTHOR,
+      message: "t1\n",
+    });
+    const t2Hash = store.write({
+      type: "tag",
+      object: commits.c,
+      objectType: "commit",
+      tag: "t2",
+      tagger: AUTHOR,
+      message: "t2\n",
+    });
+
+    const items = [
+      {
+        localRef: "refs/custom/foo",
+        remoteRef: "refs/custom/foo",
+        localHash: t2Hash,
+        remoteHash: t1Hash,
+        force: false,
+      },
+    ];
+    expect(() => checkFastForward(store, items)).not.toThrow();
+  });
+
+  test("自定义命名空间 annotated tag non-fast-forward 应拒绝", () => {
+    // t1→c, t2→a（a 不是 c 后代 → non-fast-forward）
+    const t1Hash = store.write({
+      type: "tag",
+      object: commits.c,
+      objectType: "commit",
+      tag: "t1",
+      tagger: AUTHOR,
+      message: "t1\n",
+    });
+    const t2Hash = store.write({
+      type: "tag",
+      object: commits.a,
+      objectType: "commit",
+      tag: "t2",
+      tagger: AUTHOR,
+      message: "t2\n",
+    });
+
+    const items = [
+      {
+        localRef: "refs/custom/bar",
+        remoteRef: "refs/custom/bar",
+        localHash: t2Hash,
+        remoteHash: t1Hash,
+        force: false,
+      },
+    ];
+    expect(() => checkFastForward(store, items)).toThrow(PushError);
+  });
+
+  test("自定义命名空间 annotated tag 嵌套链 fast-forward 应通过", () => {
+    const t3Hash = store.write({
+      type: "tag",
+      object: commits.c,
+      objectType: "commit",
+      tag: "t3",
+      tagger: AUTHOR,
+      message: "t3\n",
+    });
+    const t2Hash = store.write({
+      type: "tag",
+      object: t3Hash,
+      objectType: "tag",
+      tag: "t2",
+      tagger: AUTHOR,
+      message: "t2\n",
+    });
+    const t1Hash = store.write({
+      type: "tag",
+      object: commits.a,
+      objectType: "commit",
+      tag: "t1",
+      tagger: AUTHOR,
+      message: "t1\n",
+    });
+
+    const items = [
+      {
+        localRef: "refs/custom/baz",
+        remoteRef: "refs/custom/baz",
+        localHash: t2Hash,
+        remoteHash: t1Hash,
+        force: false,
       },
     ];
     expect(() => checkFastForward(store, items)).not.toThrow();
