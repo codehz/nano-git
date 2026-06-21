@@ -20,6 +20,15 @@ function stripCapabilityFromAdvertisement(
   response: GitHttpBackendResponse,
   capability: string,
 ): GitHttpBackendResponse {
+  return rewriteAdvertisementCapabilities(response, (caps) =>
+    caps.filter((token) => token.length > 0 && token !== capability),
+  );
+}
+
+function rewriteAdvertisementCapabilities(
+  response: GitHttpBackendResponse,
+  rewrite: (capabilities: string[]) => string[],
+): GitHttpBackendResponse {
   const lines = parsePktLines(response.body);
   const chunks: Buffer[] = [];
   let rewritten = false;
@@ -38,11 +47,12 @@ function stripCapabilityFromAdvertisement(
       const nullIndex = line.payload.indexOf(0);
       if (nullIndex !== -1) {
         const refPart = line.payload.subarray(0, nullIndex);
-        const caps = line.payload
+        const originalCaps = line.payload
           .subarray(nullIndex + 1)
           .toString("utf-8")
           .split(" ")
-          .filter((token) => token.length > 0 && token !== capability);
+          .filter((token) => token.length > 0);
+        const caps = rewrite(originalCaps);
         const payload = Buffer.concat([
           refPart,
           Buffer.from([0]),
@@ -219,6 +229,60 @@ describe("完整 fetch 流程", () => {
     expect(tagObject.type).toBe("tag");
   });
 
+  test("include-tag：默认 branch fetch 会顺带获取注解 tag 对象，但不会创建 tag ref", async () => {
+    git(["tag", "-a", "v-include", "-m", "include tag"], workDir);
+    git(["push", serverRepoDir, "refs/tags/v-include"], workDir);
+    const remoteTagHash = git(
+      ["--git-dir", serverRepoDir, "rev-parse", "refs/tags/v-include"],
+      tempDir,
+    );
+
+    const localDir = join(tempDir, "local-include-tag");
+    const repo = initRepository(localDir);
+    const result = await repo.fetch(serverUrl);
+
+    expect(result.objectCount).toBeGreaterThan(0);
+    expect(repo.refs.readRaw("refs/remotes/origin/main")).not.toBeNull();
+    expect(repo.refs.readRaw("refs/tags/v-include")).toBeNull();
+    expect(repo.objects.exists(sha1(remoteTagHash))).toBe(true);
+    expect(repo.objects.read(sha1(remoteTagHash)).type).toBe("tag");
+  });
+
+  test("精确 refspec：混合 branches/tags 广告时只抓取指定 branch 与 tag", async () => {
+    const featureDir = join(tempDir, "work-mixed-feature");
+    git(["clone", serverRepoDir, featureDir], tempDir);
+    createFile(featureDir, "feature.txt", "feature branch\n");
+    git(["add", "feature.txt"], featureDir);
+    git(["commit", "-m", "Feature branch commit"], featureDir);
+    git(["push", serverRepoDir, "HEAD:refs/heads/feature"], featureDir);
+
+    createFile(workDir, "main-second.txt", "main second\n");
+    git(["add", "main-second.txt"], workDir);
+    git(["commit", "-m", "Main second"], workDir);
+    git(["push", serverRepoDir, "main"], workDir);
+
+    git(["tag", "-a", "v-main-only", "-m", "main tag"], workDir);
+    git(["push", serverRepoDir, "refs/tags/v-main-only"], workDir);
+
+    git(["tag", "-a", "v-feature", "-m", "feature tag"], featureDir);
+    git(["push", serverRepoDir, "refs/tags/v-feature"], featureDir);
+
+    const localDir = join(tempDir, "local-exact-refspec-mixed");
+    const repo = initRepository(localDir);
+    const result = await repo.fetch(serverUrl, {
+      refSpecs: [
+        "+refs/heads/main:refs/remotes/origin/main",
+        "+refs/tags/v-main-only:refs/tags/v-main-only",
+      ],
+    });
+
+    expect(result.objectCount).toBeGreaterThan(0);
+    expect(repo.refs.readRaw("refs/remotes/origin/main")).not.toBeNull();
+    expect(repo.refs.readRaw("refs/remotes/origin/feature")).toBeNull();
+    expect(repo.refs.readRaw("refs/tags/v-main-only")).not.toBeNull();
+    expect(repo.refs.readRaw("refs/tags/v-feature")).toBeNull();
+  });
+
   test("tag-only 远端：默认 refspec fetch 返回空结果", async () => {
     git(["tag", "-a", "v-tag-only", "-m", "tag only"], workDir);
     git(["push", serverRepoDir, "refs/tags/v-tag-only"], workDir);
@@ -268,6 +332,32 @@ describe("完整 fetch 流程", () => {
 
     await using serverHandle = downgradedServer;
     const localDir = join(tempDir, "local-raw-pack-fetch");
+    const repo = initRepository(localDir);
+
+    const result = await repo.fetch(serverHandle.url);
+
+    expect(result.objectCount).toBeGreaterThan(0);
+    const mainRef = repo.refs.readRaw("refs/remotes/origin/main");
+    expect(mainRef).not.toBeNull();
+    expect(repo.objects.read(sha1(mainRef!)).type).toBe("commit");
+  });
+
+  test("最小能力集：upload-pack advertisement 仅保留 ofs-delta 时 fetch 仍成功", async () => {
+    const minimalServer = startGitHttpBackendServer(tempDir, "/server.git", undefined, {
+      transformResponse(response: GitHttpBackendResponse, request: GitHttpRequestRecord) {
+        if (
+          request.method === "GET" &&
+          request.path.endsWith("/info/refs") &&
+          request.query === "service=git-upload-pack"
+        ) {
+          return rewriteAdvertisementCapabilities(response, () => ["ofs-delta"]);
+        }
+        return response;
+      },
+    });
+
+    await using serverHandle = minimalServer;
+    const localDir = join(tempDir, "local-minimal-upload-pack");
     const repo = initRepository(localDir);
 
     const result = await repo.fetch(serverHandle.url);

@@ -86,6 +86,15 @@ function stripCapabilityFromAdvertisement(
   response: GitHttpBackendResponse,
   capability: string,
 ): GitHttpBackendResponse {
+  return rewriteAdvertisementCapabilities(response, (caps) =>
+    caps.filter((token) => token.length > 0 && token !== capability),
+  );
+}
+
+function rewriteAdvertisementCapabilities(
+  response: GitHttpBackendResponse,
+  rewrite: (capabilities: string[]) => string[],
+): GitHttpBackendResponse {
   const lines = parsePktLines(response.body);
   const chunks: Buffer[] = [];
   let rewritten = false;
@@ -104,11 +113,12 @@ function stripCapabilityFromAdvertisement(
       const nullIndex = line.payload.indexOf(0);
       if (nullIndex !== -1) {
         const refPart = line.payload.subarray(0, nullIndex);
-        const caps = line.payload
+        const originalCaps = line.payload
           .subarray(nullIndex + 1)
           .toString("utf-8")
           .split(" ")
-          .filter((token) => token.length > 0 && token !== capability);
+          .filter((token) => token.length > 0);
+        const caps = rewrite(originalCaps);
         const payload = Buffer.concat([
           refPart,
           Buffer.from([0]),
@@ -322,6 +332,46 @@ describe("push() 端到端", () => {
 
     const remoteRef = git(
       ["--git-dir", serverRepoDir, "rev-parse", "refs/heads/plain-status"],
+      tempDir,
+    );
+    expect(remoteRef).toBe(commitHash);
+  });
+
+  test("最小能力集：receive-pack advertisement 仅保留 report-status 时 push 仍成功", async () => {
+    await using minimalServer = startGitHttpBackendServer(tempDir, "/server.git", undefined, {
+      transformResponse(response, request) {
+        if (
+          request.method === "GET" &&
+          request.path.endsWith("/info/refs") &&
+          request.query === "service=git-receive-pack"
+        ) {
+          return rewriteAdvertisementCapabilities(response, () => ["report-status"]);
+        }
+        if (request.method === "POST" && request.path.endsWith("/git-receive-pack")) {
+          return rewriteReceivePackResponseAsPlainReportStatus(response);
+        }
+        return response;
+      },
+    });
+
+    const repo = createMemoryRepository();
+    const author = { ...FIXED_AUTHOR };
+
+    const fileHash = repo.writeBlob(Buffer.from("minimal receive-pack caps"));
+    const treeHash = repo.createTree([{ mode: "100644", name: "minimal.txt", hash: fileHash }]);
+    const commitHash = repo.createCommit(treeHash, [], "Minimal receive-pack caps", author);
+    repo.updateRef("refs/heads/minimal-status", commitHash);
+
+    const result = await repo.push(minimalServer.url, {
+      refSpecs: ["refs/heads/minimal-status:refs/heads/minimal-status"],
+    });
+
+    expect(result.refUpdates).toHaveLength(1);
+    expect(result.refUpdates[0]!.success).toBe(true);
+    expect(result.progress).toEqual([]);
+
+    const remoteRef = git(
+      ["--git-dir", serverRepoDir, "rev-parse", "refs/heads/minimal-status"],
       tempDir,
     );
     expect(remoteRef).toBe(commitHash);
