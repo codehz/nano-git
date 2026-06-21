@@ -651,6 +651,15 @@ export async function push(
     );
   }
 
+  // 11c. 服务端返回 ng（拒绝）时立即抛出 PushError，而非让调用方自行检查 success
+  const rejectedUpdates = refUpdates.filter((u) => !u.success);
+  if (rejectedUpdates.length > 0) {
+    const details = rejectedUpdates
+      .map((u) => `${u.refName}: ${u.error ?? "unknown error"}`)
+      .join("; ");
+    throw new PushError(`Remote server rejected the push: ${details}`);
+  }
+
   // 12. 将服务端返回的 report-status 与我们的推送引用关联，补充 refName/oldHash/newHash 信息
   const pushRefMap = new Map<string, PushRefItem>();
   for (const item of pushRefs) {

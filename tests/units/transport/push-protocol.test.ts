@@ -488,3 +488,107 @@ describe("push 非 heads/tags 来源 ref 推送", () => {
     expect(result.refUpdates[0]!.success).toBe(true);
   });
 });
+
+// ============================================================================
+// push() 服务端 ng 响应行为契约测试
+// ============================================================================
+
+describe("push() 服务端 ng 响应处理", () => {
+  test("服务端返回 ng <ref> 时 push() 应抛出 PushError，包含被拒 ref 和原因", async () => {
+    const store = createMemoryObjectStore();
+    const refStore = createMemoryRefStore(new Map());
+    const author = { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" };
+    const emptyTree = store.write({ type: "tree", entries: [] });
+
+    const commitHash = store.write({
+      type: "commit" as const,
+      tree: emptyTree,
+      parents: [],
+      author,
+      committer: author,
+      message: "test",
+    });
+    refStore.writeRaw("refs/heads/main", commitHash);
+
+    // 模拟服务端：ok 一条、ng 一条
+    let postCalled = false;
+    const transport: RemoteTransport = {
+      getReceivePackRefs: async () => ({
+        capabilities: { "report-status": true },
+        refs: [],
+      }),
+      postReceivePack: async () => {
+        postCalled = true;
+        const data = Buffer.concat([
+          encodePktLine("unpack ok\n"),
+          encodePktLine("ok refs/heads/main\n"),
+          encodePktLine("ng refs/heads/feature non-fast-forward\n"),
+          encodeFlushPkt(),
+        ]);
+        return { data, refUpdates: parseReceivePackResult(data), progress: [] };
+      },
+      getRefAdvertisement: async () => {
+        throw new Error("not used");
+      },
+      postUploadPack: async () => {
+        throw new Error("not used");
+      },
+    };
+
+    const pushPromise = push(store, refStore, "dummy", {
+      transport,
+      refSpecs: ["refs/heads/main:refs/heads/main", "refs/heads/main:refs/heads/feature"],
+    });
+
+    expect(pushPromise).rejects.toThrow(PushError);
+    expect(pushPromise).rejects.toThrow(/refs\/heads\/feature/);
+    expect(pushPromise).rejects.toThrow(/non-fast-forward/);
+    expect(postCalled).toBe(true);
+  });
+
+  test("所有 ref 都被 ng 时 push() 应抛出 PushError，包含所有被拒 ref", async () => {
+    const store = createMemoryObjectStore();
+    const refStore = createMemoryRefStore(new Map());
+    const author = { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" };
+    const emptyTree = store.write({ type: "tree", entries: [] });
+
+    const commitHash = store.write({
+      type: "commit" as const,
+      tree: emptyTree,
+      parents: [],
+      author,
+      committer: author,
+      message: "test",
+    });
+    refStore.writeRaw("refs/heads/main", commitHash);
+
+    const transport: RemoteTransport = {
+      getReceivePackRefs: async () => ({
+        capabilities: { "report-status": true },
+        refs: [],
+      }),
+      postReceivePack: async () => {
+        const data = Buffer.concat([
+          encodePktLine("unpack ok\n"),
+          encodePktLine("ng refs/heads/main hook declined\n"),
+          encodeFlushPkt(),
+        ]);
+        return { data, refUpdates: parseReceivePackResult(data), progress: [] };
+      },
+      getRefAdvertisement: async () => {
+        throw new Error("not used");
+      },
+      postUploadPack: async () => {
+        throw new Error("not used");
+      },
+    };
+
+    const pushPromise = push(store, refStore, "dummy", {
+      transport,
+      refSpecs: ["refs/heads/main:refs/heads/main"],
+    });
+
+    expect(pushPromise).rejects.toThrow(PushError);
+    expect(pushPromise).rejects.toThrow(/hook declined/);
+  });
+});
