@@ -17,6 +17,9 @@ import { startGitHttpBackendServer } from "./http-server.ts";
 import { sha1 } from "@/core/types.ts";
 import { HEAD_REF, HEADS_PREFIX } from "@/refs/index.ts";
 import { createMemoryRepository } from "@/repository/index.ts";
+import { encodeFlushPkt, encodePktLine, parsePktLines } from "@/transport/pkt-line.ts";
+
+import type { GitHttpBackendResponse } from "./http-server.ts";
 
 // ============================================================================
 // 辅助函数
@@ -28,6 +31,55 @@ function enableReceivePack(repoDir: string): void {
   if (!config.includes("http.receivepack")) {
     writeFileSync(configPath, config + "\n[http]\n\treceivepack = true\n");
   }
+}
+
+function encodeSideBandFrame(channel: 1 | 2 | 3, payload: Buffer | string): Buffer {
+  const data = typeof payload === "string" ? Buffer.from(payload, "utf-8") : payload;
+  return encodePktLine(Buffer.concat([Buffer.from([channel]), data]));
+}
+
+function rewriteReceivePackResponseAsSplitSideBand(
+  response: GitHttpBackendResponse,
+): GitHttpBackendResponse {
+  const outerLines = parsePktLines(response.body);
+  const channel1Chunks: Buffer[] = [];
+  const progressChunks: Buffer[] = [];
+
+  for (const line of outerLines) {
+    if (line.type !== "data" || line.payload.length === 0) {
+      continue;
+    }
+    const channel = line.payload[0];
+    const frameData = line.payload.subarray(1);
+    if (channel === 0x01) {
+      channel1Chunks.push(frameData);
+    } else if (channel === 0x02) {
+      progressChunks.push(frameData);
+    }
+  }
+
+  const reportStatus = Buffer.concat(channel1Chunks);
+  if (reportStatus.length < 2) {
+    return response;
+  }
+
+  const splitAt = Math.max(1, Math.floor(reportStatus.length / 2));
+  const rewrittenBody = Buffer.concat([
+    ...progressChunks.map((chunk) => encodeSideBandFrame(2, chunk)),
+    encodeSideBandFrame(2, "remote: side-band progress\n"),
+    encodeSideBandFrame(1, reportStatus.subarray(0, splitAt)),
+    encodeSideBandFrame(1, reportStatus.subarray(splitAt)),
+    encodeFlushPkt(),
+  ]);
+
+  return {
+    ...response,
+    body: rewrittenBody,
+    headers: {
+      ...response.headers,
+      "Content-Type": "application/x-git-receive-pack-result",
+    },
+  };
 }
 
 // ============================================================================
@@ -541,5 +593,41 @@ describe("push() 端到端", () => {
     // 不传 refSpecs 时，detached HEAD 应该报错
     const pushPromise = repo.push(serverUrl);
     expect(pushPromise).rejects.toThrow(/detached HEAD|not on a branch|current branch/i);
+  });
+
+  test("side-band report-status 跨帧分片时仍能正确解析 push 结果", async () => {
+    await server.stop();
+    server = startGitHttpBackendServer(tempDir, "/server.git", undefined, {
+      transformResponse(response, request) {
+        if (request.method === "POST" && request.path.endsWith("/git-receive-pack")) {
+          return rewriteReceivePackResponseAsSplitSideBand(response);
+        }
+        return response;
+      },
+    });
+    serverUrl = server.url;
+
+    const repo = createMemoryRepository();
+    const author = { ...FIXED_AUTHOR };
+
+    const fileHash = repo.writeBlob(Buffer.from("split side-band push"));
+    const treeHash = repo.createTree([{ mode: "100644", name: "split.txt", hash: fileHash }]);
+    const commitHash = repo.createCommit(treeHash, [], "Split side-band", author);
+    repo.updateRef("refs/heads/split-side-band", commitHash);
+
+    const result = await repo.push(serverUrl, {
+      refSpecs: ["refs/heads/split-side-band:refs/heads/split-side-band"],
+    });
+
+    expect(result.refUpdates).toHaveLength(1);
+    expect(result.refUpdates[0]!.success).toBe(true);
+    expect(result.refUpdates[0]!.refName).toBe("refs/heads/split-side-band");
+    expect(result.progress).toContain("remote: side-band progress");
+
+    const serverRef = git(
+      ["--git-dir", serverRepoDir, "rev-parse", "refs/heads/split-side-band"],
+      tempDir,
+    );
+    expect(serverRef).toBe(commitHash);
   });
 });

@@ -9,7 +9,7 @@ import { Buffer } from "node:buffer";
 import { spawnSync } from "node:child_process";
 
 /** CGI 响应解析结果 */
-interface CgiResponse {
+export interface GitHttpBackendResponse {
   /** HTTP 状态码 */
   status: number;
   /** 响应头 */
@@ -33,6 +33,22 @@ export interface GitHttpRequestRecord {
   headers: Record<string, string>;
   /** 原始请求体 */
   body: Buffer;
+}
+
+/**
+ * git-http-backend 测试服务可选配置
+ */
+export interface GitHttpBackendServerOptions {
+  /**
+   * 可选响应改写钩子
+   *
+   * 允许测试在保留真实 git-http-backend 副作用的前提下，
+   * 对返回给客户端的 HTTP 响应做二次加工。
+   */
+  transformResponse?: (
+    response: GitHttpBackendResponse,
+    request: GitHttpRequestRecord,
+  ) => GitHttpBackendResponse;
 }
 
 /** git-http-backend 测试服务句柄 */
@@ -69,7 +85,7 @@ const GIT_ENV: Record<string, string> = {
 /**
  * 解析 git http-backend CGI 输出
  */
-function parseCgiResponse(stdout: Buffer): CgiResponse {
+function parseCgiResponse(stdout: Buffer): GitHttpBackendResponse {
   let headerEndIndex = stdout.indexOf("\r\n\r\n");
   let separatorLength = 4;
 
@@ -148,6 +164,7 @@ export function startGitHttpBackendServer(
   projectRoot: string,
   repoPath: string,
   httpBackend = DEFAULT_HTTP_BACKEND,
+  options?: GitHttpBackendServerOptions,
 ): GitHttpBackendServer {
   const normalizedRepoPath = repoPath.startsWith("/") ? repoPath : `/${repoPath}`;
   const infoRefsPath = `${normalizedRepoPath}/info/refs`;
@@ -204,13 +221,16 @@ export function startGitHttpBackendServer(
     }
 
     const cgiResponse = parseCgiResponse(result.stdout ?? Buffer.alloc(0));
+    const finalResponse = options?.transformResponse
+      ? options.transformResponse(cgiResponse, requests[requests.length - 1]!)
+      : cgiResponse;
     const responseHeaders = new Headers();
-    for (const [key, value] of Object.entries(cgiResponse.headers)) {
+    for (const [key, value] of Object.entries(finalResponse.headers)) {
       responseHeaders.set(key, value);
     }
 
-    return new Response(cgiResponse.body, {
-      status: cgiResponse.status,
+    return new Response(finalResponse.body, {
+      status: finalResponse.status,
       headers: responseHeaders,
     });
   }
