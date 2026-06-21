@@ -58,6 +58,10 @@ const GIT_ENV: Record<string, string> = {
   GIT_COMMITTER_NAME: "E2E Test",
   GIT_COMMITTER_EMAIL: "e2e@nano-git.test",
   GIT_COMMITTER_DATE: "1700000000 +0800",
+  // 允许 bare 仓库操作（兼容 Git >= 2.46 的 safe.bareRepository 安全机制）
+  GIT_CONFIG_COUNT: "1",
+  GIT_CONFIG_KEY_0: "safe.bareRepository",
+  GIT_CONFIG_VALUE_0: "all",
   GIT_CONFIG_NOSYSTEM: "1",
   GIT_TERMINAL_PROMPT: "0",
 };

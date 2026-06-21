@@ -34,6 +34,10 @@ const GIT_ENV: Record<string, string> = {
   GIT_COMMITTER_DATE: `${FIXED_AUTHOR.timestamp} ${FIXED_AUTHOR.timezone}`,
   // 禁用 GPG 签名
   GIT_CONFIG_NOSYSTEM: "1",
+  // 允许 bare 仓库操作（兼容 Git >= 2.46 的 safe.bareRepository 安全机制）
+  GIT_CONFIG_COUNT: "1",
+  GIT_CONFIG_KEY_0: "safe.bareRepository",
+  GIT_CONFIG_VALUE_0: "all",
   // 避免 git 提示配置
   GIT_TERMINAL_PROMPT: "0",
 };
