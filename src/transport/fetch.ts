@@ -358,6 +358,11 @@ export async function fetch(
   // 9. 更新远程跟踪引用（非强制 refspec 需满足快进条件）
   const fetchedRefs = new Map<string, SHA1>();
   for (const { localName, remote, localHash, force } of wants) {
+    // 确保目标对象已在对象存储中，避免写入悬空 ref
+    if (!store.exists(remote.hash)) {
+      continue;
+    }
+
     // 非强制且本地已有值：仅当更新为快进时才写入
     if (!force && localHash !== undefined) {
       if (!isAncestor(store, localHash, remote.hash)) {

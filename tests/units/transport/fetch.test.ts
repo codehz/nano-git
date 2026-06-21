@@ -548,6 +548,72 @@ describe("fetch() 增量 fetch 行为", () => {
     expect(result.objectCount).toBe(1);
   });
 
+  describe("fetch 后 ref 指向的目标对象存在性校验", () => {
+    test("packfile 不含 tip 对象时拒绝写入 ref", async () => {
+      const objectStore = createMemoryObjectStore();
+
+      // 远程广告的 commit hash——但不把这个对象写入 store
+      const fakeCommitHash = sha1("ffffffffffffffffffffffffffffffffffffffff");
+
+      const refStore = createMemoryRefStore(); // 空 refs
+
+      // packfile 只包含一个 blob，不包含 fakeCommitHash
+      const blob: GitBlob = { type: "blob", content: Buffer.from("orphan blob") };
+      const entry = toEncodedPackObject(blob);
+      const { packData } = buildEncodedPack([entry]);
+
+      const transport = createMockTransport(
+        [{ name: "refs/heads/main", hash: fakeCommitHash }],
+        { multi_ack: true, "side-band-64k": true, "ofs-delta": true },
+        () => packData,
+      );
+
+      const result = await fetch(objectStore, refStore, "dummy", {
+        transport,
+        refSpecs: ["+refs/heads/*:refs/remotes/origin/*"],
+      });
+
+      // blob 应被写入
+      expect(objectStore.exists(entry.hash)).toBe(true);
+
+      // 但 fakeCommitHash 不存在，ref 不应被写入
+      expect(refStore.read("refs/remotes/origin/main")).toBeNull();
+      expect(result.fetchedRefs.has("refs/remotes/origin/main")).toBe(false);
+    });
+
+    test("packfile 包含 tip 对象时正常写入 ref", async () => {
+      const objectStore = createMemoryObjectStore();
+
+      // 把远程 commit 写入 store
+      const remoteCommit = createTestCommit(objectStore, [], 100);
+
+      const refStore = createMemoryRefStore(); // 空 refs
+
+      // packfile 包含一个 blob
+      const blob: GitBlob = { type: "blob", content: Buffer.from("some content") };
+      const entry = toEncodedPackObject(blob);
+      const { packData } = buildEncodedPack([entry]);
+
+      const transport = createMockTransport(
+        [{ name: "refs/heads/main", hash: remoteCommit }],
+        { multi_ack: true, "side-band-64k": true, "ofs-delta": true },
+        () => packData,
+      );
+
+      const result = await fetch(objectStore, refStore, "dummy", {
+        transport,
+        refSpecs: ["+refs/heads/*:refs/remotes/origin/*"],
+      });
+
+      // blob 应被写入
+      expect(objectStore.exists(entry.hash)).toBe(true);
+
+      // 且远程 commit 存在，ref 应正常写入
+      expect(refStore.read("refs/remotes/origin/main")).toBe(remoteCommit);
+      expect(result.fetchedRefs.get("refs/remotes/origin/main")).toBe(remoteCommit);
+    });
+  });
+
   describe("force 语义", () => {
     function createDivergedScenario() {
       const objectStore = createMemoryObjectStore();
