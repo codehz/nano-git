@@ -40,9 +40,8 @@ export function createRepository(backend: RepositoryBackend): Repository {
     ...createRefRepositoryOperations(backend),
     ...createMaintenanceRepositoryOperations(objects, refs, packs),
     async fetch(url: string, options?: FetchOptions): Promise<FetchResult> {
-      // 从后端读取当前 shallow 状态，自动传入 transport 层
-      // 这样调用方无需手动传递之前 fetch 返回的 shallow 列表
-      const currentShallow = backend.readShallow();
+      // 从 shallow store 读取当前状态，自动传入 transport 层
+      const currentShallow = backend.shallow.read();
       const effectiveOptions: FetchOptions = {
         ...options,
         shallow: options?.shallow ?? (currentShallow.length > 0 ? currentShallow : undefined),
@@ -50,9 +49,9 @@ export function createRepository(backend: RepositoryBackend): Repository {
 
       const result = await transportFetch(objects, refs, url, effectiveOptions);
 
-      // fetch 成功后，将 shallow/unshallow 变更持久化到 backend
+      // fetch 成功后，将 shallow/unshallow 变更持久化到 shallow store
       if ((result.shallow ?? []).length > 0 || (result.unshallow ?? []).length > 0) {
-        backend.applyShallowUpdate({
+        backend.shallow.applyUpdate({
           shallow: result.shallow ?? [],
           unshallow: result.unshallow ?? [],
         });
@@ -62,8 +61,7 @@ export function createRepository(backend: RepositoryBackend): Repository {
     },
     async push(url: string, options?: PushOptions): Promise<PushResult> {
       // 读取当前 shallow 状态，传递给 transport push 层
-      // 让 push 能做更精确的 shallow boundary 判断
-      const currentShallow = backend.readShallow();
+      const currentShallow = backend.shallow.read();
       const effectiveOptions: PushOptions = {
         ...options,
         shallowBoundaries:

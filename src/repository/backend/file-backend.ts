@@ -5,16 +5,17 @@
  * 组合为统一的 RepositoryBackend。
  */
 
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 
 import { hashToPath } from "../../core/hash.ts";
-import { sha1, type SHA1 } from "../../core/types.ts";
+import { type SHA1 } from "../../core/types.ts";
 import { createFileObjectStore } from "../../odb/index.ts";
 import { createCompositeObjectStore } from "../../odb/pack/composite-store.ts";
 import { createPackBuilder } from "../../odb/pack/pack-builder.ts";
 import { createPackObjectStore } from "../../odb/pack/pack-store.ts";
 import { createFileRefStore } from "../../refs/index.ts";
+import { createFileShallowStore } from "../../shallow/file.ts";
 
 import type { ObjectSource } from "../../odb/index.ts";
 import type {
@@ -22,7 +23,6 @@ import type {
   RepositoryGCOptions,
   RepositoryPackSupport,
   RepositoryRepackOptions,
-  ShallowUpdate,
 } from "./types.ts";
 
 /** 创建文件系统仓库后端的可选参数 */
@@ -145,88 +145,11 @@ export function createFileRepositoryBackend(
     },
   };
 
-  // ============================================================================
-  // Shallow 状态
-  // ============================================================================
-
-  const shallowFilePath = join(gitDir, "shallow");
-
-  /**
-   * 读取 .git/shallow 文件
-   *
-   * 格式：每行一个 40 字符 SHA1 哈希。
-   * 文件不存在或为空时返回空数组。
-   */
-  function readShallow(): SHA1[] {
-    if (!existsSync(shallowFilePath)) {
-      return [];
-    }
-
-    const content = readFileSync(shallowFilePath, "utf8").trim();
-    if (content.length === 0) {
-      return [];
-    }
-
-    return content
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0)
-      .map((hash) => sha1(hash));
-  }
-
-  /**
-   * 写入 .git/shallow 文件
-   *
-   * 传空数组时删除文件（转为完整仓库）。
-   */
-  function writeShallow(boundaries: SHA1[]): void {
-    if (boundaries.length === 0) {
-      if (existsSync(shallowFilePath)) {
-        unlinkSync(shallowFilePath);
-      }
-      return;
-    }
-
-    // 排序后写入，保证文件内容确定性
-    const sorted = [...boundaries].sort();
-    writeFileSync(shallowFilePath, sorted.join("\n") + "\n");
-  }
-
-  /**
-   * 增量更新 shallow 边界
-   */
-  function applyShallowUpdate(update: ShallowUpdate): void {
-    const current = new Set(readShallow());
-
-    for (const hash of update.unshallow) {
-      current.delete(hash);
-    }
-
-    for (const hash of update.shallow) {
-      current.add(hash);
-    }
-
-    writeShallow(Array.from(current));
-  }
-
-  /**
-   * 判断哈希是否为 shallow boundary
-   */
-  function isShallowCommit(hash: SHA1): boolean {
-    // 对于小文件，每次都读取是可接受的。
-    // 若未来需频繁查询可添加内存缓存。
-    const boundaries = readShallow();
-    return boundaries.includes(hash);
-  }
-
   return {
     gitDir,
     objects,
     refs: createFileRefStore(gitDir),
+    shallow: createFileShallowStore(gitDir),
     packs,
-    readShallow,
-    writeShallow,
-    applyShallowUpdate,
-    isShallowCommit,
   };
 }
