@@ -7,12 +7,12 @@ import { mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createMemoryObjectStore, createFileObjectStore } from "../../../../src/odb/index.ts";
-import { createCompositeObjectStore } from "../../../../src/odb/pack/composite-store.ts";
-import { createPackBuilder } from "../../../../src/odb/pack/pack-builder.ts";
-import { createPackObjectStore } from "../../../../src/odb/pack/pack-store.ts";
+import { createMemoryObjectStore, createFileObjectStore } from "@/odb/index.ts";
+import { createCompositeObjectStore } from "@/odb/pack/composite-store.ts";
+import { createPackBuilder } from "@/odb/pack/pack-builder.ts";
+import { createPackObjectStore } from "@/odb/pack/pack-store.ts";
 
-import type { GitBlob } from "../../../../src/core/types.ts";
+import type { GitBlob } from "@/core/types.ts";
 
 describe("CompositeObjectStore", () => {
   test("从主存储读取", () => {

@@ -7,8 +7,6 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { join } from "node:path";
 
-import { sha1 } from "../../../src/core/types.ts";
-import { initRepository } from "../../../src/repository/index.ts";
 import { git, createTempDir, cleanupDir, createFile } from "../helpers.ts";
 import {
   createServerRepo,
@@ -17,6 +15,8 @@ import {
   getUploadPackRequests,
 } from "./helpers.ts";
 import { startGitHttpBackendServer } from "./http-server.ts";
+import { sha1 } from "@/core/types.ts";
+import { initRepository } from "@/repository/index.ts";
 
 describe("fetch 协商流程", () => {
   let tempDir: string;

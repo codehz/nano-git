@@ -6,7 +6,7 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { sha1 } from "../../../src/core/types.ts";
+import { sha1 } from "@/core/types.ts";
 
 describe("sha1()", () => {
   test("合法的 SHA-1 哈希应通过校验", () => {

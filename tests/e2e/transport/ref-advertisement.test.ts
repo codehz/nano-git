@@ -8,11 +8,11 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
-import { sha1 } from "../../../src/core/types.ts";
-import { createSmartHttpClient } from "../../../src/transport/smart-http.ts";
 import { git, gitInit, createTempDir, cleanupDir, createFile } from "../helpers.ts";
 import { createServerRepo } from "./helpers.ts";
 import { startGitHttpBackendServer } from "./http-server.ts";
+import { sha1 } from "@/core/types.ts";
+import { createSmartHttpClient } from "@/transport/smart-http.ts";
 
 describe("ref advertisement", () => {
   let tempDir: string;

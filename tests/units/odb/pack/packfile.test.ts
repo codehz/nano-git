@@ -4,10 +4,10 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { InvalidPackError } from "../../../../src/core/errors.ts";
-import { createPackWriter, createPackReader } from "../../../../src/odb/pack/index.ts";
+import { InvalidPackError } from "@/core/errors.ts";
+import { createPackWriter, createPackReader } from "@/odb/pack/index.ts";
 
-import type { GitBlob, GitTree, GitCommit, GitAuthor } from "../../../../src/core/types.ts";
+import type { GitBlob, GitTree, GitCommit, GitAuthor } from "@/core/types.ts";
 
 const testAuthor: GitAuthor = {
   name: "Test User",

@@ -4,11 +4,8 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { sha1 } from "../../../../src/core/types.ts";
-import {
-  createPackIndexReader,
-  createPackIndexWriter,
-} from "../../../../src/odb/pack/pack-index.ts";
+import { sha1 } from "@/core/types.ts";
+import { createPackIndexReader, createPackIndexWriter } from "@/odb/pack/pack-index.ts";
 
 describe("索引文件读写", () => {
   test("写入和读取索引", () => {

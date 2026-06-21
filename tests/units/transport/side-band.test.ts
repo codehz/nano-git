@@ -12,12 +12,8 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { encodePktLine } from "../../../src/transport/pkt-line.ts";
-import {
-  extractPackfile,
-  extractProgress,
-  SideBandError,
-} from "../../../src/transport/side-band.ts";
+import { encodePktLine } from "@/transport/pkt-line.ts";
+import { extractPackfile, extractProgress, SideBandError } from "@/transport/side-band.ts";
 
 // ============================================================================
 // 辅助函数

@@ -6,21 +6,21 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { sha1, type SHA1, type GitBlob, type GitCommit } from "../../../src/core/types.ts";
-import { createMemoryObjectStore } from "../../../src/odb/memory-store.ts";
-import { toEncodedPackObject, buildEncodedPack } from "../../../src/odb/pack/pack-encoding.ts";
-import { createMemoryRefStore } from "../../../src/refs/stores/memory.ts";
+import { sha1, type SHA1, type GitBlob, type GitCommit } from "@/core/types.ts";
+import { createMemoryObjectStore } from "@/odb/memory-store.ts";
+import { toEncodedPackObject, buildEncodedPack } from "@/odb/pack/pack-encoding.ts";
+import { createMemoryRefStore } from "@/refs/stores/memory.ts";
 import {
   parseRefSpec,
   matchesRefSpec,
   mapRefName,
   determineWants,
   fetch,
-} from "../../../src/transport/fetch.ts";
-import { parsePktLines } from "../../../src/transport/pkt-line.ts";
+} from "@/transport/fetch.ts";
+import { parsePktLines } from "@/transport/pkt-line.ts";
 
-import type { RemoteRef } from "../../../src/transport/types.ts";
-import type { RemoteTransport } from "../../../src/transport/types.ts";
+import type { RemoteRef } from "@/transport/types.ts";
+import type { RemoteTransport } from "@/transport/types.ts";
 
 // ============================================================================
 // 辅助函数

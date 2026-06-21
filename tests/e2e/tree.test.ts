@@ -8,8 +8,6 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { symlinkSync } from "node:fs";
 import { join } from "node:path";
 
-import { sha1 } from "../../src/core/types.ts";
-import { openRepository } from "../../src/repository/index.ts";
 import {
   git,
   gitInit,
@@ -23,6 +21,8 @@ import {
   cleanupDir,
   createFile,
 } from "./helpers.ts";
+import { sha1 } from "@/core/types.ts";
+import { openRepository } from "@/repository/index.ts";
 
 describe("Tree 兼容性", () => {
   let tempDir: string;

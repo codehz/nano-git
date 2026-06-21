@@ -4,10 +4,10 @@
 
 import { describe, test, expect, beforeEach } from "bun:test";
 
-import { sha1 } from "../../../src/core/types.ts";
-import { createMemoryObjectStore } from "../../../src/odb/index.ts";
+import { sha1 } from "@/core/types.ts";
+import { createMemoryObjectStore } from "@/odb/index.ts";
 
-import type { GitBlob, GitTree, GitCommit, GitAuthor } from "../../../src/core/types.ts";
+import type { GitBlob, GitTree, GitCommit, GitAuthor } from "@/core/types.ts";
 
 const testAuthor: GitAuthor = {
   name: "Test User",

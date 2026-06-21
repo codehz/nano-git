@@ -8,15 +8,9 @@
 import { describe, test, expect } from "bun:test";
 import { createHash } from "node:crypto";
 
-import {
-  sha1,
-  type SHA1,
-  type GitBlob,
-  type GitTree,
-  type GitCommit,
-} from "../../../src/core/types.ts";
-import { createMemoryObjectStore } from "../../../src/odb/memory-store.ts";
-import { collectReachable, PushError } from "../../../src/transport/push.ts";
+import { sha1, type SHA1, type GitBlob, type GitTree, type GitCommit } from "@/core/types.ts";
+import { createMemoryObjectStore } from "@/odb/memory-store.ts";
+import { collectReachable, PushError } from "@/transport/push.ts";
 
 // ============================================================================
 // 辅助函数

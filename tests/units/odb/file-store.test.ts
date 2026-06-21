@@ -7,10 +7,10 @@ import { mkdirSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { sha1 } from "../../../src/core/types.ts";
-import { createFileObjectStore } from "../../../src/odb/index.ts";
+import { sha1 } from "@/core/types.ts";
+import { createFileObjectStore } from "@/odb/index.ts";
 
-import type { GitBlob, GitTree, GitCommit, GitAuthor } from "../../../src/core/types.ts";
+import type { GitBlob, GitTree, GitCommit, GitAuthor } from "@/core/types.ts";
 
 const testAuthor: GitAuthor = {
   name: "Test User",

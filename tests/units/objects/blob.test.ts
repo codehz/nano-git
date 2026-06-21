@@ -4,9 +4,9 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { serialize, deserialize } from "../../../src/objects/index.ts";
+import { serialize, deserialize } from "@/objects/index.ts";
 
-import type { GitBlob } from "../../../src/core/types.ts";
+import type { GitBlob } from "@/core/types.ts";
 
 describe("Blob 序列化", () => {
   test("序列化 blob 对象", () => {

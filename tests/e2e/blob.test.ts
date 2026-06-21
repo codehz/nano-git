@@ -6,8 +6,6 @@
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 
-import { sha1 } from "../../src/core/types.ts";
-import { openRepository } from "../../src/repository/index.ts";
 import {
   gitInit,
   gitHashObjectWrite,
@@ -18,6 +16,8 @@ import {
   createTempDir,
   cleanupDir,
 } from "./helpers.ts";
+import { sha1 } from "@/core/types.ts";
+import { openRepository } from "@/repository/index.ts";
 
 describe("Blob 兼容性", () => {
   let tempDir: string;

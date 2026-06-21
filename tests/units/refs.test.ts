@@ -9,15 +9,15 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { CircularReferenceError, RefNotFoundError } from "../../src/core/errors.ts";
-import { sha1 } from "../../src/core/types.ts";
+import { CircularReferenceError, RefNotFoundError } from "@/core/errors.ts";
+import { sha1 } from "@/core/types.ts";
 import {
   createFileRefStore,
   createMemoryRefStore,
   resolveRefHash,
   resolveSymbolicRef,
   validateRefPrefix,
-} from "../../src/refs/index.ts";
+} from "@/refs/index.ts";
 
 describe("createMemoryRefStore()", () => {
   test("会复制初始 Map，避免外部后续修改污染存储", () => {

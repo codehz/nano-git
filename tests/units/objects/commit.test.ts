@@ -4,10 +4,10 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { sha1 } from "../../../src/core/types.ts";
-import { serialize, deserialize } from "../../../src/objects/index.ts";
+import { sha1 } from "@/core/types.ts";
+import { serialize, deserialize } from "@/objects/index.ts";
 
-import type { GitCommit, GitAuthor } from "../../../src/core/types.ts";
+import type { GitCommit, GitAuthor } from "@/core/types.ts";
 
 const testAuthor: GitAuthor = {
   name: "Test User",

@@ -6,7 +6,6 @@
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 
-import { openRepository } from "../../src/repository/index.ts";
 import {
   gitInit,
   gitRevParse,
@@ -17,8 +16,9 @@ import {
   cleanupDir,
   FIXED_AUTHOR,
 } from "./helpers.ts";
+import { openRepository } from "@/repository/index.ts";
 
-import type { GitAuthor } from "../../src/core/types.ts";
+import type { GitAuthor } from "@/core/types.ts";
 
 const testAuthor: GitAuthor = {
   name: FIXED_AUTHOR.name,

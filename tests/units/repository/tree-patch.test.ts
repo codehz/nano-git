@@ -4,9 +4,9 @@
 
 import { describe, test, expect, beforeEach } from "bun:test";
 
-import { createMemoryRepository, type Repository } from "../../../src/repository/index.ts";
+import { createMemoryRepository, type Repository } from "@/repository/index.ts";
 
-import type { GitTree } from "../../../src/core/types.ts";
+import type { GitTree } from "@/core/types.ts";
 
 describe("patchTree()", () => {
   let repo: Repository;

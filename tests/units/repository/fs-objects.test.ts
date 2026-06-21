@@ -7,11 +7,11 @@ import { mkdirSync, rmSync, existsSync, writeFileSync, symlinkSync, chmodSync } 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { hashToPath } from "../../../src/core/hash.ts";
-import { createPackBuilder } from "../../../src/odb/pack/index.ts";
-import { initRepository, openRepository, type Repository } from "../../../src/repository/index.ts";
+import { hashToPath } from "@/core/hash.ts";
+import { createPackBuilder } from "@/odb/pack/index.ts";
+import { initRepository, openRepository, type Repository } from "@/repository/index.ts";
 
-import type { GitAuthor, TreeEntry } from "../../../src/core/types.ts";
+import type { GitAuthor, TreeEntry } from "@/core/types.ts";
 
 const testAuthor: GitAuthor = {
   name: "Test User",

@@ -4,9 +4,9 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { deserialize, serializeContent, deserializeContent } from "../../../src/objects/index.ts";
+import { deserialize, serializeContent, deserializeContent } from "@/objects/index.ts";
 
-import type { GitBlob } from "../../../src/core/types.ts";
+import type { GitBlob } from "@/core/types.ts";
 
 describe("反序列化错误处理", () => {
   test("缺少 null 字节应抛出异常", () => {

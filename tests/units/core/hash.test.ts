@@ -6,14 +6,8 @@
 
 import { describe, test, expect } from "bun:test";
 
-import {
-  hashData,
-  hashObject,
-  hashToPath,
-  pathToHash,
-  isValidSHA1,
-} from "../../../src/core/hash.ts";
-import { sha1 } from "../../../src/core/types.ts";
+import { hashData, hashObject, hashToPath, pathToHash, isValidSHA1 } from "@/core/hash.ts";
+import { sha1 } from "@/core/types.ts";
 
 // ============================================================================
 // hashData

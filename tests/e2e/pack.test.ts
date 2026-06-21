@@ -9,8 +9,6 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
-import { createPackBuilder } from "../../src/odb/pack/pack-builder.ts";
-import { createPackObjectStore } from "../../src/odb/pack/pack-store.ts";
 import {
   gitInit,
   git,
@@ -21,8 +19,10 @@ import {
   createFile,
   FIXED_AUTHOR,
 } from "./helpers.ts";
+import { createPackBuilder } from "@/odb/pack/pack-builder.ts";
+import { createPackObjectStore } from "@/odb/pack/pack-store.ts";
 
-import type { GitBlob, GitTree, GitCommit, GitAuthor, SHA1 } from "../../src/core/types.ts";
+import type { GitBlob, GitTree, GitCommit, GitAuthor, SHA1 } from "@/core/types.ts";
 
 const testAuthor: GitAuthor = {
   name: FIXED_AUTHOR.name,

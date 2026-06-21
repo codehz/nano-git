@@ -8,10 +8,10 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
-import { sha1 } from "../../../src/core/types.ts";
-import { initRepository } from "../../../src/repository/index.ts";
 import { git, gitInit, createTempDir, cleanupDir, createFile } from "../helpers.ts";
 import { startGitHttpBackendServer } from "./http-server.ts";
+import { sha1 } from "@/core/types.ts";
+import { initRepository } from "@/repository/index.ts";
 
 describe("完整 fetch 流程", () => {
   let tempDir: string;

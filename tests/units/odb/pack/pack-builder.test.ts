@@ -7,10 +7,10 @@ import { mkdirSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createPackBuilder } from "../../../../src/odb/pack/pack-builder.ts";
-import { createPackObjectStore } from "../../../../src/odb/pack/pack-store.ts";
+import { createPackBuilder } from "@/odb/pack/pack-builder.ts";
+import { createPackObjectStore } from "@/odb/pack/pack-store.ts";
 
-import type { GitBlob, GitTag, GitAuthor } from "../../../../src/core/types.ts";
+import type { GitBlob, GitTag, GitAuthor } from "@/core/types.ts";
 
 const testAuthor: GitAuthor = {
   name: "Test User",

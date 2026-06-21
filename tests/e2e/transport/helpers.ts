@@ -5,8 +5,8 @@
 import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { parsePktLines } from "../../../src/transport/pkt-line.ts";
 import { git, gitInit, createFile } from "../helpers.ts";
+import { parsePktLines } from "@/transport/pkt-line.ts";
 
 import type { GitHttpRequestRecord } from "./http-server.ts";
 
