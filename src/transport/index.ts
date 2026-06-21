@@ -64,6 +64,7 @@ export {
   matchesRefSpec,
   mapRefName,
   determineWants,
+  selectHaveTips,
   FetchError,
 } from "./fetch.ts";
 export type { ParsedRefSpec } from "./fetch.ts";

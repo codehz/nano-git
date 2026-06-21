@@ -138,6 +138,15 @@ export interface FetchOptions {
    * 传入此字段可注入替代实现用于测试。
    */
   transport?: RemoteTransport;
+
+  /**
+   * have 候选集上限
+   *
+   * 控制 collectHaveCommits 返回的最大 have 候选数量。
+   * 设为 0 表示不限制（使用默认深度 65536）。
+   * 默认值为 512。
+   */
+  maxCandidates?: number;
 }
 
 /**

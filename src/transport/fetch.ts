@@ -64,6 +64,9 @@ export class FetchError extends GitError {
 /** 默认 refspec */
 const DEFAULT_REFSPEC = "+refs/heads/*:refs/remotes/origin/*";
 
+/** Have 候选集默认预算上限 */
+const DEFAULT_MAX_CANDIDATES = 512;
+
 /** Git 协议 v1 常用能力 */
 const DEFAULT_CAPABILITIES = [
   "multi_ack",
@@ -267,18 +270,22 @@ export async function fetch(
   // 5. 从服务端 capabilities 中确定可用能力
   const caps = extractCapabilities(adv.capabilities);
 
-  // 6. 构造请求：Consecutive 协商算法
+  // 6. 构造请求：裁剪后的 Consecutive 协商算法
   //
-  //    收集本地 commit 图中从所有本地 ref 可达的所有 commit，
-  //    按提交时间从旧到新排序后作为 haves 发送，
-  //    让服务端能准确定位公共祖先，最小化增量传输。
+  //    从相关 remote-tracking refs 出发收集 have 候选，
+  //    减少无关本地分支/标签带来的噪音。
+  //    支持 maxCandidates 预算限制候选集大小。
   const wantHashes = wants.map((w) => w.remote.hash);
 
-  // 使用所有本地 ref 作为 have 遍历起点，而非仅用目标 remote-tracking ref 的旧值。
-  // 这样当本地通过其他 ref（如 feature 分支）已持有服务端新 commit 时，
-  // collectHaveCommits 能将其纳入 have 列表，避免服务端重复发送已存在的对象。
-  const localRefValues = Array.from(localRefs.values());
-  const haveHashes = localRefValues.length > 0 ? collectHaveCommits(store, localRefValues) : [];
+  // 使用 selectHaveTips 按优先级选择遍历起点：
+  // 1. wants 对应的 remote-tracking ref 旧值
+  // 2. 同一远端命名空间下的其他 remote-tracking refs
+  // 3. HEAD
+  // 4. 本地 heads（兜底）
+  const haveTips = selectHaveTips(localRefs, wants);
+  const maxCandidates = options?.maxCandidates ?? DEFAULT_MAX_CANDIDATES;
+  const haveHashes =
+    haveTips.length > 0 ? collectHaveCommits(store, haveTips, { maxCandidates }) : [];
   // 7. 发送请求
   const {
     packfile,
@@ -344,6 +351,80 @@ function extractCapabilities(serverCaps: Record<string, string | true>): string[
   const supported = new Set<string>(DEFAULT_CAPABILITIES);
   // 只使用服务端也支持的能力
   return Object.keys(serverCaps).filter((cap) => supported.has(cap));
+}
+
+/**
+ * 选择 have 遍历起点
+ *
+ * 根据 wants 和本地 refs 确定用于 have 收集的起点哈希列表。
+ * 优先级：
+ *  1. wants 对应的 remote-tracking ref 旧值（如 refs/remotes/origin/main）
+ *  2. 同一远端命名空间下的其他 remote-tracking refs
+ *  3. HEAD
+ *  4. 本地 refs/heads/*（兜底）
+ *
+ * @param localRefs - 所有本地 ref → hash 映射
+ * @param wants - 将要拉取的 wants（含 localName 和 localHash）
+ * @returns 适合作为 have 遍历起点的哈希列表
+ *
+ * @example
+ * ```ts
+ * const tips = selectHaveTips(localRefs, wants);
+ * ```
+ */
+export function selectHaveTips(
+  localRefs: Map<string, SHA1>,
+  wants: Array<{ remote: RemoteRef; localName: string; localHash?: SHA1 }>,
+): SHA1[] {
+  const tips: SHA1[] = [];
+  const seen = new Set<SHA1>();
+
+  // 第一优先：wants 对应的 remote-tracking ref 旧值
+  for (const w of wants) {
+    if (w.localHash && !seen.has(w.localHash)) {
+      seen.add(w.localHash);
+      tips.push(w.localHash);
+    }
+  }
+
+  // 推导远端命名空间前缀
+  const remotePrefixes = new Set<string>();
+  for (const w of wants) {
+    const m = w.localName.match(/^(refs\/remotes\/[^/]+\/)/);
+    if (m) {
+      remotePrefixes.add(m[1]!);
+    }
+  }
+
+  // 第二优先：同一远端命名空间下的其他 remote-tracking refs
+  for (const [refName, hash] of localRefs) {
+    if (seen.has(hash)) continue;
+    if (refName.startsWith("refs/remotes/")) {
+      // 如果已知远端前缀，只取匹配的；否则取所有 remote-tracking refs
+      if (remotePrefixes.size === 0 || [...remotePrefixes].some((p) => refName.startsWith(p))) {
+        seen.add(hash);
+        tips.push(hash);
+      }
+    }
+  }
+
+  // 第三优先：HEAD
+  const headHash = localRefs.get("HEAD");
+  if (headHash && !seen.has(headHash)) {
+    seen.add(headHash);
+    tips.push(headHash);
+  }
+
+  // 第四优先：本地 heads（兜底）
+  for (const [refName, hash] of localRefs) {
+    if (seen.has(hash)) continue;
+    if (refName.startsWith("refs/heads/")) {
+      seen.add(hash);
+      tips.push(hash);
+    }
+  }
+
+  return tips;
 }
 
 /**

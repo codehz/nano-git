@@ -36,35 +36,55 @@ const MAX_HAVE_DEPTH = 65536;
 export const MAX_HAVES_PER_ROUND = 32;
 
 // ============================================================================
-// Have 收集（Consecutive 算法）
+// Have 候选选择与收集
 // ============================================================================
 
+/** have 候选收集策略 */
+export type HaveCollectionStrategy = "full" | "bounded" | "sparse";
+
+/** have 候选收集选项 */
+export interface HaveSelectionOptions {
+  /** 候选集上限，默认不限制 */
+  maxCandidates?: number;
+}
+
 /**
- * 从起始哈希出发遍历 commit 图，收集所有可达 commit 哈希
+ * 从起始哈希出发遍历 commit 图，收集可达 commit 哈希
  *
  * 沿 parent 链回溯，按提交时间戳从旧到新排序。
- * 这实现了 Consecutive 协商算法——发送完整的本地历史，
+ * 这实现了 Consecutive 协商算法——发送本地历史，
  * 让服务端能准确定位公共祖先，最小化增量传输。
  *
  * @param store - 对象存储
- * @param tips - 遍历起点（通常是本地远程跟踪 ref 的哈希）
+ * @param tips - 遍历起点
+ * @param options - 可选配置（maxCandidates 控制候选集上限）
  * @returns 按提交时间从旧到新排序的 commit 哈希列表
  *
  * @example
  * ```ts
  * const haves = collectHaveCommits(store, [localHash]);
  * // => [oldest_commit, ..., newest_commit]
+ *
+ * const havesLimited = collectHaveCommits(store, [localHash], { maxCandidates: 256 });
+ * // => 最多 256 个
  * ```
  */
-export function collectHaveCommits(store: ObjectStore, tips: SHA1[]): SHA1[] {
+export function collectHaveCommits(
+  store: ObjectStore,
+  tips: SHA1[],
+  options?: HaveSelectionOptions,
+): SHA1[] {
   const seen = new Set<SHA1>();
   const commits: Array<{ hash: SHA1; timestamp: number }> = [];
   const queue: SHA1[] = [...tips];
 
+  const maxCandidates = options?.maxCandidates ?? MAX_HAVE_DEPTH;
+  const effectiveMax = Math.min(maxCandidates, MAX_HAVE_DEPTH);
+
   while (queue.length > 0) {
     const hash = queue.pop()!;
     if (seen.has(hash)) continue;
-    if (seen.size >= MAX_HAVE_DEPTH) break;
+    if (seen.size >= effectiveMax) break;
 
     seen.add(hash);
 
@@ -77,7 +97,7 @@ export function collectHaveCommits(store: ObjectStore, tips: SHA1[]): SHA1[] {
 
       // 将父 commit 加入遍历队列
       for (const parentHash of commit.parents) {
-        if (!seen.has(parentHash)) {
+        if (!seen.has(parentHash) && seen.size < effectiveMax) {
           queue.push(parentHash);
         }
       }

@@ -16,6 +16,7 @@ import {
   mapRefName,
   determineWants,
   fetch,
+  selectHaveTips,
 } from "@/transport/fetch.ts";
 import { parsePktLines } from "@/transport/pkt-line.ts";
 
@@ -447,5 +448,142 @@ describe("fetch() 增量 fetch 行为", () => {
 
     expect(objectStore.exists(entry.hash)).toBe(true);
     expect(result.objectCount).toBe(1);
+  });
+});
+
+// ============================================================================
+// selectHaveTips
+// ============================================================================
+
+describe("selectHaveTips()", () => {
+  const hashA = sha1("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+  const hashB = sha1("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+  const hashC = sha1("cccccccccccccccccccccccccccccccccccccccc");
+
+  test("第一优先：wants 对应的 remote-tracking ref 旧值", () => {
+    const localRefs = new Map<string, SHA1>([
+      ["refs/remotes/origin/main", hashA],
+      ["HEAD", hashB],
+    ]);
+    const wants = [
+      {
+        remote: makeRef("refs/heads/main"),
+        localName: "refs/remotes/origin/main",
+        localHash: hashA,
+      },
+    ];
+
+    const tips = selectHaveTips(localRefs, wants);
+    // hashA 应是第一个（第一优先）
+    expect(tips[0]).toBe(hashA);
+    // hashB 也会出现（第三优先 HEAD）
+    expect(tips).toContain(hashB);
+  });
+
+  test("第二优先：同一远端命名空间下的其他 remote-tracking refs", () => {
+    const localRefs = new Map<string, SHA1>([
+      ["refs/remotes/origin/main", hashA],
+      ["refs/remotes/origin/feature", hashB],
+      ["refs/remotes/upstream/main", hashC],
+    ]);
+    const wants = [
+      {
+        remote: makeRef("refs/heads/main"),
+        localName: "refs/remotes/origin/main",
+        localHash: hashA,
+      },
+    ];
+
+    const tips = selectHaveTips(localRefs, wants);
+    // hashA 第一优先（wants 的 localHash）
+    // hashB 第二优先（同一远端前缀 refs/remotes/origin/）
+    // hashC 不应出现（不同远端前缀）
+    expect(tips).toContain(hashA);
+    expect(tips).toContain(hashB);
+    expect(tips).not.toContain(hashC);
+  });
+
+  test("第三优先：HEAD", () => {
+    const localRefs = new Map<string, SHA1>([
+      ["refs/remotes/origin/main", hashA],
+      ["HEAD", hashB],
+      ["refs/heads/feature", hashC],
+    ]);
+    const wants = [
+      {
+        remote: makeRef("refs/heads/main"),
+        localName: "refs/remotes/origin/main",
+        localHash: hashA,
+      },
+    ];
+
+    const tips = selectHaveTips(localRefs, wants);
+    // hashA（第一优先）, hashB（第三优先 HEAD）, 然后 heads
+    expect(tips.indexOf(hashA)).toBeLessThan(tips.indexOf(hashB)!);
+    // HEAD 在 heads 之前
+    expect(tips.indexOf(hashB)).toBeLessThan(tips.indexOf(hashC)!);
+  });
+
+  test("第四优先：本地 heads 兜底", () => {
+    const localRefs = new Map<string, SHA1>([
+      ["refs/heads/main", hashA],
+      ["refs/heads/feature", hashB],
+    ]);
+    // 无 remote-tracking refs 且无 HEAD
+    const wants: Array<{ remote: RemoteRef; localName: string; localHash?: SHA1 }> = [];
+
+    const tips = selectHaveTips(localRefs, wants);
+    expect(tips).toContain(hashA);
+    expect(tips).toContain(hashB);
+  });
+
+  test("不包含 tags 除非它们被 remote-tracking 覆盖", () => {
+    const localRefs = new Map<string, SHA1>([
+      ["refs/remotes/origin/main", hashA],
+      ["refs/tags/v1.0", hashB],
+      ["HEAD", hashC],
+    ]);
+    const wants = [
+      {
+        remote: makeRef("refs/heads/main"),
+        localName: "refs/remotes/origin/main",
+        localHash: hashA,
+      },
+    ];
+
+    const tips = selectHaveTips(localRefs, wants);
+    // hashB（tag）不应出现
+    expect(tips).not.toContain(hashB);
+  });
+
+  test("wants 无 localHash 时从第二优先开始", () => {
+    const localRefs = new Map<string, SHA1>([
+      ["refs/remotes/origin/main", hashA],
+      ["HEAD", hashB],
+    ]);
+    const wants = [{ remote: makeRef("refs/heads/main"), localName: "refs/remotes/origin/main" }];
+
+    const tips = selectHaveTips(localRefs, wants);
+    // 没有 localHash，直接跳到远程 tracking refs（第二优先）
+    expect(tips).toContain(hashA);
+    expect(tips).toContain(hashB);
+  });
+
+  test("去重：同一 hash 不会重复出现", () => {
+    const localRefs = new Map<string, SHA1>([
+      ["refs/remotes/origin/main", hashA],
+      ["refs/heads/main", hashA], // 同一 hash
+    ]);
+    const wants = [
+      {
+        remote: makeRef("refs/heads/main"),
+        localName: "refs/remotes/origin/main",
+        localHash: hashA,
+      },
+    ];
+
+    const tips = selectHaveTips(localRefs, wants);
+    // hashA 只出现一次
+    expect(tips.filter((h) => h === hashA)).toHaveLength(1);
   });
 });
