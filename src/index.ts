@@ -222,6 +222,7 @@ export {
   type BranchMaterializationOptions,
   type TagMaterializationOptions,
   type HeadMaterializationOptions,
+  type RepoImportOperations,
   type RepositoryPushOptions,
   type RepositoryPushResult,
 } from "./repository/index.ts";
