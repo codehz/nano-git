@@ -1,9 +1,10 @@
 /**
- * Fetch Ref 规划
+ * Fetch Ref 规划（纯映射层）
  *
- * 处理"我要 fetch 哪些 ref"的问题：
- * - 使用 refspec 在远端 refs 与本地 refs 之间映射
- * - 产出 wants / matched refs / update items
+ * 只负责"远端 ref → 本地 ref"的映射规划，不涉及对象库状态。
+ * 使用 refspec 在远端 refs 与本地 refs 之间映射，产出 matched refs / update items。
+ *
+ * 对象完整性补正由 resolveFetchWants() 在后续阶段完成。
  *
  * @example
  * ```ts
@@ -12,19 +13,15 @@
  * const plan = planRefUpdates(remoteRefs, localRefs, [
  *   { source: "+refs/heads/*", target: "refs/remotes/origin/*" },
  * ]);
- * console.log(plan.wants);
+ * console.log(plan.updates);
  * ```
  */
 
 import { GitError } from "../core/errors.ts";
-import { getLocalRefs } from "./ref-collection.ts";
 import { matchesRefSpec, mapRefName } from "./ref-match.ts";
 import { mappingRuleToParsedSpec } from "./refspec.ts";
 
 import type { SHA1 } from "../core/types.ts";
-import type { ObjectSource } from "../odb/types.ts";
-import type { RefStore } from "../refs/types.ts";
-import type { ParsedRefSpec } from "./refspec.ts";
 import type { RefMappingRule, RefUpdatePlan, RefUpdatePlanItem, RemoteRef } from "./types.ts";
 
 // ============================================================================
@@ -55,15 +52,15 @@ export { getLocalRefs } from "./ref-collection.ts";
 // ============================================================================
 
 /**
- * 规划 ref 更新
+ * 规划 ref 更新（纯映射）
  *
- * 从远端 refs 和本地 refs 生成更新计划，产出 wants / matched refs / update items。
+ * 从远端 refs 和本地 refs 生成更新计划，仅基于 hash 比较决定哪些 ref 需要更新。
+ * 不涉及对象库状态校验——对象完整性补正由 resolveFetchWants() 完成。
  *
  * @param remoteRefs - 远端引用列表
  * @param localRefs - 本地 ref → hash 映射
  * @param rules - 映射规则列表
- * @param store - 可选的对象存储，用于校验本地对象是否存在
- * @returns Ref 更新计划
+ * @returns Ref 更新计划（不含 wants）
  *
  * @example
  * ```ts
@@ -76,10 +73,8 @@ export function planRefUpdates(
   remoteRefs: RemoteRef[],
   localRefs: Map<string, SHA1>,
   rules: RefMappingRule[],
-  store?: ObjectSource,
 ): RefUpdatePlan {
   const parsedSpecs = rules.map(mappingRuleToParsedSpec);
-  const wants: SHA1[] = [];
   const matchedRemoteRefs: RemoteRef[] = [];
   const updates: RefUpdatePlanItem[] = [];
   const seen = new Set<string>();
@@ -96,13 +91,12 @@ export function planRefUpdates(
 
       matchedRemoteRefs.push(ref);
 
-      // 检查本地是否已是最新
+      // 纯 hash 比较：本地 hash 相同则跳过（对象完整性由后续阶段校验）
       const localHash = localRefs.get(localName);
-      if (localHash === ref.hash && (!store || store.exists(localHash))) {
+      if (localHash === ref.hash) {
         continue;
       }
 
-      wants.push(ref.hash);
       updates.push({
         remoteRef: ref,
         localRef: localName,
@@ -112,7 +106,7 @@ export function planRefUpdates(
     }
   }
 
-  return { wants, matchedRemoteRefs, updates };
+  return { matchedRemoteRefs, updates };
 }
 
 /**

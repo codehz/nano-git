@@ -235,6 +235,7 @@ export type {
   RefMappingRule,
   RefUpdatePlanItem,
   RefUpdatePlan,
+  FetchTransferPlan,
   FetchPackOptions,
   FetchPackResult,
   RefUpdateRejection,
@@ -274,6 +275,8 @@ export {
   planRefUpdates,
   validateExactRules,
   RefPlanError,
+  // Fetch 传输计划补正
+  resolveFetchWants,
   // Fetch-pack（对象同步）
   fetchPack,
   FetchPackError,

@@ -18,6 +18,7 @@
 
 import { advertiseRemote } from "../transport/advertise.ts";
 import { fetchPack } from "../transport/fetch-pack.ts";
+import { resolveFetchWants } from "../transport/fetch-plan-finalize.ts";
 import { planRefUpdates, validateExactRules } from "../transport/fetch-ref-plan.ts";
 import { getLocalRefs } from "../transport/ref-collection.ts";
 import { applyRefUpdates } from "../transport/update-refs.ts";
@@ -71,19 +72,15 @@ export async function runFetchRemote(
   // 2. 校验非通配符规则
   validateExactRules(adv.refs, remote.fetchRules);
 
-  // 3. 获取本地 refs 并规划更新
+  // 3. 获取本地 refs 并规划更新（纯映射层，不涉及对象库）
   const localRefs = getLocalRefs(refs);
-  const plan = planRefUpdates(adv.refs, localRefs, remote.fetchRules, objects);
+  const plan = planRefUpdates(adv.refs, localRefs, remote.fetchRules);
 
-  // 4. 处理纯 shallow deepen 场景：即使 wants 为空也需执行协商
-  const hasShallowOptions = options?.depth !== undefined;
-  const needsDeepen = hasShallowOptions && plan.wants.length === 0;
+  // 4. 传输计划推导：结合对象库状态补正 wants
+  const transferPlan = resolveFetchWants(plan, objects, { depth: options?.depth });
 
-  // 即使 wants 为空，如果有 pending 的 ref 更新（如上次被拒绝的 force 更新），
-  // 仍需执行 fetch-pack 获取对象后应用 ref 更新
-  const hasPendingUpdates = plan.updates.some((u) => u.force || u.currentLocalHash !== undefined);
-
-  if (plan.wants.length === 0 && !needsDeepen && !hasPendingUpdates) {
+  // 5. 无需传输时提前返回
+  if (!transferPlan.needsPackNegotiation) {
     return {
       transfer: { objectCount: 0 },
       refUpdates: { updatedRefs: new Map(), rejectedRefs: [] },
@@ -91,14 +88,14 @@ export async function runFetchRemote(
     };
   }
 
-  // 5. 构造 have 候选
+  // 6. 构造 have 候选
   const haveTips = selectHaveTipsForRemote(localRefs, plan.updates);
   const currentShallow = backend.shallow.read();
 
-  // 6. 执行 fetch-pack
+  // 7. 执行 fetch-pack
   const packResult = await fetchPack(objects, {
     url: remote.url,
-    wants: needsDeepen ? plan.matchedRemoteRefs.map((r) => r.hash) : plan.wants,
+    wants: transferPlan.wants,
     haves: haveTips.length > 0 ? haveTips : undefined,
     depth: options?.depth,
     shallow: currentShallow.length > 0 ? currentShallow : undefined,
@@ -107,10 +104,10 @@ export async function runFetchRemote(
     maxCandidates: options?.maxCandidates,
   });
 
-  // 7. 应用 ref 更新
+  // 8. 应用 ref 更新
   const refUpdateResult = applyRefUpdates(objects, refs, plan.updates);
 
-  // 8. shallow 持久化
+  // 9. shallow 持久化
   if (packResult.shallow || packResult.unshallow) {
     backend.shallow.applyUpdate({
       shallow: packResult.shallow ?? [],

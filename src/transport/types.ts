@@ -137,12 +137,27 @@ export interface RefUpdatePlanItem {
 }
 
 /**
- * Ref 更新计划
+ * Ref 更新计划（纯映射层）
+ *
+ * 只描述"远端 ref → 本地 ref"的映射关系，不包含传输需求。
+ * wants 由 resolveFetchWants() 根据对象库状态推导。
  */
 export interface RefUpdatePlan {
-  readonly wants: SHA1[];
   readonly matchedRemoteRefs: RemoteRef[];
   readonly updates: RefUpdatePlanItem[];
+}
+
+/**
+ * Fetch 传输计划
+ *
+ * 从 RefUpdatePlan 推导出的实际传输需求。
+ * 决定"为了兑现 ref 更新计划，需要向服务器要哪些对象"。
+ */
+export interface FetchTransferPlan {
+  /** 需要向服务器请求的 wants */
+  readonly wants: SHA1[];
+  /** 是否需要执行 fetch-pack 协商 */
+  readonly needsPackNegotiation: boolean;
 }
 
 // ============================================================================

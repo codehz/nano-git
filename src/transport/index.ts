@@ -21,6 +21,7 @@ export type {
   RefMappingRule,
   RefUpdatePlanItem,
   RefUpdatePlan,
+  FetchTransferPlan,
   FetchPackOptions,
   FetchPackResult,
   RefUpdateRejection,
@@ -80,8 +81,12 @@ export { getLocalRefs, remoteRefsToMap } from "./ref-collection.ts";
 // P5b: Ref 匹配
 export { matchesRefSpec, mapRefName } from "./ref-match.ts";
 
-// P5c: Fetch Ref 规划
+// P5c: Fetch Ref 规划（纯映射层）
 export { planRefUpdates, validateExactRules, RefPlanError } from "./fetch-ref-plan.ts";
+
+// P5d: Fetch 传输计划补正（wants 推导）
+export { resolveFetchWants } from "./fetch-plan-finalize.ts";
+export type { ResolveFetchWantsOptions } from "./fetch-plan-finalize.ts";
 
 // P6: Fetch-pack（对象同步，不写 ref）
 export { fetchPack, FetchPackError } from "./fetch-pack.ts";
