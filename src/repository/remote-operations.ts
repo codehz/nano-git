@@ -16,7 +16,8 @@ import { GitError } from "../core/errors.ts";
 import { sha1, type SHA1 } from "../core/types.ts";
 import { advertiseRemote } from "../transport/advertise.ts";
 import { fetchPack } from "../transport/fetch-pack.ts";
-import { getLocalRefs, planRefUpdates, validateExactRules } from "../transport/ref-plan.ts";
+import { planRefUpdates, validateExactRules } from "../transport/fetch-ref-plan.ts";
+import { getLocalRefs } from "../transport/ref-collection.ts";
 import { applyRefUpdates } from "../transport/update-refs.ts";
 
 import type { RepositoryBackend } from "./backend/types.ts";

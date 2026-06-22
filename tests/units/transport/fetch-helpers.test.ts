@@ -9,7 +9,8 @@ import { describe, test, expect } from "bun:test";
 
 import { sha1 } from "@/core/types.ts";
 import { createMemoryRefStore } from "@/refs/stores/memory.ts";
-import { getLocalRefs, planRefUpdates } from "@/transport/ref-plan.ts";
+import { planRefUpdates } from "@/transport/fetch-ref-plan.ts";
+import { getLocalRefs } from "@/transport/ref-collection.ts";
 
 import type { RemoteRef } from "@/transport/types.ts";
 

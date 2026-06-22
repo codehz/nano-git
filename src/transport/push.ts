@@ -24,23 +24,19 @@ import { createPackWriter } from "../odb/pack/pack-writer.ts";
 import { PushError } from "./push-error.ts";
 import { mergePushBoundaries, computeObjectsToSend } from "./push-pack-plan.ts";
 import { checkFastForward } from "./push-policy.ts";
-import {
-  getLocalRefs,
-  remoteRefsToMap,
-  resolveDefaultRefSpec,
-  determinePushRefs,
-} from "./push-ref-plan.ts";
+import { resolveDefaultRefSpec, determinePushRefs } from "./push-ref-plan.ts";
 import { processPushReport } from "./push-report.ts";
 import { buildReceivePackRequest } from "./receive-pack-request.ts";
 import { ReceivePackResultError } from "./receive-pack-result.ts";
-import { parseRefSpec } from "./ref-plan.ts";
+import { getLocalRefs, remoteRefsToMap } from "./ref-collection.ts";
+import { parseRefSpec } from "./refspec.ts";
 import { createSmartHttpClient } from "./smart-http.ts";
 import { extractCapabilities, PUSH_CAPABILITIES } from "./transport-capabilities.ts";
 
 import type { SHA1 } from "../core/types.ts";
 import type { ObjectStore } from "../odb/types.ts";
 import type { RefStore } from "../refs/types.ts";
-import type { ParsedRefSpec } from "./ref-plan.ts";
+import type { ParsedRefSpec } from "./refspec.ts";
 import type { PushOptions, PushResult, PushRefUpdate } from "./types.ts";
 
 // ============================================================================

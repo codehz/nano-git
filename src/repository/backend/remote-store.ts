@@ -8,7 +8,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { parseRefSpec } from "../../transport/ref-plan.ts";
+import { parseRefSpec } from "../../transport/refspec.ts";
 import { type RefMappingRule } from "../../transport/types.ts";
 import { type RemoteConfig } from "../remote-types.ts";
 import { type GitConfigSection, parseGitConfig, renderGitConfig } from "./git-config.ts";

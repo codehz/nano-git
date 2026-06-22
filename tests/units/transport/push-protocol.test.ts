@@ -16,7 +16,7 @@ import { PushError } from "@/transport/push-error.ts";
 import { determinePushRefs } from "@/transport/push-ref-plan.ts";
 import { push } from "@/transport/push.ts";
 import { parseReceivePackResult } from "@/transport/receive-pack-result.ts";
-import { parseRefSpec } from "@/transport/ref-plan.ts";
+import { parseRefSpec } from "@/transport/refspec.ts";
 
 import type { RemoteTransport } from "@/transport/types.ts";
 

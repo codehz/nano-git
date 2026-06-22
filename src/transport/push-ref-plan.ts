@@ -9,7 +9,7 @@
  * @example
  * ```ts
  * import { determinePushRefs } from "./push-ref-plan.ts";
- * import { parseRefSpec } from "./ref-plan.ts";
+ * import { parseRefSpec } from "./refspec.ts";
  *
  * const localRefs = new Map([["refs/heads/main", "abc123..."]]);
  * const remoteRefs = new Map();
@@ -18,13 +18,13 @@
  * ```
  */
 
-import { sha1 } from "../core/types.ts";
-import { HEADS_PREFIX, HEAD_REF, resolveRefHash, resolveSymbolicRef } from "../refs/index.ts";
+import { HEADS_PREFIX, resolveSymbolicRef } from "../refs/index.ts";
+import { HEAD_REF } from "../refs/types.ts";
 import { PushError } from "./push-error.ts";
 
 import type { SHA1 } from "../core/types.ts";
 import type { RefStore } from "../refs/types.ts";
-import type { ParsedRefSpec } from "./ref-plan.ts";
+import type { ParsedRefSpec } from "./refspec.ts";
 
 // ============================================================================
 // 类型定义
@@ -44,56 +44,6 @@ export interface PushRefItem {
   remoteHash: SHA1 | null;
   /** 是否强制推送 */
   force: boolean;
-}
-
-// ============================================================================
-// 本地引用收集
-// ============================================================================
-
-/**
- * 获取本地 refs 的哈希映射
- *
- * 扫描 refs/ 下所有命名空间的引用，确保 push refspec 中
- * 任意来源引用（如 refs/remotes/、refs/notes/ 等）都能被正确检测到。
- */
-export function getLocalRefs(refs: RefStore): Map<string, SHA1> {
-  const map = new Map<string, SHA1>();
-
-  // 所有 refs/ 下的引用
-  for (const refName of refs.listAll()) {
-    const content = refs.read(refName);
-    if (content && /^[0-9a-f]{40}$/.test(content)) {
-      try {
-        map.set(refName, sha1(content));
-      } catch {
-        // 忽略无效哈希
-      }
-    }
-  }
-
-  // HEAD 可能指向 refs/ 外的引用（如 "HEAD" 自身），
-  // 解析失败（循环/损坏）不影响其他 ref 的推送
-  try {
-    const hash = resolveRefHash(refs, HEAD_REF);
-    if (hash) {
-      map.set(HEAD_REF, hash);
-    }
-  } catch {
-    // 忽略解析失败（如循环引用）
-  }
-
-  return map;
-}
-
-/**
- * 将远程 ref 广告转换为哈希映射
- */
-export function remoteRefsToMap(refs: Array<{ name: string; hash: SHA1 }>): Map<string, SHA1> {
-  const map = new Map<string, SHA1>();
-  for (const ref of refs) {
-    map.set(ref.name, ref.hash);
-  }
-  return map;
 }
 
 // ============================================================================

@@ -9,7 +9,7 @@ import { describe, test, expect } from "bun:test";
 
 import { sha1, type SHA1, type GitBlob, type GitCommit } from "@/core/types.ts";
 import { createMemoryObjectStore } from "@/odb/memory-store.ts";
-import { planRefUpdates } from "@/transport/ref-plan.ts";
+import { planRefUpdates } from "@/transport/fetch-ref-plan.ts";
 
 import type { RemoteRef } from "@/transport/types.ts";
 
