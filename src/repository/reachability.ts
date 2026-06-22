@@ -29,30 +29,43 @@ function collectReachableObjectHashesFrom(
   hash: SHA1,
   reachable: Set<SHA1>,
 ): void {
-  if (reachable.has(hash)) {
-    return;
-  }
+  const stack: SHA1[] = [hash];
 
-  reachable.add(hash);
-  const obj = objects.read(hash);
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    if (reachable.has(current)) {
+      continue;
+    }
+    reachable.add(current);
 
-  switch (obj.type) {
-    case "blob":
-      return;
-    case "tree":
-      for (const entry of obj.entries) {
-        collectReachableObjectHashesFrom(objects, entry.hash, reachable);
-      }
-      return;
-    case "commit":
-      collectReachableObjectHashesFrom(objects, obj.tree, reachable);
-      for (const parent of obj.parents) {
-        collectReachableObjectHashesFrom(objects, parent, reachable);
-      }
-      return;
-    case "tag":
-      collectReachableObjectHashesFrom(objects, obj.object, reachable);
-      return;
+    const obj = objects.read(current);
+
+    switch (obj.type) {
+      case "blob":
+        break;
+      case "tree":
+        for (const entry of obj.entries) {
+          if (!reachable.has(entry.hash)) {
+            stack.push(entry.hash);
+          }
+        }
+        break;
+      case "commit":
+        if (!reachable.has(obj.tree)) {
+          stack.push(obj.tree);
+        }
+        for (const parent of obj.parents) {
+          if (!reachable.has(parent)) {
+            stack.push(parent);
+          }
+        }
+        break;
+      case "tag":
+        if (!reachable.has(obj.object)) {
+          stack.push(obj.object);
+        }
+        break;
+    }
   }
 }
 
