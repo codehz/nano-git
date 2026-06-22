@@ -39,6 +39,64 @@ function readPackedRefs(gitDir: string): Map<string, string> {
 }
 
 /**
+ * 从 packed-refs 中删除指定引用
+ *
+ * 会同时删除该引用可能携带的 peeled 行（`^...`）。
+ *
+ * @param gitDir - Git 目录
+ * @param ref - 完整引用路径
+ * @returns 是否实际删除了 packed-refs 条目
+ */
+function deletePackedRef(gitDir: string, ref: string): boolean {
+  const packedRefsPath = join(gitDir, "packed-refs");
+  if (!existsSync(packedRefsPath)) {
+    return false;
+  }
+
+  const originalContent = readFileSync(packedRefsPath, "utf-8");
+  const lines = originalContent.split("\n");
+  const keptLines: string[] = [];
+  let removed = false;
+  let skipNextPeeledLine = false;
+
+  for (const line of lines) {
+    if (skipNextPeeledLine && line.startsWith("^")) {
+      skipNextPeeledLine = false;
+      removed = true;
+      continue;
+    }
+    skipNextPeeledLine = false;
+
+    if (line.length === 0 || line.startsWith("#")) {
+      keptLines.push(line);
+      continue;
+    }
+
+    const spaceIndex = line.indexOf(" ");
+    if (spaceIndex === -1) {
+      keptLines.push(line);
+      continue;
+    }
+
+    const packedRef = line.slice(spaceIndex + 1);
+    if (packedRef === ref) {
+      removed = true;
+      skipNextPeeledLine = true;
+      continue;
+    }
+
+    keptLines.push(line);
+  }
+
+  if (!removed) {
+    return false;
+  }
+
+  writeFileSync(packedRefsPath, keptLines.join("\n"));
+  return true;
+}
+
+/**
  * 创建基于文件系统的 Refs 存储
  *
  * @example
@@ -68,11 +126,16 @@ export function createFileRefStore(gitDir: string): RefStore {
     delete(ref: string): void {
       validateRefName(ref);
       const refPath = join(gitDir, ref);
-      if (!existsSync(refPath)) {
+      const hasLooseRef = existsSync(refPath);
+      const removedPackedRef = deletePackedRef(gitDir, ref);
+
+      if (!hasLooseRef && !removedPackedRef) {
         throw new RefNotFoundError(ref);
       }
 
-      unlinkSync(refPath);
+      if (hasLooseRef) {
+        unlinkSync(refPath);
+      }
     },
 
     list(prefix: string): string[] {

@@ -134,6 +134,41 @@ describe("createFileRefStore()", () => {
       "refs/heads/release",
     ]);
   });
+
+  test("delete() 支持删除 packed-refs 中的引用", () => {
+    writeFileSync(
+      join(tempDir, "packed-refs"),
+      [
+        "# pack-refs with: peeled fully-peeled sorted",
+        "1111111111111111111111111111111111111111 refs/heads/main",
+        "2222222222222222222222222222222222222222 refs/tags/v1.0.0",
+        "^3333333333333333333333333333333333333333",
+        "",
+      ].join("\n"),
+    );
+    const store = createFileRefStore(tempDir);
+
+    store.delete("refs/tags/v1.0.0");
+
+    expect(store.read("refs/tags/v1.0.0")).toBeNull();
+    expect(readFileSync(join(tempDir, "packed-refs"), "utf-8")).toBe(
+      "# pack-refs with: peeled fully-peeled sorted\n1111111111111111111111111111111111111111 refs/heads/main\n",
+    );
+  });
+
+  test("delete() 会同时移除 loose 与 packed 同名引用", () => {
+    writeFileSync(
+      join(tempDir, "packed-refs"),
+      "1111111111111111111111111111111111111111 refs/heads/main\n",
+    );
+    const store = createFileRefStore(tempDir);
+    store.write("refs/heads/main", "2222222222222222222222222222222222222222");
+
+    store.delete("refs/heads/main");
+
+    expect(store.read("refs/heads/main")).toBeNull();
+    expect(readFileSync(join(tempDir, "packed-refs"), "utf-8")).toBe("");
+  });
 });
 
 describe("validateRefPrefix()", () => {

@@ -13,7 +13,6 @@
  * ```
  */
 
-import { sha1 } from "../core/types.ts";
 import { resolveRefHash } from "../refs/resolve.ts";
 import { HEAD_REF } from "../refs/types.ts";
 
@@ -39,13 +38,13 @@ export function getLocalRefs(refs: RefStore): Map<string, SHA1> {
   const map = new Map<string, SHA1>();
 
   for (const refName of refs.listAll()) {
-    const content = refs.read(refName);
-    if (content && /^[0-9a-f]{40}$/.test(content)) {
-      try {
-        map.set(refName, sha1(content));
-      } catch {
-        // 忽略无效哈希
+    try {
+      const hash = resolveRefHash(refs, refName);
+      if (hash) {
+        map.set(refName, hash);
       }
+    } catch {
+      // 忽略损坏/循环/无效哈希的 ref，避免影响其他引用的收集
     }
   }
 

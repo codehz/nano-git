@@ -125,6 +125,25 @@ describe("Import Session", () => {
     expect(repo.refs.read("refs/mirrors/upstream/main")).toBe(mainCommitHash);
   });
 
+  test("ownership/prune 也会删除 packed-refs 中的陈旧引用", async () => {
+    const repo = initRepository(localDir);
+    repo.refs.write("refs/mirrors/upstream/stale", mainCommitHash);
+    git(["pack-refs", "--all"], localDir);
+
+    const session = await repo.openImportSession({ url: server.url });
+    const result = await session
+      .plan()
+      .materialize(session.select("refs/heads/*"))
+      .toNamespace("refs/mirrors/upstream/*", {
+        policy: { mode: "mirror" },
+        prune: true,
+      })
+      .apply();
+
+    expect(result.deletedRefs).toContain("refs/mirrors/upstream/stale");
+    expect(repo.refs.read("refs/mirrors/upstream/stale")).toBeNull();
+  });
+
   test("preview 后本地相关 ref 漂移会导致 apply 失败", async () => {
     const repo = initRepository(localDir);
     const session = await repo.openImportSession({ url: server.url });

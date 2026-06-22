@@ -745,6 +745,16 @@ describe("Phase 2 PlanBuilder — 边界与错误", () => {
     expect(preview.remoteSnapshot.defaultBranch).toBe("refs/heads/main");
     expect(preview.remoteSnapshot.refs.length).toBe(7);
   });
+
+  test("preview 结果会被冻结", () => {
+    const preview = session.plan().materialize(session.defaultBranch()).toBranch("main").preview();
+
+    expect(Object.isFrozen(preview)).toBe(true);
+    expect(Object.isFrozen(preview.selectedRefs)).toBe(true);
+    expect(Object.isFrozen(preview.localPreconditions)).toBe(true);
+    expect(Object.isFrozen(preview.refOperations)).toBe(true);
+    expect(Object.isFrozen(preview.diagnostics)).toBe(true);
+  });
 });
 
 // ============================================================================
@@ -1187,6 +1197,42 @@ describe("Phase 3 — apply 错误处理", () => {
     expect(backend.refs.read("refs/heads/main")).toBe(sha1("d".repeat(40)));
   });
 
+  test("create-only 策略会把符号引用视为已存在 ref", async () => {
+    const { backend, commitHash } = createRepoWithObjects();
+    backend.refs.write("refs/heads/current", commitHash);
+    backend.refs.write("refs/heads/main", "ref: refs/heads/current");
+
+    const nextCommit = backend.objects.write({
+      type: "commit",
+      tree: backend.objects.write({
+        type: "tree",
+        entries: [],
+      }),
+      parents: [commitHash],
+      author: { name: "Test", email: "test@test", timestamp: 0, timezone: "+0000" },
+      committer: { name: "Test", email: "test@test", timestamp: 0, timezone: "+0000" },
+      message: "next commit\n",
+    });
+
+    const adv = createAdvForCommit(nextCommit);
+    const session = createImportSession(MOCK_SOURCE, backend, adv);
+
+    const plan = session
+      .plan()
+      .materialize(session.defaultBranch())
+      .toBranch("main", { policy: { mode: "create-only" } });
+
+    const preview = plan.preview();
+    expect(preview.canApply).toBe(false);
+    expect(
+      preview.diagnostics.some(
+        (diagnostic) =>
+          diagnostic.level === "error" && diagnostic.message.includes("create-only 策略拒绝更新"),
+      ),
+    ).toBe(true);
+    expect(plan.apply()).rejects.toThrow(/create-only/);
+  });
+
   test("对象缺失时 apply 失败（经 transport 拉取仍失败）", async () => {
     const { backend } = createRepoWithObjects();
     // 注意：这里 commitHash 对应的对象已存在于 backend 中
@@ -1282,6 +1328,38 @@ describe("Phase 3 — apply 错误处理", () => {
 
     expect(plan.apply()).rejects.toThrow(/前置条件/);
     expect(backend.refs.read("refs/heads/main")).toBe(sha1("f".repeat(40)));
+  });
+
+  test("目标符号引用在 preview 后漂移时 apply 失败", async () => {
+    const { backend, commitHash } = createRepoWithObjects();
+    backend.refs.write("refs/heads/current", commitHash);
+    backend.refs.write("refs/heads/main", "ref: refs/heads/current");
+
+    const nextCommit = backend.objects.write({
+      type: "commit",
+      tree: backend.objects.write({
+        type: "tree",
+        entries: [],
+      }),
+      parents: [commitHash],
+      author: { name: "Test", email: "test@test", timestamp: 0, timezone: "+0000" },
+      committer: { name: "Test", email: "test@test", timestamp: 0, timezone: "+0000" },
+      message: "next commit\n",
+    });
+
+    const adv = createAdvForCommit(nextCommit);
+    const session = createImportSession(MOCK_SOURCE, backend, adv);
+    const plan = session
+      .plan()
+      .materialize(session.defaultBranch())
+      .toBranch("main", { policy: { mode: "mirror" } });
+
+    const preview = plan.preview();
+    expect(preview.localPreconditions.some((p) => p.refName === "refs/heads/main")).toBe(true);
+
+    backend.refs.write("refs/heads/main", "ref: refs/heads/other");
+
+    expect(plan.apply()).rejects.toThrow(/前置条件/);
   });
 });
 

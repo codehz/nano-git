@@ -215,6 +215,40 @@ interface NamespaceSnapshotEntry {
   readonly expectedValue: string | null;
 }
 
+function clonePolicy(policy: RefUpdatePolicy): RefUpdatePolicy {
+  return { ...policy };
+}
+
+function deepFreeze<T>(value: T): T {
+  if (typeof value !== "object" || value === null || Object.isFrozen(value)) {
+    return value;
+  }
+
+  const target = value as Record<PropertyKey, unknown>;
+  for (const key of Reflect.ownKeys(target)) {
+    deepFreeze(target[key]);
+  }
+
+  return Object.freeze(value);
+}
+
+function freezePreviewResult(
+  preview: ImportPreview,
+  advertisement: Readonly<RefAdvertisement>,
+): ImportPreview {
+  return deepFreeze({
+    remoteSnapshot: advertisement,
+    selectedRefs: preview.selectedRefs,
+    objectRoots: preview.objectRoots,
+    localPreconditions: preview.localPreconditions,
+    refOperations: preview.refOperations,
+    headOperation: preview.headOperation,
+    pruneOperations: preview.pruneOperations,
+    diagnostics: preview.diagnostics,
+    canApply: preview.canApply,
+  });
+}
+
 /**
  * 判断两个远端 ref 是否表示同一条广告项
  *
@@ -397,7 +431,7 @@ function createPlanBuilder(
             viewRefs,
             action: "namespace",
             target: targetPattern,
-            policy: options?.policy,
+            policy: options?.policy ? clonePolicy(options.policy) : undefined,
             prune: options?.prune,
           });
           invalidatePreview();
@@ -409,7 +443,7 @@ function createPlanBuilder(
             viewRefs,
             action: "branch",
             target: branchName,
-            policy: options?.policy ?? { mode: "fast-forward" },
+            policy: options?.policy ? clonePolicy(options.policy) : { mode: "fast-forward" },
           });
           invalidatePreview();
           return builder;
@@ -420,7 +454,7 @@ function createPlanBuilder(
             viewRefs,
             action: "tag",
             target: tagName,
-            policy: options?.policy ?? { mode: "create-only" },
+            policy: options?.policy ? clonePolicy(options.policy) : { mode: "create-only" },
           });
           invalidatePreview();
           return builder;
@@ -658,17 +692,13 @@ function createPlanBuilder(
 
       const localPreconditions: LocalPrecondition[] = [];
       for (const refName of affectedRefNames) {
-        if (refName === "HEAD") {
-          localPreconditions.push({
-            refName,
-            expectedHash: null,
-            expectedValue: backend.refs.read("HEAD"),
-          });
-          continue;
-        }
-
+        const expectedValue = backend.refs.read(refName);
         const hash = localRefs.get(refName) ?? null;
-        localPreconditions.push({ refName, expectedHash: hash });
+        localPreconditions.push({
+          refName,
+          expectedHash: hash,
+          expectedValue,
+        });
       }
       for (const ownership of namespaceOwnerships.values()) {
         if (!ownership.prune) {
@@ -690,7 +720,9 @@ function createPlanBuilder(
       const objectRootsSet = new Set<string>();
 
       for (const m of resolvedMappings) {
-        const existingHash = localRefs.get(m.localRef);
+        const existingValue = backend.refs.read(m.localRef);
+        const existingHash = localRefs.get(m.localRef) ?? null;
+        const refExists = existingValue !== null;
         const hasObject = backend.objects.exists(m.remoteRef.hash);
 
         selectedRefs.push({
@@ -715,7 +747,7 @@ function createPlanBuilder(
           continue;
         }
 
-        if (existingHash !== undefined && m.policy.mode === "create-only") {
+        if (refExists && m.policy.mode === "create-only") {
           diagnostics.push({
             level: "error",
             message: `"${m.localRef}" 已存在，create-only 策略拒绝更新。`,
@@ -727,7 +759,7 @@ function createPlanBuilder(
           continue;
         }
 
-        if (existingHash !== undefined && m.policy.mode === "fast-forward") {
+        if (refExists && m.policy.mode === "fast-forward") {
           diagnostics.push({
             level: "info",
             message: `"${m.localRef}" 将执行 fast-forward 检查。`,
@@ -754,7 +786,7 @@ function createPlanBuilder(
           continue;
         }
 
-        for (const [refName] of localRefs) {
+        for (const refName of backend.refs.listAll()) {
           if (
             matchRefGlob(ns.pattern, refName) &&
             !ns.currentRefs.has(refName) &&
@@ -808,17 +840,20 @@ function createPlanBuilder(
       // canApply: 不存在 error 级别诊断时计划可用
       const canApply = !diagnostics.some((d) => d.level === "error");
 
-      const _previewResult = {
-        remoteSnapshot: advertisement,
-        selectedRefs,
-        objectRoots: objectRoots as import("../core/types.ts").SHA1[],
-        localPreconditions,
-        refOperations,
-        pruneOperations,
-        headOperation,
-        diagnostics,
-        canApply,
-      };
+      const _previewResult = freezePreviewResult(
+        {
+          remoteSnapshot: advertisement,
+          selectedRefs,
+          objectRoots: objectRoots as import("../core/types.ts").SHA1[],
+          localPreconditions,
+          refOperations,
+          pruneOperations,
+          headOperation,
+          diagnostics,
+          canApply,
+        },
+        advertisement,
+      );
       lastPreview = _previewResult;
       return _previewResult;
     },
@@ -891,6 +926,8 @@ function createPlanBuilder(
       // Step 4: 策略预校验 — 在进入 ref 物化之前完成全部策略校验
       const pendingWrites: Array<{ localRef: string; writeHash: SHA1 }> = [];
       for (const op of p.refOperations) {
+        const currentValue = backend.refs.read(op.localRef);
+        const refExists = currentValue !== null;
         const currentHash = currentLocalRefs.get(op.localRef) ?? null;
         const targetHash = op.localRef.startsWith("refs/heads/")
           ? resolveBranchTargetHash(backend.objects, op.newHash, op.localRef)
@@ -900,13 +937,18 @@ function createPlanBuilder(
           throw new Error(`导入计划校验失败：对象 "${targetHash}" 在本地对象库中不存在。`);
         }
 
-        if (op.policy.mode === "create-only" && currentHash !== null) {
+        if (op.policy.mode === "create-only" && refExists) {
           throw new Error(
             `导入计划校验失败：ref "${op.localRef}" 已存在，create-only 策略拒绝更新。`,
           );
         }
 
-        if (op.policy.mode === "fast-forward" && currentHash !== null) {
+        if (op.policy.mode === "fast-forward" && refExists) {
+          if (currentHash === null) {
+            throw new Error(
+              `导入计划校验失败：ref "${op.localRef}" 当前存在，但无法解析为可比较的提交哈希。`,
+            );
+          }
           if (!isAncestor(backend.objects, currentHash, targetHash)) {
             throw new Error(
               `导入计划校验失败：ref "${op.localRef}" 无法 fast-forward。` +
