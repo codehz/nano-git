@@ -5,6 +5,7 @@
  * 对象导入、ref/HEAD 物化与 prune/ownership 校验。
  */
 
+import { PreconditionCheckError } from "../core/errors.ts";
 import { fetchPack } from "../transport/fetch-pack.ts";
 import { isAncestor } from "../transport/object-graph.ts";
 import { getLocalRefs } from "../transport/ref-collection.ts";
@@ -383,7 +384,9 @@ function validateLocalPreconditions(
         });
 
       if (!sameEntries) {
-        throw new Error(`前置条件校验失败：命名空间 "${pattern}" 在 preview() 后已变化。`);
+        throw new PreconditionCheckError(
+          `前置条件校验失败：命名空间 "${pattern}" 在 preview() 后已变化。`,
+        );
       }
       continue;
     }
@@ -391,7 +394,7 @@ function validateLocalPreconditions(
     if (pc.expectedValue !== undefined) {
       const currentValue = backend.refs.read(pc.refName);
       if (currentValue !== pc.expectedValue) {
-        throw new Error(
+        throw new PreconditionCheckError(
           `前置条件校验失败：ref "${pc.refName}" 在 preview() 后已变化。` +
             `期望 ${pc.expectedValue ?? "(不存在)"}，实际 ${currentValue ?? "(不存在)"}。`,
         );
@@ -401,7 +404,7 @@ function validateLocalPreconditions(
 
     const currentHash = currentLocalRefs.get(pc.refName) ?? null;
     if (currentHash !== pc.expectedHash) {
-      throw new Error(
+      throw new PreconditionCheckError(
         `前置条件校验失败：ref "${pc.refName}" 在 preview() 后已变化。` +
           `期望 ${pc.expectedHash ?? "(不存在)"}，实际 ${currentHash ?? "(不存在)"}。`,
       );
@@ -1079,7 +1082,7 @@ function createPlanBuilder(
             skeleton.localPreconditions,
           );
         } catch (err: unknown) {
-          if (err instanceof Error && err.message.includes("前置条件校验失败")) {
+          if (err instanceof PreconditionCheckError) {
             const preview = createPreviewResult({
               selectedRefs: skeleton.selectedRefs,
               objectRoots: skeleton.objectRoots,
@@ -1217,7 +1220,7 @@ function createPlanBuilder(
           backend.refs.delete(op.refName);
           deletedRefs.push(op.refName);
         } catch {
-          // ref 可能已被删除，忽略
+          // ref 可能已被删除，忽略；可安全忽略 RefNotFoundError 和 ObjectNotFoundError
         }
       }
 

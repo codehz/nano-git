@@ -29,6 +29,7 @@ export {
   InvalidPackError,
   PackIndexError,
   DeltaError,
+  PreconditionCheckError,
 } from "./errors.ts";
 
 export { hashData, hashObject, hashToPath, pathToHash, isValidSHA1, hashFile } from "./hash.ts";

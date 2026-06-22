@@ -63,6 +63,7 @@ export {
   InvalidPackError,
   PackIndexError,
   DeltaError,
+  PreconditionCheckError,
 } from "./core/index.ts";
 
 // ============================================================================

@@ -12,6 +12,7 @@
  * ```
  */
 
+import { InvalidObjectError } from "../core/errors.ts";
 import { sha1 } from "../core/types.ts";
 import { formatAuthor, parseAuthor } from "./author.ts";
 
@@ -70,7 +71,7 @@ export function deserializeTag(content: Buffer): GitTag {
 
     const spaceIndex = line.indexOf(" ");
     if (spaceIndex === -1) {
-      throw new Error(`Invalid tag header: ${line}`);
+      throw new InvalidObjectError(`invalid tag header: ${line}`);
     }
 
     const key = line.slice(0, spaceIndex);
@@ -92,10 +93,10 @@ export function deserializeTag(content: Buffer): GitTag {
     }
   }
 
-  if (!object) throw new Error("Tag missing object");
-  if (!objectType) throw new Error("Tag missing type");
-  if (!tagName) throw new Error("Tag missing tag name");
-  if (!tagger) throw new Error("Tag missing tagger");
+  if (!object) throw new InvalidObjectError("tag missing object");
+  if (!objectType) throw new InvalidObjectError("tag missing type");
+  if (!tagName) throw new InvalidObjectError("tag missing tag name");
+  if (!tagger) throw new InvalidObjectError("tag missing tagger");
 
   // Git 序列化时会在末尾添加一个换行符，反序列化时需要去掉
   const message = lines.slice(messageStart).join("\n").replace(/\n$/, "");

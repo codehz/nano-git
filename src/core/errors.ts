@@ -155,3 +155,16 @@ export class DeltaError extends PackError {
     this.name = "DeltaError";
   }
 }
+
+/**
+ * 前置条件校验错误
+ *
+ * 当 import session 在 apply() 阶段检测到 preview() 之后
+ * 前置条件（ref 值、期望哈希等）已变化时抛出。
+ */
+export class PreconditionCheckError extends GitError {
+  constructor(message: string) {
+    super(message);
+    this.name = "PreconditionCheckError";
+  }
+}

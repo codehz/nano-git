@@ -9,6 +9,8 @@
  * 此格式在 commit 和 tag 对象中共享使用。
  */
 
+import { InvalidObjectError } from "../core/errors.ts";
+
 import type { GitAuthor } from "../core/types.ts";
 
 /**
@@ -37,7 +39,7 @@ export function parseAuthor(text: string): GitAuthor {
   // 匹配: name <email> timestamp timezone
   const match = text.match(/^(.+?) <(.+?)> (\d+) ([+-]\d{4})$/);
   if (!match) {
-    throw new Error(`Invalid author format: ${text}`);
+    throw new InvalidObjectError(`invalid author format: ${text}`);
   }
 
   return {

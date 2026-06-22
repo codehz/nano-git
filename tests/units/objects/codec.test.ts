@@ -4,6 +4,7 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { InvalidObjectError } from "@/core/errors.ts";
 import { deserialize, serializeContent, deserializeContent } from "@/objects/index.ts";
 
 import type { GitBlob } from "@/core/types.ts";
@@ -11,17 +12,17 @@ import type { GitBlob } from "@/core/types.ts";
 describe("反序列化错误处理", () => {
   test("缺少 null 字节应抛出异常", () => {
     const data = Buffer.from("invalid data without null byte");
-    expect(() => deserialize(data)).toThrow("missing null byte");
+    expect(() => deserialize(data)).toThrow(InvalidObjectError);
   });
 
   test("无效的 header 格式应抛出异常", () => {
     const data = Buffer.from("invalid header\0content");
-    expect(() => deserialize(data)).toThrow("Invalid Git object header");
+    expect(() => deserialize(data)).toThrow(InvalidObjectError);
   });
 
   test("大小不匹配应抛出异常", () => {
     const data = Buffer.from("blob 100\0short");
-    expect(() => deserialize(data)).toThrow("Size mismatch");
+    expect(() => deserialize(data)).toThrow(InvalidObjectError);
   });
 });
 

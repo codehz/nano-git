@@ -13,6 +13,7 @@
  * ```
  */
 
+import { InvalidObjectError } from "../core/errors.ts";
 import { sha1 } from "../core/types.ts";
 import { formatAuthor, parseAuthor } from "./author.ts";
 
@@ -77,7 +78,7 @@ export function deserializeCommit(content: Buffer): GitCommit {
 
     const spaceIndex = line.indexOf(" ");
     if (spaceIndex === -1) {
-      throw new Error(`Invalid commit header: ${line}`);
+      throw new InvalidObjectError(`invalid commit header: ${line}`);
     }
 
     const key = line.slice(0, spaceIndex);
@@ -99,9 +100,9 @@ export function deserializeCommit(content: Buffer): GitCommit {
     }
   }
 
-  if (!tree) throw new Error("Commit missing tree");
-  if (!author) throw new Error("Commit missing author");
-  if (!committer) throw new Error("Commit missing committer");
+  if (!tree) throw new InvalidObjectError("commit missing tree");
+  if (!author) throw new InvalidObjectError("commit missing author");
+  if (!committer) throw new InvalidObjectError("commit missing committer");
 
   // 剩余部分是 message
   // Git 序列化时会在末尾添加一个换行符，反序列化时需要去掉

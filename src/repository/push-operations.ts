@@ -13,7 +13,7 @@
  * ```
  */
 
-import { GitError } from "../core/errors.ts";
+export { PushError } from "../transport/push-error.ts";
 import { runPushToUrl } from "./push-url.ts";
 
 import type { RepositoryBackend } from "./backend/types.ts";
@@ -22,20 +22,6 @@ import type {
   RepositoryPushOperations,
   RepositoryPushResult,
 } from "./push-types.ts";
-
-// ============================================================================
-// 错误类型
-// ============================================================================
-
-/**
- * Push 操作错误
- */
-export class PushError extends GitError {
-  constructor(message: string) {
-    super(`Push error: ${message}`);
-    this.name = "PushError";
-  }
-}
 
 // ============================================================================
 // 工厂函数

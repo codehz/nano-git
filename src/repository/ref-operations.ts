@@ -2,6 +2,7 @@
  * 仓库引用操作组装
  */
 
+import { RepositoryError } from "../core/errors.ts";
 import {
   branchNameToRef,
   HEAD_REF,
@@ -24,7 +25,7 @@ function ensureRefDoesNotExist(
   name: string,
 ): void {
   if (backend.refs.read(ref) !== null) {
-    throw new Error(`${kind} already exists: ${name}`);
+    throw new RepositoryError(`${kind} already exists: ${name}`);
   }
 }
 
@@ -80,7 +81,7 @@ export function createRefRepositoryOperations(backend: RepositoryBackend): Repos
 
     deleteBranch(name: string): void {
       if (getCurrentBranch() === name) {
-        throw new Error(`Cannot delete current branch: ${name}`);
+        throw new RepositoryError(`Cannot delete current branch: ${name}`);
       }
 
       refs.delete(branchNameToRef(name));

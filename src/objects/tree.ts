@@ -8,6 +8,7 @@
  * - hash: 20 字节的原始 SHA-1（不是十六进制字符串）
  */
 
+import { InvalidObjectError } from "../core/errors.ts";
 import { sha1 } from "../core/types.ts";
 
 import type { GitTree, TreeEntry } from "../core/types.ts";
@@ -34,7 +35,7 @@ export function serializeTree(tree: GitTree): Buffer {
     const entryHash = Buffer.from(entry.hash, "hex");
 
     if (entryHash.length !== 20) {
-      throw new Error(`Invalid SHA-1 hash length: ${entryHash.length}`);
+      throw new InvalidObjectError(`invalid SHA-1 hash length: ${entryHash.length}`);
     }
 
     buffers.push(entryHeader, entryHash);
@@ -54,14 +55,14 @@ export function deserializeTree(content: Buffer): GitTree {
     // 找到 null 字节
     const nullIndex = content.indexOf(0, offset);
     if (nullIndex === -1) {
-      throw new Error("Invalid tree: missing null byte");
+      throw new InvalidObjectError("tree: missing null byte");
     }
 
     // 解析 "<mode> <name>"
     const entryHeader = content.subarray(offset, nullIndex).toString("utf-8");
     const spaceIndex = entryHeader.indexOf(" ");
     if (spaceIndex === -1) {
-      throw new Error(`Invalid tree entry: ${entryHeader}`);
+      throw new InvalidObjectError(`invalid tree entry: ${entryHeader}`);
     }
 
     const mode = entryHeader.slice(0, spaceIndex);
@@ -71,7 +72,7 @@ export function deserializeTree(content: Buffer): GitTree {
     const hashStart = nullIndex + 1;
     const hashEnd = hashStart + 20;
     if (hashEnd > content.length) {
-      throw new Error("Invalid tree: truncated hash");
+      throw new InvalidObjectError("tree: truncated hash");
     }
 
     const hash = content.subarray(hashStart, hashEnd).toString("hex");

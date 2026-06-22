@@ -2,6 +2,7 @@
  * 仓库打包与维护操作组装
  */
 
+import { RepositoryError } from "../core/errors.ts";
 import { listReachableObjects } from "./reachability.ts";
 
 import type { SHA1 } from "../core/types.ts";
@@ -30,7 +31,7 @@ export function createMaintenanceRepositoryOperations(
 ): RepositoryMaintenanceOperations {
   function requirePacks(): RepositoryPackSupport {
     if (!packs) {
-      throw new Error("Backend does not support packfile writes");
+      throw new RepositoryError("Backend does not support packfile writes");
     }
 
     return packs;
@@ -44,7 +45,7 @@ export function createMaintenanceRepositoryOperations(
     repack(options?: RepositoryRepackOptions) {
       const packSupport = packs;
       if (!packSupport) {
-        throw new Error("Backend does not support repack");
+        throw new RepositoryError("Backend does not support repack");
       }
 
       return packSupport.repack(objects, options);
@@ -57,7 +58,7 @@ export function createMaintenanceRepositoryOperations(
     gc(options?: RepositoryGCOptions) {
       const packSupport = packs;
       if (!packSupport) {
-        throw new Error("Backend does not support gc");
+        throw new RepositoryError("Backend does not support gc");
       }
 
       return packSupport.gc(listReachableObjects(objects, refs), options);

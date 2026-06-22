@@ -4,6 +4,7 @@
  * 提供完整对象格式与对象内容格式之间的转换能力。
  */
 
+import { InvalidObjectError } from "../core/errors.ts";
 import { serializeBlob, deserializeBlob } from "./blob.ts";
 import { serializeCommit, deserializeCommit } from "./commit.ts";
 import { serializeTag, deserializeTag } from "./tag.ts";
@@ -43,13 +44,13 @@ export function serialize(obj: GitObject): Buffer {
 export function deserialize(data: Buffer): GitObject {
   const nullIndex = data.indexOf(0);
   if (nullIndex === -1) {
-    throw new Error("Invalid Git object: missing null byte");
+    throw new InvalidObjectError("missing null byte");
   }
 
   const header = data.subarray(0, nullIndex).toString("utf-8");
   const match = header.match(/^(blob|tree|commit|tag) (\d+)$/);
   if (!match) {
-    throw new Error(`Invalid Git object header: ${header}`);
+    throw new InvalidObjectError(`invalid header: ${header}`);
   }
 
   const type = match[1] as ObjectType;
@@ -57,7 +58,7 @@ export function deserialize(data: Buffer): GitObject {
   const content = data.subarray(nullIndex + 1);
 
   if (content.length !== size) {
-    throw new Error(`Size mismatch: header says ${size}, got ${content.length}`);
+    throw new InvalidObjectError(`size mismatch: header says ${size}, got ${content.length}`);
   }
 
   return deserializeContent(type, content);

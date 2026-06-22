@@ -5,6 +5,7 @@
 import { mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
+import { RepositoryError } from "../core/errors.ts";
 import { createFileRepositoryBackend, createMemoryRepositoryBackend } from "./backend/index.ts";
 import { createRepository } from "./create.ts";
 
@@ -51,7 +52,7 @@ export function openRepository(path: string): Repository {
   const gitDir = join(path, ".git");
 
   if (!existsSync(gitDir)) {
-    throw new Error(`Not a git repository: ${path}`);
+    throw new RepositoryError(`Not a git repository: ${path}`);
   }
 
   return createRepository(createFileRepositoryBackend(gitDir));
