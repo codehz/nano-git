@@ -137,9 +137,10 @@ export interface PushRemoteOptions {
   readonly headers?: Record<string, string>;
 
   /**
-   * 推送时已知的浅克隆边界（repository 层语义，非 transport 泄漏）。
-   * 优先级：options.pushShallowBoundaries > backend.shallow.read()
-   * 这样可在不改 backend 的前提下表达已知祖先缺失边界。
+   * 推送时已知的浅克隆边界（repository 层 override，非 transport 泄漏）。
+   * - 传入（含空数组 `[]`）即覆盖 `backend.shallow`，不再回退
+   * - 传 `[]` 表示显式不使用 backend.shallow 中的边界
+   * - 不传（`undefined`）才回退 `backend.shallow.read()`
    */
   readonly pushShallowBoundaries?: SHA1[];
 }

@@ -193,14 +193,24 @@ describe("resolveEffectivePushBoundaries", () => {
     expect(result).toEqual(opts.pushShallowBoundaries);
   });
 
+  test("pushShallowBoundaries: [] 显式覆盖 backend.shallow", () => {
+    const result = resolveEffectivePushBoundaries({ pushShallowBoundaries: [] }, sampleShallow);
+    expect(result).toEqual([]);
+  });
+
   test("未传 pushShallowBoundaries 时回退 backend.shallow", () => {
     const result = resolveEffectivePushBoundaries({}, sampleShallow);
     expect(result).toBe(sampleShallow);
   });
 
   test("两者都无时返回 undefined", () => {
-    const result = resolveEffectivePushBoundaries(undefined, []);
+    const result = resolveEffectivePushBoundaries(undefined, undefined);
     expect(result).toBeUndefined();
+  });
+
+  test("未传 options 且 backend.shallow 为空数组时回退为 []", () => {
+    const result = resolveEffectivePushBoundaries(undefined, []);
+    expect(result).toEqual([]);
   });
 });
 

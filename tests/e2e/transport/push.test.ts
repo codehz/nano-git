@@ -956,24 +956,42 @@ describe("push() 端到端", () => {
     expect(result.pushedRefs[0]!.success).toBe(true);
   });
 
-  test("options.pushShallowBoundaries 优先于 backend.shallow", async () => {
+  test("pushShallowBoundaries 显式覆盖 backend.shallow（含空数组）", async () => {
     const repo = createMemoryRepository();
     const author = { ...FIXED_AUTHOR };
 
+    // 父提交仅存在于服务端 main，本地缺失（典型 shallow 边界）
+    const missingParent = sha1(
+      git(["--git-dir", serverRepoDir, "rev-parse", "refs/heads/main"], tempDir).trim(),
+    );
+
     const fileHash = repo.writeBlob(Buffer.from("shallow boundary test"));
     const treeHash = repo.createTree([{ mode: "100644", name: "sb.txt", hash: fileHash }]);
-    const commitHash = repo.createCommit(treeHash, [], "boundary test", author);
+    const commitHash = repo.createCommit(treeHash, [missingParent], "boundary test", author);
     repo.updateRef("refs/heads/boundary-test", commitHash);
 
-    // 即使 backend 有 shallow，也应优先使用 options 提供的
-    repo.backend.shallow.applyUpdate({ shallow: [commitHash], unshallow: [] });
+    repo.backend.shallow.applyUpdate({ shallow: [missingParent], unshallow: [] });
 
-    const result = await repo.push(serverUrl, {
-      refSpecs: ["refs/heads/boundary-test:refs/heads/boundary-test"],
-      pushShallowBoundaries: [], // 显式空，覆盖 backend
+    const refSpec = ["refs/heads/boundary-test:refs/heads/boundary-test"];
+
+    // 显式 [] 覆盖 backend，不再把 missingParent 当 shallow 边界 → 本地对象缺失预检失败
+    const pushWithEmptyOverride = repo.push(serverUrl, {
+      refSpecs: refSpec,
+      pushShallowBoundaries: [],
     });
+    expect(pushWithEmptyOverride).rejects.toThrow(/missing from the local store/i);
 
-    expect(result.pushedRefs).toHaveLength(1);
-    expect(result.pushedRefs[0]!.success).toBe(true);
+    // 未传 override 时回退 backend.shallow，缺失 parent 在边界内可推送（服务端已有 parent）
+    const withBackendShallow = await repo.push(serverUrl, { refSpecs: refSpec });
+    expect(withBackendShallow.pushedRefs).toHaveLength(1);
+    expect(withBackendShallow.pushedRefs[0]!.success).toBe(true);
+
+    // 显式传入边界集合时覆盖 backend（与 backend 内容一致也应成功）
+    const withExplicitBoundary = await repo.push(serverUrl, {
+      refSpecs: refSpec,
+      pushShallowBoundaries: [missingParent],
+    });
+    expect(withExplicitBoundary.pushedRefs).toHaveLength(1);
+    expect(withExplicitBoundary.pushedRefs[0]!.success).toBe(true);
   });
 });
