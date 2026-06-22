@@ -14,14 +14,14 @@
  */
 
 import { GitError } from "../core/errors.ts";
-import { runPushToUrl } from "./push-remote.ts";
+import { runPushToUrl } from "./push-url.ts";
 
 import type { RepositoryBackend } from "./backend/types.ts";
 import type {
   RepositoryPushOptions,
   RepositoryPushOperations,
   RepositoryPushResult,
-} from "./remote-types.ts";
+} from "./push-types.ts";
 
 // ============================================================================
 // 错误类型

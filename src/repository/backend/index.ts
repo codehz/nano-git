@@ -10,7 +10,6 @@ export type {
   RepositoryPackSupport,
   RepositoryRepackOptions,
 } from "./types.ts";
-export type { RemoteStore } from "./remote-store.ts";
 
 export type { ShallowStore, ShallowUpdate } from "../../shallow/types.ts";
 export {
@@ -21,4 +20,3 @@ export {
   createFileRepositoryBackend,
   type CreateFileRepositoryBackendOptions,
 } from "./file-backend.ts";
-export { createMemoryRemoteStore, createFileRemoteStore } from "./remote-store.ts";

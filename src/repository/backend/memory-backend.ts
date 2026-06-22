@@ -7,10 +7,8 @@
 import { createMemoryObjectStore } from "../../odb/index.ts";
 import { createMemoryRefStore, HEAD_REF, HEADS_PREFIX } from "../../refs/index.ts";
 import { createMemoryShallowStore } from "../../shallow/memory.ts";
-import { createMemoryRemoteStore } from "./remote-store.ts";
 
 import type { SHA1 } from "../../core/types.ts";
-import type { RemoteConfig } from "../remote-types.ts";
 import type { RepositoryBackend } from "./types.ts";
 
 /** 创建内存仓库后端的可选参数 */
@@ -19,8 +17,6 @@ export interface CreateMemoryRepositoryBackendOptions {
   readonly initialRefs?: Map<string, string>;
   /** 初始 shallow 边界集合，用于测试 shallow 仓库场景 */
   readonly initialShallow?: SHA1[];
-  /** 初始 remote 配置集合 */
-  readonly initialRemotes?: RemoteConfig[];
 }
 
 /**
@@ -45,7 +41,6 @@ export function createMemoryRepositoryBackend(
     objects: createMemoryObjectStore(),
     refs: createMemoryRefStore(refs),
     shallow: createMemoryShallowStore(options.initialShallow),
-    remotes: createMemoryRemoteStore(options.initialRemotes),
     packs: null,
   };
 }

@@ -5,8 +5,8 @@
 import { createRepoImportOperations } from "./import-session.ts";
 import { createMaintenanceRepositoryOperations } from "./maintenance-operations.ts";
 import { createObjectRepositoryOperations } from "./object-operations.ts";
+import { createPushRepositoryOperations } from "./push-operations.ts";
 import { createRefRepositoryOperations } from "./ref-operations.ts";
-import { createPushRepositoryOperations } from "./remote-operations.ts";
 
 import type { RepositoryBackend } from "./backend/index.ts";
 import type { Repository } from "./types.ts";

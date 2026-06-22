@@ -6,15 +6,15 @@
 
 import { push as transportPush } from "../transport/push.ts";
 import { createReceivePackHttpClient } from "../transport/smart-http.ts";
-import { resolveEffectivePushBoundaries } from "./remote-resolution.ts";
+import { resolveEffectivePushBoundaries } from "./push-resolution.ts";
 
 import type { SHA1 } from "../core/types.ts";
 import type { ReceivePackTransport, RefAdvertisement } from "../transport/types.ts";
 import type { RepositoryBackend } from "./backend/types.ts";
-import type { RepositoryPushOptions, RepositoryPushResult } from "./remote-types.ts";
+import type { RepositoryPushOptions, RepositoryPushResult } from "./push-types.ts";
 
 /**
- * 按 URL push（不依赖 remote 配置）
+ * 按 URL push（不依赖任何命名 endpoint 配置）
  */
 export async function runPushToUrl(
   backend: RepositoryBackend,

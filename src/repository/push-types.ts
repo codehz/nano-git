@@ -9,18 +9,6 @@
 import type { SHA1 } from "../core/types.ts";
 
 /**
- * 远端配置
- *
- * 仅供底层后端与兼容性存储使用，不属于 repository 主 API。
- */
-export interface RemoteConfig {
-  readonly name: string;
-  readonly url: string;
-  readonly pushUrl?: string;
-  readonly pushRefSpecs?: string[];
-}
-
-/**
  * 仓库 push 操作选项
  *
  * 纯 push 行为参数，不包含传输层细节。
@@ -47,7 +35,7 @@ export interface RepositoryPushOptions {
   /**
    * 推送时已知的浅克隆边界（repository 层 override，非 transport 泄漏）。
    * - 传入（含空数组 `[]`）即覆盖 `backend.shallow`，不再回退
-   * - 传 `[]` 表示显式不使用 backend.shallow 中的边界
+   * - 传 `[]` 表示显式不使用 `backend.shallow` 中的边界
    * - 不传（`undefined`）才回退 `backend.shallow.read()`
    */
   readonly pushShallowBoundaries?: SHA1[];
@@ -88,7 +76,7 @@ export interface RepositoryPushResult {
  */
 export interface RepositoryPushOperations {
   /**
-   * 推送到远程仓库
+   * 推送到远端仓库
    *
    * 等价于 `git push <url>`。
    */

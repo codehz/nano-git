@@ -16,7 +16,6 @@ import { createPackBuilder } from "../../odb/pack/pack-builder.ts";
 import { createPackObjectStore } from "../../odb/pack/pack-store.ts";
 import { createFileRefStore } from "../../refs/index.ts";
 import { createFileShallowStore } from "../../shallow/file.ts";
-import { createFileRemoteStore } from "./remote-store.ts";
 
 import type { ObjectSource } from "../../odb/index.ts";
 import type {
@@ -151,7 +150,6 @@ export function createFileRepositoryBackend(
     objects,
     refs: createFileRefStore(gitDir),
     shallow: createFileShallowStore(gitDir),
-    remotes: createFileRemoteStore(gitDir),
     packs,
   };
 }

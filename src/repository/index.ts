@@ -14,7 +14,7 @@ export type {
   RepositoryPushOptions,
   RepositoryPushResult,
   PushRefUpdateResult,
-} from "./remote-types.ts";
+} from "./push-types.ts";
 export type {
   ImportSource,
   ImportView,
