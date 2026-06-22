@@ -13,6 +13,7 @@ import { sha1 } from "@/core/types.ts";
 import { createMemoryRepositoryBackend } from "@/repository/backend/index.ts";
 import {
   createImportSession,
+  createRepoImportOperations,
   createImportView,
   matchRefGlob,
 } from "@/repository/import-session.ts";
@@ -322,6 +323,19 @@ describe("会话冻结语义", () => {
     expect(branches.refs.length).toBe(3);
   });
 
+  test("advertisement 内部 ref 项也会被冻结复制", () => {
+    const backend = createMemoryRepositoryBackend();
+    const adv = createMockAdvertisement();
+    const session = createImportSession(MOCK_SOURCE, backend, adv);
+
+    adv.refs[1]!.name = "refs/heads/hijacked";
+    adv.refs[0]!.symrefTarget = "refs/heads/hijacked";
+
+    expect(session.defaultBranch().refs[0]?.name).toBe("refs/heads/main");
+    expect(session.headTarget().refs[0]?.name).toBe("refs/heads/main");
+    expect(session.advertisement.refs[1]?.name).toBe("refs/heads/main");
+  });
+
   test("source 在会话内冻结为快照", () => {
     const backend = createMemoryRepositoryBackend();
     const source = {
@@ -464,6 +478,24 @@ describe("Phase 2 PlanBuilder — 分支/tag/HEAD 物化", () => {
     expect(preview.headOperation!.targetRef).toBe("refs/heads/main");
   });
 
+  test("setHead 绑定当前 view 对应的前置物化结果，而不是全局最后一个映射", () => {
+    const branches = session.select("refs/heads/*");
+    const defaultBranch = session.defaultBranch();
+    const plan = session
+      .plan()
+      .materialize(branches)
+      .toNamespace("refs/mirrors/upstream/*", {
+        policy: { mode: "mirror" },
+      })
+      .materialize(defaultBranch)
+      .toBranch("main")
+      .materialize(defaultBranch)
+      .setHead();
+
+    const preview = plan.preview();
+    expect(preview.headOperation?.targetRef).toBe("refs/heads/main");
+  });
+
   test("setHead 无前置物化时发出警告", () => {
     const defaultBranch = session.defaultBranch();
     const plan = session.plan().materialize(defaultBranch).setHead();
@@ -527,6 +559,23 @@ describe("Phase 2 PlanBuilder — 前置条件与诊断", () => {
     expect(precondition!.expectedHash).toBeNull();
   });
 
+  test("setHead 会把 HEAD 纳入前置条件快照", () => {
+    backend.refs.write("HEAD", "ref: refs/heads/old-main");
+
+    const defaultBranch = session.defaultBranch();
+    const plan = session
+      .plan()
+      .materialize(defaultBranch)
+      .toBranch("main")
+      .materialize(defaultBranch)
+      .setHead();
+    const preview = plan.preview();
+
+    const headPrecondition = preview.localPreconditions.find((p) => p.refName === "HEAD");
+    expect(headPrecondition).toBeDefined();
+    expect(headPrecondition?.expectedValue).toBe("ref: refs/heads/old-main");
+  });
+
   test("create-only 策略检测已有 ref 冲突", () => {
     // 先在本地创建一个 tag
     backend.refs.write("refs/tags/v1.0.0", sha1("e".repeat(40)));
@@ -566,6 +615,18 @@ describe("Phase 2 PlanBuilder — 前置条件与诊断", () => {
     // refOperations 不应包含被跳过的 ref
     const mainOps = preview.refOperations.filter((r) => r.localRef === "refs/heads/main");
     expect(mainOps.length).toBe(0);
+  });
+
+  test("hash 相同但对象缺失时仍会规划对象导入", () => {
+    backend.refs.write("refs/heads/main", MOCK_HASH_A);
+
+    const mainView = session.selectRefs(["refs/heads/main"]);
+    const plan = session.plan().materialize(mainView).toBranch("main");
+    const preview = plan.preview();
+
+    expect(preview.selectedRefs.length).toBe(1);
+    expect(preview.objectRoots).toContain(MOCK_HASH_A);
+    expect(preview.refOperations.length).toBe(0);
   });
 
   test("自定义命名空间未显式指定 policy 时拒绝 apply", () => {
@@ -729,6 +790,38 @@ describe("Phase 3 — apply 写 ref", () => {
     expect(backend.refs.read("HEAD")).toBe("ref: refs/heads/main");
   });
 
+  test("mirror 策略允许 refs/heads/* 执行非 fast-forward 更新", async () => {
+    const { backend, commitHash, commitHash2 } = createRepoWithObjects();
+    const treeHash = backend.objects.write({
+      type: "tree",
+      entries: [],
+    });
+    const divergedCommit = backend.objects.write({
+      type: "commit",
+      tree: treeHash,
+      parents: [commitHash],
+      author: { name: "Test", email: "test@test", timestamp: 0, timezone: "+0000" },
+      committer: { name: "Test", email: "test@test", timestamp: 0, timezone: "+0000" },
+      message: "diverged commit\n",
+    });
+
+    backend.refs.write("refs/heads/main", divergedCommit);
+
+    const adv = createAdvForCommit(commitHash2);
+    const session = createImportSession(MOCK_SOURCE, backend, adv);
+    const defaultBranch = session.defaultBranch();
+
+    const plan = session
+      .plan()
+      .materialize(defaultBranch)
+      .toBranch("main", { policy: { mode: "mirror" } });
+
+    const result = await plan.apply();
+
+    expect(result.updatedRefs.get("refs/heads/main")).toBe(commitHash2);
+    expect(backend.refs.read("refs/heads/main")).toBe(commitHash2);
+  });
+
   test("setHead({ detach: true }) 写入 detached HEAD", async () => {
     const { backend, commitHash } = createRepoWithObjects();
     const adv = createAdvForCommit(commitHash);
@@ -861,6 +954,29 @@ describe("Phase 3 — apply 错误处理", () => {
     expect(plan.apply()).rejects.toThrow(/前置条件/);
   });
 
+  test("HEAD 在 preview 后漂移时 apply 失败", async () => {
+    const { backend, commitHash } = createRepoWithObjects();
+    backend.refs.write("HEAD", "ref: refs/heads/previous");
+
+    const adv = createAdvForCommit(commitHash);
+    const session = createImportSession(MOCK_SOURCE, backend, adv);
+    const defaultBranch = session.defaultBranch();
+
+    const plan = session
+      .plan()
+      .materialize(defaultBranch)
+      .toBranch("main")
+      .materialize(defaultBranch)
+      .setHead();
+
+    const preview = plan.preview();
+    expect(preview.localPreconditions.some((p) => p.refName === "HEAD")).toBe(true);
+
+    backend.refs.write("HEAD", "ref: refs/heads/changed");
+
+    expect(plan.apply()).rejects.toThrow(/前置条件/);
+  });
+
   test("preview 后追加动作时 apply 使用最新计划", async () => {
     const { backend, commitHash } = createRepoWithObjects();
     const adv = createAdvForCommit(commitHash);
@@ -926,5 +1042,54 @@ describe("Phase 3 — apply 错误处理", () => {
     // 但这里不会连接真实服务，因为我们没有给 apply 传入 transport
     // 它会尝试创建默认的 http transport，连接失败
     expect(plan.apply()).rejects.toThrow();
+  });
+
+  test("hash 相同但对象缺失时 apply 仍会尝试导入对象", async () => {
+    const backend = createMemoryRepositoryBackend();
+    backend.refs.write("refs/heads/main", MOCK_HASH_A);
+
+    const adv: RefAdvertisement = {
+      capabilities: {},
+      refs: [
+        { hash: MOCK_HASH_A, name: "HEAD", symrefTarget: "refs/heads/main" },
+        { hash: MOCK_HASH_A, name: "refs/heads/main" },
+      ],
+      defaultBranch: "refs/heads/main",
+    };
+
+    const session = createImportSession(MOCK_SOURCE, backend, adv, () => ({
+      advertise: async () => adv,
+      request: async () => {
+        throw new Error("transport requested");
+      },
+    }));
+
+    const plan = session.plan().materialize(session.defaultBranch()).toBranch("main");
+    const preview = plan.preview();
+
+    expect(preview.refOperations.length).toBe(0);
+    expect(preview.objectRoots).toContain(MOCK_HASH_A);
+    expect(plan.apply()).rejects.toThrow(/transport requested/);
+  });
+});
+
+describe("openImportSession 选项透传", () => {
+  test("options.token 会并入 session source 快照", async () => {
+    const backend = createMemoryRepositoryBackend();
+    const repo = createRepoImportOperations(backend);
+    const advertised = createMockAdvertisement();
+
+    const session = await repo.openImportSession(
+      { url: "https://example.com/private.git" },
+      {
+        token: "secret-token",
+        transportFactory: () => ({
+          advertise: async () => advertised,
+          request: async () => Buffer.alloc(0),
+        }),
+      },
+    );
+
+    expect(session.source.token).toBe("secret-token");
   });
 });

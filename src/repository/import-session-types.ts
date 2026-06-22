@@ -193,6 +193,13 @@ export interface PlannedRemoteRef {
 export interface LocalPrecondition {
   readonly refName: string;
   readonly expectedHash: SHA1 | null;
+  /**
+   * 原始 ref 值快照
+   *
+   * 用于 HEAD 这类可能是符号引用的特殊 ref。
+   * 普通 hash ref 通常不需要此字段。
+   */
+  readonly expectedValue?: string | null;
 }
 
 /**

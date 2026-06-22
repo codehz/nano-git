@@ -11,15 +11,10 @@ import { fetchPack } from "../transport/fetch-pack.ts";
 import { isAncestor } from "../transport/object-graph.ts";
 import { getLocalRefs } from "../transport/ref-collection.ts";
 import { createUploadPackHttpClient } from "../transport/smart-http.ts";
-import { applyRefUpdates, resolveBranchTargetHash } from "../transport/update-refs.ts";
+import { resolveBranchTargetHash } from "../transport/update-refs.ts";
 
 import type { SHA1 } from "../core/types.ts";
-import type {
-  RemoteRef,
-  RefAdvertisement,
-  UploadPackTransport,
-  RefUpdatePlanItem,
-} from "../transport/types.ts";
+import type { RemoteRef, RefAdvertisement, UploadPackTransport } from "../transport/types.ts";
 import type { RepositoryBackend } from "./backend/types.ts";
 import type {
   ImportSource,
@@ -97,7 +92,7 @@ function createImportView(
   refs: readonly RemoteRef[],
   label?: string,
 ): ImportView | NamedImportView {
-  const frozenRefs = Object.freeze([...refs]);
+  const frozenRefs = Object.freeze(refs.map((ref) => Object.freeze({ ...ref })));
 
   const view = {
     get refs(): readonly RemoteRef[] {
@@ -198,6 +193,28 @@ interface MaterializationAction {
   readonly policy: RefUpdatePolicy | undefined;
   readonly prune?: boolean;
   readonly detach?: boolean;
+}
+
+interface ResolvedMapping {
+  readonly remoteRef: RemoteRef;
+  readonly localRef: string;
+  readonly policy: RefUpdatePolicy;
+}
+
+/**
+ * 判断两个远端 ref 是否表示同一条广告项
+ *
+ * @param left - 左侧 ref
+ * @param right - 右侧 ref
+ * @returns 是否相同
+ */
+function isSameRemoteRef(left: RemoteRef, right: RemoteRef): boolean {
+  return (
+    left.name === right.name &&
+    left.hash === right.hash &&
+    left.peeled === right.peeled &&
+    left.symrefTarget === right.symrefTarget
+  );
 }
 
 /**
@@ -322,11 +339,7 @@ function createPlanBuilder(
 
     preview(): ImportPreview {
       // Step 1: 解析所有物化动作，计算完整的 ref 映射
-      const resolvedMappings: Array<{
-        remoteRef: RemoteRef;
-        localRef: string;
-        policy: RefUpdatePolicy;
-      }> = [];
+      const resolvedMappings: ResolvedMapping[] = [];
 
       const headMappings: Array<{ localRef: string; detach: boolean }> = [];
       const pruneNamespaces: Array<{ prefix: string; currentRefs: Set<string> }> = [];
@@ -449,8 +462,28 @@ function createPlanBuilder(
           }
 
           case "head": {
-            if (resolvedMappings.length > 0) {
-              const lastMapping = resolvedMappings[resolvedMappings.length - 1]!;
+            if (act.viewRefs.length === 0) {
+              diagnostics.push({
+                level: "warn",
+                message: "setHead() 的 view 为空，HEAD 将被跳过。",
+              });
+              break;
+            }
+
+            if (act.viewRefs.length > 1) {
+              diagnostics.push({
+                level: "error",
+                message: `setHead() 需要单一 ref 视图，当前收到 ${act.viewRefs.length} 个 refs。`,
+              });
+              break;
+            }
+
+            const targetRemoteRef = act.viewRefs[0]!;
+            const lastMapping = [...resolvedMappings]
+              .reverse()
+              .find((mapping) => isSameRemoteRef(mapping.remoteRef, targetRemoteRef));
+
+            if (lastMapping) {
               headMappings.push({
                 localRef: lastMapping.localRef,
                 detach: act.detach ?? false,
@@ -458,7 +491,7 @@ function createPlanBuilder(
             } else {
               diagnostics.push({
                 level: "warn",
-                message: "setHead() 时没有前置的物化操作，HEAD 将被跳过。",
+                message: `setHead() 找不到 view "${targetRemoteRef.name}" 对应的前置物化结果，HEAD 将被跳过。`,
               });
             }
             break;
@@ -480,9 +513,21 @@ function createPlanBuilder(
           }
         }
       }
+      if (headMappings.length > 0) {
+        affectedRefNames.add("HEAD");
+      }
 
       const localPreconditions: LocalPrecondition[] = [];
       for (const refName of affectedRefNames) {
+        if (refName === "HEAD") {
+          localPreconditions.push({
+            refName,
+            expectedHash: null,
+            expectedValue: backend.refs.read("HEAD"),
+          });
+          continue;
+        }
+
         const hash = localRefs.get(refName) ?? null;
         localPreconditions.push({ refName, expectedHash: hash });
       }
@@ -494,6 +539,13 @@ function createPlanBuilder(
 
       for (const m of resolvedMappings) {
         const existingHash = localRefs.get(m.localRef);
+        const hasObject = backend.objects.exists(m.remoteRef.hash);
+
+        selectedRefs.push({
+          remoteRef: m.remoteRef,
+          localTarget: m.localRef,
+          policy: m.policy,
+        });
 
         if (existingHash === m.remoteRef.hash) {
           diagnostics.push({
@@ -501,26 +553,30 @@ function createPlanBuilder(
             message: `"${m.localRef}" 已是最新，跳过。`,
             refName: m.localRef,
           });
+          if (!hasObject) {
+            objectRootsSet.add(m.remoteRef.hash);
+          }
           continue;
         }
 
-        if (existingHash !== undefined) {
-          if (m.policy.mode === "create-only") {
-            diagnostics.push({
-              level: "error",
-              message: `"${m.localRef}" 已存在，create-only 策略拒绝更新。`,
-              refName: m.localRef,
-            });
-            continue;
+        if (existingHash !== undefined && m.policy.mode === "create-only") {
+          diagnostics.push({
+            level: "error",
+            message: `"${m.localRef}" 已存在，create-only 策略拒绝更新。`,
+            refName: m.localRef,
+          });
+          if (!hasObject) {
+            objectRootsSet.add(m.remoteRef.hash);
           }
+          continue;
+        }
 
-          if (m.policy.mode === "fast-forward") {
-            diagnostics.push({
-              level: "info",
-              message: `"${m.localRef}" 将执行 fast-forward 检查。`,
-              refName: m.localRef,
-            });
-          }
+        if (existingHash !== undefined && m.policy.mode === "fast-forward") {
+          diagnostics.push({
+            level: "info",
+            message: `"${m.localRef}" 将执行 fast-forward 检查。`,
+            refName: m.localRef,
+          });
         }
 
         refOperations.push({
@@ -529,13 +585,9 @@ function createPlanBuilder(
           policy: m.policy,
         });
 
-        selectedRefs.push({
-          remoteRef: m.remoteRef,
-          localTarget: m.localRef,
-          policy: m.policy,
-        });
-
-        objectRootsSet.add(m.remoteRef.hash);
+        if (!hasObject) {
+          objectRootsSet.add(m.remoteRef.hash);
+        }
       }
 
       // Step 4: 计算 prune 操作
@@ -613,7 +665,12 @@ function createPlanBuilder(
         );
       }
 
-      if (p.refOperations.length === 0 && !p.headOperation && p.pruneOperations.length === 0) {
+      if (
+        p.refOperations.length === 0 &&
+        p.objectRoots.length === 0 &&
+        !p.headOperation &&
+        p.pruneOperations.length === 0
+      ) {
         return {
           importedObjects: 0,
           updatedRefs: new Map<string, SHA1>(),
@@ -624,6 +681,17 @@ function createPlanBuilder(
       // Step 2: 校验前置条件 — 当前本地 refs 与 preview 快照一致
       const currentLocalRefs = getLocalRefs(backend.refs);
       for (const pc of p.localPreconditions) {
+        if (pc.expectedValue !== undefined) {
+          const currentValue = backend.refs.read(pc.refName);
+          if (currentValue !== pc.expectedValue) {
+            throw new Error(
+              `前置条件校验失败：ref "${pc.refName}" 在 preview() 后已变化。` +
+                `期望 ${pc.expectedValue ?? "(不存在)"}，实际 ${currentValue ?? "(不存在)"}。`,
+            );
+          }
+          continue;
+        }
+
         const currentHash = currentLocalRefs.get(pc.refName) ?? null;
         if (currentHash !== pc.expectedHash) {
           throw new Error(
@@ -663,48 +731,46 @@ function createPlanBuilder(
       }
 
       // Step 4: 策略预校验 — 在进入 ref 物化之前完成全部策略校验
+      const pendingWrites: Array<{ localRef: string; writeHash: SHA1 }> = [];
       for (const op of p.refOperations) {
         const currentHash = currentLocalRefs.get(op.localRef) ?? null;
+        const targetHash = op.localRef.startsWith("refs/heads/")
+          ? resolveBranchTargetHash(backend.objects, op.newHash, op.localRef)
+          : op.newHash;
 
-        // refs/heads/* 的 commit 类型校验（仅校验存在且可读的对象）
-        if (op.localRef.startsWith("refs/heads/") && backend.objects.exists(op.newHash)) {
-          resolveBranchTargetHash(backend.objects, op.newHash, op.localRef);
+        if (!backend.objects.exists(targetHash)) {
+          throw new Error(`导入计划校验失败：对象 "${targetHash}" 在本地对象库中不存在。`);
         }
 
-        // fast-forward 策略校验：有本地值且非 replace 时检查祖先关系
+        if (op.policy.mode === "create-only" && currentHash !== null) {
+          throw new Error(
+            `导入计划校验失败：ref "${op.localRef}" 已存在，create-only 策略拒绝更新。`,
+          );
+        }
+
         if (op.policy.mode === "fast-forward" && currentHash !== null) {
-          if (!isAncestor(backend.objects, currentHash, op.newHash)) {
+          if (!isAncestor(backend.objects, currentHash, targetHash)) {
             throw new Error(
               `导入计划校验失败：ref "${op.localRef}" 无法 fast-forward。` +
-                `当前 ${currentHash}，目标 ${op.newHash}。`,
+                `当前 ${currentHash}，目标 ${targetHash}。`,
             );
           }
         }
-      }
 
-      // Step 4: 写 ref
-      const updatedRefs = new Map<string, SHA1>();
-
-      if (p.refOperations.length > 0) {
-        const refUpdates: RefUpdatePlanItem[] = p.refOperations.map((op) => {
-          const precond = p.localPreconditions.find((pc) => pc.refName === op.localRef);
-          return {
-            remoteRef: { hash: op.newHash, name: op.localRef },
-            localRef: op.localRef,
-            currentLocalHash: precond?.expectedHash ?? undefined,
-            force: op.policy.mode === "replace",
-            hashEqual: false,
-          } as RefUpdatePlanItem;
+        pendingWrites.push({
+          localRef: op.localRef,
+          writeHash: targetHash,
         });
-
-        const refResult = applyRefUpdates(backend.objects, backend.refs, refUpdates);
-
-        for (const [ref, hash] of refResult.updatedRefs) {
-          updatedRefs.set(ref, hash);
-        }
       }
 
-      // Step 5: 设置 HEAD
+      // Step 5: 写 ref
+      const updatedRefs = new Map<string, SHA1>();
+      for (const op of pendingWrites) {
+        backend.refs.write(op.localRef, op.writeHash);
+        updatedRefs.set(op.localRef, op.writeHash);
+      }
+
+      // Step 6: 设置 HEAD
       if (p.headOperation) {
         if (p.headOperation.detach) {
           const detachedTarget = updatedRefs.get(p.headOperation.targetRef);
@@ -723,7 +789,7 @@ function createPlanBuilder(
         }
       }
 
-      // Step 6: 执行 prune
+      // Step 7: 执行 prune
       const deletedRefs: string[] = [];
       for (const op of p.pruneOperations) {
         try {
@@ -770,10 +836,12 @@ function createImportSession(
     headers: source.headers ? Object.freeze({ ...source.headers }) : undefined,
   }) as Readonly<ImportSource>;
 
+  const frozenRefs = Object.freeze(advertisement.refs.map((ref) => Object.freeze({ ...ref })));
+
   // 冻结 advertisement 快照，确保会话级别不可变
   const frozenAdvertisement = Object.freeze({
     ...advertisement,
-    refs: Object.freeze([...advertisement.refs]),
+    refs: frozenRefs,
     capabilities: Object.freeze({ ...advertisement.capabilities }),
   }) as Readonly<RefAdvertisement>;
 
@@ -807,11 +875,11 @@ function createImportSession(
     },
 
     defaultBranch(): ImportView {
-      if (!advertisement.defaultBranch) {
+      if (!frozenAdvertisement.defaultBranch) {
         return createImportView([]) as ImportView;
       }
 
-      const ref = allRefs.find((r) => r.name === advertisement.defaultBranch);
+      const ref = allRefs.find((r) => r.name === frozenAdvertisement.defaultBranch);
       return createImportView(ref ? [ref] : []) as ImportView;
     },
 
@@ -856,18 +924,24 @@ export function createRepoImportOperations(
       source: ImportSource,
       options?: OpenImportSessionOptions,
     ): Promise<ImportSession> {
+      const sessionSource: ImportSource = {
+        url: source.url,
+        token: options?.token ?? source.token,
+        headers: options?.headers ?? source.headers,
+      };
+
       const createTransport =
         options?.transportFactory ??
         ((url: string) =>
           createUploadPackHttpClient(url, {
-            token: options?.token ?? source.token,
-            headers: options?.headers ?? source.headers,
+            token: sessionSource.token,
+            headers: sessionSource.headers,
           }));
 
       const transport = createTransport(source.url);
       const advertisement = await transport.advertise();
 
-      return createImportSession(source, backend, advertisement, options?.transportFactory);
+      return createImportSession(sessionSource, backend, advertisement, options?.transportFactory);
     },
   };
 }
