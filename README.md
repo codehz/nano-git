@@ -150,7 +150,7 @@ const repo = initRepository("/tmp/my-clone");
 
 // 从远程仓库拉取对象和引用
 const result = await repo.fetch("https://github.com/user/repo");
-console.log(`Fetched ${result.objectCount} objects`);
+console.log(`Fetched ${result.fetchedObjects} objects`);
 
 // 远程分支以 refs/remotes/origin/* 写入
 const mainRef = repo.readRef("refs/remotes/origin/main");
@@ -161,7 +161,7 @@ if (mainRef) {
 
 // 执行增量 fetch（仅拉取新对象）
 const result2 = await repo.fetch("https://github.com/user/repo");
-console.log(`New objects: ${result2.objectCount}`); // 0（已是最新）
+console.log(`New objects: ${result2.fetchedObjects}`); // 0（已是最新）
 ```
 
 带认证的 fetch（私有仓库）：
@@ -181,18 +181,31 @@ const result2 = await repo.fetch("https://gitlab.com/org/private-repo", {
 如果你需要更底层的控制，也可以直接使用 transport 层的独立函数：
 
 ```typescript
-import { fetch, createSmartHttpClient, buildUploadPackRequest } from "nano-git";
+import {
+  buildUploadPackRequest,
+  createUploadPackHttpClient,
+  decodeUploadPackResponse,
+  sha1,
+} from "nano-git";
 
 // 仅获取引用广告
-const client = createSmartHttpClient("https://github.com/user/repo");
-const adv = await client.getRefAdvertisement();
+const client = createUploadPackHttpClient("https://github.com/user/repo");
+const adv = await client.advertise();
 console.log(adv.refs);
 
 // 带认证的底层传输控制
-const authedClient = createSmartHttpClient("https://github.com/user/repo", {
+const authedClient = createUploadPackHttpClient("https://github.com/user/repo", {
   token: "ghp_xxxxxxxx",
 });
-const { packfile } = await authedClient.postUploadPack(body);
+
+const body = buildUploadPackRequest(
+  [sha1("95d09f2b10159347eece71399a7e2e907ea3df4f")],
+  [],
+  ["multi_ack", "side-band-64k", "ofs-delta"],
+);
+
+const raw = await authedClient.request(body);
+const { packfile } = decodeUploadPackResponse(raw);
 ```
 
 ### 对象序列化
