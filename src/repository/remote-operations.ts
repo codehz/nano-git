@@ -19,29 +19,22 @@
  */
 
 import { GitError } from "../core/errors.ts";
-import { sha1, type SHA1 } from "../core/types.ts";
+import { sha1 } from "../core/types.ts";
 import { advertiseRemote } from "../transport/advertise.ts";
-import { push as transportPush } from "../transport/push.ts";
-import { createReceivePackHttpClient } from "../transport/smart-http.ts";
-import { runFetchRemote } from "./fetch-remote.ts";
+import { runFetchRemote, runFetchToUrl } from "./fetch-remote.ts";
+import { runPushRemote, runPushToUrl } from "./push-remote.ts";
 import { mapDefaultBranchToTrackingRef } from "./remote-mapping.ts";
-import {
-  resolveEffectivePushUrl,
-  resolveEffectivePushRefSpecs,
-  resolveEffectivePushBoundaries,
-} from "./remote-resolution.ts";
 
-import type { ReceivePackTransport, RefAdvertisement } from "../transport/types.ts";
 import type { RepositoryBackend } from "./backend/types.ts";
 import type {
   RemoteConfig,
   FetchRemoteOptions,
+  FetchUrlOptions,
   FetchRemoteResult,
   BootstrapRemoteOptions,
   BootstrapRemoteResult,
   PushRemoteOptions,
   PushRemoteResult,
-  PushRefUpdateResult,
   RepositoryRemoteOperations,
 } from "./remote-types.ts";
 
@@ -94,6 +87,10 @@ export function createRemoteRepositoryOperations(
       }
 
       return runFetchRemote(backend, remote, options);
+    },
+
+    async fetch(url: string, options?: FetchUrlOptions): Promise<FetchRemoteResult> {
+      return runFetchToUrl(backend, url, options);
     },
 
     async bootstrapRemote(
@@ -186,116 +183,5 @@ export function createRemoteRepositoryOperations(
     async push(url: string, options?: PushRemoteOptions): Promise<PushRemoteResult> {
       return runPushToUrl(backend, url, options);
     },
-  };
-}
-
-// ============================================================================
-// 内部函数
-// ============================================================================
-
-/**
- * 创建 receive-pack 传输层，获取 advertisement，执行 push
- *
- * repository 层唯一的 push 装配点：
- * - 创建 ReceivePackTransport（含认证）
- * - 拉 advertisement
- * - 解析 effective shallow boundaries
- * - 调用 transport/push
- */
-async function pushWithTransport(
-  backend: RepositoryBackend,
-  pushUrl: string,
-  options?: PushRemoteOptions,
-): Promise<PushRemoteResult> {
-  // 1. 创建 transport 并获取 advertisement
-  const transport: ReceivePackTransport = createReceivePackHttpClient(pushUrl, {
-    token: options?.token,
-    headers: options?.headers,
-  });
-  const advertisement: RefAdvertisement = await transport.getReceivePackRefs();
-
-  // 2. 解析 effective shallow 边界（优先级在 resolution 模块集中定义）
-  const shallowBoundaries = resolveEffectivePushBoundaries(options, backend.shallow.read());
-
-  // 3. 执行 transport push
-  const transportResult = await transportPush(
-    backend.objects,
-    backend.refs,
-    transport,
-    advertisement,
-    {
-      refSpecs: options?.refSpecs,
-      force: options?.force,
-      shallowBoundaries,
-    },
-  );
-
-  return convertPushResult(
-    transportResult.refUpdates,
-    transportResult.objectCount,
-    transportResult.progress,
-  );
-}
-
-/**
- * 执行基于 remote 配置的 push
- */
-async function runPushRemote(
-  backend: RepositoryBackend,
-  remote: RemoteConfig,
-  options?: PushRemoteOptions,
-): Promise<PushRemoteResult> {
-  const effectivePushUrl = resolveEffectivePushUrl(remote, options);
-  // 只负责准备 repository 级 options（解析 refspec 默认），不处理 transport 装配细节
-  const pushOptions: PushRemoteOptions = {
-    ...options,
-    refSpecs: resolveEffectivePushRefSpecs(remote, options),
-  };
-
-  return pushWithTransport(backend, effectivePushUrl, pushOptions);
-}
-
-/**
- * 执行基于 URL 的 push（不依赖 remote 配置）
- */
-async function runPushToUrl(
-  backend: RepositoryBackend,
-  url: string,
-  options?: PushRemoteOptions,
-): Promise<PushRemoteResult> {
-  // 只负责准备 repository 级 options，不处理 transport 装配细节
-  return pushWithTransport(backend, url, options);
-}
-
-/**
- * 将 transport 推送结果转换为 repository PushRemoteResult
- *
- * 只提取最小必要字段，不依赖 transport PushResult 类型的完整形状。
- */
-function convertPushResult(
-  refUpdates: Array<{
-    refName: string;
-    oldHash: SHA1 | null;
-    newHash: SHA1 | null;
-    success: boolean;
-    error?: string;
-    forced: boolean;
-  }>,
-  objectCount: number,
-  progress: string[],
-): PushRemoteResult {
-  const pushedRefs: PushRefUpdateResult[] = refUpdates.map((u) => ({
-    refName: u.refName,
-    oldHash: u.oldHash,
-    newHash: u.newHash,
-    success: u.success,
-    error: u.error,
-    forced: u.forced,
-  }));
-
-  return {
-    pushedRefs,
-    objectCount,
-    progress,
   };
 }

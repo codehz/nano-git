@@ -15,25 +15,39 @@ import { encodePktLine, encodeFlushPkt } from "@/transport/pkt-line.ts";
 import { PushError } from "@/transport/push-error.ts";
 import { determinePushRefs } from "@/transport/push-ref-plan.ts";
 import { push } from "@/transport/push.ts";
-import { parseReceivePackResult } from "@/transport/receive-pack-result.ts";
 import { parseRefSpec } from "@/transport/refspec.ts";
 
-import type { ReceivePackTransport } from "@/transport/types.ts";
+import type { ReceivePackTransport, RemoteRef } from "@/transport/types.ts";
 
-// ============================================================================
-// 常量
-// ============================================================================
+function sideBandFrame(channel: number, data: string | Buffer): Buffer {
+  const payload = typeof data === "string" ? Buffer.from(data, "utf-8") : data;
+  return encodePktLine(Buffer.concat([Buffer.from([channel]), payload]));
+}
 
-// ============================================================================
-// push() 服务端响应完整性校验测试
-// ============================================================================
+function okReportStatus(refName: string): Buffer {
+  return Buffer.concat([
+    encodePktLine("unpack ok\n"),
+    encodePktLine(`ok ${refName}\n`),
+    encodeFlushPkt(),
+  ]);
+}
+
+function mockTransport(
+  caps: Record<string, string | true>,
+  refs: RemoteRef[],
+  onRequest: () => Buffer | Promise<Buffer>,
+): ReceivePackTransport {
+  return {
+    advertise: async () => ({ capabilities: caps, refs }),
+    request: async () => onRequest(),
+  };
+}
 
 describe("push() 服务端响应完整性校验", () => {
   test("服务端返回错误 ref 名称时抛出 PushError（协议异常伪装成功）", async () => {
     const store = createMemoryObjectStore();
     const refStore = createMemoryRefStore(new Map());
     const author = { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" };
-
     const emptyTree = store.write({ type: "tree", entries: [] });
     const commitHash = store.write({
       type: "commit" as const,
@@ -46,28 +60,22 @@ describe("push() 服务端响应完整性校验", () => {
     refStore.write("refs/heads/main", commitHash);
 
     let postCalled = false;
-    const transport: ReceivePackTransport = {
-      getReceivePackRefs: async () => ({
-        capabilities: { "report-status": true },
-        refs: [{ name: "refs/heads/main", hash: commitHash }],
-      }),
-      postReceivePack: async () => {
+    const transport = mockTransport(
+      { "report-status": true },
+      [{ name: "refs/heads/main", hash: commitHash }],
+      () => {
         postCalled = true;
-        // 服务端返回错误的 ref 名称（应返回 refs/heads/main）
-        const data = Buffer.concat([
+        return Buffer.concat([
           encodePktLine("unpack ok\n"),
           encodePktLine("ok refs/heads/other\n"),
           encodeFlushPkt(),
         ]);
-        return { data, refUpdates: parseReceivePackResult(data), progress: [] };
       },
-    };
-    const adv = await transport.getReceivePackRefs();
-
+    );
+    const adv = await transport.advertise();
     const pushPromise = push(store, refStore, transport, adv, {
       refSpecs: ["refs/heads/main:refs/heads/main"],
     });
-
     expect(pushPromise).rejects.toThrow(PushError);
     expect(pushPromise).rejects.toThrow(/mismatched ref/i);
     expect(postCalled).toBe(true);
@@ -77,10 +85,7 @@ describe("push() 服务端响应完整性校验", () => {
     const store = createMemoryObjectStore();
     const refStore = createMemoryRefStore(new Map());
     const author = { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" };
-
-    // 创建两个本地分支
     const emptyTree = store.write({ type: "tree", entries: [] });
-
     const hashA = store.write({
       type: "commit" as const,
       tree: emptyTree,
@@ -90,7 +95,6 @@ describe("push() 服务端响应完整性校验", () => {
       message: "a",
     });
     refStore.write("refs/heads/feature-a", hashA);
-
     const hashB = store.write({
       type: "commit" as const,
       tree: emptyTree,
@@ -101,32 +105,22 @@ describe("push() 服务端响应完整性校验", () => {
     });
     refStore.write("refs/heads/feature-b", hashB);
 
-    // Mock transport：远端无 refs，postReceivePack 只返回 1 条状态（少于 2 条命令）
     let postCalled = false;
-    const transport: ReceivePackTransport = {
-      getReceivePackRefs: async () => ({
-        capabilities: { "report-status": true },
-        refs: [],
-      }),
-      postReceivePack: async () => {
-        postCalled = true;
-        const data = Buffer.concat([
-          encodePktLine("unpack ok\n"),
-          encodePktLine("ok refs/heads/feature-a\n"),
-          encodeFlushPkt(),
-        ]);
-        return { data, refUpdates: parseReceivePackResult(data), progress: [] };
-      },
-    };
-    const adv = await transport.getReceivePackRefs();
-
+    const transport = mockTransport({ "report-status": true }, [], () => {
+      postCalled = true;
+      return Buffer.concat([
+        encodePktLine("unpack ok\n"),
+        encodePktLine("ok refs/heads/feature-a\n"),
+        encodeFlushPkt(),
+      ]);
+    });
+    const adv = await transport.advertise();
     const pushPromise = push(store, refStore, transport, adv, {
       refSpecs: [
         "refs/heads/feature-a:refs/heads/feature-a",
         "refs/heads/feature-b:refs/heads/feature-b",
       ],
     });
-
     expect(pushPromise).rejects.toThrow(PushError);
     expect(pushPromise).rejects.toThrow(/incomplete status/i);
     expect(postCalled).toBe(true);
@@ -136,8 +130,6 @@ describe("push() 服务端响应完整性校验", () => {
     const store = createMemoryObjectStore();
     const refStore = createMemoryRefStore(new Map());
     const author = { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" };
-
-    // 创建本地分支
     const emptyTree = store.write({ type: "tree", entries: [] });
     const hash = store.write({
       type: "commit" as const,
@@ -149,35 +141,26 @@ describe("push() 服务端响应完整性校验", () => {
     });
     refStore.write("refs/heads/main", hash);
 
-    // Mock transport：远端不广告 report-status capability
-    let postReceivePackCalled = false;
+    let requestCalled = false;
     const transport: ReceivePackTransport = {
-      getReceivePackRefs: async () => ({
+      advertise: async () => ({
         capabilities: { "side-band-64k": true, "ofs-delta": true },
         refs: [],
       }),
-      postReceivePack: async () => {
-        postReceivePackCalled = true;
-        return { data: Buffer.alloc(0), refUpdates: [], progress: [] };
+      request: async () => {
+        requestCalled = true;
+        return Buffer.alloc(0);
       },
     };
-    const adv = await transport.getReceivePackRefs();
-
+    const adv = await transport.advertise();
     const pushPromise = push(store, refStore, transport, adv, {
       refSpecs: ["refs/heads/main:refs/heads/main"],
     });
-
-    // 应因缺少 report-status 提前报错，而非等到发送请求后才失败
     expect(pushPromise).rejects.toThrow(PushError);
     expect(pushPromise).rejects.toThrow(/report-status/i);
-    // 不应调用 postReceivePack（提前检测到问题）
-    expect(postReceivePackCalled).toBe(false);
+    expect(requestCalled).toBe(false);
   });
 });
-
-// ============================================================================
-// determinePushRefs 去重测试
-// ============================================================================
 
 describe("determinePushRefs() 重叠 refspec 冲突检测", () => {
   test("重叠 refspec 映射到同一 remoteRef 时抛 PushError", () => {
@@ -188,26 +171,19 @@ describe("determinePushRefs() 重叠 refspec 冲突检测", () => {
       ["refs/heads/develop", hashB],
     ]);
     const remoteRefs = new Map<string, SHA1>();
-
     const wildSpec = parseRefSpec("refs/heads/*:refs/heads/*");
     const exactSpec = parseRefSpec("refs/heads/main:refs/heads/main");
-
     expect(() => {
       determinePushRefs(localRefs, remoteRefs, [wildSpec, exactSpec]);
     }).toThrow(PushError);
   });
 });
 
-// ============================================================================
-// getLocalRefs + determinePushRefs 自定义命名空间集成测试
-// ============================================================================
-
 describe("push 非 heads/tags 来源 ref 推送", () => {
   test("refs/remotes/origin/main:refs/heads/backup 应正确推送", async () => {
     const store = createMemoryObjectStore();
     const author = { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" };
     const emptyTree = store.write({ type: "tree", entries: [] });
-
     const commitHash = store.write({
       type: "commit" as const,
       tree: emptyTree,
@@ -216,35 +192,19 @@ describe("push 非 heads/tags 来源 ref 推送", () => {
       committer: author,
       message: "test",
     });
-
-    // 模拟本地 refs：refs/remotes/origin/main 存在
     const refStore = createMemoryRefStore(
       new Map([
         ["refs/remotes/origin/main", commitHash],
         ["HEAD", "ref: refs/heads/main"],
       ]),
     );
-
-    const transport: ReceivePackTransport = {
-      getReceivePackRefs: async () => ({
-        capabilities: { "report-status": true, "side-band-64k": true },
-        refs: [],
-      }),
-      postReceivePack: async () => {
-        const data = Buffer.concat([
-          encodePktLine("unpack ok\n"),
-          encodePktLine("ok refs/heads/backup\n"),
-          encodeFlushPkt(),
-        ]);
-        return { data, refUpdates: parseReceivePackResult(data), progress: [] };
-      },
-    };
-    const adv = await transport.getReceivePackRefs();
-
+    const transport = mockTransport({ "report-status": true, "side-band-64k": true }, [], () =>
+      okReportStatus("refs/heads/backup"),
+    );
+    const adv = await transport.advertise();
     const result = await push(store, refStore, transport, adv, {
       refSpecs: ["refs/remotes/origin/main:refs/heads/backup"],
     });
-
     expect(result.refUpdates).toHaveLength(1);
     expect(result.refUpdates[0]!.success).toBe(true);
   });
@@ -253,7 +213,6 @@ describe("push 非 heads/tags 来源 ref 推送", () => {
     const store = createMemoryObjectStore();
     const author = { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" };
     const emptyTree = store.write({ type: "tree", entries: [] });
-
     const commitHash = store.write({
       type: "commit" as const,
       tree: emptyTree,
@@ -262,36 +221,20 @@ describe("push 非 heads/tags 来源 ref 推送", () => {
       committer: author,
       message: "test",
     });
-
-    // HEAD 指向的分支自身循环（但 refs/heads/main 是独立且正常的）
     const refStore = createMemoryRefStore(
       new Map([
         ["HEAD", "ref: refs/heads/stuck"],
-        ["refs/heads/stuck", "ref: HEAD"], // 循环！resolveRefHash(HEAD) 会抛错
-        ["refs/heads/main", commitHash], // 正常的独立分支
+        ["refs/heads/stuck", "ref: HEAD"],
+        ["refs/heads/main", commitHash],
       ]),
     );
-
-    const transport: ReceivePackTransport = {
-      getReceivePackRefs: async () => ({
-        capabilities: { "report-status": true, "side-band-64k": true },
-        refs: [],
-      }),
-      postReceivePack: async () => {
-        const data = Buffer.concat([
-          encodePktLine("unpack ok\n"),
-          encodePktLine("ok refs/heads/main\n"),
-          encodeFlushPkt(),
-        ]);
-        return { data, refUpdates: parseReceivePackResult(data), progress: [] };
-      },
-    };
-    const adv = await transport.getReceivePackRefs();
-
+    const transport = mockTransport({ "report-status": true, "side-band-64k": true }, [], () =>
+      okReportStatus("refs/heads/main"),
+    );
+    const adv = await transport.advertise();
     const result = await push(store, refStore, transport, adv, {
       refSpecs: ["refs/heads/main:refs/heads/main"],
     });
-
     expect(result.refUpdates).toHaveLength(1);
     expect(result.refUpdates[0]!.success).toBe(true);
   });
@@ -300,7 +243,6 @@ describe("push 非 heads/tags 来源 ref 推送", () => {
     const store = createMemoryObjectStore();
     const refStore = createMemoryRefStore(new Map());
     const author = { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" };
-
     const emptyTree = store.write({ type: "tree", entries: [] });
     const remoteTip = sha1("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
     const localCommit = store.write({
@@ -314,36 +256,23 @@ describe("push 非 heads/tags 来源 ref 推送", () => {
     refStore.write("refs/heads/main", localCommit);
 
     let postCalled = false;
-    const transport: ReceivePackTransport = {
-      getReceivePackRefs: async () => ({
-        capabilities: { "report-status": true },
-        refs: [{ name: "refs/heads/main", hash: remoteTip }],
-      }),
-      postReceivePack: async () => {
+    const transport = mockTransport(
+      { "report-status": true },
+      [{ name: "refs/heads/main", hash: remoteTip }],
+      () => {
         postCalled = true;
-        const data = Buffer.concat([
-          encodePktLine("unpack ok\n"),
-          encodePktLine("ok refs/heads/main\n"),
-          encodeFlushPkt(),
-        ]);
-        return { data, refUpdates: parseReceivePackResult(data), progress: [] };
+        return okReportStatus("refs/heads/main");
       },
-    };
-    const adv = await transport.getReceivePackRefs();
-
+    );
+    const adv = await transport.advertise();
     const result = await push(store, refStore, transport, adv, {
       refSpecs: ["refs/heads/main:refs/heads/main"],
     });
-
     expect(postCalled).toBe(true);
     expect(result.refUpdates).toHaveLength(1);
     expect(result.refUpdates[0]!.success).toBe(true);
   });
 });
-
-// ============================================================================
-// push() 服务端 ng 响应行为契约测试
-// ============================================================================
 
 describe("push() 服务端 ng 响应处理", () => {
   test("服务端返回 ng <ref> 时 push() 应抛出 PushError，包含被拒 ref 和原因", async () => {
@@ -351,7 +280,6 @@ describe("push() 服务端 ng 响应处理", () => {
     const refStore = createMemoryRefStore(new Map());
     const author = { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" };
     const emptyTree = store.write({ type: "tree", entries: [] });
-
     const commitHash = store.write({
       type: "commit" as const,
       tree: emptyTree,
@@ -362,30 +290,20 @@ describe("push() 服务端 ng 响应处理", () => {
     });
     refStore.write("refs/heads/main", commitHash);
 
-    // 模拟服务端：ok 一条、ng 一条
     let postCalled = false;
-    const transport: ReceivePackTransport = {
-      getReceivePackRefs: async () => ({
-        capabilities: { "report-status": true },
-        refs: [],
-      }),
-      postReceivePack: async () => {
-        postCalled = true;
-        const data = Buffer.concat([
-          encodePktLine("unpack ok\n"),
-          encodePktLine("ok refs/heads/main\n"),
-          encodePktLine("ng refs/heads/feature non-fast-forward\n"),
-          encodeFlushPkt(),
-        ]);
-        return { data, refUpdates: parseReceivePackResult(data), progress: [] };
-      },
-    };
-    const adv = await transport.getReceivePackRefs();
-
+    const transport = mockTransport({ "report-status": true }, [], () => {
+      postCalled = true;
+      return Buffer.concat([
+        encodePktLine("unpack ok\n"),
+        encodePktLine("ok refs/heads/main\n"),
+        encodePktLine("ng refs/heads/feature non-fast-forward\n"),
+        encodeFlushPkt(),
+      ]);
+    });
+    const adv = await transport.advertise();
     const pushPromise = push(store, refStore, transport, adv, {
       refSpecs: ["refs/heads/main:refs/heads/main", "refs/heads/main:refs/heads/feature"],
     });
-
     expect(pushPromise).rejects.toThrow(PushError);
     expect(pushPromise).rejects.toThrow(/refs\/heads\/feature/);
     expect(pushPromise).rejects.toThrow(/non-fast-forward/);
@@ -397,7 +315,6 @@ describe("push() 服务端 ng 响应处理", () => {
     const refStore = createMemoryRefStore(new Map());
     const author = { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" };
     const emptyTree = store.write({ type: "tree", entries: [] });
-
     const commitHash = store.write({
       type: "commit" as const,
       tree: emptyTree,
@@ -408,26 +325,17 @@ describe("push() 服务端 ng 响应处理", () => {
     });
     refStore.write("refs/heads/main", commitHash);
 
-    const transport: ReceivePackTransport = {
-      getReceivePackRefs: async () => ({
-        capabilities: { "report-status": true },
-        refs: [],
-      }),
-      postReceivePack: async () => {
-        const data = Buffer.concat([
-          encodePktLine("unpack ok\n"),
-          encodePktLine("ng refs/heads/main hook declined\n"),
-          encodeFlushPkt(),
-        ]);
-        return { data, refUpdates: parseReceivePackResult(data), progress: [] };
-      },
-    };
-    const adv = await transport.getReceivePackRefs();
-
+    const transport = mockTransport({ "report-status": true }, [], () =>
+      Buffer.concat([
+        encodePktLine("unpack ok\n"),
+        encodePktLine("ng refs/heads/main hook declined\n"),
+        encodeFlushPkt(),
+      ]),
+    );
+    const adv = await transport.advertise();
     const pushPromise = push(store, refStore, transport, adv, {
       refSpecs: ["refs/heads/main:refs/heads/main"],
     });
-
     expect(pushPromise).rejects.toThrow(PushError);
     expect(pushPromise).rejects.toThrow(/hook declined/);
   });
@@ -437,7 +345,6 @@ describe("push() 服务端 ng 响应处理", () => {
     const refStore = createMemoryRefStore(new Map());
     const author = { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" };
     const emptyTree = store.write({ type: "tree", entries: [] });
-
     const commitHash = store.write({
       type: "commit" as const,
       tree: emptyTree,
@@ -449,36 +356,31 @@ describe("push() 服务端 ng 响应处理", () => {
     refStore.write("refs/heads/main", commitHash);
 
     const transport: ReceivePackTransport = {
-      getReceivePackRefs: async () => ({
-        capabilities: { "report-status": true },
+      advertise: async () => ({
+        capabilities: { "report-status": true, "side-band-64k": true },
         refs: [],
       }),
-      postReceivePack: async () => {
-        const data = Buffer.concat([
+      request: async () => {
+        const reportInner = Buffer.concat([
           encodePktLine("unpack ok\n"),
           encodePktLine("ok refs/heads/main\n"),
           encodePktLine("ng refs/heads/feature non-fast-forward\n"),
           encodeFlushPkt(),
         ]);
-        return { data, refUpdates: parseReceivePackResult(data), progress: ["remote: progress"] };
+        return Buffer.concat([sideBandFrame(2, "remote: progress"), sideBandFrame(1, reportInner)]);
       },
     };
-    const adv = await transport.getReceivePackRefs();
-
+    const adv = await transport.advertise();
     const pushPromise = push(store, refStore, transport, adv, {
       refSpecs: ["refs/heads/main:refs/heads/main", "refs/heads/main:refs/heads/feature"],
     });
-
     expect(pushPromise).rejects.toBeInstanceOf(PushError);
-
     try {
       await pushPromise;
       throw new Error("Expected push() to reject on partial failure");
     } catch (err) {
       expect(err).toBeInstanceOf(PushError);
-
       const details = err as PushError;
-
       expect(details.refUpdates).toBeDefined();
       expect(details.refUpdates).toHaveLength(2);
       expect(details.refUpdates?.find((u) => u.refName === "refs/heads/main")?.success).toBe(true);
@@ -493,32 +395,25 @@ describe("push() 服务端 ng 响应处理", () => {
   });
 });
 
-// ============================================================================
-// push() 通配符 refspec 无匹配行为
-// ============================================================================
-
 describe("push() 通配符 refspec 无匹配本地引用", () => {
   test("通配符 refspec 单独使用且无匹配时抛出 PushError", async () => {
     const store = createMemoryObjectStore();
     const refStore = createMemoryRefStore();
-
     let postCalled = false;
     const transport: ReceivePackTransport = {
-      getReceivePackRefs: async () => ({
+      advertise: async () => ({
         capabilities: { "report-status": true, "side-band-64k": true },
         refs: [],
       }),
-      postReceivePack: async () => {
+      request: async () => {
         postCalled = true;
         throw new Error("should not be called");
       },
     };
-    const adv = await transport.getReceivePackRefs();
-
+    const adv = await transport.advertise();
     const pushPromise = push(store, refStore, transport, adv, {
       refSpecs: ["refs/heads/nope/*:refs/heads/*"],
     });
-
     expect(pushPromise).rejects.toThrow(PushError);
     expect(pushPromise).rejects.toThrow(/does not match any local ref/);
     expect(postCalled).toBe(false);
@@ -536,61 +431,39 @@ describe("push() 通配符 refspec 无匹配本地引用", () => {
       committer: author,
       message: "test",
     });
-
     const refStore = createMemoryRefStore(new Map([["refs/heads/main", commitHash]]));
-
-    const transport: ReceivePackTransport = {
-      getReceivePackRefs: async () => ({
-        capabilities: { "report-status": true, "side-band-64k": true },
-        refs: [],
-      }),
-      postReceivePack: async () => {
-        const data = Buffer.concat([
-          encodePktLine("unpack ok\n"),
-          encodePktLine("ok refs/heads/main\n"),
-          encodeFlushPkt(),
-        ]);
-        return { data, refUpdates: parseReceivePackResult(data), progress: [] };
-      },
-    };
-    const adv = await transport.getReceivePackRefs();
-
+    const transport = mockTransport({ "report-status": true, "side-band-64k": true }, [], () =>
+      okReportStatus("refs/heads/main"),
+    );
+    const adv = await transport.advertise();
     const result = await push(store, refStore, transport, adv, {
       refSpecs: ["refs/heads/*:refs/heads/*"],
     });
-
     expect(result.refUpdates).toHaveLength(1);
     expect(result.refUpdates[0]!.success).toBe(true);
   });
 });
-
-// ============================================================================
-// push() delete-refs capability 校验
-// ============================================================================
 
 describe("push() delete-refs capability 校验", () => {
   test("服务端未广告 delete-refs 时删除操作抛出 PushError", async () => {
     const store = createMemoryObjectStore();
     const refStore = createMemoryRefStore();
     const remoteRefHash = sha1("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
-
     let postCalled = false;
     const transport: ReceivePackTransport = {
-      getReceivePackRefs: async () => ({
+      advertise: async () => ({
         capabilities: { "report-status": true, "side-band-64k": true },
         refs: [{ name: "refs/heads/feature", hash: remoteRefHash }],
       }),
-      postReceivePack: async () => {
+      request: async () => {
         postCalled = true;
         throw new Error("should not be called");
       },
     };
-    const adv = await transport.getReceivePackRefs();
-
+    const adv = await transport.advertise();
     const pushPromise = push(store, refStore, transport, adv, {
       refSpecs: [":refs/heads/feature"],
     });
-
     expect(pushPromise).rejects.toThrow(PushError);
     expect(pushPromise).rejects.toThrow(/delete-refs/);
     expect(postCalled).toBe(false);
@@ -600,27 +473,15 @@ describe("push() delete-refs capability 校验", () => {
     const store = createMemoryObjectStore();
     const refStore = createMemoryRefStore();
     const remoteRefHash = sha1("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
-
-    const transport: ReceivePackTransport = {
-      getReceivePackRefs: async () => ({
-        capabilities: { "report-status": true, "side-band-64k": true, "delete-refs": true },
-        refs: [{ name: "refs/heads/feature", hash: remoteRefHash }],
-      }),
-      postReceivePack: async () => {
-        const data = Buffer.concat([
-          encodePktLine("unpack ok\n"),
-          encodePktLine("ok refs/heads/feature\n"),
-          encodeFlushPkt(),
-        ]);
-        return { data, refUpdates: parseReceivePackResult(data), progress: [] };
-      },
-    };
-    const adv = await transport.getReceivePackRefs();
-
+    const transport = mockTransport(
+      { "report-status": true, "side-band-64k": true, "delete-refs": true },
+      [{ name: "refs/heads/feature", hash: remoteRefHash }],
+      () => okReportStatus("refs/heads/feature"),
+    );
+    const adv = await transport.advertise();
     const result = await push(store, refStore, transport, adv, {
       refSpecs: [":refs/heads/feature"],
     });
-
     expect(result.refUpdates).toHaveLength(1);
     expect(result.refUpdates[0]!.success).toBe(true);
   });
@@ -637,37 +498,18 @@ describe("push() delete-refs capability 校验", () => {
       committer: author,
       message: "test",
     });
-
     const refStore = createMemoryRefStore(new Map([["refs/heads/main", commitHash]]));
-
-    const transport: ReceivePackTransport = {
-      getReceivePackRefs: async () => ({
-        capabilities: { "report-status": true, "side-band-64k": true },
-        refs: [],
-      }),
-      postReceivePack: async () => {
-        const data = Buffer.concat([
-          encodePktLine("unpack ok\n"),
-          encodePktLine("ok refs/heads/main\n"),
-          encodeFlushPkt(),
-        ]);
-        return { data, refUpdates: parseReceivePackResult(data), progress: [] };
-      },
-    };
-    const adv = await transport.getReceivePackRefs();
-
+    const transport = mockTransport({ "report-status": true, "side-band-64k": true }, [], () =>
+      okReportStatus("refs/heads/main"),
+    );
+    const adv = await transport.advertise();
     const result = await push(store, refStore, transport, adv, {
       refSpecs: ["refs/heads/main:refs/heads/main"],
     });
-
     expect(result.refUpdates).toHaveLength(1);
     expect(result.refUpdates[0]!.success).toBe(true);
   });
 });
-
-// ============================================================================
-// push() 对缺失 unpack 的非法响应处理
-// ============================================================================
 
 describe("push() 对缺失 unpack 的非法响应处理", () => {
   test("receive-pack 响应缺少 unpack 行时 push() 应抛出 PushError", async () => {
@@ -685,26 +527,13 @@ describe("push() 对缺失 unpack 的非法响应处理", () => {
     });
     refStore.write("refs/heads/main", hash);
 
-    const transport: ReceivePackTransport = {
-      getReceivePackRefs: async () => ({
-        capabilities: { "report-status": true },
-        refs: [],
-      }),
-      postReceivePack: async () => {
-        // 非法响应：缺少 unpack ok，直接以 ok 开头
-        const data = Buffer.concat([encodePktLine("ok refs/heads/main\n"), encodeFlushPkt()]);
-        const refUpdates = parseReceivePackResult(data);
-        return { data, refUpdates, progress: [] };
-      },
-    };
-    const adv = await transport.getReceivePackRefs();
-
+    const transport = mockTransport({ "report-status": true }, [], () =>
+      Buffer.concat([encodePktLine("ok refs/heads/main\n"), encodeFlushPkt()]),
+    );
+    const adv = await transport.advertise();
     const pushPromise = push(store, refStore, transport, adv, {
       refSpecs: ["refs/heads/main:refs/heads/main"],
     });
-
-    // parseReceivePackResult 会抛出 ReceivePackResultError，
-    // push() 应将其转换为 PushError 传播给调用方
     expect(pushPromise).rejects.toThrow(PushError);
     expect(pushPromise).rejects.toThrow(/missing unpack/i);
   });

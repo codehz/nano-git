@@ -37,7 +37,7 @@ describe("ref advertisement", () => {
 
   test("解析 ref advertisement 并验证 refs", async () => {
     const transport = createUploadPackHttpClient(serverUrl);
-    const adv = await transport.getRefAdvertisement();
+    const adv = await transport.advertise();
 
     expect(adv.refs.length).toBeGreaterThanOrEqual(1);
 
@@ -60,7 +60,7 @@ describe("ref advertisement", () => {
     git(["push", repoDir, "HEAD:refs/heads/feature"], branchDir);
 
     const transport = createUploadPackHttpClient(serverUrl);
-    const adv = await transport.getRefAdvertisement();
+    const adv = await transport.advertise();
 
     const featureRef = adv.refs.find((r) => r.name === "refs/heads/feature");
     expect(featureRef).toBeDefined();
@@ -73,7 +73,7 @@ describe("ref advertisement", () => {
 
     await using emptyServer = startGitHttpBackendServer(tempDir, "/empty.git");
     const transport = createUploadPackHttpClient(emptyServer.url);
-    const adv = await transport.getRefAdvertisement();
+    const adv = await transport.advertise();
 
     expect(adv.refs).toHaveLength(0);
     expect(Object.keys(adv.capabilities).length).toBeGreaterThan(0);

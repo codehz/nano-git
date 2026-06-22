@@ -1,20 +1,18 @@
 /**
- * Smart HTTP 传输层 postReceivePack 错误传播测试
+ * Smart HTTP 传输层 receive-pack request 错误传播测试
  *
- * 验证 postReceivePack 在解析服务端响应时遇到非协议错误（如 PktLineError），
- * 能将错误向上传播，而非静默吞掉后返回空的 refUpdates。
+ * HTTP 层返回原始 body；协议解析由 decodeReceivePackResponse 完成。
  */
 
 import { describe, test, expect } from "bun:test";
 
+import { decodeReceivePackResponse } from "@/transport/receive-pack-response.ts";
 import { createReceivePackHttpClient } from "@/transport/smart-http.ts";
 
-describe("postReceivePack 错误传播", () => {
+describe("decodeReceivePackResponse 错误传播", () => {
   test("无效 pkt-line 响应应传播 PktLineError，而非静默返回空 refUpdates", async () => {
     const originalFetch = globalThis.fetch;
 
-    // Mock fetch 返回合法的 HTTP 响应，但 body 是无效的 pkt-line 数据
-    // parsePktLines 遇到 "inva" 不是合法十六进制长度前缀时会抛出 PktLineError
     globalThis.fetch = (async () => {
       return new Response(Buffer.from("invalid pkt-line data"), {
         status: 200,
@@ -25,9 +23,9 @@ describe("postReceivePack 错误传播", () => {
 
     const client = createReceivePackHttpClient("http://dummy.example.com/repo");
     const body = Buffer.from("test body");
+    const raw = await client.request(body);
 
-    // 应在返回前就抛出异常（PktLineError），而非静默返回空 refUpdates
-    expect(client.postReceivePack(body)).rejects.toThrow();
+    expect(() => decodeReceivePackResponse(raw)).toThrow();
 
     globalThis.fetch = originalFetch;
   });

@@ -3,7 +3,7 @@
  *
  * 通过 HTTP 服务将 push() 的全套编排逻辑接入 git http-backend：
  *   parseRefSpec → determinePushRefs → checkFastForward → collectReachable
- *   → createPackWriter → buildReceivePackRequest → postReceivePack → parseReceivePackResult
+ *   → createPackWriter → buildReceivePackRequest → transport.request → decodeReceivePackResponse
  *
  * 不依赖手工构造协议报文，完整验证高层 push() 函数的网络路径行为。
  */

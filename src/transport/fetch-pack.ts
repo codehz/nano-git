@@ -12,7 +12,7 @@
  * @example
  * ```ts
  * const transport = createUploadPackHttpClient(url);
- * const adv = await transport.getRefAdvertisement();
+ * const adv = await transport.advertise();
  * const result = await fetchPack(objects, transport, adv, {
  *   wants: [sha1("95d09f2b...")],
  * });
@@ -35,6 +35,7 @@ import {
   parseUploadPackNegotiationResponse,
 } from "./negotiate.ts";
 import { extractCapabilities, FETCH_CAPABILITIES } from "./transport-capabilities.ts";
+import { decodeUploadPackResponse } from "./upload-pack-response.ts";
 
 import type { SHA1, GitObject } from "../core/types.ts";
 import type { ObjectStore } from "../odb/types.ts";
@@ -99,7 +100,8 @@ async function negotiateAndFetchPackfile(
     packfile: Buffer;
   }> {
     const body = buildUploadPackNegotiationRequest(prefix, replayHaves, newHaves, done);
-    const { data, packfile } = await client.postUploadPack(body);
+    const raw = await client.request(body);
+    const { data, packfile } = decodeUploadPackResponse(raw);
     const response = parseUploadPackNegotiationResponse(data);
 
     mergeShallowInfo(state, response);
@@ -164,7 +166,7 @@ async function negotiateAndFetchPackfile(
  * @example
  * ```ts
  * const transport = createUploadPackHttpClient(url);
- * const adv = await transport.getRefAdvertisement();
+ * const adv = await transport.advertise();
  * const result = await fetchPack(objects, transport, adv, {
  *   wants: [sha1("95d09f2b...")],
  * });

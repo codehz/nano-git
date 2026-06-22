@@ -14,13 +14,13 @@
 
 // 核心类型
 export type {
+  GitServiceTransport,
   RemoteRef,
   RefAdvertisement,
   PushOptions,
   PushResult,
   PushRefUpdate,
   AdvertiseOptions,
-  RemoteAdvertisement,
   RefMappingRule,
   MatchedRefItem, // 完整匹配结果；注意 matchedItems ≠ refUpdates
   RefUpdatePlanItem,
@@ -96,6 +96,7 @@ export { planRefUpdates, validateExactRules, RefPlanError } from "./fetch-ref-pl
 
 // fetch-pack（对象同步，不写 ref）
 export { fetchPack, FetchPackError } from "./fetch-pack.ts";
+export { decodeUploadPackResponse, UploadPackResponseError } from "./upload-pack-response.ts";
 
 // 请求生成（negotiate）
 export { buildUploadPackRequest } from "./negotiate.ts";
@@ -132,6 +133,7 @@ export { processPushReport } from "./push-report.ts";
 export { buildReceivePackRequest } from "./receive-pack-request.ts";
 export type { ReceivePackCommand } from "./receive-pack-request.ts";
 export { parseReceivePackResult, ReceivePackResultError } from "./receive-pack-result.ts";
+export { decodeReceivePackResponse, ReceivePackResponseError } from "./receive-pack-response.ts";
 
 // ============================================================================
 // HTTP 传输
@@ -142,4 +144,4 @@ export {
   createReceivePackHttpClient,
   SmartHttpError,
 } from "./smart-http.ts";
-export type { UploadPackResult, ReceivePackHttpResult, SmartHttpAuth } from "./smart-http.ts";
+export type { SmartHttpAuth } from "./smart-http.ts";

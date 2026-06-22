@@ -37,7 +37,7 @@ describe("receive-pack ref advertisement", () => {
 
   test("解析 receive-pack ref advertisement", async () => {
     const transport = createReceivePackHttpClient(serverUrl);
-    const adv = await transport.getReceivePackRefs();
+    const adv = await transport.advertise();
 
     expect(adv.refs.length).toBeGreaterThanOrEqual(1);
 
@@ -60,7 +60,7 @@ describe("receive-pack ref advertisement", () => {
     git(["push", repoDir, "HEAD:refs/heads/feature"], branchDir);
 
     const transport = createReceivePackHttpClient(serverUrl);
-    const adv = await transport.getReceivePackRefs();
+    const adv = await transport.advertise();
 
     const featureRef = adv.refs.find((r) => r.name === "refs/heads/feature");
     expect(featureRef).toBeDefined();
@@ -74,7 +74,7 @@ describe("receive-pack ref advertisement", () => {
 
     await using emptyServer = startGitHttpBackendServer(tempDir, "/empty-receive.git");
     const transport = createReceivePackHttpClient(emptyServer.url);
-    const adv = await transport.getReceivePackRefs();
+    const adv = await transport.advertise();
 
     expect(adv.refs).toHaveLength(0);
     expect(adv.capabilities["report-status"]).toBe(true);

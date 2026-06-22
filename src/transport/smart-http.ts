@@ -1,32 +1,16 @@
 /**
  * Smart HTTP 传输层
  *
- * 基于 Bun 内置 fetch() 的 Git Smart HTTP 协议传输实现。
- * upload-pack 与 receive-pack 分别导出独立客户端工厂函数，
- * 互不依赖，各自只实现对应协议的方法。
+ * 基于 Bun 内置 fetch() 的 Git Smart HTTP 协议 HTTP 适配器。
+ * 只负责 URL、认证、状态码与 content-type 校验，返回解析后的广告或原始 RPC body。
  *
  * @see https://git-scm.com/docs/http-protocol
  */
 
 import { GitError } from "../core/errors.ts";
-import { parsePktLines, PktLineError } from "./pkt-line.ts";
-import { parseReceivePackResult } from "./receive-pack-result.ts";
 import { parseRefAdvertisement, RefAdvertisementError } from "./ref-advertisement.ts";
-import {
-  extractPackfile,
-  extractProgress,
-  extractRawPackfile,
-  extractSideBandFatal,
-  SideBandError,
-} from "./side-band.ts";
 
-import type { PktLineData } from "./pkt-line.ts";
-import type {
-  RefAdvertisement,
-  PushRefUpdate,
-  UploadPackTransport,
-  ReceivePackTransport,
-} from "./types.ts";
+import type { RefAdvertisement, GitServiceTransport } from "./types.ts";
 
 // ============================================================================
 // 错误类型
@@ -53,43 +37,38 @@ export class SmartHttpError extends GitError {
 // 类型定义
 // ============================================================================
 
-/** upload-pack 响应结果 */
-export interface UploadPackResult {
-  /** 原始响应体 */
-  data: Buffer;
-  /** 完整的 packfile 数据 */
-  packfile: Buffer;
-  /** 服务端推送的进度消息列表 */
-  progress: string[];
-}
-
-/** receive-pack HTTP 响应结果 */
-export interface ReceivePackHttpResult {
-  /** 原始响应体 */
-  data: Buffer;
-  /** report-status 更新列表 */
-  refUpdates: PushRefUpdate[];
-  /** 进度消息 */
-  progress: string[];
-}
-
 /**
  * Smart HTTP 认证配置
- *
- * 控制向远程请求注入的认证信息。
  */
 export interface SmartHttpAuth {
-  /** Bearer Token，设置为 `Authorization: Bearer <token>` */
-  token?: string;
-  /** 自定义请求头，与 token 合并（token 优先转为 Authorization 头） */
-  headers?: Record<string, string>;
+  readonly token?: string;
+  readonly headers?: Record<string, string>;
 }
 
-/**
- * 合并认证配置到请求头中
- *
- * token 优先转为 `Authorization: Bearer <token>`，然后合并自定义 headers。
- */
+interface GitHttpServiceConfig {
+  readonly advertiseService: "git-upload-pack" | "git-receive-pack";
+  readonly advertiseContentType: string;
+  readonly rpcPath: string;
+  readonly rpcRequestContentType: string;
+  readonly rpcResultContentType: string;
+}
+
+const UPLOAD_PACK_HTTP: GitHttpServiceConfig = {
+  advertiseService: "git-upload-pack",
+  advertiseContentType: "application/x-git-upload-pack-advertisement",
+  rpcPath: "/git-upload-pack",
+  rpcRequestContentType: "application/x-git-upload-pack-request",
+  rpcResultContentType: "application/x-git-upload-pack-result",
+};
+
+const RECEIVE_PACK_HTTP: GitHttpServiceConfig = {
+  advertiseService: "git-receive-pack",
+  advertiseContentType: "application/x-git-receive-pack-advertisement",
+  rpcPath: "/git-receive-pack",
+  rpcRequestContentType: "application/x-git-receive-pack-request",
+  rpcResultContentType: "application/x-git-receive-pack-result",
+};
+
 function applyAuthHeaders(
   base: Record<string, string>,
   auth?: SmartHttpAuth,
@@ -103,40 +82,38 @@ function applyAuthHeaders(
   return { ...base, ...result };
 }
 
-// ============================================================================
-// Upload-pack HTTP 客户端
-// ============================================================================
+async function readResponseBody(response: Response, context: string): Promise<Buffer> {
+  try {
+    return Buffer.from(await response.arrayBuffer());
+  } catch (err) {
+    throw new SmartHttpError(
+      `Failed to read response body (${context}): ${(err as Error).message}`,
+    );
+  }
+}
 
-/**
- * 创建 upload-pack HTTP 客户端
- *
- * 只实现 git-upload-pack 协议的方法，不包含 receive-pack 相关。
- *
- * @param baseUrl - 远程仓库的 base URL（如 "https://github.com/user/repo"）
- * @param auth - 可选认证配置（token / 自定义 headers）
- * @returns UploadPackTransport 实例
- *
- * @example
- * ```ts
- * const client = createUploadPackHttpClient("https://github.com/user/repo");
- * const adv = await client.getRefAdvertisement();
- * const { packfile } = await client.postUploadPack(body);
- * ```
- */
-export function createUploadPackHttpClient(
+function assertContentType(actual: string, expected: string, context: string): void {
+  if (!actual.includes(expected)) {
+    throw new SmartHttpError(
+      `Unexpected content type: ${actual} (expected ${expected}) (${context})`,
+    );
+  }
+}
+
+function createGitServiceHttpClient(
   baseUrl: string,
-  auth?: SmartHttpAuth,
-): UploadPackTransport {
+  auth: SmartHttpAuth | undefined,
+  config: GitHttpServiceConfig,
+): GitServiceTransport {
   const normalizedUrl = baseUrl.replace(/\/+$/, "");
 
   return {
-    async getRefAdvertisement(): Promise<RefAdvertisement> {
-      const url = `${normalizedUrl}/info/refs?service=git-upload-pack`;
+    async advertise(): Promise<RefAdvertisement> {
+      const url = `${normalizedUrl}/info/refs?service=${config.advertiseService}`;
 
       let response: Response;
       try {
-        const headers = applyAuthHeaders({}, auth);
-        response = await fetch(url, { headers });
+        response = await fetch(url, { headers: applyAuthHeaders({}, auth) });
       } catch (err) {
         throw new SmartHttpError(
           `Failed to fetch ref advertisement from ${url}: ${(err as Error).message}`,
@@ -148,22 +125,12 @@ export function createUploadPackHttpClient(
       }
 
       const contentType = response.headers.get("content-type") ?? "";
-      const expectedType = "application/x-git-upload-pack-advertisement";
-      if (!contentType.includes(expectedType)) {
-        throw new SmartHttpError(
-          `Unexpected content type: ${contentType} (expected ${expectedType})`,
-        );
-      }
+      assertContentType(contentType, config.advertiseContentType, url);
 
-      let data: Buffer;
-      try {
-        data = Buffer.from(await response.arrayBuffer());
-      } catch (err) {
-        throw new SmartHttpError(`Failed to read response body: ${(err as Error).message}`);
-      }
+      const data = await readResponseBody(response, url);
 
       try {
-        return parseRefAdvertisement(data, "git-upload-pack");
+        return parseRefAdvertisement(data, config.advertiseService);
       } catch (err) {
         if (err instanceof RefAdvertisementError) {
           throw err;
@@ -172,240 +139,62 @@ export function createUploadPackHttpClient(
       }
     },
 
-    async postUploadPack(body: Buffer): Promise<{
-      data: Buffer;
-      packfile: Buffer;
-      progress: string[];
-    }> {
-      const url = `${normalizedUrl}/git-upload-pack`;
+    async request(body: Buffer): Promise<Buffer> {
+      const url = `${normalizedUrl}${config.rpcPath}`;
 
       let response: Response;
       try {
-        const headers = applyAuthHeaders(
-          {
-            "Content-Type": "application/x-git-upload-pack-request",
-          },
-          auth,
-        );
         response = await fetch(url, {
           method: "POST",
-          headers,
+          headers: applyAuthHeaders({ "Content-Type": config.rpcRequestContentType }, auth),
           body,
         });
       } catch (err) {
-        throw new SmartHttpError(
-          `Failed to POST upload-pack request to ${url}: ${(err as Error).message}`,
-        );
+        throw new SmartHttpError(`Failed to POST RPC request to ${url}: ${(err as Error).message}`);
       }
 
       if (!response.ok) {
-        throw new SmartHttpError(`upload-pack request to ${url} failed`, response.status);
+        throw new SmartHttpError(`RPC request to ${url} failed`, response.status);
       }
 
       const contentType = response.headers.get("content-type") ?? "";
-      const expectedType = "application/x-git-upload-pack-result";
-      if (!contentType.includes(expectedType)) {
-        throw new SmartHttpError(
-          `Unexpected content type: ${contentType} (expected ${expectedType})`,
-        );
-      }
+      assertContentType(contentType, config.rpcResultContentType, url);
 
-      let data: Buffer;
-      try {
-        data = Buffer.from(await response.arrayBuffer());
-      } catch (err) {
-        throw new SmartHttpError(`Failed to read response body: ${(err as Error).message}`);
-      }
-
-      // 响应可能是 side-band 编码或纯 pkt-line
-      const fatalMsg = extractSideBandFatal(data);
-      if (fatalMsg !== null) {
-        throw new SmartHttpError(`Server reported fatal error: ${fatalMsg}`);
-      }
-
-      let packfile: Buffer;
-      let progress: string[];
-
-      try {
-        packfile = extractPackfile(data);
-        progress = extractProgress(data);
-      } catch (err) {
-        if (err instanceof PktLineError && err.message.includes("Invalid pkt-line length")) {
-          try {
-            packfile = extractRawPackfile(data);
-          } catch {
-            packfile = Buffer.alloc(0);
-          }
-          progress = [];
-        } else if (err instanceof SideBandError) {
-          packfile = Buffer.alloc(0);
-          progress = [];
-        } else {
-          throw new SmartHttpError(
-            `Failed to parse upload-pack response: ${(err as Error).message}`,
-          );
-        }
-      }
-
-      return { data, packfile, progress };
+      return readResponseBody(response, url);
     },
   };
 }
 
-// ============================================================================
-// Receive-pack HTTP 客户端
-// ============================================================================
+/**
+ * 创建 upload-pack HTTP 客户端
+ *
+ * @example
+ * ```ts
+ * const client = createUploadPackHttpClient("https://github.com/user/repo");
+ * const adv = await client.advertise();
+ * const raw = await client.request(body);
+ * ```
+ */
+export function createUploadPackHttpClient(
+  baseUrl: string,
+  auth?: SmartHttpAuth,
+): GitServiceTransport {
+  return createGitServiceHttpClient(baseUrl, auth, UPLOAD_PACK_HTTP);
+}
 
 /**
  * 创建 receive-pack HTTP 客户端
  *
- * 只实现 git-receive-pack 协议的方法，不包含 upload-pack 相关。
- *
- * @param baseUrl - 远程仓库的 base URL（如 "https://github.com/user/repo"）
- * @param auth - 可选认证配置（token / 自定义 headers）
- * @returns ReceivePackTransport 实例
- *
  * @example
  * ```ts
  * const client = createReceivePackHttpClient("https://github.com/user/repo");
- * const adv = await client.getReceivePackRefs();
- * const result = await client.postReceivePack(body);
+ * const adv = await client.advertise();
+ * const raw = await client.request(body);
  * ```
  */
 export function createReceivePackHttpClient(
   baseUrl: string,
   auth?: SmartHttpAuth,
-): ReceivePackTransport {
-  const normalizedUrl = baseUrl.replace(/\/+$/, "");
-
-  return {
-    async getReceivePackRefs(): Promise<RefAdvertisement> {
-      const url = `${normalizedUrl}/info/refs?service=git-receive-pack`;
-
-      let response: Response;
-      try {
-        const headers = applyAuthHeaders({}, auth);
-        response = await fetch(url, { headers });
-      } catch (err) {
-        throw new SmartHttpError(
-          `Failed to fetch receive-pack refs from ${url}: ${(err as Error).message}`,
-        );
-      }
-
-      if (!response.ok) {
-        throw new SmartHttpError(`Failed to fetch receive-pack refs from ${url}`, response.status);
-      }
-
-      const contentType = response.headers.get("content-type") ?? "";
-      const expectedType = "application/x-git-receive-pack-advertisement";
-      if (!contentType.includes(expectedType)) {
-        throw new SmartHttpError(
-          `Unexpected content type: ${contentType} (expected ${expectedType})`,
-        );
-      }
-
-      let data: Buffer;
-      try {
-        data = Buffer.from(await response.arrayBuffer());
-      } catch (err) {
-        throw new SmartHttpError(`Failed to read response body: ${(err as Error).message}`);
-      }
-
-      try {
-        return parseRefAdvertisement(data, "git-receive-pack");
-      } catch (err) {
-        if (err instanceof RefAdvertisementError) {
-          throw err;
-        }
-        throw new SmartHttpError(`Failed to parse receive-pack refs: ${(err as Error).message}`);
-      }
-    },
-
-    async postReceivePack(body: Buffer): Promise<ReceivePackHttpResult> {
-      const url = `${normalizedUrl}/git-receive-pack`;
-
-      let response: Response;
-      try {
-        const headers = applyAuthHeaders(
-          {
-            "Content-Type": "application/x-git-receive-pack-request",
-          },
-          auth,
-        );
-        response = await fetch(url, {
-          method: "POST",
-          headers,
-          body,
-        });
-      } catch (err) {
-        throw new SmartHttpError(
-          `Failed to POST receive-pack request to ${url}: ${(err as Error).message}`,
-        );
-      }
-
-      if (!response.ok) {
-        throw new SmartHttpError(`receive-pack request to ${url} failed`, response.status);
-      }
-
-      const contentType = response.headers.get("content-type") ?? "";
-      const expectedType = "application/x-git-receive-pack-result";
-      if (!contentType.includes(expectedType)) {
-        throw new SmartHttpError(
-          `Unexpected content type: ${contentType} (expected ${expectedType})`,
-        );
-      }
-
-      let data: Buffer;
-      try {
-        data = Buffer.from(await response.arrayBuffer());
-      } catch (err) {
-        throw new SmartHttpError(`Failed to read response body: ${(err as Error).message}`);
-      }
-
-      // 判断响应是否为 side-band 编码
-      let progress: string[] = [];
-      let refUpdates: PushRefUpdate[] = [];
-
-      const pktLines = parsePktLines(data);
-
-      if (pktLines.length > 0 && pktLines[0]!.type === "data") {
-        const firstPayload = (pktLines[0] as PktLineData).payload;
-        if (
-          firstPayload.length > 0 &&
-          (firstPayload[0] === 0x01 || firstPayload[0] === 0x02 || firstPayload[0] === 0x03)
-        ) {
-          // Side-band 编码
-          const reportStatusChunks: Buffer[] = [];
-
-          for (const line of pktLines) {
-            if (line.type !== "data") continue;
-            const payload = line.payload;
-            if (payload.length < 2) continue;
-
-            const channel = payload[0]!;
-            const frameData = payload.subarray(1);
-
-            if (channel === 0x01) {
-              reportStatusChunks.push(frameData);
-            } else if (channel === 0x02) {
-              progress.push(frameData.toString("utf-8").trimEnd());
-            } else if (channel === 0x03) {
-              throw new SmartHttpError(
-                `Server reported error: ${frameData.toString("utf-8").trimEnd()}`,
-              );
-            }
-          }
-
-          if (reportStatusChunks.length > 0) {
-            const reconstructed = Buffer.concat(reportStatusChunks);
-            refUpdates = parseReceivePackResult(reconstructed);
-          }
-        } else {
-          refUpdates = parseReceivePackResult(data);
-        }
-      }
-
-      return { data, refUpdates, progress };
-    },
-  };
+): GitServiceTransport {
+  return createGitServiceHttpClient(baseUrl, auth, RECEIVE_PACK_HTTP);
 }

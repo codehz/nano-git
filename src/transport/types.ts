@@ -2,8 +2,8 @@
  * Smart HTTP 传输层类型定义
  *
  * 定义了远程 Git 仓库交互所需的核心类型。
- * UploadPackTransport 与 ReceivePackTransport 各自独立，
- * fetch 和 push 不再共享同一个胖接口。
+ * UploadPackTransport 与 ReceivePackTransport 同构：只负责广告与 RPC 原始响应，
+ * 协议语义解析在 transport/protocol 层完成。
  */
 
 import type { SHA1 } from "../core/types.ts";
@@ -13,38 +13,26 @@ import type { SHA1 } from "../core/types.ts";
 // ============================================================================
 
 /**
- * Upload-pack 传输接口
+ * Git 服务传输同构接口
  *
- * 定义 fetch 操作所需的远程交互原语。
- * 只包含 upload-pack 协议的方法，不包含 receive-pack 相关。
+ * 只负责获取 ref 广告与发送 RPC body 并返回原始响应体。
  */
-export interface UploadPackTransport {
-  /** 获取 upload-pack ref 广告 */
-  getRefAdvertisement(): Promise<RefAdvertisement>;
-  /** 发送 upload-pack 请求 */
-  postUploadPack(body: Buffer): Promise<{
-    data: Buffer;
-    packfile: Buffer;
-    progress: string[];
-  }>;
+export interface GitServiceTransport {
+  /** 获取 ref 广告（已解析为 RefAdvertisement，含 defaultBranch） */
+  advertise(): Promise<RefAdvertisement>;
+  /** 发送协议 RPC 请求，返回原始响应 body */
+  request(body: Buffer): Promise<Buffer>;
 }
 
 /**
- * Receive-pack 传输接口
- *
- * 定义 push 操作所需的远程交互原语。
- * 只包含 receive-pack 协议的方法，不包含 upload-pack 相关。
+ * Upload-pack 传输接口（fetch）
  */
-export interface ReceivePackTransport {
-  /** 获取 receive-pack ref 广告 */
-  getReceivePackRefs(): Promise<RefAdvertisement>;
-  /** 发送 receive-pack 请求 */
-  postReceivePack(body: Buffer): Promise<{
-    data: Buffer;
-    refUpdates: PushRefUpdate[];
-    progress: string[];
-  }>;
-}
+export type UploadPackTransport = GitServiceTransport;
+
+/**
+ * Receive-pack 传输接口（push）
+ */
+export type ReceivePackTransport = GitServiceTransport;
 
 /**
  * 远程引用
@@ -91,6 +79,11 @@ export interface RefAdvertisement {
   capabilities: Record<string, string | true>;
   /** 所有广告的引用列表 */
   refs: RemoteRef[];
+  /**
+   * 远端默认分支（如 refs/heads/main）
+   * 由 parseRefAdvertisement 统一解析，调用方不得再读 capabilities.symref
+   */
+  defaultBranch?: string;
 }
 
 // ============================================================================
@@ -103,17 +96,6 @@ export interface RefAdvertisement {
 export interface AdvertiseOptions {
   readonly token?: string;
   readonly headers?: Record<string, string>;
-}
-
-/**
- * 标准化远端广告
- *
- * `defaultBranch` 在此统一提取，后续流程不再解析原始 `symref`。
- */
-export interface RemoteAdvertisement {
-  readonly capabilities: Record<string, string | true>;
-  readonly refs: RemoteRef[];
-  readonly defaultBranch?: string;
 }
 
 // ============================================================================

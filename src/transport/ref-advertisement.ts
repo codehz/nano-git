@@ -180,7 +180,9 @@ export function parseRefAdvertisement(
   // 从 capabilities 中提取 symref=HEAD:<target>，填充到 HEAD ref 的 symrefTarget
   applySymrefToRefs(capabilities, refs);
 
-  return { capabilities, refs };
+  const defaultBranch = computeDefaultBranch(capabilities, refs);
+
+  return { capabilities, refs, defaultBranch };
 }
 
 // ============================================================================
@@ -281,4 +283,27 @@ function applySymrefToRefs(capabilities: Capabilities, refs: RemoteRef[]): void 
       return;
     }
   }
+}
+
+/**
+ * 从广告数据推断默认分支（唯一解析规则）
+ */
+function computeDefaultBranch(capabilities: Capabilities, refs: RemoteRef[]): string | undefined {
+  const symref = capabilities["symref"];
+  if (typeof symref === "string") {
+    const colonIndex = symref.indexOf(":");
+    if (colonIndex !== -1) {
+      const headName = symref.substring(0, colonIndex);
+      if (headName === "HEAD") {
+        return symref.substring(colonIndex + 1);
+      }
+    }
+  }
+
+  const heads = refs.filter((r) => r.name.startsWith("refs/heads/"));
+  if (heads.length === 1) {
+    return heads[0]!.name;
+  }
+
+  return undefined;
 }

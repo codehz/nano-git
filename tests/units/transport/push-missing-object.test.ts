@@ -15,14 +15,12 @@ import { collectReachable } from "@/transport/object-graph.ts";
 import { encodePktLine, encodeFlushPkt } from "@/transport/pkt-line.ts";
 import { PushError } from "@/transport/push-error.ts";
 import { push } from "@/transport/push.ts";
-import { parseReceivePackResult } from "@/transport/receive-pack-result.ts";
 
 import type { ReceivePackTransport } from "@/transport/types.ts";
 
 // ============================================================================
 // 辅助函数
 // ============================================================================
-
 /**
  * 计算 blob "content B" 的哈希（用 node:crypto 而非依赖 hashObject，
  * 避免导入循环或内部 API 依赖）
@@ -96,7 +94,6 @@ function buildMissingBlobStore() {
 // ============================================================================
 // collectReachable — throw 模式测试
 // ============================================================================
-
 describe('collectReachable(missing="throw")', () => {
   test("所有对象完整时正常收集", () => {
     const { store, commitHash } = buildCompleteStore();
@@ -155,7 +152,6 @@ describe('collectReachable(missing="throw")', () => {
 // ============================================================================
 // collectReachable — skip 模式（默认）测试
 // ============================================================================
-
 describe('collectReachable(missing="skip", 默认)', () => {
   test("所有对象完整时正常收集（与 throw 模式一致）", () => {
     const { store, commitHash } = buildCompleteStore();
@@ -245,7 +241,6 @@ describe('collectReachable(missing="skip", 默认)', () => {
 // ============================================================================
 // collectReachable — skip-commit-parents（本地 push 专用）测试
 // ============================================================================
-
 describe('collectReachable(missing="skip-commit-parents")', () => {
   test("树条目引用的 blob 缺失时抛出错误", () => {
     const { store, commitHash } = buildMissingBlobStore();
@@ -329,7 +324,6 @@ describe('collectReachable(missing="skip-commit-parents")', () => {
 // ============================================================================
 // push() 本地损坏检测（mock transport）
 // ============================================================================
-
 function createPushMockTransport(
   remoteRefs: Array<{ name: string; hash: SHA1 }>,
   onPost?: (body: Buffer) => void,
@@ -341,14 +335,13 @@ function createPushMockTransport(
   ]);
 
   return {
-    getReceivePackRefs: async () => ({
+    advertise: async () => ({
       capabilities: { "report-status": true, "side-band-64k": true },
       refs: remoteRefs,
     }),
-    postReceivePack: async (body: Buffer) => {
+    request: async (body: Buffer) => {
       onPost?.(body);
-      const refUpdates = parseReceivePackResult(reportStatus);
-      return { data: reportStatus, refUpdates, progress: [] };
+      return reportStatus;
     },
   };
 }
@@ -362,7 +355,7 @@ describe("push() 本地对象缺失预检", () => {
     const transport = createPushMockTransport([], () => {
       postCalled = true;
     });
-    const adv = await transport.getReceivePackRefs();
+    const adv = await transport.advertise();
 
     const pushPromise = push(store, refStore, transport, adv, {
       refSpecs: ["refs/heads/corrupt:refs/heads/corrupt"],
@@ -405,7 +398,7 @@ describe("push() 本地对象缺失预检", () => {
     const transport = createPushMockTransport([{ name: "refs/heads/main", hash: bHash }], () => {
       postCalled = true;
     });
-    const adv = await transport.getReceivePackRefs();
+    const adv = await transport.advertise();
 
     // 传入 shallowBoundaries 告知 push 层 bHash 是已知 shallow 边界
     const result = await push(store, refStore, transport, adv, {
@@ -424,7 +417,7 @@ describe("push() 本地对象缺失预检", () => {
     const transport = createPushMockTransport([], () => {
       postCalled = true;
     });
-    const adv = await transport.getReceivePackRefs();
+    const adv = await transport.advertise();
 
     // 传入一个无关的 shallowBoundary，不应放宽 tree/blob 缺失检查
     const pushPromise = push(store, refStore, transport, adv, {

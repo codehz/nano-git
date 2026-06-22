@@ -1,7 +1,7 @@
 /**
  * Upload-Pack 直接调用测试
  *
- * 验证直接调用 postUploadPack 接口能正确获取 packfile。
+ * 验证 transport.request + decodeUploadPackResponse 能正确获取 packfile。
  */
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
@@ -10,6 +10,7 @@ import { createTempDir, cleanupDir } from "../helpers.ts";
 import { createServerRepo } from "./helpers.ts";
 import { startGitHttpBackendServer } from "./http-server.ts";
 import { createUploadPackHttpClient } from "@/transport/smart-http.ts";
+import { decodeUploadPackResponse } from "@/transport/upload-pack-response.ts";
 
 describe("upload-pack 直接调用", () => {
   let tempDir: string;
@@ -28,9 +29,9 @@ describe("upload-pack 直接调用", () => {
     cleanupDir(tempDir);
   });
 
-  test("postUploadPack 返回正确 packfile", async () => {
+  test("request 返回的 body 解码后含正确 packfile", async () => {
     const transport = createUploadPackHttpClient(serverUrl);
-    const adv = await transport.getRefAdvertisement();
+    const adv = await transport.advertise();
     const mainRef = adv.refs.find((r) => r.name === "refs/heads/main");
     expect(mainRef).toBeDefined();
 
@@ -38,7 +39,8 @@ describe("upload-pack 直接调用", () => {
     const caps = ["multi_ack", "side-band-64k", "ofs-delta"];
     const body = buildUploadPackRequest([mainRef!.hash], [], caps);
 
-    const result = await transport.postUploadPack(body);
+    const raw = await transport.request(body);
+    const result = decodeUploadPackResponse(raw);
     expect(result.packfile.length).toBeGreaterThan(0);
     expect(result.packfile.subarray(0, 4).toString("utf-8")).toBe("PACK");
   });

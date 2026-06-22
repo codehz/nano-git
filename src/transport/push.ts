@@ -16,7 +16,7 @@
  * import { push } from "./transport/push.ts";
  *
  * const transport = createReceivePackHttpClient("https://github.com/user/repo");
- * const adv = await transport.getReceivePackRefs();
+ * const adv = await transport.advertise();
  * const result = await push(store, refs, transport, adv, { refSpecs: [...] });
  * console.log(`Pushed ${result.objectCount} objects`);
  * ```
@@ -26,25 +26,22 @@ import { createPackWriter } from "../odb/pack/pack-writer.ts";
 import { PushError } from "./push-error.ts";
 import { mergePushBoundaries, computeObjectsToSend } from "./push-pack-plan.ts";
 import { checkFastForward } from "./push-policy.ts";
-import { resolveDefaultRefSpec, determinePushRefs } from "./push-ref-plan.ts";
+import { determinePushRefs } from "./push-ref-plan.ts";
 import { processPushReport } from "./push-report.ts";
-import { buildReceivePackRequest } from "./receive-pack-request.ts";
+import {
+  buildPushCommands,
+  buildPushRequestBody,
+  resolvePushParsedSpecs,
+  validatePushCapabilities,
+} from "./push-request-plan.ts";
+import { decodeReceivePackResponse } from "./receive-pack-response.ts";
 import { ReceivePackResultError } from "./receive-pack-result.ts";
 import { getLocalRefs, remoteRefsToMap } from "./ref-collection.ts";
-import { parseRefSpec } from "./refspec.ts";
-import { extractCapabilities, PUSH_CAPABILITIES } from "./transport-capabilities.ts";
 
 import type { SHA1 } from "../core/types.ts";
 import type { ObjectStore } from "../odb/types.ts";
 import type { RefStore } from "../refs/types.ts";
-import type { ParsedRefSpec } from "./refspec.ts";
-import type {
-  ReceivePackTransport,
-  RefAdvertisement,
-  PushOptions,
-  PushResult,
-  PushRefUpdate,
-} from "./types.ts";
+import type { ReceivePackTransport, RefAdvertisement, PushOptions, PushResult } from "./types.ts";
 
 // ============================================================================
 // Re-export 子模块类型
@@ -54,13 +51,6 @@ export { PushError } from "./push-error.ts";
 export { checkFastForward } from "./push-policy.ts";
 export { determinePushRefs } from "./push-ref-plan.ts";
 export type { PushRefItem } from "./push-ref-plan.ts";
-
-// ============================================================================
-// 常量
-// ============================================================================
-
-/** 零哈希（表示新建引用或删除引用） */
-const ZERO_HASH = "0000000000000000000000000000000000000000";
 
 // ============================================================================
 // Push 编排
@@ -82,7 +72,7 @@ const ZERO_HASH = "0000000000000000000000000000000000000000";
  * @example
  * ```ts
  * const transport = createReceivePackHttpClient("https://github.com/user/repo");
- * const adv = await transport.getReceivePackRefs();
+ * const adv = await transport.advertise();
  * const result = await push(store, refs, transport, adv, { refSpecs: [...] });
  * console.log(`Pushed ${result.objectCount} objects`);
  * ```
@@ -94,14 +84,8 @@ export async function push(
   advertisement: RefAdvertisement,
   options?: PushOptions,
 ): Promise<PushResult> {
-  // 1. 解析 refspec（未提供时按 HEAD 指向的分支动态生成）
-  const refSpecStr = options?.refSpecs ?? [resolveDefaultRefSpec(refs)];
-  const parsedSpecs = refSpecStr.map(parseRefSpec);
-
-  // 对 force 选项的处理：如果 PushOptions.force 为 true，将所有 force 标志设置为 true
-  const effectiveSpecs: ParsedRefSpec[] = options?.force
-    ? parsedSpecs.map((s) => ({ ...s, force: true }))
-    : parsedSpecs;
+  // 1. 解析 refspec
+  const effectiveSpecs = resolvePushParsedSpecs(refs, options);
 
   // 2. 获取 shallow 边界集合
   const shallowSet: Set<SHA1> | undefined = options?.shallowBoundaries
@@ -140,41 +124,19 @@ export async function push(
   }
   const packfile = packWriter.build();
 
-  // 8. 确定可用能力 & 前置校验
-  const caps = extractCapabilities(advertisement.capabilities, PUSH_CAPABILITIES);
+  // 8. 能力校验、命令与请求 body
+  const caps = validatePushCapabilities(advertisement, pushRefs);
+  const commands = buildPushCommands(pushRefs);
+  const body = buildPushRequestBody(commands, packfile, caps);
 
-  if (!caps.includes("report-status")) {
-    throw new PushError(
-      "Remote server does not advertise 'report-status' capability. " +
-        "This client requires report-status to reliably determine push results. " +
-        "Please use a Git server that supports report-status.",
-    );
-  }
-
-  const hasDeleteCommand = pushRefs.some((r) => r.localHash === null);
-  if (hasDeleteCommand && !caps.includes("delete-refs")) {
-    throw new PushError(
-      "Remote server does not advertise 'delete-refs' capability, " +
-        "but the push includes a delete ref operation.",
-    );
-  }
-
-  // 9. 构造 receive-pack 命令 & 请求
-  const commands = pushRefs.map((r) => ({
-    oldHash: r.remoteHash ?? (ZERO_HASH as SHA1),
-    newHash: r.localHash ?? (ZERO_HASH as SHA1),
-    refName: r.remoteRef,
-  }));
-
-  const body = buildReceivePackRequest(commands, packfile, caps);
-
-  // 10. 发送请求
+  // 9. 发送请求并解码响应
   let progress: string[];
-  let refUpdates: PushRefUpdate[];
+  let refUpdates: import("./types.ts").PushRefUpdate[];
   try {
-    const result = await transport.postReceivePack(body);
-    progress = result.progress;
-    refUpdates = result.refUpdates;
+    const raw = await transport.request(body);
+    const decoded = decodeReceivePackResponse(raw);
+    progress = decoded.progress;
+    refUpdates = decoded.refUpdates;
   } catch (err: unknown) {
     if (err instanceof ReceivePackResultError) {
       throw new PushError(`Remote server rejected the push: ${err.message}`);
@@ -182,7 +144,7 @@ export async function push(
     throw err;
   }
 
-  // 11. 校验并富化服务端报告
+  // 10. 校验并富化服务端报告
   const report = processPushReport(commands, refUpdates, pushRefs, progress);
 
   return {

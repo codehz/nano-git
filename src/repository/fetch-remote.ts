@@ -27,7 +27,12 @@ import { applyRefUpdates } from "../transport/update-refs.ts";
 import type { SHA1 } from "../core/types.ts";
 import type { UploadPackTransport, RefAdvertisement, MatchedRefItem } from "../transport/types.ts";
 import type { RepositoryBackend } from "./backend/types.ts";
-import type { RemoteConfig, FetchRemoteOptions, FetchRemoteResult } from "./remote-types.ts";
+import type {
+  RemoteConfig,
+  FetchRemoteOptions,
+  FetchUrlOptions,
+  FetchRemoteResult,
+} from "./remote-types.ts";
 
 // ============================================================================
 // 主入口
@@ -77,7 +82,7 @@ export async function runFetchRemote(
   const transport = createTransport(remote.url, options);
 
   // 2. 获取远端广告（若已由调用方预获取则复用）
-  const adv: RefAdvertisement = preAdvertised ?? (await transport.getRefAdvertisement());
+  const adv: RefAdvertisement = preAdvertised ?? (await transport.advertise());
 
   // 3. 校验非通配符规则
   validateExactRules(adv.refs, remote.fetchRules);
@@ -124,7 +129,7 @@ export async function runFetchRemote(
     packResult,
     transportUpdatedRefs,
     transportRejectedRefs,
-    extractDefaultBranch(adv),
+    adv.defaultBranch,
   );
 }
 
@@ -198,30 +203,6 @@ export function selectHaveTipsForRemote(
 // ============================================================================
 
 /**
- * 从 RefAdvertisement 中提取 defaultBranch
- */
-function extractDefaultBranch(adv: RefAdvertisement): string | undefined {
-  let defaultBranch: string | undefined;
-  const symref = adv.capabilities["symref"];
-  if (typeof symref === "string") {
-    const colonIndex = symref.indexOf(":");
-    if (colonIndex !== -1) {
-      const headName = symref.substring(0, colonIndex);
-      if (headName === "HEAD") {
-        defaultBranch = symref.substring(colonIndex + 1);
-      }
-    }
-  }
-  if (defaultBranch === undefined) {
-    const heads = adv.refs.filter((r) => r.name.startsWith("refs/heads/"));
-    if (heads.length === 1) {
-      defaultBranch = heads[0]!.name;
-    }
-  }
-  return defaultBranch;
-}
-
-/**
  * 将原始数据转换为 repository 自有类型
  */
 function convertToFetchRemoteResult(
@@ -239,4 +220,28 @@ function convertToFetchRemoteResult(
     })),
     defaultBranch,
   };
+}
+
+/** 无 remote 配置时 fetch 的默认映射规则 */
+export const DEFAULT_URL_FETCH_RULES: RemoteConfig["fetchRules"] = [
+  { source: "+refs/heads/*", target: "refs/remotes/origin/*" },
+];
+
+/**
+ * 按 URL fetch（不依赖 remote 配置）
+ */
+export async function runFetchToUrl(
+  backend: RepositoryBackend,
+  url: string,
+  options?: FetchUrlOptions,
+  preAdvertised?: RefAdvertisement,
+  transportFactory?: (url: string, options?: FetchRemoteOptions) => UploadPackTransport,
+): Promise<FetchRemoteResult> {
+  const syntheticRemote: RemoteConfig = {
+    name: "origin",
+    url,
+    fetchRules: options?.fetchRules ? [...options.fetchRules] : [...DEFAULT_URL_FETCH_RULES],
+  };
+  const { fetchRules: _ignored, ...fetchOptions } = options ?? {};
+  return runFetchRemote(backend, syntheticRemote, fetchOptions, preAdvertised, transportFactory);
 }

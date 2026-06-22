@@ -66,6 +66,14 @@ export interface FetchRemoteOptions {
 }
 
 /**
+ * 按 URL fetch 的选项（在 FetchRemoteOptions 基础上可覆盖 ref 映射规则）
+ */
+export interface FetchUrlOptions extends FetchRemoteOptions {
+  /** 不指定时使用 `+refs/heads/*:refs/remotes/origin/*` */
+  readonly fetchRules?: readonly RefMappingRule[];
+}
+
+/**
  * Fetch remote 操作结果（repository 自有语义）
  *
  * 不直接暴露 transport 层的 FetchPackResult / ApplyRefUpdatesResult，
@@ -200,6 +208,13 @@ export interface RepositoryRemoteOperations {
    * 不创建本地分支，不修改 HEAD。
    */
   fetchRemote(name: string, options?: FetchRemoteOptions): Promise<FetchRemoteResult>;
+
+  /**
+   * 从远程 URL 拉取（不依赖 remote 配置）
+   *
+   * 等价于 `git fetch <url>`。
+   */
+  fetch(url: string, options?: FetchUrlOptions): Promise<FetchRemoteResult>;
 
   /**
    * 从 remote 拉取并创建本地分支和 HEAD

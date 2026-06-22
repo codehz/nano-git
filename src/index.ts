@@ -203,6 +203,7 @@ export {
   type Repository,
   type RemoteConfig,
   type FetchRemoteOptions,
+  type FetchUrlOptions,
   type FetchRemoteResult,
   type BootstrapRemoteOptions,
   type BootstrapRemoteResult,
@@ -224,10 +225,9 @@ export type {
   RefAdvertisement,
   PushOptions,
   PushRefUpdate,
+  GitServiceTransport,
   UploadPackTransport,
   ReceivePackTransport,
-  UploadPackResult,
-  ReceivePackHttpResult,
   ParsedRefSpec,
   PktLine,
   PktLineData,
@@ -236,7 +236,6 @@ export type {
   PktLineResponseEnd,
   ReceivePackCommand,
   AdvertiseOptions,
-  RemoteAdvertisement,
   RefMappingRule,
   MatchedRefItem, // 完整匹配结果；注意 matchedItems ≠ refUpdates，wants 可非空但 refUpdates 为空
   RefUpdatePlanItem,
@@ -267,6 +266,10 @@ export {
   // 响应解析
   parseReceivePackResult,
   ReceivePackResultError,
+  decodeUploadPackResponse,
+  UploadPackResponseError,
+  decodeReceivePackResponse,
+  ReceivePackResponseError,
   // HTTP 传输
   createUploadPackHttpClient,
   createReceivePackHttpClient,

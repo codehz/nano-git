@@ -13,6 +13,7 @@ export type { RepositoryMaintenanceOperations } from "./maintenance-types.ts";
 export type {
   RemoteConfig,
   FetchRemoteOptions,
+  FetchUrlOptions,
   FetchRemoteResult,
   BootstrapRemoteOptions,
   BootstrapRemoteResult,
