@@ -9,7 +9,8 @@ import { describe, test, expect, beforeEach } from "bun:test";
 
 import { sha1, type SHA1, type GitCommit } from "@/core/types.ts";
 import { createMemoryObjectStore } from "@/odb/memory-store.ts";
-import { isAncestor, checkFastForward, PushError } from "@/transport/push.ts";
+import { isAncestor } from "@/transport/object-graph.ts";
+import { checkFastForward, PushError } from "@/transport/push.ts";
 
 // ============================================================================
 // 辅助函数

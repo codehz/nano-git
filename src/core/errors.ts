@@ -26,9 +26,13 @@ export class GitError extends Error {
  * 当尝试读取不存在的 Git 对象时抛出。
  */
 export class ObjectNotFoundError extends GitError {
-  constructor(hash: string) {
-    super(`Object not found: ${hash}`);
+  /** 缺失对象的哈希 */
+  hash: string;
+
+  constructor(hash: string, message?: string) {
+    super(message ?? `Object not found: ${hash}`);
     this.name = "ObjectNotFoundError";
+    this.hash = hash;
   }
 }
 
@@ -50,9 +54,13 @@ export class InvalidObjectError extends GitError {
  * 当字符串不符合 SHA-1 格式（40 个十六进制字符）时抛出。
  */
 export class InvalidSHA1Error extends GitError {
+  /** 无效的 SHA-1 字符串 */
+  value: string;
+
   constructor(value: string) {
     super(`Invalid SHA-1 hash: ${value}`);
     this.name = "InvalidSHA1Error";
+    this.value = value;
   }
 }
 
@@ -74,9 +82,13 @@ export class RepositoryError extends GitError {
  * 当检测到符号引用形成循环时抛出。
  */
 export class CircularReferenceError extends GitError {
+  /** 形成循环的引用名称 */
+  ref: string;
+
   constructor(ref: string) {
     super(`Circular reference detected: ${ref}`);
     this.name = "CircularReferenceError";
+    this.ref = ref;
   }
 }
 
@@ -86,9 +98,13 @@ export class CircularReferenceError extends GitError {
  * 当尝试读取不存在的引用时抛出。
  */
 export class RefNotFoundError extends GitError {
+  /** 不存在的引用名称 */
+  ref: string;
+
   constructor(ref: string) {
     super(`Reference not found: ${ref}`);
     this.name = "RefNotFoundError";
+    this.ref = ref;
   }
 }
 

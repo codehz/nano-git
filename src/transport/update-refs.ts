@@ -12,7 +12,7 @@
  */
 
 import { GitError } from "../core/errors.ts";
-import { isAncestor } from "./push.ts";
+import { isAncestor } from "./object-graph.ts";
 
 import type { SHA1 } from "../core/types.ts";
 import type { ObjectStore } from "../odb/types.ts";

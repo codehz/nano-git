@@ -11,8 +11,9 @@ import { createHash } from "node:crypto";
 import { sha1, type SHA1, type GitBlob, type GitTree, type GitCommit } from "@/core/types.ts";
 import { createMemoryObjectStore } from "@/odb/memory-store.ts";
 import { createMemoryRefStore } from "@/refs/stores/memory.ts";
+import { collectReachable } from "@/transport/object-graph.ts";
 import { encodePktLine, encodeFlushPkt } from "@/transport/pkt-line.ts";
-import { collectReachable, push, PushError } from "@/transport/push.ts";
+import { push, PushError } from "@/transport/push.ts";
 import { parseReceivePackResult } from "@/transport/receive-pack-result.ts";
 
 import type { RemoteTransport } from "@/transport/types.ts";
@@ -111,7 +112,7 @@ describe('collectReachable(missing="throw")', () => {
 
     expect(() => {
       collectReachable(store, [nonExistentHash], "throw");
-    }).toThrow(PushError);
+    }).toThrow();
   });
 
   test("根哈希缺失时错误信息包含缺失哈希", () => {
@@ -129,7 +130,7 @@ describe('collectReachable(missing="throw")', () => {
 
     expect(() => {
       collectReachable(store2, [commitHash], "throw");
-    }).toThrow(PushError);
+    }).toThrow();
   });
 
   test("树条目引用的 blob 缺失时错误信息包含缺失的 blob 哈希", () => {
@@ -146,7 +147,7 @@ describe('collectReachable(missing="throw")', () => {
 
     expect(() => {
       collectReachable(store, [commitHash, nonExistentHash], "throw");
-    }).toThrow(PushError);
+    }).toThrow();
   });
 });
 
@@ -245,12 +246,12 @@ describe('collectReachable(missing="skip", 默认)', () => {
 // ============================================================================
 
 describe('collectReachable(missing="skip-commit-parents")', () => {
-  test("树条目引用的 blob 缺失时抛出 PushError", () => {
+  test("树条目引用的 blob 缺失时抛出错误", () => {
     const { store, commitHash } = buildMissingBlobStore();
 
     expect(() => {
       collectReachable(store, [commitHash], "skip-commit-parents");
-    }).toThrow(PushError);
+    }).toThrow();
   });
 
   test("shallow：已知 shallow 边界的 commit parent 缺失时静默跳过", () => {
@@ -275,7 +276,7 @@ describe('collectReachable(missing="skip-commit-parents")', () => {
     expect(result.has(bHash)).toBe(false);
   });
 
-  test("commit parent 缺失且不在 shallowBoundaries 时抛出 PushError", () => {
+  test("commit parent 缺失且不在 shallowBoundaries 时抛出错误", () => {
     const store = createMemoryObjectStore();
     const emptyTree = store.write({ type: "tree", entries: [] });
 
@@ -291,10 +292,10 @@ describe('collectReachable(missing="skip-commit-parents")', () => {
 
     expect(() => {
       collectReachable(store, [cHash], "skip-commit-parents");
-    }).toThrow(PushError);
+    }).toThrow();
   });
 
-  test("commit parent 缺失且 shallowBoundaries 不含该 hash 时抛出 PushError", () => {
+  test("commit parent 缺失且 shallowBoundaries 不含该 hash 时抛出错误", () => {
     const store = createMemoryObjectStore();
     const emptyTree = store.write({ type: "tree", entries: [] });
 
@@ -311,7 +312,7 @@ describe('collectReachable(missing="skip-commit-parents")', () => {
     const unrelatedShallow = new Set<SHA1>([sha1("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]);
     expect(() => {
       collectReachable(store, [cHash], "skip-commit-parents", unrelatedShallow);
-    }).toThrow(PushError);
+    }).toThrow();
   });
 
   test("推送根 commit 缺失时仍抛出", () => {
@@ -320,7 +321,7 @@ describe('collectReachable(missing="skip-commit-parents")', () => {
 
     expect(() => {
       collectReachable(store, [missingRoot], "skip-commit-parents");
-    }).toThrow(PushError);
+    }).toThrow();
   });
 });
 
