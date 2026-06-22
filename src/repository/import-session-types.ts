@@ -209,10 +209,18 @@ export interface LocalPrecondition {
    */
   readonly namespacePrefix?: string;
   /**
+   * 命名空间 ownership 模式
+   *
+   * 当 prune 目标不是简单的前缀投影（例如 `refs/mirrors/*-backup`）时，
+   * 需要记录完整目标模式，以便 apply() 按同一集合重新校验和 prune。
+   */
+  readonly namespacePattern?: string;
+  /**
    * 命名空间内全部 ref 的原始值快照
    *
    * 与 namespacePrefix 配合使用，用于检测 preview() 后
    * 该命名空间下 ref 的新增、删除或内容漂移。
+   * 若存在 namespacePattern，则按完整模式而不是简单前缀匹配。
    */
   readonly expectedRefs?: readonly {
     readonly refName: string;

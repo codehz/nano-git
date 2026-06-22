@@ -248,10 +248,10 @@ describe("ImportSession", () => {
 });
 
 // ============================================================================
-// Plan Builder（Phase 1 stub）
+// ImportPlanBuilder 基础行为
 // ============================================================================
 
-describe("ImportPlanBuilder（Phase 1 stub）", () => {
+describe("ImportPlanBuilder 基础行为", () => {
   const backend = createMemoryRepositoryBackend();
   const adv = createMockAdvertisement();
   const session = createImportSession(MOCK_SOURCE, backend, adv);
@@ -968,6 +968,30 @@ describe("Phase 3 — apply 写 ref", () => {
     expect(backend.refs.read("refs/mirrors/upstream/stale-branch")).toBeNull();
   });
 
+  test("非尾部通配 prune 只清理匹配目标模式的 refs", async () => {
+    const { backend, commitHash } = createRepoWithObjects();
+    backend.refs.write("refs/mirrors/main-backup", commitHash);
+    backend.refs.write("refs/mirrors/legacy-backup", commitHash);
+    backend.refs.write("refs/mirrors/keep", commitHash);
+
+    const adv = createAdvForCommit(commitHash);
+    const session = createImportSession(MOCK_SOURCE, backend, adv);
+    const mainView = session.selectRefs(["refs/heads/main"]);
+
+    const result = await session
+      .plan()
+      .materialize(mainView)
+      .toNamespace("refs/mirrors/*-backup", {
+        policy: { mode: "mirror" },
+        prune: true,
+      })
+      .apply();
+
+    expect(result.deletedRefs).toEqual(["refs/mirrors/legacy-backup"]);
+    expect(backend.refs.read("refs/mirrors/main-backup")).toBe(commitHash);
+    expect(backend.refs.read("refs/mirrors/keep")).toBe(commitHash);
+  });
+
   test("同一命名空间的多个 prune 物化会合并 ownership", async () => {
     const { backend, commitHash, commitHash2 } = createRepoWithObjects();
     backend.refs.write("refs/mirrors/upstream/main", commitHash);
@@ -1121,7 +1145,7 @@ describe("Phase 3 — apply 错误处理", () => {
     backend.refs.write("refs/mirrors/upstream/rogue", sha1("e".repeat(40)));
 
     expect(plan.apply()).rejects.toThrow(
-      /命名空间 "refs\/mirrors\/upstream\/" 在 preview\(\) 后已变化/,
+      /命名空间 "refs\/mirrors\/upstream\/\*" 在 preview\(\) 后已变化/,
     );
   });
 

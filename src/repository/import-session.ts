@@ -1,8 +1,10 @@
 /**
  * Import Session 实现
  *
- * Phase 1：只读会话（advertisement 拉取、view 选择与命名）
- * Phase 2：完整的 PlanBuilder，支持真实的 preview()
+ * Phase 1-3：完整的 Import Session 流程
+ *
+ * 包含 advertisement 拉取、冻结 view、plan preview、
+ * 对象导入、ref/HEAD 物化与 prune/ownership 校验。
  *
  * @see .drafts/import-session-rfc.md
  */
@@ -202,6 +204,7 @@ interface ResolvedMapping {
 }
 
 interface NamespaceOwnership {
+  readonly pattern: string;
   readonly prefix: string;
   readonly currentRefs: Set<string>;
   prune: boolean;
@@ -279,20 +282,23 @@ function getNamespacePatternPrefix(targetPattern: string): string | null {
 }
 
 /**
- * 快照某个命名空间下当前存在的全部 refs
+ * 快照某个 ownership 模式当前覆盖的全部 refs
  *
  * @param backend - 仓库后端
- * @param prefix - 命名空间前缀
+ * @param pattern - ownership 目标模式
  * @returns 已排序的原始 ref 值快照
  */
-function snapshotNamespaceRefs(
+function snapshotOwnedRefs(
   backend: RepositoryBackend,
-  prefix: string,
+  pattern: string,
 ): readonly NamespaceSnapshotEntry[] {
-  return backend.refs.list(prefix).map((refName) => ({
-    refName,
-    expectedValue: backend.refs.read(refName),
-  }));
+  return backend.refs
+    .listAll()
+    .filter((refName) => matchRefGlob(pattern, refName))
+    .map((refName) => ({
+      refName,
+      expectedValue: backend.refs.read(refName),
+    }));
 }
 
 /**
@@ -309,8 +315,9 @@ function validateLocalPreconditions(
   const currentLocalRefs = getLocalRefs(backend.refs);
 
   for (const pc of preconditions) {
-    if (pc.namespacePrefix !== undefined) {
-      const currentRefs = snapshotNamespaceRefs(backend, pc.namespacePrefix);
+    if (pc.namespacePattern !== undefined || pc.namespacePrefix !== undefined) {
+      const pattern = pc.namespacePattern ?? `${pc.namespacePrefix!}*`;
+      const currentRefs = snapshotOwnedRefs(backend, pattern);
       const expectedRefs = pc.expectedRefs ?? [];
 
       const sameLength = currentRefs.length === expectedRefs.length;
@@ -326,9 +333,7 @@ function validateLocalPreconditions(
         });
 
       if (!sameEntries) {
-        throw new Error(
-          `前置条件校验失败：命名空间 "${pc.namespacePrefix}" 在 preview() 后已变化。`,
-        );
+        throw new Error(`前置条件校验失败：命名空间 "${pattern}" 在 preview() 后已变化。`);
       }
       continue;
     }
@@ -359,7 +364,7 @@ function validateLocalPreconditions(
 /**
  * 创建 ImportPlanBuilder
  *
- * Phase 2 实现完整的 preview()，但 apply() 仍为虚设（Phase 3）。
+ * 该 builder 负责 preview/apply 的完整执行语义。
  */
 function createPlanBuilder(
   backend: RepositoryBackend,
@@ -508,7 +513,8 @@ function createPlanBuilder(
 
             const namespacePrefix = getNamespacePatternPrefix(act.target);
             if (namespacePrefix !== null) {
-              const ownership = namespaceOwnerships.get(namespacePrefix) ?? {
+              const ownership = namespaceOwnerships.get(act.target) ?? {
+                pattern: act.target,
                 prefix: namespacePrefix,
                 currentRefs: new Set<string>(),
                 prune: false,
@@ -518,7 +524,7 @@ function createPlanBuilder(
                 ownership.currentRefs.add(t.localRef);
               }
               ownership.prune = ownership.prune || (act.prune ?? false);
-              namespaceOwnerships.set(namespacePrefix, ownership);
+              namespaceOwnerships.set(act.target, ownership);
             }
             break;
           }
@@ -670,10 +676,11 @@ function createPlanBuilder(
         }
 
         localPreconditions.push({
-          refName: ownership.prefix,
+          refName: ownership.pattern,
           expectedHash: null,
           namespacePrefix: ownership.prefix,
-          expectedRefs: snapshotNamespaceRefs(backend, ownership.prefix),
+          namespacePattern: ownership.pattern,
+          expectedRefs: snapshotOwnedRefs(backend, ownership.pattern),
         });
       }
 
@@ -749,14 +756,14 @@ function createPlanBuilder(
 
         for (const [refName] of localRefs) {
           if (
-            refName.startsWith(ns.prefix) &&
+            matchRefGlob(ns.pattern, refName) &&
             !ns.currentRefs.has(refName) &&
             !scheduledPruneRefs.has(refName)
           ) {
             scheduledPruneRefs.add(refName);
             pruneOperations.push({
               refName,
-              reason: `命名空间 "${ns.prefix}*" 的 prune 清理。`,
+              reason: `命名空间 "${ns.pattern}" 的 prune 清理。`,
             });
           }
         }
