@@ -8,9 +8,10 @@
  */
 
 import { fetchPack } from "../transport/fetch-pack.ts";
+import { isAncestor } from "../transport/object-graph.ts";
 import { getLocalRefs } from "../transport/ref-collection.ts";
 import { createUploadPackHttpClient } from "../transport/smart-http.ts";
-import { applyRefUpdates } from "../transport/update-refs.ts";
+import { applyRefUpdates, resolveBranchTargetHash } from "../transport/update-refs.ts";
 
 import type { SHA1 } from "../core/types.ts";
 import type {
@@ -194,7 +195,7 @@ interface MaterializationAction {
   readonly viewRefs: readonly RemoteRef[];
   readonly action: "namespace" | "branch" | "tag" | "head";
   readonly target: string;
-  readonly policy: RefUpdatePolicy;
+  readonly policy: RefUpdatePolicy | undefined;
   readonly prune?: boolean;
   readonly detach?: boolean;
 }
@@ -253,16 +254,6 @@ function createPlanBuilder(
 
   let lastPreview: ImportPreview | null = null;
 
-  const adjustPolicyForNamespace = (action: MaterializationAction): RefUpdatePolicy => {
-    if (action.policy.mode !== "mirror") return action.policy;
-    if (action.viewRefs.every((r) => r.name.startsWith("refs/heads/"))) {
-      // 分支镜像使用 fast-forward
-      return { mode: "fast-forward" };
-    }
-    // 其他使用 replace（含 tag）
-    return { mode: "replace" };
-  };
-
   const builder: ImportPlanBuilder = {
     materialize(view: ImportView): RefMaterializationBuilder {
       const viewRefs = view.refs;
@@ -276,7 +267,7 @@ function createPlanBuilder(
             viewRefs,
             action: "namespace",
             target: targetPattern,
-            policy: options?.policy ?? { mode: "mirror" },
+            policy: options?.policy,
             prune: options?.prune,
           });
           return builder;
@@ -329,8 +320,46 @@ function createPlanBuilder(
       const pruneNamespaces: Array<{ prefix: string; currentRefs: Set<string> }> = [];
       const diagnostics: ImportDiagnostic[] = [];
 
+      // 辅助函数：根据目标模式推断命名空间默认策略
+      const inferNamespaceDefaultPolicy = (targetPattern: string): RefUpdatePolicy | undefined => {
+        const headRegex = globToRegex("refs/heads/*");
+        if (targetPattern === "refs/heads/*" || headRegex.test(targetPattern)) {
+          return { mode: "fast-forward" };
+        }
+        const tagRegex = globToRegex("refs/tags/*");
+        if (targetPattern === "refs/tags/*" || tagRegex.test(targetPattern)) {
+          return { mode: "create-only" };
+        }
+        return undefined;
+      };
+
       for (const act of actions) {
-        const effectivePolicy = adjustPolicyForNamespace(act);
+        let effectivePolicy: RefUpdatePolicy | undefined = act.policy;
+
+        // namespace action 且未显式指定 policy 时推断默认策略
+        if (act.action === "namespace" && effectivePolicy === undefined) {
+          effectivePolicy = inferNamespaceDefaultPolicy(act.target);
+
+          if (effectivePolicy === undefined) {
+            diagnostics.push({
+              level: "error",
+              message:
+                `命名空间 "${act.target}" 需要显式指定 policy 参数。` +
+                `refs/heads/* 和 refs/tags/* 之外的命名空间必须显式声明 RefUpdatePolicy。`,
+            });
+            continue; // 跳过整个 namespace action
+          }
+
+          diagnostics.push({
+            level: "info",
+            message: `命名空间 "${act.target}" 使用默认策略 ${effectivePolicy.mode}。`,
+          });
+        }
+
+        if (effectivePolicy === undefined) {
+          // 不应发生：branch/tag/head 都有硬编码默认值
+          continue;
+        }
 
         switch (act.action) {
           case "namespace": {
@@ -535,6 +564,9 @@ function createPlanBuilder(
 
       const objectRoots = [...objectRootsSet];
 
+      // canApply: 不存在 error 级别诊断时计划可用
+      const canApply = !diagnostics.some((d) => d.level === "error");
+
       const _previewResult = {
         remoteSnapshot: advertisement,
         selectedRefs,
@@ -544,7 +576,7 @@ function createPlanBuilder(
         pruneOperations,
         headOperation,
         diagnostics,
-        canApply: true,
+        canApply,
       };
       lastPreview = _previewResult;
       return _previewResult;
@@ -553,6 +585,18 @@ function createPlanBuilder(
     async apply(): Promise<ImportApplyResult> {
       // Step 1: 使用缓存的 preview 结果校验前置条件
       const p = lastPreview ?? builder.preview();
+
+      // 若 preview 指示计划不可执行，则提前失败
+      if (!p.canApply) {
+        const errorMessages = p.diagnostics
+          .filter((d) => d.level === "error")
+          .map((d) => d.message)
+          .join("; ");
+        throw new Error(
+          `导入计划包含 ${p.diagnostics.filter((d) => d.level === "error").length} 个错误，无法执行。` +
+            (errorMessages ? ` 错误：${errorMessages}` : ""),
+        );
+      }
 
       if (p.refOperations.length === 0 && !p.headOperation && p.pruneOperations.length === 0) {
         return {
@@ -603,6 +647,26 @@ function createPlanBuilder(
         importedObjects = packResult.objectCount;
       }
 
+      // Step 4: 策略预校验 — 在进入 ref 物化之前完成全部策略校验
+      for (const op of p.refOperations) {
+        const currentHash = currentLocalRefs.get(op.localRef) ?? null;
+
+        // refs/heads/* 的 commit 类型校验（仅校验存在且可读的对象）
+        if (op.localRef.startsWith("refs/heads/") && backend.objects.exists(op.newHash)) {
+          resolveBranchTargetHash(backend.objects, op.newHash, op.localRef);
+        }
+
+        // fast-forward 策略校验：有本地值且非 replace 时检查祖先关系
+        if (op.policy.mode === "fast-forward" && currentHash !== null) {
+          if (!isAncestor(backend.objects, currentHash, op.newHash)) {
+            throw new Error(
+              `导入计划校验失败：ref "${op.localRef}" 无法 fast-forward。` +
+                `当前 ${currentHash}，目标 ${op.newHash}。`,
+            );
+          }
+        }
+      }
+
       // Step 4: 写 ref
       const updatedRefs = new Map<string, SHA1>();
 
@@ -610,13 +674,10 @@ function createPlanBuilder(
         const refUpdates: RefUpdatePlanItem[] = p.refOperations.map((op) => {
           const precond = p.localPreconditions.find((pc) => pc.refName === op.localRef);
           return {
-            remoteRef: {
-              hash: op.newHash,
-              name: op.localRef,
-            },
+            remoteRef: { hash: op.newHash, name: op.localRef },
             localRef: op.localRef,
             currentLocalHash: precond?.expectedHash ?? undefined,
-            force: op.policy.mode === "replace" || op.policy.mode === "mirror",
+            force: op.policy.mode === "replace",
             hashEqual: false,
           } as RefUpdatePlanItem;
         });
@@ -625,17 +686,6 @@ function createPlanBuilder(
 
         for (const [ref, hash] of refResult.updatedRefs) {
           updatedRefs.set(ref, hash);
-        }
-
-        // applyRefUpdates 可能拒绝部分 ref（如 tag 已存在、non-fast-forward 等）
-        // 按 plan-level 语义：有拒绝即整体失败
-        if (refResult.rejectedRefs.length > 0) {
-          // 已成功写入的 ref 保留（对象已下载，ref 已写入）
-          // 失败以错误形式报告
-          const reasons = refResult.rejectedRefs
-            .map((r) => `${r.localRef}: ${r.reason}`)
-            .join("; ");
-          throw new Error(`导入计划被部分拒绝：${reasons}`);
         }
       }
 
@@ -787,6 +837,7 @@ export function createRepoImportOperations(
   };
 }
 
+// 若 preview 指示计划不可执行，则提前失败
 // ============================================================================
 // 导出
 // ============================================================================

@@ -377,7 +377,10 @@ describe("Phase 2 PlanBuilder — 命名空间物化", () => {
     // feature/login 的公共前缀是 refs/heads/
     // 映射到 refs/mirrors/upstream/* 应保留 feature/login
     const branches = session.select("refs/heads/*");
-    const plan = session.plan().materialize(branches).toNamespace("refs/mirrors/upstream/*");
+    const plan = session
+      .plan()
+      .materialize(branches)
+      .toNamespace("refs/mirrors/upstream/*", { policy: { mode: "mirror" } });
 
     const preview = plan.preview();
     const loginTarget = preview.selectedRefs.find(
@@ -527,6 +530,8 @@ describe("Phase 2 PlanBuilder — 前置条件与诊断", () => {
     expect(errors.some((d) => d.message.includes("create-only"))).toBe(true);
 
     // refOperations 中不应包含被拒绝的 ref
+    // 因为有 error 诊断，canApply 应为 false
+    expect(preview.canApply).toBe(false);
     const tagOps = preview.refOperations.filter((r) => r.localRef === "refs/tags/v1.0.0");
     expect(tagOps.length).toBe(0);
   });
@@ -821,9 +826,8 @@ describe("Phase 3 — apply 错误处理", () => {
       .materialize(defaultBranch)
       .toBranch("main", { policy: { mode: "create-only" } });
 
-    const result = await plan.apply();
-    // create-only 策略拒绝更新，apply 返回空结果（不修改已有 ref）
-    expect(result.updatedRefs.size).toBe(0);
+    expect(plan.apply()).rejects.toThrow(/错误.*无法执行/);
+    expect(backend.refs.read("refs/heads/main")).toBe(sha1("d".repeat(40)));
     // 原始 hash 保持不变
     expect(backend.refs.read("refs/heads/main")).toBe(sha1("d".repeat(40)));
   });
