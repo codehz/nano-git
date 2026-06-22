@@ -1,10 +1,7 @@
 /**
  * Import Session 单元测试
  *
- * 测试 Phase 1 只读会话的冻结语义和 view 操作。
  * 不依赖 HTTP 传输，直接构造 mock advertisement。
- *
- * @see .drafts/import-session-rfc.md
  */
 
 import { describe, test, expect } from "bun:test";
@@ -397,7 +394,7 @@ describe("会话冻结语义", () => {
 // Phase 2：PlanBuilder Preview
 // ============================================================================
 
-describe("Phase 2 PlanBuilder — 命名空间物化", () => {
+describe("PlanBuilder — 命名空间物化", () => {
   const backend = createBackendWithMockObjects();
   const adv = createMockAdvertisement();
   const session = createImportSession(MOCK_SOURCE, backend, adv);
@@ -461,7 +458,7 @@ describe("Phase 2 PlanBuilder — 命名空间物化", () => {
   });
 });
 
-describe("Phase 2 PlanBuilder — 分支/tag/HEAD 物化", () => {
+describe("PlanBuilder — 分支/tag/HEAD 物化", () => {
   const backend = createBackendWithMockObjects();
   const adv = createMockAdvertisement();
   const session = createImportSession(MOCK_SOURCE, backend, adv);
@@ -655,7 +652,7 @@ describe("Phase 2 PlanBuilder — 分支/tag/HEAD 物化", () => {
   });
 });
 
-describe("Phase 2 PlanBuilder — 前置条件与诊断", () => {
+describe("PlanBuilder — 前置条件与诊断", () => {
   const backend = createBackendWithMockObjects();
   const adv = createMockAdvertisement();
   const session = createImportSession(MOCK_SOURCE, backend, adv);
@@ -788,7 +785,7 @@ describe("Phase 2 PlanBuilder — 前置条件与诊断", () => {
   });
 });
 
-describe("Phase 2 PlanBuilder — 边界与错误", () => {
+describe("PlanBuilder — 边界与错误", () => {
   const backend = createBackendWithMockObjects();
   const adv = createMockAdvertisement();
   const session = createImportSession(MOCK_SOURCE, backend, adv);
@@ -892,7 +889,7 @@ describe("Phase 2 PlanBuilder — 边界与错误", () => {
 });
 
 // ============================================================================
-// Phase 3：Apply 执行器
+// Apply 执行器
 // ============================================================================
 
 /**
@@ -915,7 +912,7 @@ function createAdvForCommit(
   };
 }
 
-describe("Phase 3 — apply 写 ref", () => {
+describe("apply 写 ref", () => {
   function createRepoWithObjects() {
     const backend = createMemoryRepositoryBackend();
     const { objects } = backend;
@@ -1254,7 +1251,7 @@ describe("Phase 3 — apply 写 ref", () => {
   });
 });
 
-describe("Phase 3 — apply 错误处理", () => {
+describe("apply 错误处理", () => {
   function createRepoWithObjects() {
     const backend = createMemoryRepositoryBackend();
     const { objects } = backend;

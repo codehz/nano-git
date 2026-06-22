@@ -3,8 +3,6 @@
  *
  * 新的远端导入模型：source → session → named views → plan → apply。
  * 彻底替代旧的 fetchRemote() / bootstrapRemote() / fetch(url) API。
- *
- * @see .drafts/import-session-rfc.md
  */
 
 import type { SHA1 } from "../core/types.ts";

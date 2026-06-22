@@ -1,12 +1,8 @@
 /**
  * Import Session 实现
  *
- * Phase 1-3：完整的 Import Session 流程
- *
  * 包含 advertisement 拉取、冻结 view、plan preview、
  * 对象导入、ref/HEAD 物化与 prune/ownership 校验。
- *
- * @see .drafts/import-session-rfc.md
  */
 
 import { fetchPack } from "../transport/fetch-pack.ts";
@@ -180,7 +176,7 @@ function longestCommonRefPrefix(names: readonly string[]): string {
 }
 
 // ============================================================================
-// PlanBuilder 实现（Phase 2）
+// PlanBuilder 实现
 // ============================================================================
 
 /**
