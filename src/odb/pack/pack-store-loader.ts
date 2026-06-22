@@ -5,7 +5,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { PackIndexReader } from "./pack-index.ts";
+import { createPackIndexReader } from "./pack-index.ts";
 import { PackReader } from "./pack-reader.ts";
 
 import type { PackFileInfo, PackPair } from "./pack-store-types.ts";
@@ -45,7 +45,7 @@ export function loadPackPairs(packDir: string): PackPair[] {
     const idxData = readFileSync(join(packDir, idxFile));
     pairs.push({
       checksum,
-      index: new PackIndexReader(idxData),
+      index: createPackIndexReader(idxData),
       reader: null,
       packData: null,
     });

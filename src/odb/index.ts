@@ -40,12 +40,15 @@ export {
   PackWriter,
   createPackIndexReader,
   createPackIndexWriter,
-  PackIndexReader,
-  PackIndexWriter,
   createPackObjectStore,
-  PackObjectStore,
   createCompositeObjectStore,
   CompositeObjectStore,
   createPackBuilder,
+} from "./pack/index.ts";
+
+export type {
+  PackIndexReader,
+  PackIndexWriter,
+  PackObjectStore,
   PackBuilder,
 } from "./pack/index.ts";

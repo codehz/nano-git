@@ -2,8 +2,9 @@
  * Pack 对象存储共享类型
  */
 
-import { PackIndexReader } from "./pack-index.ts";
 import { PackReader } from "./pack-reader.ts";
+
+import type { PackIndexReader } from "./pack-index.ts";
 
 /**
  * 一个 packfile 及其索引的组合

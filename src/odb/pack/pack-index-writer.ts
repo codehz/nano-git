@@ -13,27 +13,14 @@ import {
 
 import type { PackIndexEntry } from "./pack-index-types.ts";
 
-/**
- * 创建 Packfile 索引写入器
- *
- * @returns 索引写入器实例
- *
- * @example
- * ```ts
- * const writer = createPackIndexWriter();
- * writer.addEntry({ hash, offset: 12, crc32: 0x12345678 });
- * ```
- */
-export function createPackIndexWriter(): PackIndexWriter {
-  return new PackIndexWriter();
-}
+// ============================================================================
+// 接口
+// ============================================================================
 
 /**
- * Packfile 索引写入器类
+ * Packfile 索引写入器接口
  */
-export class PackIndexWriter {
-  private entries: PackIndexEntry[] = [];
-
+export interface PackIndexWriter {
   /**
    * 添加一个索引条目
    *
@@ -44,9 +31,7 @@ export class PackIndexWriter {
    * writer.addEntry({ hash, offset: 12, crc32: 0x12345678 });
    * ```
    */
-  addEntry(entry: PackIndexEntry): void {
-    this.entries.push(entry);
-  }
+  addEntry(entry: PackIndexEntry): void;
 
   /**
    * 构建索引文件数据
@@ -59,33 +44,31 @@ export class PackIndexWriter {
    * const idxData = writer.build(packChecksum);
    * ```
    */
-  build(packChecksum: Buffer): Buffer {
-    const sorted = [...this.entries].sort((a, b) => a.hash.localeCompare(b.hash));
-    const parts: Buffer[] = [];
+  build(packChecksum: Buffer): Buffer;
+}
 
-    parts.push(this.createHeader());
-    parts.push(this.createFanoutTable(sorted));
-    parts.push(this.createSha1Table(sorted));
-    parts.push(this.createCrc32Table(sorted));
+// ============================================================================
+// 工厂函数
+// ============================================================================
 
-    const { offsetTable, largeOffsets } = this.createOffsetTables(sorted);
-    parts.push(offsetTable);
-
-    if (largeOffsets.length > 0) {
-      parts.push(this.createLargeOffsetTable(largeOffsets));
-    }
-
-    parts.push(packChecksum);
-
-    const idxWithoutChecksum = Buffer.concat(parts);
-    const idxChecksum = createHash("sha1").update(idxWithoutChecksum).digest();
-    return Buffer.concat([idxWithoutChecksum, idxChecksum]);
-  }
+/**
+ * 创建 Packfile 索引写入器
+ *
+ * @returns 索引写入器实例
+ *
+ * @example
+ * ```ts
+ * const writer = createPackIndexWriter();
+ * writer.addEntry({ hash, offset: 12, crc32: 0x12345678 });
+ * ```
+ */
+export function createPackIndexWriter(): PackIndexWriter {
+  const entries: PackIndexEntry[] = [];
 
   /**
    * 构建头部
    */
-  private createHeader(): Buffer {
+  function createHeader(): Buffer {
     const header = Buffer.alloc(IDX_V2_HEADER_SIZE);
     IDX_V2_SIGNATURE.copy(header, 0);
     header.writeUInt32BE(IDX_V2_VERSION, 4);
@@ -95,7 +78,7 @@ export class PackIndexWriter {
   /**
    * 构建扇出表
    */
-  private createFanoutTable(entries: PackIndexEntry[]): Buffer {
+  function createFanoutTable(entries: PackIndexEntry[]): Buffer {
     const fanout = Buffer.alloc(IDX_V2_FANOUT_SIZE);
     let count = 0;
 
@@ -112,7 +95,7 @@ export class PackIndexWriter {
   /**
    * 构建 SHA-1 表
    */
-  private createSha1Table(entries: PackIndexEntry[]): Buffer {
+  function createSha1Table(entries: PackIndexEntry[]): Buffer {
     const sha1Table = Buffer.alloc(entries.length * 20);
     for (let i = 0; i < entries.length; i++) {
       Buffer.from(entries[i]!.hash, "hex").copy(sha1Table, i * 20);
@@ -123,7 +106,7 @@ export class PackIndexWriter {
   /**
    * 构建 CRC32 表
    */
-  private createCrc32Table(entries: PackIndexEntry[]): Buffer {
+  function createCrc32Table(entries: PackIndexEntry[]): Buffer {
     const crc32Table = Buffer.alloc(entries.length * 4);
     for (let i = 0; i < entries.length; i++) {
       crc32Table.writeUInt32BE(entries[i]!.crc32 >>> 0, i * 4);
@@ -134,7 +117,7 @@ export class PackIndexWriter {
   /**
    * 构建偏移量表与大偏移量列表
    */
-  private createOffsetTables(entries: PackIndexEntry[]): {
+  function createOffsetTables(entries: PackIndexEntry[]): {
     offsetTable: Buffer;
     largeOffsets: number[];
   } {
@@ -158,11 +141,40 @@ export class PackIndexWriter {
   /**
    * 构建大偏移量表
    */
-  private createLargeOffsetTable(largeOffsets: number[]): Buffer {
+  function createLargeOffsetTable(largeOffsets: number[]): Buffer {
     const largeOffsetTable = Buffer.alloc(largeOffsets.length * 8);
     for (let i = 0; i < largeOffsets.length; i++) {
       largeOffsetTable.writeBigUInt64BE(BigInt(largeOffsets[i]!), i * 8);
     }
     return largeOffsetTable;
   }
+
+  return {
+    addEntry(entry: PackIndexEntry): void {
+      entries.push(entry);
+    },
+
+    build(packChecksum: Buffer): Buffer {
+      const sorted = [...entries].sort((a, b) => a.hash.localeCompare(b.hash));
+      const parts: Buffer[] = [];
+
+      parts.push(createHeader());
+      parts.push(createFanoutTable(sorted));
+      parts.push(createSha1Table(sorted));
+      parts.push(createCrc32Table(sorted));
+
+      const { offsetTable, largeOffsets } = createOffsetTables(sorted);
+      parts.push(offsetTable);
+
+      if (largeOffsets.length > 0) {
+        parts.push(createLargeOffsetTable(largeOffsets));
+      }
+
+      parts.push(packChecksum);
+
+      const idxWithoutChecksum = Buffer.concat(parts);
+      const idxChecksum = createHash("sha1").update(idxWithoutChecksum).digest();
+      return Buffer.concat([idxWithoutChecksum, idxChecksum]);
+    },
+  };
 }

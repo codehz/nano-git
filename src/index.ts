@@ -140,18 +140,18 @@ export {
   // Packfile 索引
   createPackIndexReader,
   createPackIndexWriter,
-  PackIndexReader,
-  PackIndexWriter,
+  type PackIndexReader,
+  type PackIndexWriter,
   type PackIndexEntry,
   // Packfile 存储
   createPackObjectStore,
-  PackObjectStore,
+  type PackObjectStore,
   // 组合存储
   createCompositeObjectStore,
   CompositeObjectStore,
   // Packfile 构建器
   createPackBuilder,
-  PackBuilder,
+  type PackBuilder,
   type PackBuildResult,
 } from "./odb/index.ts";
 

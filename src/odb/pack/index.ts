@@ -48,12 +48,10 @@ export {
 export { applyDelta, createDelta } from "./delta.ts";
 export { createPackReader, PackReader } from "./pack-reader.ts";
 export { createPackWriter, PackWriter } from "./pack-writer.ts";
-export {
-  createPackIndexReader,
-  createPackIndexWriter,
-  PackIndexReader,
-  PackIndexWriter,
-} from "./pack-index.ts";
-export { createPackObjectStore, PackObjectStore } from "./pack-store.ts";
+export { createPackIndexReader, createPackIndexWriter } from "./pack-index.ts";
+export type { PackIndexReader, PackIndexWriter } from "./pack-index.ts";
+export { createPackObjectStore } from "./pack-store.ts";
+export type { PackObjectStore } from "./pack-store.ts";
 export { createCompositeObjectStore, CompositeObjectStore } from "./composite-store.ts";
-export { createPackBuilder, PackBuilder } from "./pack-builder.ts";
+export { createPackBuilder } from "./pack-builder.ts";
+export type { PackBuilder } from "./pack-builder.ts";

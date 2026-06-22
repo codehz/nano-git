@@ -20,7 +20,7 @@ import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
 import { buildEncodedPack, type EncodedPackObject, toEncodedPackObject } from "./pack-encoding.ts";
-import { PackIndexWriter } from "./pack-index.ts";
+import { createPackIndexWriter } from "./pack-index.ts";
 
 import type { GitObject, SHA1 } from "../../core/types.ts";
 import type { PackBuildResult } from "./pack-builder-types.ts";
@@ -28,7 +28,41 @@ import type { PackBuildResult } from "./pack-builder-types.ts";
 export type { PackBuildResult } from "./pack-builder-types.ts";
 
 // ============================================================================
-// Packfile 构建器
+// 接口
+// ============================================================================
+
+/**
+ * Packfile 构建器接口
+ */
+export interface PackBuilder {
+  /** 获取已添加的对象数量 */
+  readonly objectCount: number;
+
+  /**
+   * 添加一个 Git 对象
+   *
+   * @param obj - Git 对象
+   * @returns 对象的 SHA-1 哈希
+   */
+  addObject(obj: GitObject): SHA1;
+
+  /**
+   * 构建 packfile 和索引文件
+   *
+   * @returns 构建结果，包含文件路径和校验和
+   *
+   * @example
+   * ```ts
+   * const result = builder.build();
+   * console.log(`Packfile: ${result.packPath}`);
+   * console.log(`Index: ${result.idxPath}`);
+   * ```
+   */
+  build(): PackBuildResult;
+}
+
+// ============================================================================
+// 工厂函数
 // ============================================================================
 
 /**
@@ -51,67 +85,30 @@ export type { PackBuildResult } from "./pack-builder-types.ts";
  * ```
  */
 export function createPackBuilder(gitDir: string): PackBuilder {
-  return new PackBuilder(gitDir);
-}
+  const objects: EncodedPackObject[] = [];
+  const hashes: Set<SHA1> = new Set();
 
-/**
- * Packfile 构建器类
- */
-export class PackBuilder {
-  private readonly gitDir: string;
-  private readonly objects: EncodedPackObject[] = [];
-  private readonly hashes: Set<SHA1> = new Set();
-
-  constructor(gitDir: string) {
-    this.gitDir = gitDir;
-  }
-
-  /**
-   * 添加一个 Git 对象
-   *
-   * @param obj - Git 对象
-   * @returns 对象的 SHA-1 哈希
-   */
-  addObject(obj: GitObject): SHA1 {
+  function addObject(obj: GitObject): SHA1 {
     const entry = toEncodedPackObject(obj);
     const hash = entry.hash;
 
-    if (this.hashes.has(hash)) {
+    if (hashes.has(hash)) {
       return hash;
     }
 
-    this.objects.push(entry);
-    this.hashes.add(hash);
+    objects.push(entry);
+    hashes.add(hash);
     return hash;
   }
 
-  /**
-   * 获取已添加的对象数量
-   */
-  get objectCount(): number {
-    return this.objects.length;
-  }
-
-  /**
-   * 构建 packfile 和索引文件
-   *
-   * @returns 构建结果，包含文件路径和校验和
-   *
-   * @example
-   * ```ts
-   * const result = builder.build();
-   * console.log(`Packfile: ${result.packPath}`);
-   * console.log(`Index: ${result.idxPath}`);
-   * ```
-   */
-  build(): PackBuildResult {
-    const packDir = join(this.gitDir, "objects", "pack");
+  function build(): PackBuildResult {
+    const packDir = join(gitDir, "objects", "pack");
     mkdirSync(packDir, { recursive: true });
 
-    const encoded = buildEncodedPack(this.objects);
+    const encoded = buildEncodedPack(objects);
 
     // 构建索引文件
-    const idxWriter = new PackIndexWriter();
+    const idxWriter = createPackIndexWriter();
     for (const entry of encoded.entries) {
       idxWriter.addEntry(entry);
     }
@@ -130,7 +127,15 @@ export class PackBuilder {
       packPath,
       idxPath,
       checksum: checksumHex,
-      objectCount: this.objects.length,
+      objectCount: objects.length,
     };
   }
+
+  return {
+    get objectCount(): number {
+      return objects.length;
+    },
+    addObject,
+    build,
+  };
 }

@@ -5,5 +5,7 @@
  */
 
 export type { PackIndexEntry } from "./pack-index-types.ts";
-export { createPackIndexReader, PackIndexReader } from "./pack-index-reader.ts";
-export { createPackIndexWriter, PackIndexWriter } from "./pack-index-writer.ts";
+export { createPackIndexReader } from "./pack-index-reader.ts";
+export type { PackIndexReader } from "./pack-index-reader.ts";
+export { createPackIndexWriter } from "./pack-index-writer.ts";
+export type { PackIndexWriter } from "./pack-index-writer.ts";

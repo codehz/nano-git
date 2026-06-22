@@ -30,7 +30,41 @@ import type { PackFileInfo, PackPair } from "./pack-store-types.ts";
 export type { PackFileInfo } from "./pack-store-types.ts";
 
 // ============================================================================
-// Pack 对象存储
+// 接口
+// ============================================================================
+
+/**
+ * 基于 Packfile 的对象存储接口
+ */
+export interface PackObjectStore extends ObjectSource {
+  /**
+   * 刷新 pack 目录缓存
+   *
+   * 当外部新增或删除 packfile 后，需要调用此方法重新扫描。
+   */
+  refresh(): void;
+
+  /**
+   * 列出当前可见的 pack 文件对
+   */
+  listPacks(): PackFileInfo[];
+
+  /**
+   * 获取所有 packfile 中的对象哈希列表
+   *
+   * 保留此方法作为更明确的命名别名。
+   */
+  listHashes(): SHA1[];
+
+  /** 获取 packfile 数量 */
+  readonly packCount: number;
+
+  /** 获取所有对象数量 */
+  readonly objectCount: number;
+}
+
+// ============================================================================
+// 工厂函数
 // ============================================================================
 
 /**
@@ -56,52 +90,26 @@ export type { PackFileInfo } from "./pack-store-types.ts";
  * ```
  */
 export function createPackObjectStore(gitDir: string): PackObjectStore {
-  return new PackObjectStore(gitDir);
-}
-
-/**
- * 基于 Packfile 的对象存储类
- */
-export class PackObjectStore implements ObjectSource {
-  private readonly packDir: string;
-  private readonly pairs: PackPair[] = [];
-  private loaded = false;
-
-  constructor(gitDir: string) {
-    this.packDir = join(gitDir, "objects", "pack");
-  }
-
-  /**
-   * 刷新 pack 目录缓存
-   *
-   * 当外部新增或删除 packfile 后，需要调用此方法重新扫描。
-   */
-  refresh(): void {
-    this.loaded = false;
-    this.pairs.length = 0;
-  }
+  const packDir = join(gitDir, "objects", "pack");
+  const pairs: PackPair[] = [];
+  let loaded = false;
 
   /**
    * 扫描 pack 目录并加载索引
    */
-  private ensureLoaded(): void {
-    if (this.loaded) return;
-    this.loaded = true;
-    this.pairs.push(...loadPackPairs(this.packDir));
+  function ensureLoaded(): void {
+    if (loaded) return;
+    loaded = true;
+    pairs.push(...loadPackPairs(packDir));
   }
 
-  /**
-   * 读取对象
-   *
-   * @throws ObjectNotFoundError 如果对象不存在
-   */
-  read(hash: SHA1): GitObject {
-    this.ensureLoaded();
+  function read(hash: SHA1): GitObject {
+    ensureLoaded();
 
-    for (const pair of this.pairs) {
+    for (const pair of pairs) {
       const entry = pair.index.lookup(hash);
       if (entry) {
-        const reader = getPackReader(this.packDir, pair);
+        const reader = getPackReader(packDir, pair);
         const obj = reader.readObject(hash);
         if (obj) return obj;
       }
@@ -110,66 +118,58 @@ export class PackObjectStore implements ObjectSource {
     throw new ObjectNotFoundError(hash);
   }
 
-  /**
-   * 检查对象是否存在
-   */
-  exists(hash: SHA1): boolean {
-    this.ensureLoaded();
+  function exists(hash: SHA1): boolean {
+    ensureLoaded();
 
-    for (const pair of this.pairs) {
+    for (const pair of pairs) {
       if (pair.index.has(hash)) return true;
     }
 
     return false;
   }
 
-  /**
-   * 获取所有 packfile 中的对象哈希列表
-   */
-  list(): SHA1[] {
-    this.ensureLoaded();
+  function list(): SHA1[] {
+    ensureLoaded();
 
     const hashes: SHA1[] = [];
-    for (const pair of this.pairs) {
+    for (const pair of pairs) {
       hashes.push(...pair.index.listHashes());
     }
     return hashes;
   }
 
-  /**
-   * 获取所有 packfile 中的对象哈希列表
-   *
-   * 保留此方法作为更明确的命名别名。
-   */
-  listHashes(): SHA1[] {
-    return this.list();
+  function listHashes(): SHA1[] {
+    return list();
   }
 
-  /**
-   * 列出当前可见的 pack 文件对
-   */
-  listPacks(): PackFileInfo[] {
-    this.ensureLoaded();
-    return this.pairs.map((pair) => toPackFileInfo(this.packDir, pair));
+  function listPacks(): PackFileInfo[] {
+    ensureLoaded();
+    return pairs.map((pair) => toPackFileInfo(packDir, pair));
   }
 
-  /**
-   * 获取 packfile 数量
-   */
-  get packCount(): number {
-    this.ensureLoaded();
-    return this.pairs.length;
+  function refresh(): void {
+    loaded = false;
+    pairs.length = 0;
   }
 
-  /**
-   * 获取所有对象数量
-   */
-  get objectCount(): number {
-    this.ensureLoaded();
-    let count = 0;
-    for (const pair of this.pairs) {
-      count += pair.index.objectCount;
-    }
-    return count;
-  }
+  return {
+    refresh,
+    read,
+    exists,
+    list,
+    listHashes,
+    listPacks,
+    get packCount(): number {
+      ensureLoaded();
+      return pairs.length;
+    },
+    get objectCount(): number {
+      ensureLoaded();
+      let count = 0;
+      for (const pair of pairs) {
+        count += pair.index.objectCount;
+      }
+      return count;
+    },
+  };
 }
