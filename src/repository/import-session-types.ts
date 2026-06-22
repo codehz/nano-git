@@ -200,6 +200,24 @@ export interface LocalPrecondition {
    * 普通 hash ref 通常不需要此字段。
    */
   readonly expectedValue?: string | null;
+  /**
+   * 命名空间快照前缀
+   *
+   * 用于 prune ownership 场景。
+   * 当此字段存在时，表示该前置条件校验的是整个命名空间下的 ref 集合，
+   * 而不是单个 ref。
+   */
+  readonly namespacePrefix?: string;
+  /**
+   * 命名空间内全部 ref 的原始值快照
+   *
+   * 与 namespacePrefix 配合使用，用于检测 preview() 后
+   * 该命名空间下 ref 的新增、删除或内容漂移。
+   */
+  readonly expectedRefs?: readonly {
+    readonly refName: string;
+    readonly expectedValue: string | null;
+  }[];
 }
 
 /**

@@ -201,6 +201,17 @@ interface ResolvedMapping {
   readonly policy: RefUpdatePolicy;
 }
 
+interface NamespaceOwnership {
+  readonly prefix: string;
+  readonly currentRefs: Set<string>;
+  prune: boolean;
+}
+
+interface NamespaceSnapshotEntry {
+  readonly refName: string;
+  readonly expectedValue: string | null;
+}
+
 /**
  * 判断两个远端 ref 是否表示同一条广告项
  *
@@ -254,6 +265,95 @@ function resolveNamespaceTargets(
     const suffix = r.name.slice(commonPrefix.length);
     return { remoteRef: r, localRef: `${beforeStar}${suffix}${after}` };
   });
+}
+
+/**
+ * 截取命名空间目标模式的固定前缀
+ *
+ * @param targetPattern - 目标模式
+ * @returns `*` 之前的固定前缀；无 `*` 时返回 null
+ */
+function getNamespacePatternPrefix(targetPattern: string): string | null {
+  const starIdx = targetPattern.indexOf("*");
+  return starIdx >= 0 ? targetPattern.slice(0, starIdx) : null;
+}
+
+/**
+ * 快照某个命名空间下当前存在的全部 refs
+ *
+ * @param backend - 仓库后端
+ * @param prefix - 命名空间前缀
+ * @returns 已排序的原始 ref 值快照
+ */
+function snapshotNamespaceRefs(
+  backend: RepositoryBackend,
+  prefix: string,
+): readonly NamespaceSnapshotEntry[] {
+  return backend.refs.list(prefix).map((refName) => ({
+    refName,
+    expectedValue: backend.refs.read(refName),
+  }));
+}
+
+/**
+ * 校验 preview 冻结的本地前置条件仍然成立
+ *
+ * @param backend - 仓库后端
+ * @param preconditions - preview 记录的前置条件
+ * @returns 当前本地 hash 快照
+ */
+function validateLocalPreconditions(
+  backend: RepositoryBackend,
+  preconditions: readonly LocalPrecondition[],
+): Map<string, SHA1> {
+  const currentLocalRefs = getLocalRefs(backend.refs);
+
+  for (const pc of preconditions) {
+    if (pc.namespacePrefix !== undefined) {
+      const currentRefs = snapshotNamespaceRefs(backend, pc.namespacePrefix);
+      const expectedRefs = pc.expectedRefs ?? [];
+
+      const sameLength = currentRefs.length === expectedRefs.length;
+      const sameEntries =
+        sameLength &&
+        currentRefs.every((entry, idx) => {
+          const expected = expectedRefs[idx];
+          return (
+            expected !== undefined &&
+            entry.refName === expected.refName &&
+            entry.expectedValue === expected.expectedValue
+          );
+        });
+
+      if (!sameEntries) {
+        throw new Error(
+          `前置条件校验失败：命名空间 "${pc.namespacePrefix}" 在 preview() 后已变化。`,
+        );
+      }
+      continue;
+    }
+
+    if (pc.expectedValue !== undefined) {
+      const currentValue = backend.refs.read(pc.refName);
+      if (currentValue !== pc.expectedValue) {
+        throw new Error(
+          `前置条件校验失败：ref "${pc.refName}" 在 preview() 后已变化。` +
+            `期望 ${pc.expectedValue ?? "(不存在)"}，实际 ${currentValue ?? "(不存在)"}。`,
+        );
+      }
+      continue;
+    }
+
+    const currentHash = currentLocalRefs.get(pc.refName) ?? null;
+    if (currentHash !== pc.expectedHash) {
+      throw new Error(
+        `前置条件校验失败：ref "${pc.refName}" 在 preview() 后已变化。` +
+          `期望 ${pc.expectedHash ?? "(不存在)"}，实际 ${currentHash ?? "(不存在)"}。`,
+      );
+    }
+  }
+
+  return currentLocalRefs;
 }
 
 /**
@@ -342,7 +442,7 @@ function createPlanBuilder(
       const resolvedMappings: ResolvedMapping[] = [];
 
       const headMappings: Array<{ localRef: string; detach: boolean }> = [];
-      const pruneNamespaces: Array<{ prefix: string; currentRefs: Set<string> }> = [];
+      const namespaceOwnerships = new Map<string, NamespaceOwnership>();
       const diagnostics: ImportDiagnostic[] = [];
 
       // 辅助函数：根据目标模式推断命名空间默认策略
@@ -388,6 +488,14 @@ function createPlanBuilder(
 
         switch (act.action) {
           case "namespace": {
+            if (act.prune && !act.target.includes("*")) {
+              diagnostics.push({
+                level: "error",
+                message: `toNamespace("${act.target}")：prune 只允许用于带 * 的命名空间投影。`,
+              });
+              break;
+            }
+
             const targets = resolveNamespaceTargets(act.viewRefs, act.target);
 
             for (const t of targets) {
@@ -398,11 +506,19 @@ function createPlanBuilder(
               });
             }
 
-            if (act.prune && targets.length > 0) {
-              const starIdx = act.target.indexOf("*");
-              const prefix = starIdx >= 0 ? act.target.slice(0, starIdx) : act.target;
-              const localRefs = new Set(targets.map((t) => t.localRef));
-              pruneNamespaces.push({ prefix, currentRefs: localRefs });
+            const namespacePrefix = getNamespacePatternPrefix(act.target);
+            if (namespacePrefix !== null) {
+              const ownership = namespaceOwnerships.get(namespacePrefix) ?? {
+                prefix: namespacePrefix,
+                currentRefs: new Set<string>(),
+                prune: false,
+              };
+
+              for (const t of targets) {
+                ownership.currentRefs.add(t.localRef);
+              }
+              ownership.prune = ownership.prune || (act.prune ?? false);
+              namespaceOwnerships.set(namespacePrefix, ownership);
             }
             break;
           }
@@ -418,9 +534,10 @@ function createPlanBuilder(
 
             if (act.viewRefs.length > 1) {
               diagnostics.push({
-                level: "warn",
-                message: `toBranch("${act.target}")：view 包含 ${act.viewRefs.length} 个 refs，将使用第一个 ref "${act.viewRefs[0]!.name}"。`,
+                level: "error",
+                message: `toBranch("${act.target}") 需要单一 ref 视图，当前收到 ${act.viewRefs.length} 个 refs。`,
               });
+              break;
             }
 
             const branchRef = act.target.startsWith("refs/heads/")
@@ -445,9 +562,10 @@ function createPlanBuilder(
 
             if (act.viewRefs.length > 1) {
               diagnostics.push({
-                level: "warn",
-                message: `toTag("${act.target}")：view 包含 ${act.viewRefs.length} 个 refs，将使用第一个 ref "${act.viewRefs[0]!.name}"。`,
+                level: "error",
+                message: `toTag("${act.target}") 需要单一 ref 视图，当前收到 ${act.viewRefs.length} 个 refs。`,
               });
+              break;
             }
 
             const tagRef = act.target.startsWith("refs/tags/")
@@ -499,19 +617,34 @@ function createPlanBuilder(
         }
       }
 
+      const conflictedTargets = new Set<string>();
+      const mappingsByLocalRef = new Map<string, ResolvedMapping[]>();
+      for (const mapping of resolvedMappings) {
+        const existing = mappingsByLocalRef.get(mapping.localRef) ?? [];
+        existing.push(mapping);
+        mappingsByLocalRef.set(mapping.localRef, existing);
+      }
+      for (const [localRef, mappings] of mappingsByLocalRef) {
+        if (mappings.length <= 1) {
+          continue;
+        }
+
+        conflictedTargets.add(localRef);
+        diagnostics.push({
+          level: "error",
+          message:
+            `本地 ref "${localRef}" 被多个物化动作同时写入：` +
+            `${mappings.map((m) => m.remoteRef.name).join(", ")}。`,
+          refName: localRef,
+        });
+      }
+
       // Step 2: 捕获本地前置条件（冻结 affected refs 的当前状态）
       const localRefs = getLocalRefs(backend.refs);
       const affectedRefNames = new Set<string>();
 
       for (const m of resolvedMappings) {
         affectedRefNames.add(m.localRef);
-      }
-      for (const p of pruneNamespaces) {
-        for (const [refName] of localRefs) {
-          if (refName.startsWith(p.prefix)) {
-            affectedRefNames.add(refName);
-          }
-        }
       }
       if (headMappings.length > 0) {
         affectedRefNames.add("HEAD");
@@ -531,6 +664,18 @@ function createPlanBuilder(
         const hash = localRefs.get(refName) ?? null;
         localPreconditions.push({ refName, expectedHash: hash });
       }
+      for (const ownership of namespaceOwnerships.values()) {
+        if (!ownership.prune) {
+          continue;
+        }
+
+        localPreconditions.push({
+          refName: ownership.prefix,
+          expectedHash: null,
+          namespacePrefix: ownership.prefix,
+          expectedRefs: snapshotNamespaceRefs(backend, ownership.prefix),
+        });
+      }
 
       // Step 3: 计算 ref 操作与对象根
       const refOperations: PlannedRefOperation[] = [];
@@ -546,6 +691,10 @@ function createPlanBuilder(
           localTarget: m.localRef,
           policy: m.policy,
         });
+
+        if (conflictedTargets.has(m.localRef)) {
+          continue;
+        }
 
         if (existingHash === m.remoteRef.hash) {
           diagnostics.push({
@@ -592,9 +741,19 @@ function createPlanBuilder(
 
       // Step 4: 计算 prune 操作
       const pruneOperations: PlannedRefDeletion[] = [];
-      for (const ns of pruneNamespaces) {
+      const scheduledPruneRefs = new Set<string>();
+      for (const ns of namespaceOwnerships.values()) {
+        if (!ns.prune) {
+          continue;
+        }
+
         for (const [refName] of localRefs) {
-          if (refName.startsWith(ns.prefix) && !ns.currentRefs.has(refName)) {
+          if (
+            refName.startsWith(ns.prefix) &&
+            !ns.currentRefs.has(refName) &&
+            !scheduledPruneRefs.has(refName)
+          ) {
+            scheduledPruneRefs.add(refName);
             pruneOperations.push({
               refName,
               reason: `命名空间 "${ns.prefix}*" 的 prune 清理。`,
@@ -608,10 +767,18 @@ function createPlanBuilder(
 
       if (headMappings.length > 0) {
         const lastHead = headMappings[headMappings.length - 1]!;
-        headOperation = {
-          targetRef: lastHead.localRef,
-          detach: lastHead.detach,
-        };
+        if (conflictedTargets.has(lastHead.localRef)) {
+          diagnostics.push({
+            level: "error",
+            message: `setHead() 目标 "${lastHead.localRef}" 存在冲突，HEAD 无法确定。`,
+            refName: lastHead.localRef,
+          });
+        } else {
+          headOperation = {
+            targetRef: lastHead.localRef,
+            detach: lastHead.detach,
+          };
+        }
       }
 
       // Step 6: 总览诊断
@@ -665,6 +832,9 @@ function createPlanBuilder(
         );
       }
 
+      // Step 2: 校验前置条件 — 当前本地 refs 与 preview 快照一致
+      let currentLocalRefs = validateLocalPreconditions(backend, p.localPreconditions);
+
       if (
         p.refOperations.length === 0 &&
         p.objectRoots.length === 0 &&
@@ -676,29 +846,6 @@ function createPlanBuilder(
           updatedRefs: new Map<string, SHA1>(),
           deletedRefs: [],
         };
-      }
-
-      // Step 2: 校验前置条件 — 当前本地 refs 与 preview 快照一致
-      const currentLocalRefs = getLocalRefs(backend.refs);
-      for (const pc of p.localPreconditions) {
-        if (pc.expectedValue !== undefined) {
-          const currentValue = backend.refs.read(pc.refName);
-          if (currentValue !== pc.expectedValue) {
-            throw new Error(
-              `前置条件校验失败：ref "${pc.refName}" 在 preview() 后已变化。` +
-                `期望 ${pc.expectedValue ?? "(不存在)"}，实际 ${currentValue ?? "(不存在)"}。`,
-            );
-          }
-          continue;
-        }
-
-        const currentHash = currentLocalRefs.get(pc.refName) ?? null;
-        if (currentHash !== pc.expectedHash) {
-          throw new Error(
-            `前置条件校验失败：ref "${pc.refName}" 在 preview() 后已变化。` +
-              `期望 ${pc.expectedHash ?? "(不存在)"}，实际 ${currentHash ?? "(不存在)"}。`,
-          );
-        }
       }
 
       // Step 3: 拉取对象（仅拉取本地缺失的）
@@ -728,6 +875,10 @@ function createPlanBuilder(
           haves: localHaveTips.length > 0 ? localHaveTips : undefined,
         });
         importedObjects = packResult.objectCount;
+
+        // fetch-pack 是异步阶段，结束后需要重新校验一次本地前置条件，
+        // 防止 preview 与 ref 写入之间出现并发漂移。
+        currentLocalRefs = validateLocalPreconditions(backend, p.localPreconditions);
       }
 
       // Step 4: 策略预校验 — 在进入 ref 物化之前完成全部策略校验
