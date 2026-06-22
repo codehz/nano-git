@@ -66,17 +66,24 @@ export function createPackReader(data: Buffer): PackReader {
 
 /**
  * Packfile 读取器类
+ *
+ * 使用惰性解析策略：对象在首次被访问时才解析。
+ * - getByHash() / getByOffset() / has() 只解析到找到目标为止
+ * - objects() / listHashes() 解析全部对象
  */
 export class PackReader {
   private readonly data: Buffer;
   private readonly _objectCount: number;
   private readonly objectsByOffset: Map<number, PackObject> = new Map();
   private readonly objectsByHash: Map<string, PackObject> = new Map();
-  private parsed = false;
+  private parseOffset: number;
+  private parsedCount = 0;
+  private fullyParsed = false;
 
   constructor(data: Buffer) {
     this.data = data;
     this._objectCount = parsePackHeader(data);
+    this.parseOffset = PACK_HEADER_SIZE;
   }
 
   /** 对象数量 */
@@ -85,95 +92,125 @@ export class PackReader {
   }
 
   /**
-   * 解析所有对象
+   * 解析下一个对象
    */
-  private parseAll(): void {
-    if (this.parsed) return;
-    this.parsed = true;
+  private parseNext(): void {
+    if (this.fullyParsed) return;
 
-    let offset = PACK_HEADER_SIZE;
     const endOffset = this.data.length - PACK_CHECKSUM_SIZE;
 
-    for (let i = 0; i < this._objectCount; i++) {
-      if (offset >= endOffset) {
-        throw new InvalidPackError(`Unexpected end of packfile at object ${i}`);
+    if (this.parsedCount >= this._objectCount || this.parseOffset >= endOffset) {
+      this.fullyParsed = true;
+      if (this.parsedCount < this._objectCount) {
+        throw new InvalidPackError(`Unexpected end of packfile at object ${this.parsedCount}`);
       }
+      return;
+    }
 
-      const objOffset = offset;
-      const [typeNum, _size, headerBytes] = decodeObjectHeader(this.data, offset);
-      offset += headerBytes;
+    const objOffset = this.parseOffset;
+    const [typeNum, _size, headerBytes] = decodeObjectHeader(this.data, this.parseOffset);
+    this.parseOffset += headerBytes;
 
-      let obj: PackObject;
+    let obj: PackObject;
 
-      if (typeNum === OBJ_OFS_DELTA) {
-        const [negOffset, offsetBytes] = decodeOfsDeltaOffset(this.data, offset);
-        offset += offsetBytes;
-        const resolved = resolveOfsDeltaPackObject(
-          this.data,
-          offset,
-          objOffset,
-          negOffset,
-          this.objectsByOffset,
-        );
-        obj = resolved.object;
-        offset = resolved.nextOffset;
-      } else if (typeNum === OBJ_REF_DELTA) {
-        const baseHash = this.data.subarray(offset, offset + 20).toString("hex");
-        offset += 20;
-        const resolved = resolveRefDeltaPackObject(
-          this.data,
-          offset,
-          objOffset,
-          baseHash,
-          this.objectsByHash,
-        );
-        obj = resolved.object;
-        offset = resolved.nextOffset;
-      } else {
-        const resolved = resolvePlainPackObject(this.data, offset, objOffset, typeNum);
-        obj = resolved.object;
-        offset = resolved.nextOffset;
-      }
+    if (typeNum === OBJ_OFS_DELTA) {
+      const [negOffset, offsetBytes] = decodeOfsDeltaOffset(this.data, this.parseOffset);
+      this.parseOffset += offsetBytes;
+      const resolved = resolveOfsDeltaPackObject(
+        this.data,
+        this.parseOffset,
+        objOffset,
+        negOffset,
+        this.objectsByOffset,
+      );
+      obj = resolved.object;
+      this.parseOffset = resolved.nextOffset;
+    } else if (typeNum === OBJ_REF_DELTA) {
+      const baseHash = this.data.subarray(this.parseOffset, this.parseOffset + 20).toString("hex");
+      this.parseOffset += 20;
+      const resolved = resolveRefDeltaPackObject(
+        this.data,
+        this.parseOffset,
+        objOffset,
+        baseHash,
+        this.objectsByHash,
+      );
+      obj = resolved.object;
+      this.parseOffset = resolved.nextOffset;
+    } else {
+      const resolved = resolvePlainPackObject(this.data, this.parseOffset, objOffset, typeNum);
+      obj = resolved.object;
+      this.parseOffset = resolved.nextOffset;
+    }
 
-      this.objectsByOffset.set(objOffset, obj);
-      this.objectsByHash.set(obj.hash, obj);
+    this.objectsByOffset.set(objOffset, obj);
+    this.objectsByHash.set(obj.hash, obj);
+    this.parsedCount++;
+
+    if (this.parsedCount >= this._objectCount) {
+      this.fullyParsed = true;
     }
   }
 
   /**
+   * 按需解析直到条件满足或解析全部
+   */
+  private parseUntil(condition: () => boolean): void {
+    while (!this.fullyParsed && !condition()) {
+      this.parseNext();
+    }
+  }
+
+  /**
+   * 解析所有剩余对象
+   */
+  private parseAllRemaining(): void {
+    this.parseUntil(() => this.fullyParsed);
+  }
+
+  /**
    * 遍历所有对象
+   *
+   * 按 offset 顺序解析并迭代所有对象。
    */
   *objects(): Generator<PackObject> {
-    this.parseAll();
+    this.parseAllRemaining();
     yield* this.objectsByOffset.values();
   }
 
   /**
-   * 根据哈希获取对象
+   * 根据哈希获取对象（惰性解析）
+   *
+   * 只解析到找到目标对象为止，不解析全部。
    */
   getByHash(hash: SHA1): PackObject | undefined {
-    this.parseAll();
+    if (this.objectsByHash.has(hash)) return this.objectsByHash.get(hash);
+    this.parseUntil(() => this.objectsByHash.has(hash));
     return this.objectsByHash.get(hash);
   }
 
   /**
-   * 根据偏移量获取对象
+   * 根据偏移量获取对象（惰性解析）
+   *
+   * 只解析到目标偏移位置为止。
    */
   getByOffset(offset: number): PackObject | undefined {
-    this.parseAll();
+    if (this.objectsByOffset.has(offset)) return this.objectsByOffset.get(offset);
+    this.parseUntil(() => this.objectsByOffset.has(offset) || this.fullyParsed);
     return this.objectsByOffset.get(offset);
   }
 
   /**
-   * 检查对象是否存在
+   * 检查对象是否存在（惰性查找）
    */
   has(hash: SHA1): boolean {
-    this.parseAll();
+    if (this.objectsByHash.has(hash)) return true;
+    this.parseUntil(() => this.objectsByHash.has(hash));
     return this.objectsByHash.has(hash);
   }
 
   /**
-   * 获取 GitObject
+   * 获取 GitObject（惰性查找）
    */
   readObject(hash: SHA1): GitObject | undefined {
     const obj = this.getByHash(hash);
@@ -183,10 +220,10 @@ export class PackReader {
   }
 
   /**
-   * 获取所有对象的哈希列表
+   * 获取所有对象的哈希列表（解析全部）
    */
   listHashes(): SHA1[] {
-    this.parseAll();
+    this.parseAllRemaining();
     return Array.from(this.objectsByHash.keys()) as SHA1[];
   }
 }
