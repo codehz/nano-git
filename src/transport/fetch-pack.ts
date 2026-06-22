@@ -31,6 +31,7 @@ import {
   parseUploadPackNegotiationResponse,
 } from "./negotiate.ts";
 import { createSmartHttpClient } from "./smart-http.ts";
+import { extractCapabilities, FETCH_CAPABILITIES } from "./transport-capabilities.ts";
 
 import type { SHA1, GitObject } from "../core/types.ts";
 import type { ObjectStore } from "../odb/types.ts";
@@ -48,32 +49,6 @@ export class FetchPackError extends GitError {
     super(`Fetch-pack error: ${message}`);
     this.name = "FetchPackError";
   }
-}
-
-// ============================================================================
-// 常量
-// ============================================================================
-
-/** 客户端能力声明 */
-const DEFAULT_CAPABILITIES = [
-  "multi_ack",
-  "side-band-64k",
-  "ofs-delta",
-  "no-progress",
-  "include-tag",
-  "shallow",
-];
-
-// ============================================================================
-// 能力提取
-// ============================================================================
-
-/**
- * 从服务端 capabilities 中提取客户端可用的能力列表
- */
-function extractCapabilities(serverCaps: Record<string, string | true>): string[] {
-  const supported = new Set<string>(DEFAULT_CAPABILITIES);
-  return Object.keys(serverCaps).filter((cap) => supported.has(cap));
 }
 
 // ============================================================================
@@ -205,7 +180,7 @@ export async function fetchPack(
   const adv = await client.getRefAdvertisement();
 
   // 2. 解析能力
-  const caps = extractCapabilities(adv.capabilities);
+  const caps = extractCapabilities(adv.capabilities, FETCH_CAPABILITIES);
 
   // 3. shallow 能力校验
   const hasShallowCap = caps.includes("shallow");

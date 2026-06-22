@@ -9,7 +9,8 @@
 import { describe, test, expect } from "bun:test";
 
 import { sha1, type SHA1 } from "@/core/types.ts";
-import { determinePushRefs, PushError } from "@/transport/push.ts";
+import { PushError } from "@/transport/push-error.ts";
+import { determinePushRefs } from "@/transport/push-ref-plan.ts";
 import { parseRefSpec } from "@/transport/ref-plan.ts";
 
 // ============================================================================

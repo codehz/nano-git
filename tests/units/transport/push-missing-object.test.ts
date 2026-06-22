@@ -13,7 +13,8 @@ import { createMemoryObjectStore } from "@/odb/memory-store.ts";
 import { createMemoryRefStore } from "@/refs/stores/memory.ts";
 import { collectReachable } from "@/transport/object-graph.ts";
 import { encodePktLine, encodeFlushPkt } from "@/transport/pkt-line.ts";
-import { push, PushError } from "@/transport/push.ts";
+import { PushError } from "@/transport/push-error.ts";
+import { push } from "@/transport/push.ts";
 import { parseReceivePackResult } from "@/transport/receive-pack-result.ts";
 
 import type { RemoteTransport } from "@/transport/types.ts";

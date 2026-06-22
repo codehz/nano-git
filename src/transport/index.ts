@@ -93,4 +93,14 @@ export {
 // P8: HTTP 传输 & push 编排
 export { createSmartHttpClient, SmartHttpError } from "./smart-http.ts";
 export type { SmartHttpClient, UploadPackResult, ReceivePackHttpResult } from "./smart-http.ts";
+export {
+  extractCapabilities,
+  PUSH_CAPABILITIES,
+  FETCH_CAPABILITIES,
+} from "./transport-capabilities.ts";
 export { push, PushError } from "./push.ts";
+export { checkFastForward } from "./push-policy.ts";
+export { determinePushRefs, resolveDefaultRefSpec, remoteRefsToMap } from "./push-ref-plan.ts";
+export type { PushRefItem } from "./push-ref-plan.ts";
+export { mergePushBoundaries, computeObjectsToSend } from "./push-pack-plan.ts";
+export { processPushReport } from "./push-report.ts";

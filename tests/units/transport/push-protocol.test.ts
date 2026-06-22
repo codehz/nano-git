@@ -12,7 +12,9 @@ import { sha1, type SHA1 } from "@/core/types.ts";
 import { createMemoryObjectStore } from "@/odb/memory-store.ts";
 import { createMemoryRefStore } from "@/refs/stores/memory.ts";
 import { encodePktLine, encodeFlushPkt } from "@/transport/pkt-line.ts";
-import { push, PushError, determinePushRefs } from "@/transport/push.ts";
+import { PushError } from "@/transport/push-error.ts";
+import { determinePushRefs } from "@/transport/push-ref-plan.ts";
+import { push } from "@/transport/push.ts";
 import { parseReceivePackResult } from "@/transport/receive-pack-result.ts";
 import { parseRefSpec } from "@/transport/ref-plan.ts";
 
