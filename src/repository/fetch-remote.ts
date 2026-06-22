@@ -25,7 +25,7 @@ import { createUploadPackHttpClient } from "../transport/smart-http.ts";
 import { applyRefUpdates } from "../transport/update-refs.ts";
 
 import type { SHA1 } from "../core/types.ts";
-import type { UploadPackTransport, RefAdvertisement } from "../transport/types.ts";
+import type { UploadPackTransport, RefAdvertisement, MatchedRefItem } from "../transport/types.ts";
 import type { RepositoryBackend } from "./backend/types.ts";
 import type { RemoteConfig, FetchRemoteOptions, FetchRemoteResult } from "./remote-types.ts";
 
@@ -90,7 +90,7 @@ export async function runFetchRemote(
   let packResult: { objectCount: number; shallow?: SHA1[]; unshallow?: SHA1[] } | undefined;
 
   if (plan.needsPackNegotiation) {
-    const haveTips = selectHaveTipsForRemote(localRefs, plan.refUpdates);
+    const haveTips = selectHaveTipsForRemote(localRefs, plan.matchedItems);
     const currentShallow = backend.shallow.read();
 
     packResult = await fetchPack(objects, transport, adv, {
@@ -135,6 +135,9 @@ export async function runFetchRemote(
 /**
  * 为 remote fetch 选择 have 遍历起点
  *
+ * 使用 matchedItems（而非仅 refUpdates），以便在“hashEqual 但对象缺失”的补对象场景
+ * 也能提供最优的 have 起点（no-op 场景不会走到这里）。
+ *
  * 优先级：
  * 1. wants 对应的 remote-tracking ref 旧值
  * 2. 同一远端命名空间下的其他 remote-tracking refs
@@ -143,12 +146,12 @@ export async function runFetchRemote(
  */
 export function selectHaveTipsForRemote(
   localRefs: Map<string, SHA1>,
-  updates: Array<{ localRef: string; currentLocalHash?: SHA1 }>,
+  matchedItems: MatchedRefItem[],
 ): SHA1[] {
   const tips: SHA1[] = [];
   const seen = new Set<SHA1>();
 
-  for (const u of updates) {
+  for (const u of matchedItems) {
     if (u.currentLocalHash && !seen.has(u.currentLocalHash)) {
       seen.add(u.currentLocalHash);
       tips.push(u.currentLocalHash);
@@ -156,7 +159,7 @@ export function selectHaveTipsForRemote(
   }
 
   const remotePrefixes = new Set<string>();
-  for (const u of updates) {
+  for (const u of matchedItems) {
     const m = u.localRef.match(/^(refs\/remotes\/[^/]+\/)/);
     if (m) {
       remotePrefixes.add(m[1]!);

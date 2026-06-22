@@ -9,7 +9,7 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { sha1, type SHA1, type GitBlob, type GitCommit } from "@/core/types.ts";
+import { sha1, type SHA1, type GitCommit } from "@/core/types.ts";
 import { createMemoryObjectStore } from "@/odb/memory-store.ts";
 import { planRefUpdates } from "@/transport/fetch-ref-plan.ts";
 
@@ -68,9 +68,10 @@ describe("planRefUpdates() wants 推导", () => {
     const refs: RemoteRef[] = [makeRef("refs/heads/main", realHash)];
     const localRefs = new Map<string, SHA1>([["refs/remotes/origin/main", realHash]]);
     const plan = planRefUpdates(refs, localRefs, store, defaultRules);
-    // hash 相同且对象存在 → refUpdate 仍在（hashEqual=true），但 wants 为空
-    expect(plan.refUpdates).toHaveLength(1);
-    expect(plan.refUpdates[0]!.hashEqual).toBe(true);
+    // hash 相同且对象存在 → refUpdates 为空（no-op），但 matchedItems 保留完整匹配结果
+    expect(plan.refUpdates).toHaveLength(0);
+    expect(plan.matchedItems).toHaveLength(1);
+    expect(plan.matchedItems[0]!.hashEqual).toBe(true);
     expect(plan.wants).toHaveLength(0);
     expect(plan.needsPackNegotiation).toBe(false);
   });
@@ -83,9 +84,10 @@ describe("planRefUpdates() wants 推导", () => {
 
     // planRefUpdates 现在包含对象完整性检查：hash 相同但对象缺失时仍生成 want
     const plan = planRefUpdates(refs, localRefs, store, defaultRules);
-    // hash 相同但对象缺失 → 仍应产生 want，且 refUpdates 也保留此项（hashEqual=true）
-    expect(plan.refUpdates).toHaveLength(1);
-    expect(plan.refUpdates[0]!.hashEqual).toBe(true);
+    // hash 相同但对象缺失 → 仍应产生 want，但 refUpdates 为空（只补对象不写 ref），matchedItems 保留
+    expect(plan.refUpdates).toHaveLength(0);
+    expect(plan.matchedItems).toHaveLength(1);
+    expect(plan.matchedItems[0]!.hashEqual).toBe(true);
     expect(plan.wants).toHaveLength(1);
     expect(plan.wants[0]).toBe(hash);
     expect(plan.needsPackNegotiation).toBe(true);
@@ -126,10 +128,11 @@ describe("planRefUpdates() deepen 模式", () => {
     const refs: RemoteRef[] = [{ name: "refs/heads/main", hash }];
     const localRefs = new Map<string, SHA1>([["refs/remotes/origin/main", hash]]);
 
-    // 不传 depth：正常模式 → hash 相同且对象存在，wants 为空
+    // 不传 depth：正常模式 → hash 相同且对象存在，refUpdates 为空
     const planNormal = planRefUpdates(refs, localRefs, store, defaultRules);
-    expect(planNormal.refUpdates).toHaveLength(1);
-    expect(planNormal.refUpdates[0]!.hashEqual).toBe(true);
+    expect(planNormal.refUpdates).toHaveLength(0);
+    expect(planNormal.matchedItems).toHaveLength(1);
+    expect(planNormal.matchedItems[0]!.hashEqual).toBe(true);
     expect(planNormal.wants).toHaveLength(0);
     expect(planNormal.needsPackNegotiation).toBe(false);
 

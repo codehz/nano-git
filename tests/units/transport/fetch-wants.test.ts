@@ -2,7 +2,7 @@
  * planRefUpdates 单元测试（完整规划模型）
  *
  * 覆盖 ref 映射逻辑：初始 clone、增量 fetch、冲突检测。
- * wants 推导和对象完整性补正测试移至 fetch-plan-finalize.test.ts。
+ * wants 推导和对象完整性补正测试移至 fetch-plan.test.ts。
  */
 
 import { describe, test, expect } from "bun:test";
@@ -65,12 +65,14 @@ describe("planRefUpdates()", () => {
     ];
     const localRefs = new Map<string, SHA1>([["refs/remotes/origin/main", localHash]]);
     const plan = planRefUpdates(refs, localRefs, store, defaultRules);
-    // main（hash 相同且对象存在 → 仍保留 refUpdate 但 hashEqual=true）+
-    // develop（hash 不同 → 常规 refUpdate）
-    expect(plan.refUpdates).toHaveLength(2);
+    // main（hash 相同且对象存在 → 进入 matchedItems，不进入 refUpdates）
+    // develop（hash 不同 → 进入 refUpdates）
+    expect(plan.refUpdates).toHaveLength(1);
     const mainUpdate = plan.refUpdates.find((u) => u.localRef === "refs/remotes/origin/main");
-    expect(mainUpdate).toBeDefined();
-    expect(mainUpdate!.hashEqual).toBe(true);
+    expect(mainUpdate).toBeUndefined(); // no-op 不进入 refUpdates
+    const mainMatched = plan.matchedItems.find((u) => u.localRef === "refs/remotes/origin/main");
+    expect(mainMatched).toBeDefined();
+    expect(mainMatched!.hashEqual).toBe(true);
     const devUpdate = plan.refUpdates.find((u) => u.localRef === "refs/remotes/origin/develop");
     expect(devUpdate).toBeDefined();
     expect(devUpdate!.currentLocalHash).toBeUndefined();

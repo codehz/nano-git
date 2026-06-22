@@ -110,7 +110,9 @@ export interface BootstrapRemoteResult extends FetchRemoteResult {
  * Push remote 操作选项
  *
  * 纯 push 行为参数，不包含传输层细节。
- * shallow 由 repository 内部从 backend.shallow 推导。
+ *
+ * 认证：支持 token/headers 透传到 transport。
+ * 边界：pushShallowBoundaries 是 repository 层语义（不是 transport 泄漏），优先级高于 backend.shallow。
  */
 export interface PushRemoteOptions {
   /**
@@ -127,6 +129,19 @@ export interface PushRemoteOptions {
 
   /** 是否强制推送（--force），等价于 refspec 的 + 前缀 */
   readonly force?: boolean;
+
+  /** 认证 token（用于 bearer 或 basic auth），由 repository 层透传 */
+  readonly token?: string;
+
+  /** 自定义请求头，由 repository 层透传 */
+  readonly headers?: Record<string, string>;
+
+  /**
+   * 推送时已知的浅克隆边界（repository 层语义，非 transport 泄漏）。
+   * 优先级：options.pushShallowBoundaries > backend.shallow.read()
+   * 这样可在不改 backend 的前提下表达已知祖先缺失边界。
+   */
+  readonly pushShallowBoundaries?: SHA1[];
 }
 
 /**

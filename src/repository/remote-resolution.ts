@@ -4,8 +4,9 @@
  * 集中处理 remote 配置的默认值决策：
  * - effectivePushUrl：options.pushUrl ?? remote.pushUrl ?? remote.url
  * - effectivePushRefSpecs：options.refSpecs ?? remote.pushRefSpecs
+ * - effectivePushBoundaries：options.pushShallowBoundaries ?? backend.shallow
  *
- * shallow 由 repository 内部从 backend.shallow 推导，不在公共 API 暴露。
+ * push 的认证（token/headers）直接透传，不在此解析。
  *
  * @example
  * ```ts
@@ -15,6 +16,7 @@
  * ```
  */
 
+import type { SHA1 } from "../core/types.ts";
 import type { RemoteConfig, PushRemoteOptions } from "./remote-types.ts";
 
 /**
@@ -39,4 +41,28 @@ export function resolveEffectivePushRefSpecs(
   options?: Pick<PushRemoteOptions, "refSpecs">,
 ): string[] | undefined {
   return options?.refSpecs ?? remote.pushRefSpecs;
+}
+
+/**
+ * 解析 effective push shallow 边界
+ *
+ * 优先级：
+ * 1. options.pushShallowBoundaries（显式传入）
+ * 2. 回退 backend.shallow.read() 的当前值
+ *
+ * 输出为最终传给 transport 的 shallowBoundaries（undefined 表示无浅克隆边界）。
+ *
+ * 这样 push URL、refspec、认证、边界决策都集中在 resolution 模块。
+ */
+export function resolveEffectivePushBoundaries(
+  options?: Pick<PushRemoteOptions, "pushShallowBoundaries">,
+  backendShallow?: SHA1[],
+): SHA1[] | undefined {
+  if (options?.pushShallowBoundaries && options.pushShallowBoundaries.length > 0) {
+    return options.pushShallowBoundaries;
+  }
+  if (backendShallow && backendShallow.length > 0) {
+    return backendShallow;
+  }
+  return undefined;
 }

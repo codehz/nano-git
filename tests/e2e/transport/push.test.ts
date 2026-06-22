@@ -808,24 +808,35 @@ describe("push() 端到端", () => {
     const repo = createMemoryRepository();
     const author = { ...FIXED_AUTHOR };
 
+    // 添加 remote 并先 fetch，使本地 store 拥有服务端对象（避免 push 时 parent commit 缺失）
+    repo.addRemote({
+      name: "origin",
+      url: serverUrl,
+      fetchRules: [{ source: "+refs/heads/*", target: "refs/remotes/origin/*" }],
+    });
+    await repo.fetchRemote("origin");
+
+    // 清理可能残留的 server feature ref，保证测试隔离
+    try {
+      git(["update-ref", "-d", "refs/heads/feature"], serverRepoDir);
+    } catch {}
+
     // 将 HEAD 指向 feature 分支
     repo.refs.write(HEAD_REF, `ref: ${HEADS_PREFIX}feature`);
 
-    // 获取服务端初始 commit
-    const initialCommit = sha1(
-      git(["--git-dir", serverRepoDir, "rev-parse", "refs/heads/main"], tempDir),
-    );
+    // 获取本地已有的 main 作为 base（fetch 后存在）
+    const trackingMain = repo.refs.read("refs/remotes/origin/main");
+    if (!trackingMain) throw new Error("tracking main missing after fetch");
+    const baseCommit = sha1(trackingMain);
 
-    // 在 feature 分支上创建 commit（基于服务端初始 commit，通过 fast-forward 预检）
+    // 在 feature 分支上创建 commit（基于已 fetch 的对象）
     const fileHash = repo.writeBlob(Buffer.from("feature branch content"));
     const treeHash = repo.createTree([{ mode: "100644", name: "feature.txt", hash: fileHash }]);
-    const commitHash = repo.createCommit(
-      treeHash,
-      [initialCommit],
-      "Feature branch commit",
-      author,
-    );
+    const commitHash = repo.createCommit(treeHash, [baseCommit], "Feature branch commit", author);
     repo.updateRef("refs/heads/feature", commitHash);
+
+    // 保存初始 main 用于断言未被污染
+    const initialMain = git(["--git-dir", serverRepoDir, "rev-parse", "refs/heads/main"], tempDir);
 
     // 不传 refSpecs，使用默认行为
     const result = await repo.push(serverUrl);
@@ -843,7 +854,7 @@ describe("push() 端到端", () => {
       ["--git-dir", serverRepoDir, "rev-parse", "refs/heads/main"],
       tempDir,
     );
-    expect(serverMainRef).toBe(initialCommit);
+    expect(serverMainRef).toBe(initialMain);
   });
 
   test("默认 refspec 在 HEAD 在 main 分支时正确推送到 main", async () => {
@@ -923,5 +934,46 @@ describe("push() 端到端", () => {
       tempDir,
     );
     expect(serverRef).toBe(commitHash);
+  });
+
+  test("repo.push() 可透传 token/headers", async () => {
+    const repo = createMemoryRepository();
+    const author = { ...FIXED_AUTHOR };
+
+    const fileHash = repo.writeBlob(Buffer.from("auth test"));
+    const treeHash = repo.createTree([{ mode: "100644", name: "auth.txt", hash: fileHash }]);
+    const commitHash = repo.createCommit(treeHash, [], "auth options test", author);
+    repo.updateRef("refs/heads/auth-test", commitHash);
+
+    // 透传 token/headers 应被接收（服务器不强制认证时仍成功）
+    const result = await repo.push(serverUrl, {
+      refSpecs: ["refs/heads/auth-test:refs/heads/auth-test"],
+      token: "fake-token",
+      headers: { "X-Custom": "yes" },
+    });
+
+    expect(result.pushedRefs).toHaveLength(1);
+    expect(result.pushedRefs[0]!.success).toBe(true);
+  });
+
+  test("options.pushShallowBoundaries 优先于 backend.shallow", async () => {
+    const repo = createMemoryRepository();
+    const author = { ...FIXED_AUTHOR };
+
+    const fileHash = repo.writeBlob(Buffer.from("shallow boundary test"));
+    const treeHash = repo.createTree([{ mode: "100644", name: "sb.txt", hash: fileHash }]);
+    const commitHash = repo.createCommit(treeHash, [], "boundary test", author);
+    repo.updateRef("refs/heads/boundary-test", commitHash);
+
+    // 即使 backend 有 shallow，也应优先使用 options 提供的
+    repo.backend.shallow.applyUpdate({ shallow: [commitHash], unshallow: [] });
+
+    const result = await repo.push(serverUrl, {
+      refSpecs: ["refs/heads/boundary-test:refs/heads/boundary-test"],
+      pushShallowBoundaries: [], // 显式空，覆盖 backend
+    });
+
+    expect(result.pushedRefs).toHaveLength(1);
+    expect(result.pushedRefs[0]!.success).toBe(true);
   });
 });

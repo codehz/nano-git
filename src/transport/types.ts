@@ -130,12 +130,15 @@ export interface RefMappingRule {
 }
 
 /**
- * Ref 更新计划项（完整匹配结果）
+ * 匹配到的 ref 项（完整匹配结果）
  *
  * 每项保留完整的匹配信息，包含 hashEqual 标志。
- * 即使 hashEqual，若本地对象缺失仍需补拉 —— 由 FetchPlan.wants 体现。
+ * 用于记录所有匹配到的远端 ref 与本地 ref 的对应关系。
+ *
+ * 注意：matchedItems ≠ refUpdates。只有 !hashEqual 的才会进入 refUpdates。
+ * 即使 hashEqual 且对象缺失，wants 可非空而 refUpdates 为空。
  */
-export interface RefUpdatePlanItem {
+export interface MatchedRefItem {
   readonly remoteRef: RemoteRef;
   readonly localRef: string;
   readonly currentLocalHash?: SHA1;
@@ -145,16 +148,33 @@ export interface RefUpdatePlanItem {
 }
 
 /**
+ * Ref 更新计划项
+ *
+ * 仅包含实际需要执行本地 ref 写入的项（即 hash 不相等的情况）。
+ * 继承自匹配项的结构。
+ */
+export interface RefUpdatePlanItem extends MatchedRefItem {}
+
+/**
  * Fetch 规划结果（由 planRefUpdates 直接产出）
  *
- * 同时包含 matchedRefs、refUpdates、wants。
- * 不再需要独立的两段式设计（RefUpdatePlan + resolveFetchWants）。
- * wants 已包含"hash 相同但对象缺失"的补正。
+ * 同时包含 matchedRefs、matchedItems、refUpdates、wants。
+ * - matchedItems：所有匹配结果（含 hashEqual 项）
+ * - refUpdates：仅 !hashEqual 的实际需要写 ref 的项
+ * - wants：需要传输的对象（!hashEqual 或 hashEqual 但对象缺失）
+ *
+ * 关键语义：
+ * - matchedItems ≠ refUpdates
+ * - wants 可以非空而 refUpdates 为空（例如 hashEqual + 对象缺失的补拉场景）
+ *
+ * 这样 no-op fetch（第二次 fetch 相同内容）可以有 matchedItems 但 refUpdates 为空。
  */
 export interface FetchPlan {
   /** 所有匹配到的远端 refs */
   readonly matchedRefs: RemoteRef[];
-  /** Ref 更新项列表 */
+  /** 所有匹配项（完整匹配结果，含 hashEqual） */
+  readonly matchedItems: MatchedRefItem[];
+  /** 实际需要写 ref 的结果（仅 !hashEqual） */
   readonly refUpdates: RefUpdatePlanItem[];
   /** 需要向服务器请求的 wants（含对象缺失补正） */
   readonly wants: SHA1[];

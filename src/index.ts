@@ -238,6 +238,7 @@ export type {
   AdvertiseOptions,
   RemoteAdvertisement,
   RefMappingRule,
+  MatchedRefItem, // 完整匹配结果；注意 matchedItems ≠ refUpdates，wants 可非空但 refUpdates 为空
   RefUpdatePlanItem,
   FetchPlan,
   FetchPackOptions,
