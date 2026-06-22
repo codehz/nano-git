@@ -9,12 +9,9 @@ import { describe, test, expect } from "bun:test";
 import { sha1 } from "@/core/types.ts";
 import { createPackWriter } from "@/odb/pack/index.ts";
 import { createMemoryRepositoryBackend } from "@/repository/backend/index.ts";
-import {
-  createImportSession,
-  createRepoImportOperations,
-  createImportView,
-  matchRefGlob,
-} from "@/repository/import-session.ts";
+import { matchRefGlob } from "@/repository/import-glob.ts";
+import { createImportSession, createRepoImportOperations } from "@/repository/import-session.ts";
+import { createImportView } from "@/repository/import-view.ts";
 import { encodePktLine } from "@/transport/pkt-line.ts";
 
 import type { RemoteRef, RefAdvertisement } from "@/transport/types.ts";
