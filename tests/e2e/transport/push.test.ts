@@ -220,9 +220,9 @@ describe("push() 端到端", () => {
       refSpecs: ["refs/heads/new-feature:refs/heads/new-feature"],
     });
 
-    expect(result.refUpdates).toHaveLength(1);
-    expect(result.refUpdates[0]!.success).toBe(true);
-    expect(result.refUpdates[0]!.refName).toBe("refs/heads/new-feature");
+    expect(result.pushedRefs).toHaveLength(1);
+    expect(result.pushedRefs[0]!.success).toBe(true);
+    expect(result.pushedRefs[0]!.refName).toBe("refs/heads/new-feature");
 
     const serverRef = git(
       ["--git-dir", serverRepoDir, "rev-parse", "refs/heads/new-feature"],
@@ -251,9 +251,9 @@ describe("push() 端到端", () => {
       refSpecs: ["refs/heads/main:refs/heads/main"],
     });
 
-    expect(result.refUpdates).toHaveLength(1);
-    expect(result.refUpdates[0]!.success).toBe(true);
-    expect(result.refUpdates[0]!.refName).toBe("refs/heads/main");
+    expect(result.pushedRefs).toHaveLength(1);
+    expect(result.pushedRefs[0]!.success).toBe(true);
+    expect(result.pushedRefs[0]!.refName).toBe("refs/heads/main");
 
     const remoteMain = git(["--git-dir", emptyRepoDir, "rev-parse", "refs/heads/main"], tempDir);
     expect(remoteMain).toBe(commitHash);
@@ -276,9 +276,9 @@ describe("push() 端到端", () => {
       refSpecs: [":refs/heads/feature"],
     });
 
-    expect(deleteResult.refUpdates).toHaveLength(1);
-    expect(deleteResult.refUpdates[0]!.success).toBe(true);
-    expect(deleteResult.refUpdates[0]!.refName).toBe("refs/heads/feature");
+    expect(deleteResult.pushedRefs).toHaveLength(1);
+    expect(deleteResult.pushedRefs[0]!.success).toBe(true);
+    expect(deleteResult.pushedRefs[0]!.refName).toBe("refs/heads/feature");
 
     const branchList = git(["--git-dir", serverRepoDir, "branch", "-a"], tempDir);
     expect(branchList).not.toContain("feature");
@@ -291,9 +291,9 @@ describe("push() 端到端", () => {
       refSpecs: [":refs/heads/nonexistent"],
     });
 
-    expect(result.refUpdates).toHaveLength(1);
-    expect(result.refUpdates[0]!.success).toBe(true);
-    expect(result.refUpdates[0]!.refName).toBe("refs/heads/nonexistent");
+    expect(result.pushedRefs).toHaveLength(1);
+    expect(result.pushedRefs[0]!.success).toBe(true);
+    expect(result.pushedRefs[0]!.refName).toBe("refs/heads/nonexistent");
     expect(result.objectCount).toBe(0);
   });
 
@@ -326,8 +326,8 @@ describe("push() 端到端", () => {
       refSpecs: ["refs/heads/plain-status:refs/heads/plain-status"],
     });
 
-    expect(result.refUpdates).toHaveLength(1);
-    expect(result.refUpdates[0]!.success).toBe(true);
+    expect(result.pushedRefs).toHaveLength(1);
+    expect(result.pushedRefs[0]!.success).toBe(true);
     expect(result.progress).toEqual([]);
 
     const remoteRef = git(
@@ -366,8 +366,8 @@ describe("push() 端到端", () => {
       refSpecs: ["refs/heads/minimal-status:refs/heads/minimal-status"],
     });
 
-    expect(result.refUpdates).toHaveLength(1);
-    expect(result.refUpdates[0]!.success).toBe(true);
+    expect(result.pushedRefs).toHaveLength(1);
+    expect(result.pushedRefs[0]!.success).toBe(true);
     expect(result.progress).toEqual([]);
 
     const remoteRef = git(
@@ -415,9 +415,9 @@ describe("push() 端到端", () => {
       force: true,
     });
 
-    expect(result.refUpdates).toHaveLength(1);
-    expect(result.refUpdates[0]!.success).toBe(true);
-    expect(result.refUpdates[0]!.refName).toBe("refs/heads/main");
+    expect(result.pushedRefs).toHaveLength(1);
+    expect(result.pushedRefs[0]!.success).toBe(true);
+    expect(result.pushedRefs[0]!.refName).toBe("refs/heads/main");
 
     const serverRef = git(["--git-dir", serverRepoDir, "rev-parse", "refs/heads/main"], tempDir);
     expect(serverRef).toBe(forceHash);
@@ -436,9 +436,9 @@ describe("push() 端到端", () => {
       refSpecs: ["refs/tags/v1:refs/tags/v1"],
     });
 
-    expect(result.refUpdates).toHaveLength(1);
-    expect(result.refUpdates[0]!.success).toBe(true);
-    expect(result.refUpdates[0]!.refName).toBe("refs/tags/v1");
+    expect(result.pushedRefs).toHaveLength(1);
+    expect(result.pushedRefs[0]!.success).toBe(true);
+    expect(result.pushedRefs[0]!.refName).toBe("refs/tags/v1");
 
     const serverRef = git(["--git-dir", serverRepoDir, "rev-parse", "refs/tags/v1"], tempDir);
     expect(serverRef).toBe(commitHash);
@@ -468,9 +468,9 @@ describe("push() 端到端", () => {
       ],
     });
 
-    expect(result.refUpdates).toHaveLength(2);
-    expect(result.refUpdates[0]!.success).toBe(true);
-    expect(result.refUpdates[1]!.success).toBe(true);
+    expect(result.pushedRefs).toHaveLength(2);
+    expect(result.pushedRefs[0]!.success).toBe(true);
+    expect(result.pushedRefs[1]!.success).toBe(true);
     expect(result.objectCount).toBeGreaterThan(0);
 
     const serverA = git(["--git-dir", serverRepoDir, "rev-parse", "refs/heads/feature-a"], tempDir);
@@ -497,9 +497,9 @@ describe("push() 端到端", () => {
       refSpecs: ["refs/tags/v1.0:refs/tags/v1.0"],
     });
 
-    expect(result.refUpdates).toHaveLength(1);
-    expect(result.refUpdates[0]!.success).toBe(true);
-    expect(result.refUpdates[0]!.refName).toBe("refs/tags/v1.0");
+    expect(result.pushedRefs).toHaveLength(1);
+    expect(result.pushedRefs[0]!.success).toBe(true);
+    expect(result.pushedRefs[0]!.refName).toBe("refs/tags/v1.0");
 
     // 验证服务端 tag 对象存在且指向正确
     const serverTagHash = git(["--git-dir", serverRepoDir, "rev-parse", "refs/tags/v1.0"], tempDir);
@@ -532,8 +532,8 @@ describe("push() 端到端", () => {
     const firstResult = await repo.push(serverUrl, {
       refSpecs: ["refs/tags/blobtag-v1:refs/custom/blob-target"],
     });
-    expect(firstResult.refUpdates).toHaveLength(1);
-    expect(firstResult.refUpdates[0]!.success).toBe(true);
+    expect(firstResult.pushedRefs).toHaveLength(1);
+    expect(firstResult.pushedRefs[0]!.success).toBe(true);
 
     const remoteAfterFirstPush = git(
       ["--git-dir", serverRepoDir, "rev-parse", "refs/custom/blob-target"],
@@ -564,9 +564,9 @@ describe("push() 端到端", () => {
     const forcedResult = await repo.push(serverUrl, {
       refSpecs: ["+refs/tags/blobtag-v2:refs/custom/blob-target"],
     });
-    expect(forcedResult.refUpdates).toHaveLength(1);
-    expect(forcedResult.refUpdates[0]!.success).toBe(true);
-    expect(forcedResult.refUpdates[0]!.forced).toBe(true);
+    expect(forcedResult.pushedRefs).toHaveLength(1);
+    expect(forcedResult.pushedRefs[0]!.success).toBe(true);
+    expect(forcedResult.pushedRefs[0]!.forced).toBe(true);
 
     const remoteAfterForce = git(
       ["--git-dir", serverRepoDir, "rev-parse", "refs/custom/blob-target"],
@@ -596,9 +596,9 @@ describe("push() 端到端", () => {
       refSpecs: [":refs/tags/v-delete"],
     });
 
-    expect(deleteResult.refUpdates).toHaveLength(1);
-    expect(deleteResult.refUpdates[0]!.success).toBe(true);
-    expect(deleteResult.refUpdates[0]!.refName).toBe("refs/tags/v-delete");
+    expect(deleteResult.pushedRefs).toHaveLength(1);
+    expect(deleteResult.pushedRefs[0]!.success).toBe(true);
+    expect(deleteResult.pushedRefs[0]!.refName).toBe("refs/tags/v-delete");
 
     // 验证服务端 tag 已被删除
     const tagList = git(["--git-dir", serverRepoDir, "tag", "-l"], tempDir);
@@ -618,9 +618,9 @@ describe("push() 端到端", () => {
       refSpecs: ["refs/heads/main:refs/heads/custom-branch"],
     });
 
-    expect(result.refUpdates).toHaveLength(1);
-    expect(result.refUpdates[0]!.success).toBe(true);
-    expect(result.refUpdates[0]!.refName).toBe("refs/heads/custom-branch");
+    expect(result.pushedRefs).toHaveLength(1);
+    expect(result.pushedRefs[0]!.success).toBe(true);
+    expect(result.pushedRefs[0]!.refName).toBe("refs/heads/custom-branch");
 
     const serverRef = git(
       ["--git-dir", serverRepoDir, "rev-parse", "refs/heads/custom-branch"],
@@ -642,16 +642,16 @@ describe("push() 端到端", () => {
     const firstResult = await repo.push(serverUrl, {
       refSpecs: ["refs/heads/uptodate:refs/heads/uptodate"],
     });
-    expect(firstResult.refUpdates).toHaveLength(1);
-    expect(firstResult.refUpdates[0]!.success).toBe(true);
+    expect(firstResult.pushedRefs).toHaveLength(1);
+    expect(firstResult.pushedRefs[0]!.success).toBe(true);
 
     // 2. 第二次推送完全相同的内容
     const secondResult = await repo.push(serverUrl, {
       refSpecs: ["refs/heads/uptodate:refs/heads/uptodate"],
     });
-    expect(secondResult.refUpdates).toHaveLength(1);
-    expect(secondResult.refUpdates[0]!.success).toBe(true);
-    expect(secondResult.refUpdates[0]!.refName).toBe("refs/heads/uptodate");
+    expect(secondResult.pushedRefs).toHaveLength(1);
+    expect(secondResult.pushedRefs[0]!.success).toBe(true);
+    expect(secondResult.pushedRefs[0]!.refName).toBe("refs/heads/uptodate");
     // 没有新对象需要发送
     expect(secondResult.objectCount).toBe(0);
   });
@@ -670,16 +670,16 @@ describe("push() 端到端", () => {
     const firstResult = await repo.push(serverUrl, {
       refSpecs: ["refs/tags/v-up2date:refs/tags/v-up2date"],
     });
-    expect(firstResult.refUpdates).toHaveLength(1);
-    expect(firstResult.refUpdates[0]!.success).toBe(true);
+    expect(firstResult.pushedRefs).toHaveLength(1);
+    expect(firstResult.pushedRefs[0]!.success).toBe(true);
 
     // 2. 第二次推送完全相同的内容（no-op）
     const secondResult = await repo.push(serverUrl, {
       refSpecs: ["refs/tags/v-up2date:refs/tags/v-up2date"],
     });
-    expect(secondResult.refUpdates).toHaveLength(1);
-    expect(secondResult.refUpdates[0]!.success).toBe(true);
-    expect(secondResult.refUpdates[0]!.refName).toBe("refs/tags/v-up2date");
+    expect(secondResult.pushedRefs).toHaveLength(1);
+    expect(secondResult.pushedRefs[0]!.success).toBe(true);
+    expect(secondResult.pushedRefs[0]!.refName).toBe("refs/tags/v-up2date");
     expect(secondResult.objectCount).toBe(0);
   });
 
@@ -696,7 +696,7 @@ describe("push() 端到端", () => {
     const result1 = await repo.push(serverUrl, {
       refSpecs: ["refs/heads/incremental:refs/heads/incremental"],
     });
-    expect(result1.refUpdates[0]!.success).toBe(true);
+    expect(result1.pushedRefs[0]!.success).toBe(true);
 
     // 2. 在第一个 commit 之上再推送第二个 commit
     const blob2 = repo.writeBlob(Buffer.from("commit 2"));
@@ -710,7 +710,7 @@ describe("push() 端到端", () => {
     const result2 = await repo.push(serverUrl, {
       refSpecs: ["refs/heads/incremental:refs/heads/incremental"],
     });
-    expect(result2.refUpdates[0]!.success).toBe(true);
+    expect(result2.pushedRefs[0]!.success).toBe(true);
     expect(result2.objectCount).toBeGreaterThan(0);
 
     // 3. 再推送第三个 commit
@@ -726,7 +726,7 @@ describe("push() 端到端", () => {
     const result3 = await repo.push(serverUrl, {
       refSpecs: ["refs/heads/incremental:refs/heads/incremental"],
     });
-    expect(result3.refUpdates[0]!.success).toBe(true);
+    expect(result3.pushedRefs[0]!.success).toBe(true);
 
     // 验证服务端最终状态
     const serverRef = git(
@@ -762,8 +762,8 @@ describe("push() 端到端", () => {
       refSpecs: ["refs/heads/*:refs/heads/*"],
     });
 
-    expect(result.refUpdates).toHaveLength(2);
-    expect(result.refUpdates.every((u) => u.success)).toBe(true);
+    expect(result.pushedRefs).toHaveLength(2);
+    expect(result.pushedRefs.every((u) => u.success)).toBe(true);
 
     const serverA = git(["--git-dir", serverRepoDir, "rev-parse", "refs/heads/branch-wa"], tempDir);
     expect(serverA).toBe(commitA);
@@ -831,9 +831,9 @@ describe("push() 端到端", () => {
     // 同时声明 initialCommit 为已知 shallow 边界，因为该 commit 对象仅在服务端存在
     const result = await repo.push(serverUrl, { shallowBoundaries: [initialCommit] });
 
-    expect(result.refUpdates).toHaveLength(1);
-    expect(result.refUpdates[0]!.success).toBe(true);
-    expect(result.refUpdates[0]!.refName).toBe("refs/heads/feature");
+    expect(result.pushedRefs).toHaveLength(1);
+    expect(result.pushedRefs[0]!.success).toBe(true);
+    expect(result.pushedRefs[0]!.refName).toBe("refs/heads/feature");
 
     // 验证服务端 refs/heads/feature 被正确更新
     const serverRef = git(["--git-dir", serverRepoDir, "rev-parse", "refs/heads/feature"], tempDir);
@@ -866,9 +866,9 @@ describe("push() 端到端", () => {
     // 同时声明 initialCommit 为已知 shallow 边界，因为该 commit 对象仅在服务端存在
     const result = await repo.push(serverUrl, { shallowBoundaries: [initialCommit] });
 
-    expect(result.refUpdates).toHaveLength(1);
-    expect(result.refUpdates[0]!.success).toBe(true);
-    expect(result.refUpdates[0]!.refName).toBe("refs/heads/main");
+    expect(result.pushedRefs).toHaveLength(1);
+    expect(result.pushedRefs[0]!.success).toBe(true);
+    expect(result.pushedRefs[0]!.refName).toBe("refs/heads/main");
 
     const serverRef = git(["--git-dir", serverRepoDir, "rev-parse", "refs/heads/main"], tempDir);
     expect(serverRef).toBe(commitHash);
@@ -915,9 +915,9 @@ describe("push() 端到端", () => {
       refSpecs: ["refs/heads/split-side-band:refs/heads/split-side-band"],
     });
 
-    expect(result.refUpdates).toHaveLength(1);
-    expect(result.refUpdates[0]!.success).toBe(true);
-    expect(result.refUpdates[0]!.refName).toBe("refs/heads/split-side-band");
+    expect(result.pushedRefs).toHaveLength(1);
+    expect(result.pushedRefs[0]!.success).toBe(true);
+    expect(result.pushedRefs[0]!.refName).toBe("refs/heads/split-side-band");
     expect(result.progress).toContain("remote: side-band progress");
 
     const serverRef = git(

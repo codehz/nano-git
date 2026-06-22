@@ -4,7 +4,6 @@
 
 import { createMaintenanceRepositoryOperations } from "./maintenance-operations.ts";
 import { createObjectRepositoryOperations } from "./object-operations.ts";
-import { createPushRepositoryOperations } from "./push-operations.ts";
 import { createRefRepositoryOperations } from "./ref-operations.ts";
 import { createRemoteRepositoryOperations } from "./remote-operations.ts";
 
@@ -39,6 +38,5 @@ export function createRepository(backend: RepositoryBackend): Repository {
     ...createRefRepositoryOperations(backend),
     ...createMaintenanceRepositoryOperations(objects, refs, packs),
     ...createRemoteRepositoryOperations(backend),
-    ...createPushRepositoryOperations(backend),
   };
 }

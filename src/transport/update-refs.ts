@@ -117,6 +117,7 @@ export function applyRefUpdates(
 ): ApplyRefUpdatesResult {
   const updatedRefs = new Map<string, SHA1>();
   const rejectedRefs: RefUpdateRejection[] = [];
+  const rejectedSet = new Set<string>();
 
   // 先校验所有 wanted tip 的对象都存在
   for (const item of updates) {
@@ -125,6 +126,7 @@ export function applyRefUpdates(
         localRef: item.localRef,
         reason: `Object ${item.remoteRef.hash} was advertised but not received in the packfile`,
       });
+      rejectedSet.add(item.localRef);
       continue;
     }
   }
@@ -133,7 +135,7 @@ export function applyRefUpdates(
     const { remoteRef, localRef, currentLocalHash, force } = item;
 
     // 跳过已因对象缺失被拒绝的项
-    if (rejectedRefs.some((r) => r.localRef === localRef)) continue;
+    if (rejectedSet.has(localRef)) continue;
 
     // Git 规则：refs/heads/* 只能指向 commit 对象
     const writeHash = localRef.startsWith("refs/heads/")

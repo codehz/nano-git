@@ -2,17 +2,19 @@
  * Fetch remote 内部编排
  *
  * 将 fetch 过程拆分为阶段化结果：
- * - transfer: FetchPackResult —— 对象传输结果
- * - refUpdates: ApplyRefUpdatesResult —— ref 更新结果（含被拒绝项）
+ * - fetchedObjects: 本次获取的对象数量
+ * - updatedRefs: 已更新的 ref 映射
+ * - rejectedRefs: 被拒绝的 ref 列表
  *
  * 与 remote-operations.ts 分离，使 repository 层只负责编排，不裁剪信息。
+ * transport 返回值仅在内部消费并转换为 repository 自有类型。
  *
  * @example
  * ```ts
  * const result = await runFetchRemote(backend, remote);
- * console.log(`Fetched ${result.transfer.objectCount} objects`);
- * console.log(`Updated ${result.refUpdates.updatedRefs.size} refs`);
- * console.log(`Rejected ${result.refUpdates.rejectedRefs.length} refs`);
+ * console.log(`Fetched ${result.fetchedObjects} objects`);
+ * console.log(`Updated ${result.updatedRefs.size} refs`);
+ * console.log(`Rejected ${result.rejectedRefs.length} refs`);
  * ```
  */
 
@@ -24,7 +26,7 @@ import { getLocalRefs } from "../transport/ref-collection.ts";
 import { applyRefUpdates } from "../transport/update-refs.ts";
 
 import type { SHA1 } from "../core/types.ts";
-import type { RemoteAdvertisement } from "../transport/types.ts";
+import type { RemoteAdvertisement, ApplyRefUpdatesResult } from "../transport/types.ts";
 import type { RepositoryBackend } from "./backend/types.ts";
 import type { RemoteConfig, FetchRemoteOptions, FetchRemoteResult } from "./remote-types.ts";
 
@@ -47,8 +49,8 @@ import type { RemoteConfig, FetchRemoteOptions, FetchRemoteResult } from "./remo
  * @example
  * ```ts
  * const result = await runFetchRemote(backend, remote);
- * console.log(`Transfer: ${result.transfer.objectCount} objects`);
- * for (const rejected of result.refUpdates.rejectedRefs) {
+ * console.log(`Fetched: ${result.fetchedObjects} objects`);
+ * for (const rejected of result.rejectedRefs) {
  *   console.log(`Rejected: ${rejected.localRef} — ${rejected.reason}`);
  * }
  * ```
@@ -79,47 +81,44 @@ export async function runFetchRemote(
   // 4. 传输计划推导：结合对象库状态补正 wants
   const transferPlan = resolveFetchWants(plan, objects, { depth: options?.depth });
 
-  // 5. 无需传输时提前返回
-  if (!transferPlan.needsPackNegotiation) {
-    return {
-      transfer: { objectCount: 0 },
-      refUpdates: { updatedRefs: new Map(), rejectedRefs: [] },
-      defaultBranch: adv.defaultBranch,
-    };
-  }
+  // 5. 需要传输时执行 fetch-pack
+  let packResult: { objectCount: number; shallow?: SHA1[]; unshallow?: SHA1[] } | undefined;
 
-  // 6. 构造 have 候选
-  const haveTips = selectHaveTipsForRemote(localRefs, plan.updates);
-  const currentShallow = backend.shallow.read();
+  if (transferPlan.needsPackNegotiation) {
+    // 6. 构造 have 候选
+    const haveTips = selectHaveTipsForRemote(localRefs, plan.updates);
+    const currentShallow = backend.shallow.read();
 
-  // 7. 执行 fetch-pack
-  const packResult = await fetchPack(objects, {
-    url: remote.url,
-    wants: transferPlan.wants,
-    haves: haveTips.length > 0 ? haveTips : undefined,
-    depth: options?.depth,
-    shallow: currentShallow.length > 0 ? currentShallow : undefined,
-    token: options?.token,
-    headers: options?.headers,
-    maxCandidates: options?.maxCandidates,
-  });
-
-  // 8. 应用 ref 更新
-  const refUpdateResult = applyRefUpdates(objects, refs, plan.updates);
-
-  // 9. shallow 持久化
-  if (packResult.shallow || packResult.unshallow) {
-    backend.shallow.applyUpdate({
-      shallow: packResult.shallow ?? [],
-      unshallow: packResult.unshallow ?? [],
+    // 7. 执行 fetch-pack
+    packResult = await fetchPack(objects, {
+      url: remote.url,
+      wants: transferPlan.wants,
+      haves: haveTips.length > 0 ? haveTips : undefined,
+      depth: options?.depth,
+      shallow: currentShallow.length > 0 ? currentShallow : undefined,
+      token: options?.token,
+      headers: options?.headers,
+      maxCandidates: options?.maxCandidates,
     });
+
+    // 8. shallow 持久化
+    if (packResult.shallow || packResult.unshallow) {
+      backend.shallow.applyUpdate({
+        shallow: packResult.shallow ?? [],
+        unshallow: packResult.unshallow ?? [],
+      });
+    }
   }
 
-  return {
-    transfer: packResult,
-    refUpdates: refUpdateResult,
-    defaultBranch: adv.defaultBranch,
-  };
+  // 9. 应用 ref 更新（无论是否有传输，只要 plan.updates 有内容就执行）
+  //    典型场景：本地对象已存在但 tracking ref 未创建时，
+  //    无需传输对象但仍需更新 ref。
+  const refUpdateResult =
+    plan.updates.length > 0
+      ? applyRefUpdates(objects, refs, plan.updates)
+      : { updatedRefs: new Map<string, SHA1>(), rejectedRefs: [] };
+
+  return convertToFetchRemoteResult(packResult, refUpdateResult, adv.defaultBranch);
 }
 
 // ============================================================================
@@ -191,4 +190,30 @@ export function selectHaveTipsForRemote(
   }
 
   return tips;
+}
+
+// ============================================================================
+// 类型转换
+// ============================================================================
+
+/**
+ * 将 transport 层结果转换为 repository 自有类型
+ *
+ * 确保 repository 层不直接暴露 transport 类型，
+ * transport 返回值只在内部消费并转换。
+ */
+function convertToFetchRemoteResult(
+  packResult: { objectCount: number } | undefined,
+  refUpdateResult: ApplyRefUpdatesResult,
+  defaultBranch?: string,
+): FetchRemoteResult {
+  return {
+    fetchedObjects: packResult?.objectCount ?? 0,
+    updatedRefs: refUpdateResult.updatedRefs,
+    rejectedRefs: refUpdateResult.rejectedRefs.map((r) => ({
+      localRef: r.localRef,
+      reason: r.reason,
+    })),
+    defaultBranch,
+  };
 }

@@ -10,19 +10,17 @@ export type { RepositoryObjectOperations } from "./object-types.ts";
 export type { TreePatchOp, TreePatchResult } from "./tree-patch.ts";
 export type { RepositoryRefOperations } from "./ref-types.ts";
 export type { RepositoryMaintenanceOperations } from "./maintenance-types.ts";
-export type { RepositoryFetchOperations } from "./fetch-types.ts";
-export type {
-  RepositoryPushOperations,
-  PushRemoteOptions,
-  PushRemoteResult,
-} from "./push-types.ts";
 export type {
   RemoteConfig,
   FetchRemoteOptions,
   FetchRemoteResult,
   BootstrapRemoteOptions,
   BootstrapRemoteResult,
+  PushRemoteOptions,
+  PushRemoteResult,
+  PushRefUpdateResult,
+  RefUpdateRejection,
+  RepositoryRemoteOperations,
 } from "./remote-types.ts";
 export { createRepository } from "./create.ts";
-export { createPushRepositoryOperations } from "./push-operations.ts";
 export { initRepository, openRepository, createMemoryRepository } from "./init.ts";

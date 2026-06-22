@@ -1,22 +1,31 @@
 /**
  * Remote 操作编排
  *
- * 维护 remote 配置，编排 advertiseRemote → planRefUpdates → fetchPack → applyRefUpdates，
- * 并对 shallow store 做统一持久化。
+ * 统一维护 remote 配置，编排 fetch 和 push 的完整流程：
+ * - 配置管理：addRemote / getRemote / listRemotes
+ * - Fetch：advertiseRemote → planRefUpdates → fetchPack → applyRefUpdates
+ * - Push：advertiseRemote → determinePushRefs → checkFastForward → push
+ * - Bootstrap：fetch + 创建本地分支 + 设置 HEAD
+ *
+ * repository 层定义自有结果类型，transport 返回值仅在内部消费并转换。
  *
  * @example
  * ```ts
  * const ops = createRemoteRepositoryOperations(backend);
  * ops.addRemote({ name: "origin", url: "https://...", fetchRules: [...] });
  * const result = await ops.fetchRemote("origin");
+ * console.log(`Fetched ${result.fetchedObjects} objects`);
  * ```
  */
 
 import { GitError } from "../core/errors.ts";
 import { sha1 } from "../core/types.ts";
 import { advertiseRemote } from "../transport/advertise.ts";
+import { push as transportPush } from "../transport/push.ts";
 import { runFetchRemote } from "./fetch-remote.ts";
+import { mapDefaultBranchToTrackingRef } from "./remote-mapping.ts";
 
+import type { PushOptions } from "../transport/types.ts";
 import type { RepositoryBackend } from "./backend/types.ts";
 import type {
   RemoteConfig,
@@ -24,6 +33,10 @@ import type {
   FetchRemoteResult,
   BootstrapRemoteOptions,
   BootstrapRemoteResult,
+  PushRemoteOptions,
+  PushRemoteResult,
+  PushRefUpdateResult,
+  RepositoryRemoteOperations,
 } from "./remote-types.ts";
 
 // ============================================================================
@@ -38,39 +51,6 @@ export class RemoteError extends GitError {
     super(`Remote error: ${message}`);
     this.name = "RemoteError";
   }
-}
-
-// ============================================================================
-// Remote 操作接口
-// ============================================================================
-
-/**
- * Remote 操作集合
- */
-export interface RepositoryRemoteOperations {
-  /** 添加 remote 配置 */
-  addRemote(config: RemoteConfig): void;
-  /** 获取 remote 配置 */
-  getRemote(name: string): RemoteConfig | null;
-  /** 列出所有 remote 名称 */
-  listRemotes(): string[];
-  /**
-   * 从 remote 拉取对象和更新 remote-tracking refs
-   *
-   * 只更新 remote-tracking refs（如 refs/remotes/origin/*），
-   * 不创建本地分支，不修改 HEAD。
-   */
-  fetchRemote(name: string, options?: FetchRemoteOptions): Promise<FetchRemoteResult>;
-  /**
-   * 从 remote 拉取并创建本地分支和 HEAD
-   *
-   * 先执行 fetchRemote()，然后根据远端默认分支（或显式指定）：
-   * - 创建 refs/heads/<branch>
-   * - 设置 HEAD -> refs/heads/<branch>
-   *
-   * 这是唯一会创建本地分支和设置 HEAD 的 API。
-   */
-  bootstrapRemote(name: string, options?: BootstrapRemoteOptions): Promise<BootstrapRemoteResult>;
 }
 
 // ============================================================================
@@ -152,9 +132,7 @@ export function createRemoteRepositoryOperations(
       }
 
       // 检查默认分支的 tracking ref 是否被拒绝
-      const rejectedRef = fetchResult.refUpdates.rejectedRefs.find(
-        (r) => r.localRef === trackingRef,
-      );
+      const rejectedRef = fetchResult.rejectedRefs.find((r) => r.localRef === trackingRef);
       if (rejectedRef) {
         throw new RemoteError(
           `Default branch "${adv.defaultBranch}" tracking ref "${trackingRef}" was rejected: ` +
@@ -164,7 +142,7 @@ export function createRemoteRepositoryOperations(
 
       // 优先从 fetch 结果取，若未变化则回退读取现有 tracking ref
       const branchHash =
-        fetchResult.refUpdates.updatedRefs.get(trackingRef) ??
+        fetchResult.updatedRefs.get(trackingRef) ??
         (() => {
           const existing = refs.read(trackingRef);
           if (existing && /^[0-9a-f]{40}$/.test(existing)) {
@@ -189,6 +167,19 @@ export function createRemoteRepositoryOperations(
         localBranch: branchRef,
       };
     },
+
+    async pushRemote(name: string, options?: PushRemoteOptions): Promise<PushRemoteResult> {
+      const remote = remotes.get(name);
+      if (!remote) {
+        throw new RemoteError(`Remote "${name}" not found`);
+      }
+
+      return runPushRemote(backend, remote, options);
+    },
+
+    async push(url: string, options?: PushOptions): Promise<PushRemoteResult> {
+      return runPushToUrl(backend, url, options);
+    },
   };
 }
 
@@ -197,28 +188,71 @@ export function createRemoteRepositoryOperations(
 // ============================================================================
 
 /**
- * 将远端默认分支通过 fetchRules 映射为本地 tracking ref
- *
- * 注意：source 可能以 + 开头（表示 force），需要先去除。
+ * 执行基于 remote 配置的 push
  */
-function mapDefaultBranchToTrackingRef(
-  defaultBranch: string,
-  fetchRules: RemoteConfig["fetchRules"],
-): string | undefined {
-  for (const rule of fetchRules) {
-    const cleanSource = rule.source.startsWith("+") ? rule.source.slice(1) : rule.source;
+async function runPushRemote(
+  backend: RepositoryBackend,
+  remote: RemoteConfig,
+  options?: PushRemoteOptions,
+): Promise<PushRemoteResult> {
+  const effectivePushUrl = options?.pushUrl ?? remote.pushUrl ?? remote.url;
+  const currentShallow = backend.shallow.read();
 
-    if (!cleanSource.includes("*")) {
-      if (cleanSource === defaultBranch) {
-        return rule.target;
-      }
-    } else {
-      const srcPattern = cleanSource.replace("*", "");
-      if (defaultBranch.startsWith(srcPattern)) {
-        const suffix = defaultBranch.slice(srcPattern.length);
-        return rule.target.replace("*", suffix);
-      }
-    }
-  }
-  return undefined;
+  const effectiveRefSpecs = options?.refSpecs ?? remote.pushRefSpecs;
+
+  const effectiveOptions: PushOptions = {
+    ...options,
+    refSpecs: effectiveRefSpecs,
+    shallowBoundaries:
+      options?.shallowBoundaries ?? (currentShallow.length > 0 ? currentShallow : undefined),
+  };
+
+  const transportResult = await transportPush(
+    backend.objects,
+    backend.refs,
+    effectivePushUrl,
+    effectiveOptions,
+  );
+
+  return convertPushResult(transportResult);
+}
+
+/**
+ * 执行基于 URL 的 push（不依赖 remote 配置）
+ */
+async function runPushToUrl(
+  backend: RepositoryBackend,
+  url: string,
+  options?: PushOptions,
+): Promise<PushRemoteResult> {
+  const currentShallow = backend.shallow.read();
+  const effectiveOptions: PushOptions = {
+    ...options,
+    shallowBoundaries:
+      options?.shallowBoundaries ?? (currentShallow.length > 0 ? currentShallow : undefined),
+  };
+
+  const transportResult = await transportPush(backend.objects, backend.refs, url, effectiveOptions);
+
+  return convertPushResult(transportResult);
+}
+
+/**
+ * 将 transport PushResult 转换为 repository PushRemoteResult
+ */
+function convertPushResult(result: import("../transport/types.ts").PushResult): PushRemoteResult {
+  const pushedRefs: PushRefUpdateResult[] = result.refUpdates.map((u) => ({
+    refName: u.refName,
+    oldHash: u.oldHash,
+    newHash: u.newHash,
+    success: u.success,
+    error: u.error,
+    forced: u.forced,
+  }));
+
+  return {
+    pushedRefs,
+    objectCount: result.objectCount,
+    progress: result.progress,
+  };
 }

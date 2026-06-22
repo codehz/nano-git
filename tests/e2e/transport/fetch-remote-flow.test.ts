@@ -68,7 +68,7 @@ describe("fetch remote 流程", () => {
 
     const result = await repo.fetchRemote("origin");
 
-    expect(result.transfer.objectCount).toBeGreaterThan(0);
+    expect(result.fetchedObjects).toBeGreaterThan(0);
 
     const mainRef = repo.refs.read("refs/remotes/origin/main");
     expect(mainRef).not.toBeNull();
@@ -90,11 +90,11 @@ describe("fetch remote 流程", () => {
     });
 
     const result1 = await repo.fetchRemote("origin");
-    expect(result1.transfer.objectCount).toBeGreaterThan(0);
+    expect(result1.fetchedObjects).toBeGreaterThan(0);
 
     const result2 = await repo.fetchRemote("origin");
-    expect(result2.transfer.objectCount).toBe(0);
-    expect(result2.refUpdates.updatedRefs.size).toBe(0);
+    expect(result2.fetchedObjects).toBe(0);
+    expect(result2.updatedRefs.size).toBe(0);
   });
 
   test("增量 fetch：本地通过其他 ref 持有目标 commit 时不重复下载", async () => {
@@ -108,7 +108,7 @@ describe("fetch remote 流程", () => {
 
     // 1. 初始 fetch
     const result1 = await repo.fetchRemote("origin");
-    expect(result1.transfer.objectCount).toBeGreaterThan(0);
+    expect(result1.fetchedObjects).toBeGreaterThan(0);
 
     // 2. 创建 feature 分支并推送
     const featureDir = join(tempDir, "work-feature");
@@ -121,15 +121,58 @@ describe("fetch remote 流程", () => {
 
     // 3. 第二次 fetch
     const result2 = await repo.fetchRemote("origin");
-    expect(result2.refUpdates.updatedRefs.has("refs/remotes/origin/feature")).toBe(true);
+    expect(result2.updatedRefs.has("refs/remotes/origin/feature")).toBe(true);
 
     // 4. 服务端将 main 快进到 feature commit
     git(["update-ref", "refs/heads/main", featureHash], serverRepoDir);
 
     // 5. 第三次 fetch：main 已前进到 feature commit，但该 commit 已在本地
     const result3 = await repo.fetchRemote("origin");
-    expect(result3.transfer.objectCount).toBe(0);
-    expect(result3.refUpdates.updatedRefs.get("refs/remotes/origin/main")).toBe(sha1(featureHash));
+    expect(result3.fetchedObjects).toBe(0);
+    expect(result3.updatedRefs.get("refs/remotes/origin/main")).toBe(sha1(featureHash));
+  });
+
+  test("增量 fetch：tracking ref 丢失后重新 fetch 修复 ref（无需重新下载对象时）", async () => {
+    const localDir = join(tempDir, "local-ref-recover");
+    const repo = initRepository(localDir);
+
+    repo.addRemote({
+      name: "origin",
+      url: serverUrl,
+      fetchRules: [{ source: "+refs/heads/*", target: "refs/remotes/origin/*" }],
+    });
+
+    // 1. 首次 fetch 获取所有对象和 refs
+    const result1 = await repo.fetchRemote("origin");
+    expect(result1.fetchedObjects).toBeGreaterThan(0);
+    expect(result1.updatedRefs.has("refs/remotes/origin/main")).toBe(true);
+
+    // 2. 在服务器上推进 main 分支
+    createFile(workDir, "extra.txt", "extra content\n");
+    git(["add", "extra.txt"], workDir);
+    git(["commit", "-m", "Extra commit"], workDir);
+    git(["push", serverRepoDir, "main"], workDir);
+    const newHead = git(["rev-parse", "HEAD"], workDir);
+
+    // 3. 删除 remote-tracking ref，模拟 ref 丢失
+    const oldHash = repo.refs.read("refs/remotes/origin/main")!;
+    repo.refs.delete("refs/remotes/origin/main");
+    expect(repo.refs.read("refs/remotes/origin/main")).toBeNull();
+
+    // 4. 创建本地分支指向老 commit，使 has 覆盖老对象但新对象仍需下载
+    repo.refs.write("refs/heads/recovery", oldHash);
+
+    // 5. 再次 fetch
+    //    由于需要获取新 commit 的对象，fetchedObjects 应 > 0
+    //    但 refs/remotes/origin/main 应被重建
+    const result2 = await repo.fetchRemote("origin");
+    expect(result2.fetchedObjects).toBeGreaterThan(0);
+    expect(result2.updatedRefs.has("refs/remotes/origin/main")).toBe(true);
+    expect(result2.updatedRefs.get("refs/remotes/origin/main")).toBe(sha1(newHead));
+
+    // 验证 ref 可读
+    const mainRef = repo.refs.read("refs/remotes/origin/main");
+    expect(mainRef).toBe(newHead);
   });
 
   test("空仓库 fetch：返回空结果且不写入 remote-tracking refs", async () => {
@@ -148,8 +191,8 @@ describe("fetch remote 流程", () => {
     });
     const result = await repo.fetchRemote("empty");
 
-    expect(result.transfer.objectCount).toBe(0);
-    expect(result.refUpdates.updatedRefs.size).toBe(0);
+    expect(result.fetchedObjects).toBe(0);
+    expect(result.updatedRefs.size).toBe(0);
     expect(repo.refs.read("refs/remotes/origin/main")).toBeNull();
   });
 });
@@ -207,7 +250,7 @@ describe("fetch remote tag 处理", () => {
 
     const result = await repo.fetchRemote("origin");
 
-    expect(result.transfer.objectCount).toBeGreaterThan(0);
+    expect(result.fetchedObjects).toBeGreaterThan(0);
     const tagHash = repo.refs.read("refs/tags/v1.0");
     expect(tagHash).not.toBeNull();
     expect(repo.refs.read("refs/remotes/origin/main")).toBeNull();
@@ -233,7 +276,7 @@ describe("fetch remote tag 处理", () => {
     });
     const result = await repo.fetchRemote("origin");
 
-    expect(result.transfer.objectCount).toBeGreaterThan(0);
+    expect(result.fetchedObjects).toBeGreaterThan(0);
     expect(repo.refs.read("refs/remotes/origin/main")).not.toBeNull();
     expect(repo.refs.read("refs/tags/v-include")).toBeNull();
     expect(repo.objects.exists(sha1(remoteTagHash))).toBe(true);
@@ -271,7 +314,7 @@ describe("fetch remote tag 处理", () => {
     });
     const result = await repo.fetchRemote("origin");
 
-    expect(result.transfer.objectCount).toBeGreaterThan(0);
+    expect(result.fetchedObjects).toBeGreaterThan(0);
     expect(repo.refs.read("refs/remotes/origin/main")).not.toBeNull();
     expect(repo.refs.read("refs/remotes/origin/feature")).toBeNull();
     expect(repo.refs.read("refs/tags/v-main-only")).not.toBeNull();
@@ -292,8 +335,8 @@ describe("fetch remote tag 处理", () => {
     });
     const result = await repo.fetchRemote("origin");
 
-    expect(result.transfer.objectCount).toBe(0);
-    expect(result.refUpdates.updatedRefs.size).toBe(0);
+    expect(result.fetchedObjects).toBe(0);
+    expect(result.updatedRefs.size).toBe(0);
     expect(repo.refs.read("refs/remotes/origin/main")).toBeNull();
     expect(repo.refs.read("refs/tags/v-tag-only")).toBeNull();
   });
@@ -312,7 +355,7 @@ describe("fetch remote tag 处理", () => {
     });
     const result = await repo.fetchRemote("origin");
 
-    expect(result.transfer.objectCount).toBeGreaterThan(0);
+    expect(result.fetchedObjects).toBeGreaterThan(0);
     const tagHash = repo.refs.read("refs/tags/v-tag-only-fetch");
     expect(tagHash).not.toBeNull();
     expect(repo.refs.read("refs/remotes/origin/main")).toBeNull();
@@ -352,7 +395,7 @@ describe("fetch remote tag 处理", () => {
       fetchRules: [{ source: "+refs/tags/*", target: "refs/tags/*" }],
     });
     const firstResult = await repo.fetchRemote("tag-force");
-    expect(firstResult.refUpdates.updatedRefs.has("refs/tags/v-update")).toBe(true);
+    expect(firstResult.updatedRefs.has("refs/tags/v-update")).toBe(true);
 
     // 3. 创建新的 commit 并推送到服务端
     createFile(workDir, "new-tag-file.txt", "new content\n");
@@ -371,7 +414,7 @@ describe("fetch remote tag 处理", () => {
     const secondResult = await repo.fetchRemote("tag-noforce");
     const localTagHash = repo.refs.read("refs/tags/v-update");
     expect(localTagHash).toBe(initialCommit);
-    expect(secondResult.refUpdates.updatedRefs.has("refs/tags/v-update")).toBe(false);
+    expect(secondResult.updatedRefs.has("refs/tags/v-update")).toBe(false);
 
     // 5. 强制 fetch——应更新 tag
     repo.addRemote({
@@ -382,6 +425,6 @@ describe("fetch remote tag 处理", () => {
     const thirdResult = await repo.fetchRemote("tag-force2");
     const updatedTagHash = repo.refs.read("refs/tags/v-update");
     expect(updatedTagHash).toBe(newCommit);
-    expect(thirdResult.refUpdates.updatedRefs.get("refs/tags/v-update")).toBe(sha1(newCommit));
+    expect(thirdResult.updatedRefs.get("refs/tags/v-update")).toBe(sha1(newCommit));
   });
 });

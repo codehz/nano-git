@@ -201,13 +201,13 @@ export {
   openRepository,
   createMemoryRepository,
   type Repository,
-  type RepositoryFetchOperations,
-  type RepositoryPushOperations,
   type RemoteConfig,
   type FetchRemoteOptions,
   type FetchRemoteResult,
   type BootstrapRemoteOptions,
   type BootstrapRemoteResult,
+  type PushRemoteOptions,
+  type PushRemoteResult,
 } from "./repository/index.ts";
 
 // ============================================================================

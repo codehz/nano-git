@@ -1,15 +1,18 @@
 /**
  * Smart HTTP 传输层
  *
- * 提供 Git Smart HTTP 协议的客户端实现，包含：
- * - pkt-line 帧编解码
- * - 引用广告解析
- * - side-band 多路解复用
- * - 请求生成与 HTTP 传输
- * - 新的分层 fetch 模块（advertise / fetch-ref-plan / fetch-pack / update-refs）
+ * 导出按模块分组：
+ * - 基础模块：核心类型、pkt-line、refspec、ref 收集/匹配、对象图
+ * - Fetch 模块：广告获取、fetch 规划、fetch-pack、ref 更新
+ * - Push 模块：push 编排、策略、报告解析
+ * - HTTP 传输：Smart HTTP 客户端、能力声明
  */
 
-// P1: 核心类型
+// ============================================================================
+// 基础模块（协议无关）
+// ============================================================================
+
+// 核心类型
 export type {
   RemoteRef,
   RefAdvertisement,
@@ -28,7 +31,7 @@ export type {
   ApplyRefUpdatesResult,
 } from "./types.ts";
 
-// P1: pkt-line 编解码
+// pkt-line 编解码
 export {
   encodePktLine,
   encodeFlushPkt,
@@ -46,27 +49,7 @@ export type {
   PktLineResponseEnd,
 } from "./pkt-line.ts";
 
-// P2: ref 广告解析 & side-band 解复用
-export { parseRefAdvertisement, RefAdvertisementError } from "./ref-advertisement.ts";
-export {
-  extractPackfile,
-  extractProgress,
-  extractRawPackfile,
-  SideBandError,
-} from "./side-band.ts";
-
-// P3: 请求生成
-export { buildUploadPackRequest } from "./negotiate.ts";
-export { buildReceivePackRequest } from "./receive-pack-request.ts";
-export type { ReceivePackCommand } from "./receive-pack-request.ts";
-
-// P3b: 响应解析
-export { parseReceivePackResult, ReceivePackResultError } from "./receive-pack-result.ts";
-
-// P4: 广告获取
-export { advertiseRemote } from "./advertise.ts";
-
-// P5: RefSpec 解析
+// RefSpec 解析与转换
 export {
   parseRefSpec,
   mappingRuleToParsedSpec,
@@ -75,23 +58,51 @@ export {
 } from "./refspec.ts";
 export type { ParsedRefSpec } from "./refspec.ts";
 
-// P5a: Ref 收集
+// Ref 收集与匹配
 export { getLocalRefs, remoteRefsToMap } from "./ref-collection.ts";
-
-// P5b: Ref 匹配
 export { matchesRefSpec, mapRefName } from "./ref-match.ts";
 
-// P5c: Fetch Ref 规划（纯映射层）
+// 对象图算法
+export { collectReachable, peelTagChain, isAncestor } from "./object-graph.ts";
+export type { CollectReachableMissing } from "./object-graph.ts";
+
+// 能力声明
+export {
+  extractCapabilities,
+  PUSH_CAPABILITIES,
+  FETCH_CAPABILITIES,
+} from "./transport-capabilities.ts";
+
+// ============================================================================
+// Fetch 模块
+// ============================================================================
+
+// 广告获取
+export { advertiseRemote } from "./advertise.ts";
+
+// ref 广告解析 & side-band 解复用
+export { parseRefAdvertisement, RefAdvertisementError } from "./ref-advertisement.ts";
+export {
+  extractPackfile,
+  extractProgress,
+  extractRawPackfile,
+  SideBandError,
+} from "./side-band.ts";
+
+// fetch 规划（纯映射层）
 export { planRefUpdates, validateExactRules, RefPlanError } from "./fetch-ref-plan.ts";
 
-// P5d: Fetch 传输计划补正（wants 推导）
+// fetch 传输计划补正（wants 推导）
 export { resolveFetchWants } from "./fetch-plan-finalize.ts";
 export type { ResolveFetchWantsOptions } from "./fetch-plan-finalize.ts";
 
-// P6: Fetch-pack（对象同步，不写 ref）
+// fetch-pack（对象同步，不写 ref）
 export { fetchPack, FetchPackError } from "./fetch-pack.ts";
 
-// P7: Ref 更新
+// 请求生成（negotiate）
+export { buildUploadPackRequest } from "./negotiate.ts";
+
+// Ref 更新
 export {
   applyRefUpdates,
   resolveBranchTargetHash,
@@ -99,17 +110,34 @@ export {
   RefUpdateError,
 } from "./update-refs.ts";
 
-// P8: HTTP 传输 & push 编排
-export { createSmartHttpClient, SmartHttpError } from "./smart-http.ts";
-export type { SmartHttpClient, UploadPackResult, ReceivePackHttpResult } from "./smart-http.ts";
-export {
-  extractCapabilities,
-  PUSH_CAPABILITIES,
-  FETCH_CAPABILITIES,
-} from "./transport-capabilities.ts";
+// ============================================================================
+// Push 模块
+// ============================================================================
+
+// Push 编排
 export { push, PushError } from "./push.ts";
-export { checkFastForward } from "./push-policy.ts";
+
+// Push 引用规划
 export { determinePushRefs, resolveDefaultRefSpec } from "./push-ref-plan.ts";
 export type { PushRefItem } from "./push-ref-plan.ts";
+
+// Push 策略
+export { checkFastForward } from "./push-policy.ts";
+
+// Push pack 规划
 export { mergePushBoundaries, computeObjectsToSend } from "./push-pack-plan.ts";
+
+// Push 报告解析
 export { processPushReport } from "./push-report.ts";
+
+// receive-pack 请求/响应
+export { buildReceivePackRequest } from "./receive-pack-request.ts";
+export type { ReceivePackCommand } from "./receive-pack-request.ts";
+export { parseReceivePackResult, ReceivePackResultError } from "./receive-pack-result.ts";
+
+// ============================================================================
+// HTTP 传输
+// ============================================================================
+
+export { createSmartHttpClient, SmartHttpError } from "./smart-http.ts";
+export type { SmartHttpClient, UploadPackResult, ReceivePackHttpResult } from "./smart-http.ts";

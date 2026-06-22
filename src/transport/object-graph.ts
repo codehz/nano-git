@@ -44,8 +44,7 @@ function throwIfMissingObject(
     throw new ObjectNotFoundError(
       hash,
       `Object ${hash} is missing from the local store. ` +
-        `The local repository may be incomplete or corrupted. ` +
-        `Try fetching or running a repair before pushing.`,
+        `The local repository may be incomplete or corrupted.`,
     );
   }
 }
@@ -58,8 +57,8 @@ function throwIfMissingObject(
  * @param reachable - 用于收集结果的可达集合
  * @param missing - 遇到缺失对象时的行为：
  *   - `"skip"`（默认）：静默跳过，用于远程排除计算
- *   - `"throw"`：任意缺失均抛出 PushError
- *   - `"skip-commit-parents"`：仅沿 commit parent 边缺失时跳过（shallow push）
+ *   - `"throw"`：任意缺失均抛出错误
+ *   - `"skip-commit-parents"`：仅沿 commit parent 边缺失时跳过（shallow 场景）
  * @param viaCommitParent - 当前边是否来自 commit 的 parent 引用
  */
 function collectReachableFrom(
