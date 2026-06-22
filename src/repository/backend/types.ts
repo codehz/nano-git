@@ -12,6 +12,7 @@ import type { PackObjectStore } from "../../odb/pack/pack-store.ts";
 import type { ObjectSource, ObjectStore } from "../../odb/types.ts";
 import type { RefStore } from "../../refs/types.ts";
 import type { ShallowStore } from "../../shallow/types.ts";
+import type { RemoteStore } from "./remote-store.ts";
 
 /** 仓库级 repack 选项 */
 export interface RepositoryRepackOptions {
@@ -68,6 +69,7 @@ export interface RepositoryPackSupport {
  * - objects: Git 对象存储
  * - refs: Git 引用存储
  * - shallow: Git shallow 边界存储
+ * - remotes: Remote 配置存储
  * - packs: Packfile 读写支持（可选）
  * - gitDir: .git 目录路径（内存仓库为 null）
  */
@@ -80,6 +82,9 @@ export interface RepositoryBackend {
 
   /** Git shallow 边界存储 */
   readonly shallow: ShallowStore;
+
+  /** Remote 配置存储 */
+  readonly remotes: RemoteStore;
 
   /** Packfile 支持（内存仓库等后端可为 null） */
   readonly packs: RepositoryPackSupport | null;

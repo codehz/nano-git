@@ -15,7 +15,7 @@ import type { RefMappingRule, FetchPackResult } from "../transport/types.ts";
 /**
  * Remote 配置
  *
- * 原型期最小配置，不要求兼容 Git config 持久化格式。
+ * 文件后端会将其持久化到 `.git/config` 的 `[remote "<name>"]` section。
  */
 export interface RemoteConfig {
   readonly name: string;

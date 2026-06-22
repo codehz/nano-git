@@ -88,20 +88,19 @@ export interface RepositoryRemoteOperations {
 export function createRemoteRepositoryOperations(
   backend: RepositoryBackend,
 ): RepositoryRemoteOperations {
-  const remotes = new Map<string, RemoteConfig>();
-  const { refs } = backend;
+  const { refs, remotes } = backend;
 
   return {
     addRemote(config: RemoteConfig): void {
-      remotes.set(config.name, config);
+      remotes.set(config);
     },
 
     getRemote(name: string): RemoteConfig | null {
-      return remotes.get(name) ?? null;
+      return remotes.get(name);
     },
 
     listRemotes(): string[] {
-      return [...remotes.keys()];
+      return remotes.list().map((remote) => remote.name);
     },
 
     async fetchRemote(name: string, options?: FetchRemoteOptions): Promise<FetchRemoteResult> {
