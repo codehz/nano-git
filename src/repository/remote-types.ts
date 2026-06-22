@@ -5,8 +5,7 @@
  * Remote 只存在于 repository 层，transport 层不感知 remote 实体。
  */
 
-import type { SHA1 } from "../core/types.ts";
-import type { RefMappingRule, FetchPackResult } from "../transport/types.ts";
+import type { RefMappingRule, FetchPackResult, ApplyRefUpdatesResult } from "../transport/types.ts";
 
 // ============================================================================
 // Remote 配置
@@ -51,11 +50,19 @@ export interface FetchRemoteOptions {
 }
 
 /**
- * Fetch remote 操作结果
+ * Fetch remote 操作结果（阶段化）
+ *
+ * 将 fetch 过程的结果按阶段分层：
+ * - transfer: 对象传输结果（传输了什么）
+ * - refUpdates: ref 更新结果（更新了什么、拒绝了什么）
+ *
+ * 与 applyRefUpdates 的设计方向一致，不丢失 rejectedRefs 等决策信息。
  */
-export interface FetchRemoteResult extends FetchPackResult {
-  /** 更新的 remote-tracking ref 映射（localRef → hash） */
-  readonly updatedRefs: Map<string, SHA1>;
+export interface FetchRemoteResult {
+  /** 对象传输结果 */
+  readonly transfer: FetchPackResult;
+  /** ref 更新结果（含被拒绝项） */
+  readonly refUpdates: ApplyRefUpdatesResult;
   /** 远端默认分支（可能为 undefined） */
   readonly defaultBranch?: string;
 }

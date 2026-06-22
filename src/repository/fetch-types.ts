@@ -51,7 +51,8 @@ export interface RepositoryFetchOperations {
    * @example
    * ```ts
    * const result = await repo.fetchRemote("origin");
-   * console.log(`Fetched ${result.objectCount} objects`);
+   * console.log(`Fetched ${result.transfer.objectCount} objects`);
+   * console.log(`Updated ${result.refUpdates.updatedRefs.size} refs`);
    * ```
    */
   fetchRemote(name: string, options?: FetchRemoteOptions): Promise<FetchRemoteResult>;

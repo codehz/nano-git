@@ -71,7 +71,7 @@ describe("bootstrap remote 流程", () => {
     const result = await repo.bootstrapRemote("origin");
 
     // 对象已拉取
-    expect(result.objectCount).toBeGreaterThan(0);
+    expect(result.transfer.objectCount).toBeGreaterThan(0);
     expect(result.defaultBranch).toBe("refs/heads/main");
 
     // remote-tracking refs 已创建
@@ -112,7 +112,7 @@ describe("bootstrap remote 流程", () => {
 
     const result = await repo.bootstrapRemote("origin");
 
-    expect(result.objectCount).toBeGreaterThan(0);
+    expect(result.transfer.objectCount).toBeGreaterThan(0);
 
     const mainHash = repo.refs.read("refs/heads/main");
     const commitObj = repo.objects.read(sha1(mainHash!));

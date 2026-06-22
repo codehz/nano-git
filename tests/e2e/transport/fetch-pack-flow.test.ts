@@ -122,7 +122,7 @@ describe("fetch-pack 流程", () => {
 
     const result = await repo.fetchRemote("origin", { depth: 1 });
 
-    expect(result.objectCount).toBeGreaterThan(0);
+    expect(result.transfer.objectCount).toBeGreaterThan(0);
     expect(repo.refs.read("refs/remotes/origin/main")).not.toBeNull();
   });
 
@@ -151,7 +151,7 @@ describe("fetch-pack 流程", () => {
 
     const result = await repo.fetchRemote("downgraded");
 
-    expect(result.objectCount).toBeGreaterThan(0);
+    expect(result.transfer.objectCount).toBeGreaterThan(0);
     const mainRef = repo.refs.read("refs/remotes/origin/main");
     expect(mainRef).not.toBeNull();
     expect(repo.objects.read(sha1(mainRef!)).type).toBe("commit");
@@ -182,7 +182,7 @@ describe("fetch-pack 流程", () => {
 
     const result = await repo.fetchRemote("minimal");
 
-    expect(result.objectCount).toBeGreaterThan(0);
+    expect(result.transfer.objectCount).toBeGreaterThan(0);
     const mainRef = repo.refs.read("refs/remotes/origin/main");
     expect(mainRef).not.toBeNull();
     expect(repo.objects.read(sha1(mainRef!)).type).toBe("commit");
@@ -228,7 +228,7 @@ describe("fetch-pack 协商流程", () => {
 
     const initialHead = git(["rev-parse", "HEAD"], workDir);
     const result1 = await repo.fetchRemote("origin");
-    expect(result1.objectCount).toBeGreaterThan(0);
+    expect(result1.transfer.objectCount).toBeGreaterThan(0);
 
     const firstUploadPackRequests = getUploadPackRequests(server.requests);
     expect(firstUploadPackRequests).toHaveLength(1);
@@ -256,9 +256,9 @@ describe("fetch-pack 协商流程", () => {
 
     const result2 = await repo.fetchRemote("origin");
 
-    expect(result2.objectCount).toBeGreaterThan(0);
-    expect(result2.objectCount).toBe(expectedNewObjects);
-    expect(result2.updatedRefs.get("refs/remotes/origin/main")).toBe(sha1(newHead));
+    expect(result2.transfer.objectCount).toBeGreaterThan(0);
+    expect(result2.transfer.objectCount).toBe(expectedNewObjects);
+    expect(result2.refUpdates.updatedRefs.get("refs/remotes/origin/main")).toBe(sha1(newHead));
 
     const secondUploadPackRequests = getUploadPackRequests(server.requests);
     expect(secondUploadPackRequests).toHaveLength(1);
@@ -285,7 +285,7 @@ describe("fetch-pack 协商流程", () => {
     git(["push", repoDir, "main"], workDir);
 
     const result1 = await repo.fetchRemote("origin");
-    expect(result1.objectCount).toBeGreaterThan(totalInitialCommits);
+    expect(result1.transfer.objectCount).toBeGreaterThan(totalInitialCommits);
 
     server.clearRequests();
 
@@ -302,9 +302,9 @@ describe("fetch-pack 协商流程", () => {
 
     const result2 = await repo.fetchRemote("origin");
 
-    expect(result2.objectCount).toBeGreaterThan(0);
-    expect(result2.objectCount).toBeLessThan(result1.objectCount);
-    expect(result2.updatedRefs.get("refs/remotes/origin/main")).toBe(sha1(newHead));
+    expect(result2.transfer.objectCount).toBeGreaterThan(0);
+    expect(result2.transfer.objectCount).toBeLessThan(result1.transfer.objectCount);
+    expect(result2.refUpdates.updatedRefs.get("refs/remotes/origin/main")).toBe(sha1(newHead));
 
     const uploadPackRequests = getUploadPackRequests(server.requests);
     expect(uploadPackRequests).toHaveLength(2);
@@ -350,7 +350,7 @@ describe("fetch-pack 协商流程", () => {
     git(["push", repoDir, "main"], workDir);
 
     const firstFetch = await repo.fetchRemote("origin");
-    expect(firstFetch.objectCount).toBeGreaterThan(totalInitialCommits);
+    expect(firstFetch.transfer.objectCount).toBeGreaterThan(totalInitialCommits);
 
     await server.stop();
 
@@ -403,8 +403,8 @@ describe("fetch-pack 协商流程", () => {
     git(["push", repoDir, "main"], workDir);
 
     const secondFetch = await repo.fetchRemote("origin-ack");
-    expect(secondFetch.objectCount).toBeGreaterThan(0);
-    expect(secondFetch.updatedRefs.get("refs/remotes/origin/main")).toBe(sha1(newHead));
+    expect(secondFetch.transfer.objectCount).toBeGreaterThan(0);
+    expect(secondFetch.refUpdates.updatedRefs.get("refs/remotes/origin/main")).toBe(sha1(newHead));
 
     const uploadPackRequests = getUploadPackRequests(server.requests);
     expect(uploadPackRequests).toHaveLength(2);
@@ -430,7 +430,7 @@ describe("fetch-pack 协商流程", () => {
 
     // 1. 初始 fetch
     const result1 = await repo.fetchRemote("origin");
-    expect(result1.objectCount).toBeGreaterThan(0);
+    expect(result1.transfer.objectCount).toBeGreaterThan(0);
 
     // 2. 在本地仓库创建与 fetch 无关的 tag（pointer to old commit）
     const mainHash = repo.refs.read("refs/remotes/origin/main")!;
@@ -448,8 +448,8 @@ describe("fetch-pack 协商流程", () => {
 
     // 4. 增量 fetch，验证仍能正常拉取
     const result2 = await repo.fetchRemote("origin");
-    expect(result2.objectCount).toBeGreaterThan(0);
-    expect(result2.updatedRefs.get("refs/remotes/origin/main")).toBe(sha1(newHead));
+    expect(result2.transfer.objectCount).toBeGreaterThan(0);
+    expect(result2.refUpdates.updatedRefs.get("refs/remotes/origin/main")).toBe(sha1(newHead));
 
     // 5. 验证请求中 have 不超过候选集上限
     const requests = getUploadPackRequests(server.requests);
@@ -472,7 +472,7 @@ describe("fetch-pack 协商流程", () => {
 
     // 1. 初始 fetch
     const result1 = await repo.fetchRemote("origin");
-    expect(result1.objectCount).toBeGreaterThan(0);
+    expect(result1.transfer.objectCount).toBeGreaterThan(0);
 
     // 2. 创建 feature 分支并推送
     const featDir = join(tempDir, "work-feat-ref");
@@ -486,7 +486,7 @@ describe("fetch-pack 协商流程", () => {
     // 3. fetch feature 到本地
     server.clearRequests();
     const result2 = await repo.fetchRemote("origin");
-    expect(result2.updatedRefs.has("refs/remotes/origin/feature")).toBe(true);
+    expect(result2.refUpdates.updatedRefs.has("refs/remotes/origin/feature")).toBe(true);
 
     // 4. 服务端将 main 快进到 feature commit
     git(["update-ref", "refs/heads/main", featureHash], repoDir);
@@ -496,8 +496,8 @@ describe("fetch-pack 协商流程", () => {
     const result3 = await repo.fetchRemote("origin");
     // selectHaveTips 会使用 refs/remotes/origin/feature 作为 tip，
     // collectHaveCommits 能遍历到 feature commit，服务端不再重复发送
-    expect(result3.objectCount).toBe(0);
-    expect(result3.updatedRefs.get("refs/remotes/origin/main")).toBe(sha1(featureHash));
+    expect(result3.transfer.objectCount).toBe(0);
+    expect(result3.refUpdates.updatedRefs.get("refs/remotes/origin/main")).toBe(sha1(featureHash));
   });
 
   test("maxCandidates 限制下增量 fetch 仍能正常完成", async () => {
@@ -519,7 +519,7 @@ describe("fetch-pack 协商流程", () => {
 
     // 2. 初始 fetch，设 maxCandidates=10
     const result1 = await repo.fetchRemote("origin", { maxCandidates: 10 });
-    expect(result1.objectCount).toBeGreaterThan(0);
+    expect(result1.transfer.objectCount).toBeGreaterThan(0);
     expect(repo.refs.read("refs/remotes/origin/main")).not.toBeNull();
 
     // 3. 新增 2 个提交
@@ -536,8 +536,8 @@ describe("fetch-pack 协商流程", () => {
 
     // 4. 增量 fetch，maxCandidates=10
     const result2 = await repo.fetchRemote("origin", { maxCandidates: 10 });
-    expect(result2.objectCount).toBeGreaterThan(0);
-    expect(result2.updatedRefs.get("refs/remotes/origin/main")).toBe(sha1(newHead));
+    expect(result2.transfer.objectCount).toBeGreaterThan(0);
+    expect(result2.refUpdates.updatedRefs.get("refs/remotes/origin/main")).toBe(sha1(newHead));
 
     // 5. 验证请求体中的 have 确实被 maxCandidates 截断
     const requests = getUploadPackRequests(server.requests);
@@ -565,8 +565,8 @@ describe("fetch-pack 协商流程", () => {
       git(["push", repoDir, "main"], workDir);
 
       const result = await repo.fetchRemote("origin");
-      expect(result.objectCount).toBeGreaterThanOrEqual(0);
-      expect(result.updatedRefs.size).toBeGreaterThan(0);
+      expect(result.transfer.objectCount).toBeGreaterThanOrEqual(0);
+      expect(result.refUpdates.updatedRefs.size).toBeGreaterThan(0);
     }
 
     // 最终仓库完整性检查
@@ -598,7 +598,7 @@ describe("fetch-pack 协商流程", () => {
 
     // 2. 初始 fetch，maxCandidates=30（受预算限制，只取 30 个候选）
     const result1 = await repo.fetchRemote("origin", { maxCandidates: 30 });
-    expect(result1.objectCount).toBeGreaterThan(0);
+    expect(result1.transfer.objectCount).toBeGreaterThan(0);
 
     // 3. 服务端新增 2 个提交
     createFile(workDir, "dual-new-a.txt", "dual-new-a\n");
@@ -614,8 +614,8 @@ describe("fetch-pack 协商流程", () => {
 
     // 4. 增量 fetch，maxCandidates=30（但本地只有 30 个候选，≤32，单轮即可）
     const result2 = await repo.fetchRemote("origin", { maxCandidates: 30 });
-    expect(result2.objectCount).toBeGreaterThan(0);
-    expect(result2.updatedRefs.get("refs/remotes/origin/main")).toBe(sha1(newHead));
+    expect(result2.transfer.objectCount).toBeGreaterThan(0);
+    expect(result2.refUpdates.updatedRefs.get("refs/remotes/origin/main")).toBe(sha1(newHead));
 
     const requests = getUploadPackRequests(server.requests);
     // 因为候选只有 30，不超过 MAX_HAVES_PER_ROUND(32)，单轮即可
