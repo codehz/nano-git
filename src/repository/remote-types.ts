@@ -16,12 +16,22 @@ import type { RefMappingRule, FetchPackResult } from "../transport/types.ts";
  * Remote 配置
  *
  * 文件后端会将其持久化到 `.git/config` 的 `[remote "<name>"]` section。
+ * pushUrl 和 pushRefSpecs 用于支持 pushRemote 的默认行为。
  */
 export interface RemoteConfig {
   readonly name: string;
+
+  /** fetch 用的 remote URL，也作为 pushUrl 的默认值 */
   readonly url: string;
+
+  /** push 用的 remote URL，不指定时复用 url */
+  readonly pushUrl?: string;
+
   /** fetch 映射规则，如 [{ source: "+refs/heads/*", target: "refs/remotes/origin/*" }] */
   readonly fetchRules: RefMappingRule[];
+
+  /** push 默认 refspec，如 ["refs/heads/main:refs/heads/main"] */
+  readonly pushRefSpecs?: string[];
 }
 
 // ============================================================================
