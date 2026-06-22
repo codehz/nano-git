@@ -1,32 +1,31 @@
 /**
  * Fetch remote 内部编排
  *
- * 将 fetch 过程拆分为阶段化结果：
- * - fetchedObjects: 本次获取的对象数量
- * - updatedRefs: 已更新的 ref 映射
- * - rejectedRefs: 被拒绝的 ref 列表
+ * 顺序固定为：
+ * 1. 创建 upload-pack client
+ * 2. 拉一次 advertisement
+ * 3. planRefUpdates（直接产出 wants）
+ * 4. 若 wants 非空则 fetchPack()
+ * 5. applyRefUpdates()
  *
- * 与 remote-operations.ts 分离，使 repository 层只负责编排，不裁剪信息。
- * transport 返回值仅在内部消费并转换为 repository 自有类型。
+ * 一次 fetchRemote() 最多一次 GET /info/refs?service=git-upload-pack。
  *
  * @example
  * ```ts
  * const result = await runFetchRemote(backend, remote);
  * console.log(`Fetched ${result.fetchedObjects} objects`);
  * console.log(`Updated ${result.updatedRefs.size} refs`);
- * console.log(`Rejected ${result.rejectedRefs.length} refs`);
  * ```
  */
 
-import { advertiseRemote } from "../transport/advertise.ts";
 import { fetchPack } from "../transport/fetch-pack.ts";
-import { resolveFetchWants } from "../transport/fetch-plan-finalize.ts";
 import { planRefUpdates, validateExactRules } from "../transport/fetch-ref-plan.ts";
 import { getLocalRefs } from "../transport/ref-collection.ts";
+import { createUploadPackHttpClient } from "../transport/smart-http.ts";
 import { applyRefUpdates } from "../transport/update-refs.ts";
 
 import type { SHA1 } from "../core/types.ts";
-import type { RemoteAdvertisement } from "../transport/types.ts";
+import type { UploadPackTransport, RefAdvertisement } from "../transport/types.ts";
 import type { RepositoryBackend } from "./backend/types.ts";
 import type { RemoteConfig, FetchRemoteOptions, FetchRemoteResult } from "./remote-types.ts";
 
@@ -37,72 +36,72 @@ import type { RemoteConfig, FetchRemoteOptions, FetchRemoteResult } from "./remo
 /**
  * 执行 fetch remote 的内部流程
  *
- * 步骤：广告获取 → ref 规划 → fetch-pack → ref 更新 → shallow 持久化
- * 返回 repository 自有聚合结果（fetchedObjects / updatedRefs / rejectedRefs）。
- * 内部仍按阶段执行，但对外不暴露 transport 阶段结构。
+ * 步骤：
+ * 1. 创建 upload-pack client（若提供了 transportFactory 则使用之，否则用 HTTP）
+ * 2. 拉一次 advertisement（若 preAdvertised 提供则复用）
+ * 3. ref 规划并推导 wants（planRefUpdates）
+ * 4. wants 非空则执行 fetch-pack
+ * 5. 应用 ref 更新
+ * 6. shallow 持久化
  *
  * @param backend - 仓库后端
  * @param remote - remote 配置
  * @param options - fetch 选项
  * @param preAdvertised - 可选的预获取广告（避免 bootstrapRemote 等场景重复请求）
+ * @param transportFactory - 可选的 transport 工厂（用于测试注入）
  * @returns fetch 结果（repository 自有语义）
  *
  * @example
  * ```ts
  * const result = await runFetchRemote(backend, remote);
  * console.log(`Fetched: ${result.fetchedObjects} objects`);
- * for (const rejected of result.rejectedRefs) {
- *   console.log(`Rejected: ${rejected.localRef} — ${rejected.reason}`);
- * }
  * ```
  */
 export async function runFetchRemote(
   backend: RepositoryBackend,
   remote: RemoteConfig,
   options?: FetchRemoteOptions,
-  preAdvertised?: RemoteAdvertisement,
+  preAdvertised?: RefAdvertisement,
+  transportFactory?: (url: string, options?: FetchRemoteOptions) => UploadPackTransport,
 ): Promise<FetchRemoteResult> {
   const { objects, refs } = backend;
 
-  // 1. 获取远端广告（若已由调用方预获取则复用）
-  const adv =
-    preAdvertised ??
-    (await advertiseRemote(remote.url, {
-      token: options?.token,
-      headers: options?.headers,
-    }));
+  // 1. 创建 transport（可注入替代实现用于测试）
+  const createTransport =
+    transportFactory ??
+    ((url: string) =>
+      createUploadPackHttpClient(url, {
+        token: options?.token,
+        headers: options?.headers,
+      }));
+  const transport = createTransport(remote.url, options);
 
-  // 2. 校验非通配符规则
+  // 2. 获取远端广告（若已由调用方预获取则复用）
+  const adv: RefAdvertisement = preAdvertised ?? (await transport.getRefAdvertisement());
+
+  // 3. 校验非通配符规则
   validateExactRules(adv.refs, remote.fetchRules);
 
-  // 3. 获取本地 refs 并规划更新（纯映射层，不涉及对象库）
+  // 4. 获取本地 refs 并规划更新（直接产出 FetchPlan，含 wants）
   const localRefs = getLocalRefs(refs);
-  const plan = planRefUpdates(adv.refs, localRefs, remote.fetchRules);
-
-  // 4. 传输计划推导：结合对象库状态补正 wants
-  const transferPlan = resolveFetchWants(plan, objects, { depth: options?.depth });
+  const plan = planRefUpdates(adv.refs, localRefs, objects, remote.fetchRules, options?.depth);
 
   // 5. 需要传输时执行 fetch-pack
   let packResult: { objectCount: number; shallow?: SHA1[]; unshallow?: SHA1[] } | undefined;
 
-  if (transferPlan.needsPackNegotiation) {
-    // 6. 构造 have 候选
-    const haveTips = selectHaveTipsForRemote(localRefs, plan.updates);
+  if (plan.needsPackNegotiation) {
+    const haveTips = selectHaveTipsForRemote(localRefs, plan.refUpdates);
     const currentShallow = backend.shallow.read();
 
-    // 7. 执行 fetch-pack
-    packResult = await fetchPack(objects, {
-      url: remote.url,
-      wants: transferPlan.wants,
+    packResult = await fetchPack(objects, transport, adv, {
+      wants: plan.wants,
       haves: haveTips.length > 0 ? haveTips : undefined,
       depth: options?.depth,
       shallow: currentShallow.length > 0 ? currentShallow : undefined,
-      token: options?.token,
-      headers: options?.headers,
       maxCandidates: options?.maxCandidates,
     });
 
-    // 8. shallow 持久化
+    // 6. shallow 持久化
     if (packResult.shallow || packResult.unshallow) {
       backend.shallow.applyUpdate({
         shallow: packResult.shallow ?? [],
@@ -111,14 +110,12 @@ export async function runFetchRemote(
     }
   }
 
-  // 9. 应用 ref 更新（无论是否有传输，只要 plan.updates 有内容就执行）
-  //    典型场景：本地对象已存在但 tracking ref 未创建时，
-  //    无需传输对象但仍需更新 ref。
+  // 7. 应用 ref 更新
   let transportUpdatedRefs = new Map<string, SHA1>();
   let transportRejectedRefs: Array<{ localRef: string; reason: string }> = [];
 
-  if (plan.updates.length > 0) {
-    const refUpdateResult = applyRefUpdates(objects, refs, plan.updates);
+  if (plan.refUpdates.length > 0) {
+    const refUpdateResult = applyRefUpdates(objects, refs, plan.refUpdates);
     transportUpdatedRefs = refUpdateResult.updatedRefs;
     transportRejectedRefs = refUpdateResult.rejectedRefs;
   }
@@ -127,7 +124,7 @@ export async function runFetchRemote(
     packResult,
     transportUpdatedRefs,
     transportRejectedRefs,
-    adv.defaultBranch,
+    extractDefaultBranch(adv),
   );
 }
 
@@ -143,10 +140,6 @@ export async function runFetchRemote(
  * 2. 同一远端命名空间下的其他 remote-tracking refs
  * 3. HEAD
  * 4. 本地 refs/heads/*（兜底）
- *
- * @param localRefs - 本地全部 ref 映射
- * @param updates - ref 更新计划项
- * @returns have 遍历起点哈希列表
  */
 export function selectHaveTipsForRemote(
   localRefs: Map<string, SHA1>,
@@ -155,7 +148,6 @@ export function selectHaveTipsForRemote(
   const tips: SHA1[] = [];
   const seen = new Set<SHA1>();
 
-  // 第一优先：wants 对应的 remote-tracking ref 旧值
   for (const u of updates) {
     if (u.currentLocalHash && !seen.has(u.currentLocalHash)) {
       seen.add(u.currentLocalHash);
@@ -163,7 +155,6 @@ export function selectHaveTipsForRemote(
     }
   }
 
-  // 推导远端命名空间前缀
   const remotePrefixes = new Set<string>();
   for (const u of updates) {
     const m = u.localRef.match(/^(refs\/remotes\/[^/]+\/)/);
@@ -172,7 +163,6 @@ export function selectHaveTipsForRemote(
     }
   }
 
-  // 第二优先：同一远端命名空间下的其他 remote-tracking refs
   for (const [refName, hash] of localRefs) {
     if (seen.has(hash)) continue;
     if (refName.startsWith("refs/remotes/")) {
@@ -183,14 +173,12 @@ export function selectHaveTipsForRemote(
     }
   }
 
-  // 第三优先：HEAD
   const headHash = localRefs.get("HEAD");
   if (headHash && !seen.has(headHash)) {
     seen.add(headHash);
     tips.push(headHash);
   }
 
-  // 第四优先：本地 heads（兜底）
   for (const [refName, hash] of localRefs) {
     if (seen.has(hash)) continue;
     if (refName.startsWith("refs/heads/")) {
@@ -203,14 +191,35 @@ export function selectHaveTipsForRemote(
 }
 
 // ============================================================================
-// 类型转换
+// 内部辅助
 // ============================================================================
 
 /**
+ * 从 RefAdvertisement 中提取 defaultBranch
+ */
+function extractDefaultBranch(adv: RefAdvertisement): string | undefined {
+  let defaultBranch: string | undefined;
+  const symref = adv.capabilities["symref"];
+  if (typeof symref === "string") {
+    const colonIndex = symref.indexOf(":");
+    if (colonIndex !== -1) {
+      const headName = symref.substring(0, colonIndex);
+      if (headName === "HEAD") {
+        defaultBranch = symref.substring(colonIndex + 1);
+      }
+    }
+  }
+  if (defaultBranch === undefined) {
+    const heads = adv.refs.filter((r) => r.name.startsWith("refs/heads/"));
+    if (heads.length === 1) {
+      defaultBranch = heads[0]!.name;
+    }
+  }
+  return defaultBranch;
+}
+
+/**
  * 将原始数据转换为 repository 自有类型
- *
- * 接受最小必要参数，不依赖 transport 层类型的形状。
- * transport 返回值仅在调用方提取字段后传入。
  */
 function convertToFetchRemoteResult(
   packResult: { objectCount: number } | undefined,

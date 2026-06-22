@@ -22,15 +22,12 @@ import { GitError } from "../core/errors.ts";
 import { sha1, type SHA1 } from "../core/types.ts";
 import { advertiseRemote } from "../transport/advertise.ts";
 import { push as transportPush } from "../transport/push.ts";
+import { createReceivePackHttpClient } from "../transport/smart-http.ts";
 import { runFetchRemote } from "./fetch-remote.ts";
 import { mapDefaultBranchToTrackingRef } from "./remote-mapping.ts";
-import {
-  resolveEffectivePushUrl,
-  resolveEffectivePushRefSpecs,
-  resolveEffectiveShallowBoundaries,
-} from "./remote-resolution.ts";
+import { resolveEffectivePushUrl, resolveEffectivePushRefSpecs } from "./remote-resolution.ts";
 
-import type { PushOptions } from "../transport/types.ts";
+import type { ReceivePackTransport, RefAdvertisement } from "../transport/types.ts";
 import type { RepositoryBackend } from "./backend/types.ts";
 import type {
   RemoteConfig,
@@ -182,7 +179,7 @@ export function createRemoteRepositoryOperations(
       return runPushRemote(backend, remote, options);
     },
 
-    async push(url: string, options?: PushOptions): Promise<PushRemoteResult> {
+    async push(url: string, options?: PushRemoteOptions): Promise<PushRemoteResult> {
       return runPushToUrl(backend, url, options);
     },
   };
@@ -193,30 +190,32 @@ export function createRemoteRepositoryOperations(
 // ============================================================================
 
 /**
- * 执行基于 remote 配置的 push
+ * 创建 receive-pack 传输层，获取 advertisement，执行 push
  */
-async function runPushRemote(
+async function pushWithTransport(
   backend: RepositoryBackend,
-  remote: RemoteConfig,
-  options?: PushRemoteOptions,
+  pushUrl: string,
+  options?: Pick<PushRemoteOptions, "refSpecs" | "force">,
 ): Promise<PushRemoteResult> {
-  const effectivePushUrl = resolveEffectivePushUrl(remote, options);
+  // 1. 创建 transport 并获取 advertisement
+  const transport: ReceivePackTransport = createReceivePackHttpClient(pushUrl);
+  const advertisement: RefAdvertisement = await transport.getReceivePackRefs();
+
+  // 2. shallow 由 repository 内部从 backend 推导
   const currentShallow = backend.shallow.read();
+  const shallowBoundaries = currentShallow.length > 0 ? currentShallow : undefined;
 
-  const effectiveRefSpecs = resolveEffectivePushRefSpecs(remote, options);
-  const shallowBoundaries = resolveEffectiveShallowBoundaries(options, currentShallow);
-
-  const effectiveOptions: PushOptions = {
-    ...options,
-    refSpecs: effectiveRefSpecs,
-    shallowBoundaries,
-  };
-
+  // 3. 执行 transport push
   const transportResult = await transportPush(
     backend.objects,
     backend.refs,
-    effectivePushUrl,
-    effectiveOptions,
+    transport,
+    advertisement,
+    {
+      refSpecs: options?.refSpecs,
+      force: options?.force,
+      shallowBoundaries,
+    },
   );
 
   return convertPushResult(
@@ -227,27 +226,34 @@ async function runPushRemote(
 }
 
 /**
+ * 执行基于 remote 配置的 push
+ */
+async function runPushRemote(
+  backend: RepositoryBackend,
+  remote: RemoteConfig,
+  options?: PushRemoteOptions,
+): Promise<PushRemoteResult> {
+  const effectivePushUrl = resolveEffectivePushUrl(remote, options);
+  const effectiveRefSpecs = resolveEffectivePushRefSpecs(remote, options);
+
+  return pushWithTransport(backend, effectivePushUrl, {
+    refSpecs: effectiveRefSpecs,
+    force: options?.force,
+  });
+}
+
+/**
  * 执行基于 URL 的 push（不依赖 remote 配置）
  */
 async function runPushToUrl(
   backend: RepositoryBackend,
   url: string,
-  options?: PushOptions,
+  options?: PushRemoteOptions,
 ): Promise<PushRemoteResult> {
-  const currentShallow = backend.shallow.read();
-  const shallowBoundaries = resolveEffectiveShallowBoundaries(options, currentShallow);
-  const effectiveOptions: PushOptions = {
-    ...options,
-    shallowBoundaries,
-  };
-
-  const transportResult = await transportPush(backend.objects, backend.refs, url, effectiveOptions);
-
-  return convertPushResult(
-    transportResult.refUpdates,
-    transportResult.objectCount,
-    transportResult.progress,
-  );
+  return pushWithTransport(backend, url, {
+    refSpecs: options?.refSpecs,
+    force: options?.force,
+  });
 }
 
 /**

@@ -224,7 +224,8 @@ export type {
   RefAdvertisement,
   PushOptions,
   PushRefUpdate,
-  SmartHttpClient,
+  UploadPackTransport,
+  ReceivePackTransport,
   UploadPackResult,
   ReceivePackHttpResult,
   ParsedRefSpec,
@@ -238,8 +239,7 @@ export type {
   RemoteAdvertisement,
   RefMappingRule,
   RefUpdatePlanItem,
-  RefUpdatePlan,
-  FetchTransferPlan,
+  FetchPlan,
   FetchPackOptions,
 } from "./transport/index.ts";
 
@@ -267,7 +267,8 @@ export {
   parseReceivePackResult,
   ReceivePackResultError,
   // HTTP 传输
-  createSmartHttpClient,
+  createUploadPackHttpClient,
+  createReceivePackHttpClient,
   SmartHttpError,
   // 广告获取
   advertiseRemote,
@@ -279,8 +280,6 @@ export {
   planRefUpdates,
   validateExactRules,
   RefPlanError,
-  // Fetch 传输计划补正
-  resolveFetchWants,
   // Fetch-pack（对象同步）
   fetchPack,
   FetchPackError,

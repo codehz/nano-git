@@ -1,19 +1,24 @@
 /**
- * Fetch Ref 规划（纯映射层）
+ * Fetch Ref 规划（完整规划模型）
  *
- * 只负责"远端 ref → 本地 ref"的映射规划，不涉及对象库状态。
- * 使用 refspec 在远端 refs 与本地 refs 之间映射，产出 matched refs / update items。
+ * 统一处理 ref 映射与 wants 推导，直接产出 FetchPlan。
+ * 不再需要独立的两段式设计（RefUpdatePlan + resolveFetchWants）。
  *
- * 对象完整性补正由 resolveFetchWants() 在后续阶段完成。
+ * 职责：
+ * - refspec 映射：远端 ref → 本地 ref
+ * - hash 比较：记录 hashEqual 标志
+ * - 对象完整性补正：hash 相同但本地对象缺失时仍生成 want
+ * - 冲突检测：同一 localRef 被多个规则映射时抛 RefPlanError
+ * - 非通配符规则匹配校验
  *
  * @example
  * ```ts
  * import { planRefUpdates, validateExactRules } from "./fetch-ref-plan.ts";
  *
- * const plan = planRefUpdates(remoteRefs, localRefs, [
+ * const plan = planRefUpdates(remoteRefs, localRefs, objects, [
  *   { source: "+refs/heads/*", target: "refs/remotes/origin/*" },
  * ]);
- * console.log(plan.updates);
+ * console.log(plan.wants, plan.refUpdates);
  * ```
  */
 
@@ -22,7 +27,8 @@ import { matchesRefSpec, mapRefName } from "./ref-match.ts";
 import { mappingRuleToParsedSpec } from "./refspec.ts";
 
 import type { SHA1 } from "../core/types.ts";
-import type { RefMappingRule, RefUpdatePlan, RefUpdatePlanItem, RemoteRef } from "./types.ts";
+import type { ObjectSource } from "../odb/types.ts";
+import type { RefMappingRule, FetchPlan, RefUpdatePlanItem, RemoteRef } from "./types.ts";
 
 // ============================================================================
 // 错误类型
@@ -39,36 +45,45 @@ export class RefPlanError extends GitError {
 }
 
 // ============================================================================
-// Ref 更新规划
+// Fetch 规划（合并后的完整流程）
 // ============================================================================
 
 /**
- * 规划 ref 更新（纯映射）
+ * 规划 ref 更新并推导传输需求
  *
- * 从远端 refs 和本地 refs 生成更新计划，仅基于 hash 比较决定哪些 ref 需要更新。
- * 不涉及对象库状态校验——对象完整性补正由 resolveFetchWants() 完成。
+ * 一步完成"远端 ref → 本地 ref"映射、hash 比较、对象完整性校验、want 推导。
+ * 如果两个 rule 映射到同一个 `localRef`，直接抛 `RefPlanError`。
  *
  * @param remoteRefs - 远端引用列表
  * @param localRefs - 本地 ref → hash 映射
+ * @param objects - 对象存储（用于对象存在性校验）
  * @param rules - 映射规则列表
- * @returns Ref 更新计划（不含 wants）
+ * @param depth - 浅克隆深度（可选，用于 deepen 场景）
+ * @returns FetchPlan（含 wants / refUpdates / matchedRefs）
  *
  * @example
  * ```ts
- * const plan = planRefUpdates(remoteRefs, localRefs, [
+ * const plan = planRefUpdates(adv.refs, getLocalRefs(refs), objects, [
  *   { source: "+refs/heads/*", target: "refs/remotes/origin/*" },
  * ]);
+ * if (plan.needsPackNegotiation) {
+ *   await fetchPack(objects, transport, plan.wants, adv);
+ * }
  * ```
  */
 export function planRefUpdates(
   remoteRefs: RemoteRef[],
   localRefs: Map<string, SHA1>,
+  objects: ObjectSource,
   rules: RefMappingRule[],
-): RefUpdatePlan {
+  depth?: number,
+): FetchPlan {
   const parsedSpecs = rules.map(mappingRuleToParsedSpec);
-  const matchedRemoteRefs: RemoteRef[] = [];
-  const updates: RefUpdatePlanItem[] = [];
-  const seen = new Set<string>();
+  const matchedRefs: RemoteRef[] = [];
+  const refUpdates: RefUpdatePlanItem[] = [];
+  const localRefToFirstRule = new Map<string, number>();
+  const wants: SHA1[] = [];
+  const seenWant = new Set<SHA1>();
 
   for (const ref of remoteRefs) {
     for (const spec of parsedSpecs) {
@@ -76,28 +91,60 @@ export function planRefUpdates(
 
       const localName = mapRefName(ref.name, spec);
 
-      // 重叠规则去重：同一 localName 只保留首个
-      if (seen.has(localName)) continue;
-      seen.add(localName);
-
-      matchedRemoteRefs.push(ref);
-
-      // 纯 hash 比较：本地 hash 相同则跳过（对象完整性由后续阶段校验）
-      const localHash = localRefs.get(localName);
-      if (localHash === ref.hash) {
-        continue;
+      // === 冲突检测：同一 localRef 被多个 rule 映射 ===
+      // 取消静默首条优先，改为显式报错
+      const ruleIndex = parsedSpecs.indexOf(spec);
+      if (localRefToFirstRule.has(localName)) {
+        const firstRuleIndex = localRefToFirstRule.get(localName)!;
+        const firstRule = rules[firstRuleIndex]!;
+        const currentRule = rules[ruleIndex]!;
+        throw new RefPlanError(
+          `Conflicting refspec rules for "${localName}": ` +
+            `"${firstRule.source}:${firstRule.target}" and ` +
+            `"${currentRule.source}:${currentRule.target}" ` +
+            `both map to the same local ref.`,
+        );
       }
+      localRefToFirstRule.set(localName, ruleIndex);
 
-      updates.push({
+      matchedRefs.push(ref);
+
+      const localHash = localRefs.get(localName);
+      const hashEqual = localHash === ref.hash;
+      const needsFetch = !hashEqual || !objects.exists(ref.hash);
+
+      refUpdates.push({
         remoteRef: ref,
         localRef: localName,
         currentLocalHash: localHash,
         force: spec.force,
+        hashEqual,
       });
+
+      if (needsFetch && !seenWant.has(ref.hash)) {
+        seenWant.add(ref.hash);
+        wants.push(ref.hash);
+      }
     }
   }
 
-  return { matchedRemoteRefs, updates };
+  // Deepen 模式：无 wants 但指定了 depth 时，
+  // 把所有 matched refs 作为 wants 触发 re-negotiation
+  if (wants.length === 0 && depth !== undefined) {
+    for (const ref of matchedRefs) {
+      if (!seenWant.has(ref.hash)) {
+        seenWant.add(ref.hash);
+        wants.push(ref.hash);
+      }
+    }
+  }
+
+  return {
+    matchedRefs,
+    refUpdates,
+    wants,
+    needsPackNegotiation: wants.length > 0,
+  };
 }
 
 /**

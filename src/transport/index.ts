@@ -23,12 +23,13 @@ export type {
   RemoteAdvertisement,
   RefMappingRule,
   RefUpdatePlanItem,
-  RefUpdatePlan,
-  FetchTransferPlan,
+  FetchPlan,
   FetchPackOptions,
   FetchPackResult,
   RefUpdateRejection,
   ApplyRefUpdatesResult,
+  UploadPackTransport,
+  ReceivePackTransport,
 } from "./types.ts";
 
 // pkt-line 编解码
@@ -92,10 +93,6 @@ export {
 // fetch 规划（纯映射层）
 export { planRefUpdates, validateExactRules, RefPlanError } from "./fetch-ref-plan.ts";
 
-// fetch 传输计划补正（wants 推导）
-export { resolveFetchWants } from "./fetch-plan-finalize.ts";
-export type { ResolveFetchWantsOptions } from "./fetch-plan-finalize.ts";
-
 // fetch-pack（对象同步，不写 ref）
 export { fetchPack, FetchPackError } from "./fetch-pack.ts";
 
@@ -139,5 +136,9 @@ export { parseReceivePackResult, ReceivePackResultError } from "./receive-pack-r
 // HTTP 传输
 // ============================================================================
 
-export { createSmartHttpClient, SmartHttpError } from "./smart-http.ts";
-export type { SmartHttpClient, UploadPackResult, ReceivePackHttpResult } from "./smart-http.ts";
+export {
+  createUploadPackHttpClient,
+  createReceivePackHttpClient,
+  SmartHttpError,
+} from "./smart-http.ts";
+export type { UploadPackResult, ReceivePackHttpResult, SmartHttpAuth } from "./smart-http.ts";

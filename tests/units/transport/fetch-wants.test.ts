@@ -1,14 +1,15 @@
 /**
- * planRefUpdates 单元测试（纯映射层）
+ * planRefUpdates 单元测试（完整规划模型）
  *
- * 覆盖 ref 映射逻辑：初始 clone、增量 fetch、refspec 去重。
- * 对象完整性补正测试移至 fetch-plan-finalize.test.ts。
+ * 覆盖 ref 映射逻辑：初始 clone、增量 fetch、冲突检测。
+ * wants 推导和对象完整性补正测试移至 fetch-plan-finalize.test.ts。
  */
 
 import { describe, test, expect } from "bun:test";
 
-import { sha1, type SHA1 } from "@/core/types.ts";
-import { planRefUpdates } from "@/transport/fetch-ref-plan.ts";
+import { sha1, type SHA1, type GitCommit } from "@/core/types.ts";
+import { createMemoryObjectStore } from "@/odb/memory-store.ts";
+import { planRefUpdates, RefPlanError } from "@/transport/fetch-ref-plan.ts";
 
 import type { RemoteRef } from "@/transport/types.ts";
 
@@ -21,7 +22,7 @@ function makeRef(name: string, hash?: string): RemoteRef {
 }
 
 // ============================================================================
-// 纯 ref 映射
+// 完整规划
 // ============================================================================
 
 describe("planRefUpdates()", () => {
@@ -34,55 +35,78 @@ describe("planRefUpdates()", () => {
       makeRef("refs/heads/main", "95d09f2b10159347eece71399a7e2e907ea3df4f"),
       makeRef("refs/heads/develop", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
     ];
-    const plan = planRefUpdates(refs, new Map(), defaultRules);
-    expect(plan.updates).toHaveLength(2);
-    expect(plan.updates[0]!.localRef).toBe("refs/remotes/origin/main");
-    expect(plan.updates[0]!.currentLocalHash).toBeUndefined();
-    expect(plan.updates[0]!.force).toBe(true);
-    expect(plan.updates[1]!.localRef).toBe("refs/remotes/origin/develop");
-    expect(plan.updates[1]!.currentLocalHash).toBeUndefined();
-    expect(plan.updates[1]!.force).toBe(true);
+    const store = createMemoryObjectStore();
+    const plan = planRefUpdates(refs, new Map(), store, defaultRules);
+    expect(plan.refUpdates).toHaveLength(2);
+    expect(plan.refUpdates[0]!.localRef).toBe("refs/remotes/origin/main");
+    expect(plan.refUpdates[0]!.currentLocalHash).toBeUndefined();
+    expect(plan.refUpdates[0]!.force).toBe(true);
+    expect(plan.refUpdates[1]!.localRef).toBe("refs/remotes/origin/develop");
+    expect(plan.refUpdates[1]!.currentLocalHash).toBeUndefined();
+    expect(plan.refUpdates[1]!.force).toBe(true);
   });
 
-  test("本地 hash 相同则跳过（纯 hash 比较，不涉及对象库）", () => {
+  test("本地 hash 相同且对象存在则跳过", () => {
+    const store = createMemoryObjectStore();
+    // 先写入一个 commit 对象，拿到真实 hash
+    const commit: GitCommit = {
+      type: "commit",
+      tree: sha1("0000000000000000000000000000000000000001"),
+      parents: [],
+      author: { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" },
+      committer: { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" },
+      message: "test",
+    };
+    const localHash = store.write(commit);
+
     const refs: RemoteRef[] = [
-      makeRef("refs/heads/main", "95d09f2b10159347eece71399a7e2e907ea3df4f"),
+      { name: "refs/heads/main", hash: localHash },
       makeRef("refs/heads/develop", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
     ];
-    const localRefs = new Map<string, SHA1>([["refs/remotes/origin/main", hash1]]);
-    const plan = planRefUpdates(refs, localRefs, defaultRules);
-    // main 与本地 hash 相同，只有 develop 需要拉取
-    expect(plan.updates).toHaveLength(1);
-    expect(plan.updates[0]!.localRef).toBe("refs/remotes/origin/develop");
-    expect(plan.updates[0]!.currentLocalHash).toBeUndefined();
-    expect(plan.updates[0]!.force).toBe(true);
+    const localRefs = new Map<string, SHA1>([["refs/remotes/origin/main", localHash]]);
+    const plan = planRefUpdates(refs, localRefs, store, defaultRules);
+    // main（hash 相同且对象存在 → 仍保留 refUpdate 但 hashEqual=true）+
+    // develop（hash 不同 → 常规 refUpdate）
+    expect(plan.refUpdates).toHaveLength(2);
+    const mainUpdate = plan.refUpdates.find((u) => u.localRef === "refs/remotes/origin/main");
+    expect(mainUpdate).toBeDefined();
+    expect(mainUpdate!.hashEqual).toBe(true);
+    const devUpdate = plan.refUpdates.find((u) => u.localRef === "refs/remotes/origin/develop");
+    expect(devUpdate).toBeDefined();
+    expect(devUpdate!.currentLocalHash).toBeUndefined();
+    expect(devUpdate!.force).toBe(true);
+    // wants 只包含 develop（hash 不同）
+    expect(plan.wants).toHaveLength(1);
   });
 
   test("本地 hash 不同则应拉取并包含 currentLocalHash", () => {
     const refs: RemoteRef[] = [
       makeRef("refs/heads/main", "95d09f2b10159347eece71399a7e2e907ea3df4f"),
     ];
+    const store = createMemoryObjectStore();
     const localRefs = new Map<string, SHA1>([["refs/remotes/origin/main", hash2]]);
-    const plan = planRefUpdates(refs, localRefs, defaultRules);
-    expect(plan.updates).toHaveLength(1);
-    expect(plan.updates[0]!.currentLocalHash).toBe(hash2);
-    expect(plan.updates[0]!.force).toBe(true);
+    const plan = planRefUpdates(refs, localRefs, store, defaultRules);
+    expect(plan.refUpdates).toHaveLength(1);
+    expect(plan.refUpdates[0]!.currentLocalHash).toBe(hash2);
+    expect(plan.refUpdates[0]!.force).toBe(true);
   });
 
   test("非强制 refspec 传递 force=false", () => {
     const refs: RemoteRef[] = [
       makeRef("refs/heads/main", "95d09f2b10159347eece71399a7e2e907ea3df4f"),
     ];
-    const plan = planRefUpdates(refs, new Map(), [
+    const store = createMemoryObjectStore();
+    const plan = planRefUpdates(refs, new Map(), store, [
       { source: "refs/heads/*", target: "refs/remotes/origin/*" },
     ]);
-    expect(plan.updates).toHaveLength(1);
-    expect(plan.updates[0]!.force).toBe(false);
+    expect(plan.refUpdates).toHaveLength(1);
+    expect(plan.refUpdates[0]!.force).toBe(false);
   });
 
-  test("空远程返回空 updates", () => {
-    const plan = planRefUpdates([], new Map(), defaultRules);
-    expect(plan.updates).toHaveLength(0);
+  test("空远程返回空 refUpdates", () => {
+    const store = createMemoryObjectStore();
+    const plan = planRefUpdates([], new Map(), store, defaultRules);
+    expect(plan.refUpdates).toHaveLength(0);
   });
 
   test("精确 refspec 不会因前缀匹配引入多余 updates", () => {
@@ -90,47 +114,48 @@ describe("planRefUpdates()", () => {
       makeRef("refs/heads/main", "95d09f2b10159347eece71399a7e2e907ea3df4f"),
       makeRef("refs/heads/main-old", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
     ];
-    const plan = planRefUpdates(refs, new Map(), [
+    const store = createMemoryObjectStore();
+    const plan = planRefUpdates(refs, new Map(), store, [
       { source: "refs/heads/main", target: "refs/remotes/origin/main", force: true },
     ]);
-    expect(plan.updates).toHaveLength(1);
-    expect(plan.updates[0]!.remoteRef.name).toBe("refs/heads/main");
-    expect(plan.updates[0]!.localRef).toBe("refs/remotes/origin/main");
+    expect(plan.refUpdates).toHaveLength(1);
+    expect(plan.refUpdates[0]!.remoteRef.name).toBe("refs/heads/main");
+    expect(plan.refUpdates[0]!.localRef).toBe("refs/remotes/origin/main");
   });
 
-  test("重叠 refspec 应去重，同一 remote ref 只生成一个 update", () => {
+  test("重叠 refspec 映射到同一 localRef 应抛 RefPlanError", () => {
     const refs: RemoteRef[] = [
       makeRef("refs/heads/main", "95d09f2b10159347eece71399a7e2e907ea3df4f"),
       makeRef("refs/heads/develop", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
     ];
-    const plan = planRefUpdates(refs, new Map(), [
-      { source: "refs/heads/*", target: "refs/remotes/origin/*", force: true },
-      { source: "refs/heads/main", target: "refs/remotes/origin/main", force: true },
-    ]);
-    expect(plan.updates).toHaveLength(2);
-    const mainUpdates = plan.updates.filter((w) => w.remoteRef.name === "refs/heads/main");
-    expect(mainUpdates).toHaveLength(1);
-    const devUpdates = plan.updates.filter((w) => w.remoteRef.name === "refs/heads/develop");
-    expect(devUpdates).toHaveLength(1);
+    const store = createMemoryObjectStore();
+    expect(() =>
+      planRefUpdates(refs, new Map(), store, [
+        { source: "refs/heads/*", target: "refs/remotes/origin/*", force: true },
+        { source: "refs/heads/main", target: "refs/remotes/origin/main", force: true },
+      ]),
+    ).toThrow(RefPlanError);
   });
 
-  test("matchedRemoteRefs 应包含所有匹配的远端 ref（包括 hash 相同被跳过的）", () => {
+  test("matchedRefs 应包含所有匹配的远端 ref", () => {
     const refs: RemoteRef[] = [
       makeRef("refs/heads/main", "95d09f2b10159347eece71399a7e2e907ea3df4f"),
       makeRef("refs/heads/develop", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
     ];
+    const store = createMemoryObjectStore();
     const localRefs = new Map<string, SHA1>([["refs/remotes/origin/main", hash1]]);
-    const plan = planRefUpdates(refs, localRefs, defaultRules);
-    // matchedRemoteRefs 包含 main（hash 相同但被 matched）和 develop
-    expect(plan.matchedRemoteRefs).toHaveLength(2);
+    const plan = planRefUpdates(refs, localRefs, store, defaultRules);
+    expect(plan.matchedRefs).toHaveLength(2);
   });
 
-  test("不包含 wants 字段（已移至 FetchTransferPlan）", () => {
+  test("FetchPlan 包含 wants 字段", () => {
     const refs: RemoteRef[] = [
       makeRef("refs/heads/main", "95d09f2b10159347eece71399a7e2e907ea3df4f"),
     ];
-    const plan = planRefUpdates(refs, new Map(), defaultRules);
-    // 类型层面验证：wants 不在 RefUpdatePlan 中
-    expect("wants" in plan).toBe(false);
+    const store = createMemoryObjectStore();
+    const plan = planRefUpdates(refs, new Map(), store, defaultRules);
+    // FetchPlan 直接包含 wants
+    expect("wants" in plan).toBe(true);
+    expect(plan.needsPackNegotiation).toBe(true);
   });
 });

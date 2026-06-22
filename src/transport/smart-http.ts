@@ -2,12 +2,8 @@
  * Smart HTTP 传输层
  *
  * 基于 Bun 内置 fetch() 的 Git Smart HTTP 协议传输实现。
- *
- * 提供四个核心操作：
- * - getRefAdvertisement: 获取远程仓库的引用列表和服务端能力
- * - postUploadPack: 发送 want/have 请求并获取 packfile 数据
- * - getReceivePackRefs: 获取 receive-pack 的 ref 广告
- * - postReceivePack: 发送 push 命令和 packfile 并获取响应
+ * upload-pack 与 receive-pack 分别导出独立客户端工厂函数，
+ * 互不依赖，各自只实现对应协议的方法。
  *
  * @see https://git-scm.com/docs/http-protocol
  */
@@ -25,7 +21,12 @@ import {
 } from "./side-band.ts";
 
 import type { PktLineData } from "./pkt-line.ts";
-import type { RefAdvertisement, PushRefUpdate, RemoteTransport } from "./types.ts";
+import type {
+  RefAdvertisement,
+  PushRefUpdate,
+  UploadPackTransport,
+  ReceivePackTransport,
+} from "./types.ts";
 
 // ============================================================================
 // 错误类型
@@ -102,67 +103,30 @@ function applyAuthHeaders(
   return { ...base, ...result };
 }
 
+// ============================================================================
+// Upload-pack HTTP 客户端
+// ============================================================================
+
 /**
- * Smart HTTP 客户端接口
+ * 创建 upload-pack HTTP 客户端
  *
- * 封装 Git Smart HTTP 协议的四个核心端点。
- * 实现 RemoteTransport 接口，允许作为 push/fetch 的传输层注入。
- */
-export interface SmartHttpClient extends RemoteTransport {
-  /**
-   * 获取远程仓库的引用广告
-   *
-   * 对应 GET /info/refs?service=git-upload-pack
-   */
-  getRefAdvertisement(): Promise<RefAdvertisement>;
-
-  /**
-   * 发送 upload-pack 请求并获取响应
-   *
-   * 对应 POST /git-upload-pack
-   *
-   * @param body - pkt-line 编码的请求 body（由 buildUploadPackRequest 生成）
-   */
-  postUploadPack(body: Buffer): Promise<UploadPackResult>;
-
-  /**
-   * 获取 receive-pack 的 ref 广告
-   *
-   * 对应 GET /info/refs?service=git-receive-pack
-   */
-  getReceivePackRefs(): Promise<RefAdvertisement>;
-
-  /**
-   * 发送 receive-pack 请求并获取响应
-   *
-   * 对应 POST /git-receive-pack
-   *
-   * @param body - pkt-line 编码的请求 body（由 buildReceivePackRequest 生成）
-   */
-  postReceivePack(body: Buffer): Promise<ReceivePackHttpResult>;
-}
-
-/**
- * 创建 Smart HTTP 客户端
+ * 只实现 git-upload-pack 协议的方法，不包含 receive-pack 相关。
  *
  * @param baseUrl - 远程仓库的 base URL（如 "https://github.com/user/repo"）
  * @param auth - 可选认证配置（token / 自定义 headers）
- * @returns SmartHttpClient 实例
+ * @returns UploadPackTransport 实例
  *
  * @example
  * ```ts
- * const client = createSmartHttpClient("https://github.com/user/repo");
+ * const client = createUploadPackHttpClient("https://github.com/user/repo");
  * const adv = await client.getRefAdvertisement();
- *
- * // 带认证
- * const authed = createSmartHttpClient("https://github.com/user/repo", {
- *   token: "ghp_xxx",
- * });
- * const { packfile } = await authed.postUploadPack(body);
+ * const { packfile } = await client.postUploadPack(body);
  * ```
  */
-export function createSmartHttpClient(baseUrl: string, auth?: SmartHttpAuth): SmartHttpClient {
-  // 去除末尾斜杠
+export function createUploadPackHttpClient(
+  baseUrl: string,
+  auth?: SmartHttpAuth,
+): UploadPackTransport {
   const normalizedUrl = baseUrl.replace(/\/+$/, "");
 
   return {
@@ -208,7 +172,11 @@ export function createSmartHttpClient(baseUrl: string, auth?: SmartHttpAuth): Sm
       }
     },
 
-    async postUploadPack(body: Buffer): Promise<UploadPackResult> {
+    async postUploadPack(body: Buffer): Promise<{
+      data: Buffer;
+      packfile: Buffer;
+      progress: string[];
+    }> {
       const url = `${normalizedUrl}/git-upload-pack`;
 
       let response: Response;
@@ -250,14 +218,11 @@ export function createSmartHttpClient(baseUrl: string, auth?: SmartHttpAuth): Sm
       }
 
       // 响应可能是 side-band 编码或纯 pkt-line
-      // 先检查 side-band channel 3 致命错误
       const fatalMsg = extractSideBandFatal(data);
       if (fatalMsg !== null) {
         throw new SmartHttpError(`Server reported fatal error: ${fatalMsg}`);
       }
 
-      // 先尝试提取 packfile（side-band 编码时提取 channel 1）
-      // 如果提取失败（无 channel 1 数据），可能是纯 NAK/ACK 响应
       let packfile: Buffer;
       let progress: string[];
 
@@ -266,7 +231,6 @@ export function createSmartHttpClient(baseUrl: string, auth?: SmartHttpAuth): Sm
         progress = extractProgress(data);
       } catch (err) {
         if (err instanceof PktLineError && err.message.includes("Invalid pkt-line length")) {
-          // 非 side-band 响应（如 NAK + 原始 packfile），回退到原始 packfile 提取
           try {
             packfile = extractRawPackfile(data);
           } catch {
@@ -274,11 +238,9 @@ export function createSmartHttpClient(baseUrl: string, auth?: SmartHttpAuth): Sm
           }
           progress = [];
         } else if (err instanceof SideBandError) {
-          // side-band 响应但无 packfile 数据（如协商中间轮次），返回空 packfile
           packfile = Buffer.alloc(0);
           progress = [];
         } else {
-          // 截断或其他协议损坏应立即报错，而非静默降级
           throw new SmartHttpError(
             `Failed to parse upload-pack response: ${(err as Error).message}`,
           );
@@ -287,7 +249,36 @@ export function createSmartHttpClient(baseUrl: string, auth?: SmartHttpAuth): Sm
 
       return { data, packfile, progress };
     },
+  };
+}
 
+// ============================================================================
+// Receive-pack HTTP 客户端
+// ============================================================================
+
+/**
+ * 创建 receive-pack HTTP 客户端
+ *
+ * 只实现 git-receive-pack 协议的方法，不包含 upload-pack 相关。
+ *
+ * @param baseUrl - 远程仓库的 base URL（如 "https://github.com/user/repo"）
+ * @param auth - 可选认证配置（token / 自定义 headers）
+ * @returns ReceivePackTransport 实例
+ *
+ * @example
+ * ```ts
+ * const client = createReceivePackHttpClient("https://github.com/user/repo");
+ * const adv = await client.getReceivePackRefs();
+ * const result = await client.postReceivePack(body);
+ * ```
+ */
+export function createReceivePackHttpClient(
+  baseUrl: string,
+  auth?: SmartHttpAuth,
+): ReceivePackTransport {
+  const normalizedUrl = baseUrl.replace(/\/+$/, "");
+
+  return {
     async getReceivePackRefs(): Promise<RefAdvertisement> {
       const url = `${normalizedUrl}/info/refs?service=git-receive-pack`;
 
@@ -372,7 +363,6 @@ export function createSmartHttpClient(baseUrl: string, auth?: SmartHttpAuth): Sm
       }
 
       // 判断响应是否为 side-band 编码
-      // 如果第一个 pkt-line 数据帧的 payload 首字节是 0x01/0x02/0x03，则为 side-band
       let progress: string[] = [];
       let refUpdates: PushRefUpdate[] = [];
 
@@ -384,7 +374,7 @@ export function createSmartHttpClient(baseUrl: string, auth?: SmartHttpAuth): Sm
           firstPayload.length > 0 &&
           (firstPayload[0] === 0x01 || firstPayload[0] === 0x02 || firstPayload[0] === 0x03)
         ) {
-          // Side-band 编码：收集 channel 1 数据统一用 parseReceivePackResult 解析
+          // Side-band 编码
           const reportStatusChunks: Buffer[] = [];
 
           for (const line of pktLines) {
@@ -396,28 +386,21 @@ export function createSmartHttpClient(baseUrl: string, auth?: SmartHttpAuth): Sm
             const frameData = payload.subarray(1);
 
             if (channel === 0x01) {
-              // Channel 1: report-status 数据（pkt-line 编码）
-              // 收集所有 channel 1 数据后用 parseReceivePackResult 统一解析，
-              // 避免内联逐行解析在跨 pkt-line 分片时遗漏状态行
               reportStatusChunks.push(frameData);
             } else if (channel === 0x02) {
-              // Channel 2: 进度消息
               progress.push(frameData.toString("utf-8").trimEnd());
             } else if (channel === 0x03) {
-              // Channel 3: 致命错误
               throw new SmartHttpError(
                 `Server reported error: ${frameData.toString("utf-8").trimEnd()}`,
               );
             }
           }
 
-          // 统一用 parseReceivePackResult 解析 report-status
           if (reportStatusChunks.length > 0) {
             const reconstructed = Buffer.concat(reportStatusChunks);
             refUpdates = parseReceivePackResult(reconstructed);
           }
         } else {
-          // 非 side-band：数据为纯 pkt-line report-status
           refUpdates = parseReceivePackResult(data);
         }
       }

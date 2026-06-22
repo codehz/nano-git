@@ -8,7 +8,7 @@
 import { describe, test, expect } from "bun:test";
 
 import { encodePktLine } from "@/transport/pkt-line.ts";
-import { createSmartHttpClient, SmartHttpError } from "@/transport/smart-http.ts";
+import { createUploadPackHttpClient, SmartHttpError } from "@/transport/smart-http.ts";
 
 // ============================================================================
 // 辅助函数
@@ -43,7 +43,7 @@ describe("postUploadPack side-band 致命错误", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     }) as any as typeof globalThis.fetch;
 
-    const client = createSmartHttpClient("http://dummy.example.com/repo");
+    const client = createUploadPackHttpClient("http://dummy.example.com/repo");
     const body = Buffer.from("test body");
 
     // 应抛出包含服务端错误消息的异常，而非静默返回空 packfile
@@ -71,7 +71,7 @@ describe("postUploadPack side-band 致命错误", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     }) as any as typeof globalThis.fetch;
 
-    const client = createSmartHttpClient("http://dummy.example.com/repo");
+    const client = createUploadPackHttpClient("http://dummy.example.com/repo");
     const body = Buffer.from("test body");
 
     const promise = client.postUploadPack(body);
@@ -97,7 +97,7 @@ describe("postUploadPack side-band 致命错误", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     }) as any as typeof globalThis.fetch;
 
-    const client = createSmartHttpClient("http://dummy.example.com/repo");
+    const client = createUploadPackHttpClient("http://dummy.example.com/repo");
     const body = Buffer.from("test body");
 
     const result = await client.postUploadPack(body);
@@ -130,7 +130,7 @@ describe("postUploadPack 协议错误应传播而非吞掉", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     }) as any as typeof globalThis.fetch;
 
-    const client = createSmartHttpClient("http://dummy.example.com/repo");
+    const client = createUploadPackHttpClient("http://dummy.example.com/repo");
     const body = Buffer.from("test body");
 
     // 应抛出 SmartHttpError，而非返回空 packfile
@@ -157,7 +157,7 @@ describe("postUploadPack 协议错误应传播而非吞掉", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     }) as any as typeof globalThis.fetch;
 
-    const client = createSmartHttpClient("http://dummy.example.com/repo");
+    const client = createUploadPackHttpClient("http://dummy.example.com/repo");
     const body = Buffer.from("test body");
 
     const result = await client.postUploadPack(body);

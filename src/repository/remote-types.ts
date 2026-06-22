@@ -10,7 +10,6 @@
 
 import type { SHA1 } from "../core/types.ts";
 import type { RefMappingRule } from "../transport/types.ts";
-import type { PushOptions } from "../transport/types.ts";
 
 // ============================================================================
 // Remote 配置
@@ -110,14 +109,24 @@ export interface BootstrapRemoteResult extends FetchRemoteResult {
 /**
  * Push remote 操作选项
  *
- * 继承 PushOptions，增加 remote 层次的控制参数。
+ * 纯 push 行为参数，不包含传输层细节。
+ * shallow 由 repository 内部从 backend.shallow 推导。
  */
-export interface PushRemoteOptions extends PushOptions {
+export interface PushRemoteOptions {
   /**
    * 显式指定要推送的 remote 目标 URL。
    * 不指定时优先使用 RemoteConfig.pushUrl，其次使用 RemoteConfig.url。
    */
   readonly pushUrl?: string;
+
+  /**
+   * refspec 列表，格式如 "refs/heads/main:refs/heads/main"
+   * 默认为将当前分支推送到远端同名分支（等价于 `git push <url>`）
+   */
+  readonly refSpecs?: string[];
+
+  /** 是否强制推送（--force），等价于 refspec 的 + 前缀 */
+  readonly force?: boolean;
 }
 
 /**
@@ -202,5 +211,5 @@ export interface RepositoryRemoteOperations {
    * 等价于 `git push <url>`。
    * 如果已有 remote 配置，建议使用 pushRemote() 以获得更完整的行为。
    */
-  push(url: string, options?: PushOptions): Promise<PushRemoteResult>;
+  push(url: string, options?: PushRemoteOptions): Promise<PushRemoteResult>;
 }

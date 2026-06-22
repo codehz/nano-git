@@ -7,7 +7,7 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { createSmartHttpClient } from "@/transport/smart-http.ts";
+import { createReceivePackHttpClient } from "@/transport/smart-http.ts";
 
 describe("postReceivePack 错误传播", () => {
   test("无效 pkt-line 响应应传播 PktLineError，而非静默返回空 refUpdates", async () => {
@@ -23,7 +23,7 @@ describe("postReceivePack 错误传播", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     }) as any as typeof globalThis.fetch;
 
-    const client = createSmartHttpClient("http://dummy.example.com/repo");
+    const client = createReceivePackHttpClient("http://dummy.example.com/repo");
     const body = Buffer.from("test body");
 
     // 应在返回前就抛出异常（PktLineError），而非静默返回空 refUpdates

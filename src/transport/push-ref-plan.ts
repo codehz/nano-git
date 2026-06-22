@@ -98,13 +98,11 @@ export function determinePushRefs(
   specs: ParsedRefSpec[],
 ): PushRefItem[] {
   const items: PushRefItem[] = [];
-  const seen = new Set<string>();
-  // 跟踪整组 refspec 是否包含未匹配到任何本地 ref 的 wildcard
+  const seen = new Map<string, string>();
   let hasUnmatchedWildcard = false;
 
   for (const spec of specs) {
     if (spec.isWildcard) {
-      // 通配符 refspec：匹配所有以 srcPattern 开头的本地引用
       let matchedAny = false;
       for (const [localRef, localHash] of localRefs) {
         if (!localRef.startsWith(spec.srcPattern)) continue;
@@ -113,9 +111,15 @@ export function determinePushRefs(
         const suffix = localRef.slice(spec.srcPattern.length);
         const remoteRef = `${spec.dstPattern}${suffix}`;
 
-        // 重叠 refspec 去重：同一 remoteRef 只保留首个
-        if (seen.has(remoteRef)) continue;
-        seen.add(remoteRef);
+        // 冲突检测：同一 remoteRef 被多个规则映射
+        const existingSpec = seen.get(remoteRef);
+        if (existingSpec !== undefined) {
+          throw new PushError(
+            `Conflicting push refspec: "${spec.srcPattern}*:${spec.dstPattern}*" ` +
+              `maps to "${remoteRef}" which is also mapped by "${existingSpec}".`,
+          );
+        }
+        seen.set(remoteRef, `${spec.srcPattern}*:${spec.dstPattern}*`);
 
         const remoteHash = remoteRefs.get(remoteRef) ?? null;
 
@@ -131,12 +135,16 @@ export function determinePushRefs(
         hasUnmatchedWildcard = true;
       }
     } else if (spec.srcPattern === "") {
-      // 删除引用：refspec 源为空，如 ":refs/heads/feature"
       const remoteRef = spec.dstPattern;
 
-      // 重叠 refspec 去重
-      if (seen.has(remoteRef)) continue;
-      seen.add(remoteRef);
+      const existingSpec = seen.get(remoteRef);
+      if (existingSpec !== undefined) {
+        throw new PushError(
+          `Conflicting push refspec: ":${spec.dstPattern}" ` +
+            `maps to "${remoteRef}" which is also mapped by "${existingSpec}".`,
+        );
+      }
+      seen.set(remoteRef, `:${spec.dstPattern}`);
 
       const remoteHash = remoteRefs.get(remoteRef) ?? null;
       items.push({
@@ -147,12 +155,16 @@ export function determinePushRefs(
         force: spec.force,
       });
     } else {
-      // 精确 refspec
       const remoteRef = spec.dstPattern;
 
-      // 重叠 refspec 去重
-      if (seen.has(remoteRef)) continue;
-      seen.add(remoteRef);
+      const existingSpec = seen.get(remoteRef);
+      if (existingSpec !== undefined) {
+        throw new PushError(
+          `Conflicting push refspec: "${spec.srcPattern}:${spec.dstPattern}" ` +
+            `maps to "${remoteRef}" which is also mapped by "${existingSpec}".`,
+        );
+      }
+      seen.set(remoteRef, `${spec.srcPattern}:${spec.dstPattern}`);
 
       const localHash = localRefs.get(spec.srcPattern) ?? null;
 

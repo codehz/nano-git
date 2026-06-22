@@ -4,12 +4,16 @@
  * 接收明确的 wants，基于本地 refs 选择 have 候选，
  * 执行多轮 negotiation，解包并写入对象库。
  *
+ * fetchPack() 不再自己创建传输层实例或获取 advertisement ——
+ * 这些由调用方在外部完成并通过参数传入。
+ *
  * 此模块只写对象库，不写 ref，不依赖 remote-tracking 命名空间之外的仓库语义。
  *
  * @example
  * ```ts
- * const result = await fetchPack(objectStore, {
- *   url: "https://github.com/user/repo",
+ * const transport = createUploadPackHttpClient(url);
+ * const adv = await transport.getRefAdvertisement();
+ * const result = await fetchPack(objects, transport, adv, {
  *   wants: [sha1("95d09f2b...")],
  * });
  * console.log(`Fetched ${result.objectCount} objects`);
@@ -30,12 +34,16 @@ import {
   MAX_HAVES_PER_ROUND,
   parseUploadPackNegotiationResponse,
 } from "./negotiate.ts";
-import { createSmartHttpClient } from "./smart-http.ts";
 import { extractCapabilities, FETCH_CAPABILITIES } from "./transport-capabilities.ts";
 
 import type { SHA1, GitObject } from "../core/types.ts";
 import type { ObjectStore } from "../odb/types.ts";
-import type { FetchPackOptions, FetchPackResult } from "./types.ts";
+import type {
+  UploadPackTransport,
+  RefAdvertisement,
+  FetchPackOptions,
+  FetchPackResult,
+} from "./types.ts";
 
 // ============================================================================
 // 错误类型
@@ -66,7 +74,7 @@ export class FetchPackError extends GitError {
  * - shallow/unshallow 跨轮累计
  */
 async function negotiateAndFetchPackfile(
-  client: import("./types.ts").RemoteTransport,
+  client: UploadPackTransport,
   wants: SHA1[],
   haves: SHA1[],
   capabilities: string[],
@@ -142,47 +150,36 @@ async function negotiateAndFetchPackfile(
 /**
  * 执行 fetch-pack 操作
  *
- * 仅负责：
- * 1. 获取远端广告
- * 2. 能力协商
- * 3. 多轮 negotiation
- * 4. 解包并写入对象库
- *
- * 不负责：
+ * 只负责传输层协商与对象写入，不负责：
+ * - 创建传输层客户端（由调用方传入）
+ * - 获取 advertisement（由调用方传入）
  * - ref 映射与更新
- * - HEAD 处理
- * - remote 配置
  *
  * @param store - 本地对象存储
- * @param options - fetch-pack 选项（url、wants、depth、shallow 等）
+ * @param transport - upload-pack 传输接口
+ * @param advertisement - 服务端广告（含 capabilities 和 refs）
+ * @param options - fetch-pack 选项（wants、haves、depth、shallow）
  * @returns fetch-pack 结果
  *
  * @example
  * ```ts
- * const result = await fetchPack(objects, {
- *   url: "https://github.com/user/repo",
+ * const transport = createUploadPackHttpClient(url);
+ * const adv = await transport.getRefAdvertisement();
+ * const result = await fetchPack(objects, transport, adv, {
  *   wants: [sha1("95d09f2b...")],
  * });
  * ```
  */
 export async function fetchPack(
   store: ObjectStore,
+  transport: UploadPackTransport,
+  advertisement: RefAdvertisement,
   options: FetchPackOptions,
 ): Promise<FetchPackResult> {
-  const client =
-    options.transport ??
-    createSmartHttpClient(options.url, {
-      token: options.token,
-      headers: options.headers,
-    });
+  // 1. 解析能力
+  const caps = extractCapabilities(advertisement.capabilities, FETCH_CAPABILITIES);
 
-  // 1. 获取远端广告
-  const adv = await client.getRefAdvertisement();
-
-  // 2. 解析能力
-  const caps = extractCapabilities(adv.capabilities, FETCH_CAPABILITIES);
-
-  // 3. shallow 能力校验
+  // 2. shallow 能力校验
   const hasShallowCap = caps.includes("shallow");
   if (!hasShallowCap && (options.depth !== undefined || (options.shallow ?? []).length > 0)) {
     throw new FetchPackError(
@@ -191,19 +188,19 @@ export async function fetchPack(
     );
   }
 
-  // 4. 收集 have 候选
+  // 3. 收集 have 候选
   const haveHashes =
     options.haves && options.haves.length > 0
       ? collectHaveCommits(store, options.haves, { maxCandidates: options.maxCandidates })
       : [];
 
-  // 5. 发送请求
+  // 4. 发送请求
   const {
     packfile,
     shallow: newShallow,
     unshallow: newUnshallow,
   } = await negotiateAndFetchPackfile(
-    client,
+    transport,
     options.wants,
     haveHashes,
     caps,
@@ -215,7 +212,7 @@ export async function fetchPack(
     throw new FetchPackError("Server returned empty packfile");
   }
 
-  // 6. 解析 packfile 并写入对象
+  // 5. 解析 packfile 并写入对象
   const reader = createPackReader(packfile);
   const pendingObjects: Array<{ hash: SHA1; obj: GitObject }> = [];
 

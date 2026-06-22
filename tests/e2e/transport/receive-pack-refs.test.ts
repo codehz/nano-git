@@ -12,7 +12,7 @@ import { git, gitInit, createTempDir, cleanupDir, createFile } from "../helpers.
 import { createServerRepo, enableReceivePack } from "./helpers.ts";
 import { startGitHttpBackendServer } from "./http-server.ts";
 import { sha1 } from "@/core/types.ts";
-import { createSmartHttpClient } from "@/transport/smart-http.ts";
+import { createReceivePackHttpClient } from "@/transport/smart-http.ts";
 
 describe("receive-pack ref advertisement", () => {
   let tempDir: string;
@@ -36,7 +36,7 @@ describe("receive-pack ref advertisement", () => {
   });
 
   test("解析 receive-pack ref advertisement", async () => {
-    const transport = createSmartHttpClient(serverUrl);
+    const transport = createReceivePackHttpClient(serverUrl);
     const adv = await transport.getReceivePackRefs();
 
     expect(adv.refs.length).toBeGreaterThanOrEqual(1);
@@ -59,7 +59,7 @@ describe("receive-pack ref advertisement", () => {
     git(["commit", "-m", "Feature commit"], branchDir);
     git(["push", repoDir, "HEAD:refs/heads/feature"], branchDir);
 
-    const transport = createSmartHttpClient(serverUrl);
+    const transport = createReceivePackHttpClient(serverUrl);
     const adv = await transport.getReceivePackRefs();
 
     const featureRef = adv.refs.find((r) => r.name === "refs/heads/feature");
@@ -73,7 +73,7 @@ describe("receive-pack ref advertisement", () => {
     enableReceivePack(emptyDir);
 
     await using emptyServer = startGitHttpBackendServer(tempDir, "/empty-receive.git");
-    const transport = createSmartHttpClient(emptyServer.url);
+    const transport = createReceivePackHttpClient(emptyServer.url);
     const adv = await transport.getReceivePackRefs();
 
     expect(adv.refs).toHaveLength(0);

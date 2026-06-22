@@ -12,7 +12,7 @@ import { git, gitInit, createTempDir, cleanupDir, createFile } from "../helpers.
 import { createServerRepo } from "./helpers.ts";
 import { startGitHttpBackendServer } from "./http-server.ts";
 import { sha1 } from "@/core/types.ts";
-import { createSmartHttpClient } from "@/transport/smart-http.ts";
+import { createUploadPackHttpClient } from "@/transport/smart-http.ts";
 
 describe("ref advertisement", () => {
   let tempDir: string;
@@ -36,7 +36,7 @@ describe("ref advertisement", () => {
   });
 
   test("解析 ref advertisement 并验证 refs", async () => {
-    const transport = createSmartHttpClient(serverUrl);
+    const transport = createUploadPackHttpClient(serverUrl);
     const adv = await transport.getRefAdvertisement();
 
     expect(adv.refs.length).toBeGreaterThanOrEqual(1);
@@ -59,7 +59,7 @@ describe("ref advertisement", () => {
     git(["commit", "-m", "Feature commit"], branchDir);
     git(["push", repoDir, "HEAD:refs/heads/feature"], branchDir);
 
-    const transport = createSmartHttpClient(serverUrl);
+    const transport = createUploadPackHttpClient(serverUrl);
     const adv = await transport.getRefAdvertisement();
 
     const featureRef = adv.refs.find((r) => r.name === "refs/heads/feature");
@@ -72,7 +72,7 @@ describe("ref advertisement", () => {
     git(["init", "--bare"], emptyDir);
 
     await using emptyServer = startGitHttpBackendServer(tempDir, "/empty.git");
-    const transport = createSmartHttpClient(emptyServer.url);
+    const transport = createUploadPackHttpClient(emptyServer.url);
     const adv = await transport.getRefAdvertisement();
 
     expect(adv.refs).toHaveLength(0);

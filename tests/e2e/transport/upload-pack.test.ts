@@ -9,7 +9,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { createTempDir, cleanupDir } from "../helpers.ts";
 import { createServerRepo } from "./helpers.ts";
 import { startGitHttpBackendServer } from "./http-server.ts";
-import { createSmartHttpClient } from "@/transport/smart-http.ts";
+import { createUploadPackHttpClient } from "@/transport/smart-http.ts";
 
 describe("upload-pack 直接调用", () => {
   let tempDir: string;
@@ -29,7 +29,7 @@ describe("upload-pack 直接调用", () => {
   });
 
   test("postUploadPack 返回正确 packfile", async () => {
-    const transport = createSmartHttpClient(serverUrl);
+    const transport = createUploadPackHttpClient(serverUrl);
     const adv = await transport.getRefAdvertisement();
     const mainRef = adv.refs.find((r) => r.name === "refs/heads/main");
     expect(mainRef).toBeDefined();

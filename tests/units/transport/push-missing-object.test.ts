@@ -17,7 +17,7 @@ import { PushError } from "@/transport/push-error.ts";
 import { push } from "@/transport/push.ts";
 import { parseReceivePackResult } from "@/transport/receive-pack-result.ts";
 
-import type { RemoteTransport } from "@/transport/types.ts";
+import type { ReceivePackTransport } from "@/transport/types.ts";
 
 // ============================================================================
 // 辅助函数
@@ -333,7 +333,7 @@ describe('collectReachable(missing="skip-commit-parents")', () => {
 function createPushMockTransport(
   remoteRefs: Array<{ name: string; hash: SHA1 }>,
   onPost?: (body: Buffer) => void,
-): RemoteTransport {
+): ReceivePackTransport {
   const reportStatus = Buffer.concat([
     encodePktLine("unpack ok\n"),
     ...remoteRefs.map((r) => encodePktLine(`ok ${r.name}\n`)),
@@ -350,12 +350,6 @@ function createPushMockTransport(
       const refUpdates = parseReceivePackResult(reportStatus);
       return { data: reportStatus, refUpdates, progress: [] };
     },
-    getRefAdvertisement: async () => {
-      throw new Error("not used");
-    },
-    postUploadPack: async () => {
-      throw new Error("not used");
-    },
   };
 }
 
@@ -368,9 +362,9 @@ describe("push() 本地对象缺失预检", () => {
     const transport = createPushMockTransport([], () => {
       postCalled = true;
     });
+    const adv = await transport.getReceivePackRefs();
 
-    const pushPromise = push(store, refStore, "dummy", {
-      transport,
+    const pushPromise = push(store, refStore, transport, adv, {
       refSpecs: ["refs/heads/corrupt:refs/heads/corrupt"],
     });
 
@@ -411,10 +405,10 @@ describe("push() 本地对象缺失预检", () => {
     const transport = createPushMockTransport([{ name: "refs/heads/main", hash: bHash }], () => {
       postCalled = true;
     });
+    const adv = await transport.getReceivePackRefs();
 
     // 传入 shallowBoundaries 告知 push 层 bHash 是已知 shallow 边界
-    const result = await push(store, refStore, "dummy", {
-      transport,
+    const result = await push(store, refStore, transport, adv, {
       refSpecs: ["refs/heads/main:refs/heads/main"],
       shallowBoundaries: [bHash],
     });
@@ -430,10 +424,10 @@ describe("push() 本地对象缺失预检", () => {
     const transport = createPushMockTransport([], () => {
       postCalled = true;
     });
+    const adv = await transport.getReceivePackRefs();
 
     // 传入一个无关的 shallowBoundary，不应放宽 tree/blob 缺失检查
-    const pushPromise = push(store, refStore, "dummy", {
-      transport,
+    const pushPromise = push(store, refStore, transport, adv, {
       refSpecs: ["refs/heads/main:refs/heads/main"],
       shallowBoundaries: [sha1("0000000000000000000000000000000000000099")],
     });

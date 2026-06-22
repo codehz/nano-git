@@ -8,6 +8,7 @@
 import { describe, test, expect } from "bun:test";
 
 import { sha1 } from "@/core/types.ts";
+import { createMemoryObjectStore } from "@/odb/memory-store.ts";
 import { createMemoryRefStore } from "@/refs/stores/memory.ts";
 import { planRefUpdates } from "@/transport/fetch-ref-plan.ts";
 import { getLocalRefs } from "@/transport/ref-collection.ts";
@@ -81,14 +82,15 @@ describe("getLocalRefs + planRefUpdates 自定义 namespace 集成", () => {
     // refspec: refs/heads/main:refs/mirrors/upstream/main
     // 远程有更新的 hash，本地已有旧值 → currentLocalHash 应为 existingHash
     const remoteRef: RemoteRef[] = [{ name: "refs/heads/main", hash: newHash }];
+    const store = createMemoryObjectStore();
 
-    const plan = planRefUpdates(remoteRef, localRefs, [
+    const plan = planRefUpdates(remoteRef, localRefs, store, [
       { source: "refs/heads/main", target: "refs/mirrors/upstream/main" },
     ]);
 
-    expect(plan.updates).toHaveLength(1);
-    expect(plan.updates[0]!.localRef).toBe("refs/mirrors/upstream/main");
+    expect(plan.refUpdates).toHaveLength(1);
+    expect(plan.refUpdates[0]!.localRef).toBe("refs/mirrors/upstream/main");
     // 这才是关键断言：currentLocalHash 应为 existingHash 而非 undefined
-    expect(plan.updates[0]!.currentLocalHash).toBe(existingHash);
+    expect(plan.refUpdates[0]!.currentLocalHash).toBe(existingHash);
   });
 });

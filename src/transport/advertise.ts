@@ -1,8 +1,8 @@
 /**
  * 远端广告获取
  *
- * 请求 upload-pack advertisement，解析 capabilities，
- * 返回远端 refs 列表，并将 `symref=HEAD:<target>` 标准化为 `defaultBranch`。
+ * 只负责一次 GET /info/refs?service=git-upload-pack 并标准化结果，
+ * 不再承担传输层注入职责（由调用方自行创建 UploadPackTransport）。
  *
  * @example
  * ```ts
@@ -11,7 +11,7 @@
  * ```
  */
 
-import { createSmartHttpClient } from "./smart-http.ts";
+import { createUploadPackHttpClient } from "./smart-http.ts";
 
 import type { AdvertiseOptions, RemoteAdvertisement } from "./types.ts";
 
@@ -22,7 +22,7 @@ import type { AdvertiseOptions, RemoteAdvertisement } from "./types.ts";
  * `defaultBranch` 在此统一提取，后续流程不再解析原始 `symref`。
  *
  * @param url - 远端仓库 URL
- * @param options - 可选配置（认证、自定义头、传输层注入）
+ * @param options - 可选配置（认证、自定义头）
  * @returns 标准化远端广告
  *
  * @example
@@ -37,12 +37,10 @@ export async function advertiseRemote(
   url: string,
   options?: AdvertiseOptions,
 ): Promise<RemoteAdvertisement> {
-  const client =
-    options?.transport ??
-    createSmartHttpClient(url, {
-      token: options?.token,
-      headers: options?.headers,
-    });
+  const client = createUploadPackHttpClient(url, {
+    token: options?.token,
+    headers: options?.headers,
+  });
 
   const adv = await client.getRefAdvertisement();
 

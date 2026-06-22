@@ -18,7 +18,7 @@ import { push } from "@/transport/push.ts";
 import { parseReceivePackResult } from "@/transport/receive-pack-result.ts";
 import { parseRefSpec } from "@/transport/refspec.ts";
 
-import type { RemoteTransport } from "@/transport/types.ts";
+import type { ReceivePackTransport } from "@/transport/types.ts";
 
 // ============================================================================
 // 常量
@@ -46,7 +46,7 @@ describe("push() 服务端响应完整性校验", () => {
     refStore.write("refs/heads/main", commitHash);
 
     let postCalled = false;
-    const transport: RemoteTransport = {
+    const transport: ReceivePackTransport = {
       getReceivePackRefs: async () => ({
         capabilities: { "report-status": true },
         refs: [{ name: "refs/heads/main", hash: commitHash }],
@@ -61,16 +61,10 @@ describe("push() 服务端响应完整性校验", () => {
         ]);
         return { data, refUpdates: parseReceivePackResult(data), progress: [] };
       },
-      getRefAdvertisement: async () => {
-        throw new Error("not used");
-      },
-      postUploadPack: async () => {
-        throw new Error("not used");
-      },
     };
+    const adv = await transport.getReceivePackRefs();
 
-    const pushPromise = push(store, refStore, "dummy", {
-      transport,
+    const pushPromise = push(store, refStore, transport, adv, {
       refSpecs: ["refs/heads/main:refs/heads/main"],
     });
 
@@ -109,7 +103,7 @@ describe("push() 服务端响应完整性校验", () => {
 
     // Mock transport：远端无 refs，postReceivePack 只返回 1 条状态（少于 2 条命令）
     let postCalled = false;
-    const transport: RemoteTransport = {
+    const transport: ReceivePackTransport = {
       getReceivePackRefs: async () => ({
         capabilities: { "report-status": true },
         refs: [],
@@ -123,16 +117,10 @@ describe("push() 服务端响应完整性校验", () => {
         ]);
         return { data, refUpdates: parseReceivePackResult(data), progress: [] };
       },
-      getRefAdvertisement: async () => {
-        throw new Error("not used");
-      },
-      postUploadPack: async () => {
-        throw new Error("not used");
-      },
     };
+    const adv = await transport.getReceivePackRefs();
 
-    const pushPromise = push(store, refStore, "dummy", {
-      transport,
+    const pushPromise = push(store, refStore, transport, adv, {
       refSpecs: [
         "refs/heads/feature-a:refs/heads/feature-a",
         "refs/heads/feature-b:refs/heads/feature-b",
@@ -163,7 +151,7 @@ describe("push() 服务端响应完整性校验", () => {
 
     // Mock transport：远端不广告 report-status capability
     let postReceivePackCalled = false;
-    const transport: RemoteTransport = {
+    const transport: ReceivePackTransport = {
       getReceivePackRefs: async () => ({
         capabilities: { "side-band-64k": true, "ofs-delta": true },
         refs: [],
@@ -172,16 +160,10 @@ describe("push() 服务端响应完整性校验", () => {
         postReceivePackCalled = true;
         return { data: Buffer.alloc(0), refUpdates: [], progress: [] };
       },
-      getRefAdvertisement: async () => {
-        throw new Error("not used");
-      },
-      postUploadPack: async () => {
-        throw new Error("not used");
-      },
     };
+    const adv = await transport.getReceivePackRefs();
 
-    const pushPromise = push(store, refStore, "dummy", {
-      transport,
+    const pushPromise = push(store, refStore, transport, adv, {
       refSpecs: ["refs/heads/main:refs/heads/main"],
     });
 
@@ -197,8 +179,8 @@ describe("push() 服务端响应完整性校验", () => {
 // determinePushRefs 去重测试
 // ============================================================================
 
-describe("determinePushRefs() 重叠 refspec 去重", () => {
-  test("重叠 refspec 应去重，同一 remoteRef 只生成一个 push item", () => {
+describe("determinePushRefs() 重叠 refspec 冲突检测", () => {
+  test("重叠 refspec 映射到同一 remoteRef 时抛 PushError", () => {
     const hashA = sha1("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
     const hashB = sha1("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
     const localRefs = new Map<string, SHA1>([
@@ -210,14 +192,9 @@ describe("determinePushRefs() 重叠 refspec 去重", () => {
     const wildSpec = parseRefSpec("refs/heads/*:refs/heads/*");
     const exactSpec = parseRefSpec("refs/heads/main:refs/heads/main");
 
-    const items = determinePushRefs(localRefs, remoteRefs, [wildSpec, exactSpec]);
-    // main 和 develop 来自通配符，main 另由精确 spec 匹配但应去重
-    // => main x1 + develop x1 = 2
-    expect(items).toHaveLength(2);
-    const mainItems = items.filter((i) => i.remoteRef === "refs/heads/main");
-    expect(mainItems).toHaveLength(1);
-    const devItems = items.filter((i) => i.remoteRef === "refs/heads/develop");
-    expect(devItems).toHaveLength(1);
+    expect(() => {
+      determinePushRefs(localRefs, remoteRefs, [wildSpec, exactSpec]);
+    }).toThrow(PushError);
   });
 });
 
@@ -248,7 +225,7 @@ describe("push 非 heads/tags 来源 ref 推送", () => {
       ]),
     );
 
-    const transport: RemoteTransport = {
+    const transport: ReceivePackTransport = {
       getReceivePackRefs: async () => ({
         capabilities: { "report-status": true, "side-band-64k": true },
         refs: [],
@@ -261,16 +238,10 @@ describe("push 非 heads/tags 来源 ref 推送", () => {
         ]);
         return { data, refUpdates: parseReceivePackResult(data), progress: [] };
       },
-      getRefAdvertisement: async () => {
-        throw new Error("not used");
-      },
-      postUploadPack: async () => {
-        throw new Error("not used");
-      },
     };
+    const adv = await transport.getReceivePackRefs();
 
-    const result = await push(store, refStore, "dummy", {
-      transport,
+    const result = await push(store, refStore, transport, adv, {
       refSpecs: ["refs/remotes/origin/main:refs/heads/backup"],
     });
 
@@ -301,7 +272,7 @@ describe("push 非 heads/tags 来源 ref 推送", () => {
       ]),
     );
 
-    const transport: RemoteTransport = {
+    const transport: ReceivePackTransport = {
       getReceivePackRefs: async () => ({
         capabilities: { "report-status": true, "side-band-64k": true },
         refs: [],
@@ -314,16 +285,10 @@ describe("push 非 heads/tags 来源 ref 推送", () => {
         ]);
         return { data, refUpdates: parseReceivePackResult(data), progress: [] };
       },
-      getRefAdvertisement: async () => {
-        throw new Error("not used");
-      },
-      postUploadPack: async () => {
-        throw new Error("not used");
-      },
     };
+    const adv = await transport.getReceivePackRefs();
 
-    const result = await push(store, refStore, "dummy", {
-      transport,
+    const result = await push(store, refStore, transport, adv, {
       refSpecs: ["refs/heads/main:refs/heads/main"],
     });
 
@@ -349,7 +314,7 @@ describe("push 非 heads/tags 来源 ref 推送", () => {
     refStore.write("refs/heads/main", localCommit);
 
     let postCalled = false;
-    const transport: RemoteTransport = {
+    const transport: ReceivePackTransport = {
       getReceivePackRefs: async () => ({
         capabilities: { "report-status": true },
         refs: [{ name: "refs/heads/main", hash: remoteTip }],
@@ -363,16 +328,10 @@ describe("push 非 heads/tags 来源 ref 推送", () => {
         ]);
         return { data, refUpdates: parseReceivePackResult(data), progress: [] };
       },
-      getRefAdvertisement: async () => {
-        throw new Error("not used");
-      },
-      postUploadPack: async () => {
-        throw new Error("not used");
-      },
     };
+    const adv = await transport.getReceivePackRefs();
 
-    const result = await push(store, refStore, "dummy", {
-      transport,
+    const result = await push(store, refStore, transport, adv, {
       refSpecs: ["refs/heads/main:refs/heads/main"],
     });
 
@@ -405,7 +364,7 @@ describe("push() 服务端 ng 响应处理", () => {
 
     // 模拟服务端：ok 一条、ng 一条
     let postCalled = false;
-    const transport: RemoteTransport = {
+    const transport: ReceivePackTransport = {
       getReceivePackRefs: async () => ({
         capabilities: { "report-status": true },
         refs: [],
@@ -420,16 +379,10 @@ describe("push() 服务端 ng 响应处理", () => {
         ]);
         return { data, refUpdates: parseReceivePackResult(data), progress: [] };
       },
-      getRefAdvertisement: async () => {
-        throw new Error("not used");
-      },
-      postUploadPack: async () => {
-        throw new Error("not used");
-      },
     };
+    const adv = await transport.getReceivePackRefs();
 
-    const pushPromise = push(store, refStore, "dummy", {
-      transport,
+    const pushPromise = push(store, refStore, transport, adv, {
       refSpecs: ["refs/heads/main:refs/heads/main", "refs/heads/main:refs/heads/feature"],
     });
 
@@ -455,7 +408,7 @@ describe("push() 服务端 ng 响应处理", () => {
     });
     refStore.write("refs/heads/main", commitHash);
 
-    const transport: RemoteTransport = {
+    const transport: ReceivePackTransport = {
       getReceivePackRefs: async () => ({
         capabilities: { "report-status": true },
         refs: [],
@@ -468,16 +421,10 @@ describe("push() 服务端 ng 响应处理", () => {
         ]);
         return { data, refUpdates: parseReceivePackResult(data), progress: [] };
       },
-      getRefAdvertisement: async () => {
-        throw new Error("not used");
-      },
-      postUploadPack: async () => {
-        throw new Error("not used");
-      },
     };
+    const adv = await transport.getReceivePackRefs();
 
-    const pushPromise = push(store, refStore, "dummy", {
-      transport,
+    const pushPromise = push(store, refStore, transport, adv, {
       refSpecs: ["refs/heads/main:refs/heads/main"],
     });
 
@@ -501,7 +448,7 @@ describe("push() 服务端 ng 响应处理", () => {
     });
     refStore.write("refs/heads/main", commitHash);
 
-    const transport: RemoteTransport = {
+    const transport: ReceivePackTransport = {
       getReceivePackRefs: async () => ({
         capabilities: { "report-status": true },
         refs: [],
@@ -515,16 +462,10 @@ describe("push() 服务端 ng 响应处理", () => {
         ]);
         return { data, refUpdates: parseReceivePackResult(data), progress: ["remote: progress"] };
       },
-      getRefAdvertisement: async () => {
-        throw new Error("not used");
-      },
-      postUploadPack: async () => {
-        throw new Error("not used");
-      },
     };
+    const adv = await transport.getReceivePackRefs();
 
-    const pushPromise = push(store, refStore, "dummy", {
-      transport,
+    const pushPromise = push(store, refStore, transport, adv, {
       refSpecs: ["refs/heads/main:refs/heads/main", "refs/heads/main:refs/heads/feature"],
     });
 
@@ -562,7 +503,7 @@ describe("push() 通配符 refspec 无匹配本地引用", () => {
     const refStore = createMemoryRefStore();
 
     let postCalled = false;
-    const transport: RemoteTransport = {
+    const transport: ReceivePackTransport = {
       getReceivePackRefs: async () => ({
         capabilities: { "report-status": true, "side-band-64k": true },
         refs: [],
@@ -571,16 +512,10 @@ describe("push() 通配符 refspec 无匹配本地引用", () => {
         postCalled = true;
         throw new Error("should not be called");
       },
-      getRefAdvertisement: async () => {
-        throw new Error("not used");
-      },
-      postUploadPack: async () => {
-        throw new Error("not used");
-      },
     };
+    const adv = await transport.getReceivePackRefs();
 
-    const pushPromise = push(store, refStore, "dummy", {
-      transport,
+    const pushPromise = push(store, refStore, transport, adv, {
       refSpecs: ["refs/heads/nope/*:refs/heads/*"],
     });
 
@@ -604,7 +539,7 @@ describe("push() 通配符 refspec 无匹配本地引用", () => {
 
     const refStore = createMemoryRefStore(new Map([["refs/heads/main", commitHash]]));
 
-    const transport: RemoteTransport = {
+    const transport: ReceivePackTransport = {
       getReceivePackRefs: async () => ({
         capabilities: { "report-status": true, "side-band-64k": true },
         refs: [],
@@ -617,16 +552,10 @@ describe("push() 通配符 refspec 无匹配本地引用", () => {
         ]);
         return { data, refUpdates: parseReceivePackResult(data), progress: [] };
       },
-      getRefAdvertisement: async () => {
-        throw new Error("not used");
-      },
-      postUploadPack: async () => {
-        throw new Error("not used");
-      },
     };
+    const adv = await transport.getReceivePackRefs();
 
-    const result = await push(store, refStore, "dummy", {
-      transport,
+    const result = await push(store, refStore, transport, adv, {
       refSpecs: ["refs/heads/*:refs/heads/*"],
     });
 
@@ -646,7 +575,7 @@ describe("push() delete-refs capability 校验", () => {
     const remoteRefHash = sha1("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
 
     let postCalled = false;
-    const transport: RemoteTransport = {
+    const transport: ReceivePackTransport = {
       getReceivePackRefs: async () => ({
         capabilities: { "report-status": true, "side-band-64k": true },
         refs: [{ name: "refs/heads/feature", hash: remoteRefHash }],
@@ -655,16 +584,10 @@ describe("push() delete-refs capability 校验", () => {
         postCalled = true;
         throw new Error("should not be called");
       },
-      getRefAdvertisement: async () => {
-        throw new Error("not used");
-      },
-      postUploadPack: async () => {
-        throw new Error("not used");
-      },
     };
+    const adv = await transport.getReceivePackRefs();
 
-    const pushPromise = push(store, refStore, "dummy", {
-      transport,
+    const pushPromise = push(store, refStore, transport, adv, {
       refSpecs: [":refs/heads/feature"],
     });
 
@@ -678,7 +601,7 @@ describe("push() delete-refs capability 校验", () => {
     const refStore = createMemoryRefStore();
     const remoteRefHash = sha1("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
 
-    const transport: RemoteTransport = {
+    const transport: ReceivePackTransport = {
       getReceivePackRefs: async () => ({
         capabilities: { "report-status": true, "side-band-64k": true, "delete-refs": true },
         refs: [{ name: "refs/heads/feature", hash: remoteRefHash }],
@@ -691,16 +614,10 @@ describe("push() delete-refs capability 校验", () => {
         ]);
         return { data, refUpdates: parseReceivePackResult(data), progress: [] };
       },
-      getRefAdvertisement: async () => {
-        throw new Error("not used");
-      },
-      postUploadPack: async () => {
-        throw new Error("not used");
-      },
     };
+    const adv = await transport.getReceivePackRefs();
 
-    const result = await push(store, refStore, "dummy", {
-      transport,
+    const result = await push(store, refStore, transport, adv, {
       refSpecs: [":refs/heads/feature"],
     });
 
@@ -723,7 +640,7 @@ describe("push() delete-refs capability 校验", () => {
 
     const refStore = createMemoryRefStore(new Map([["refs/heads/main", commitHash]]));
 
-    const transport: RemoteTransport = {
+    const transport: ReceivePackTransport = {
       getReceivePackRefs: async () => ({
         capabilities: { "report-status": true, "side-band-64k": true },
         refs: [],
@@ -736,16 +653,10 @@ describe("push() delete-refs capability 校验", () => {
         ]);
         return { data, refUpdates: parseReceivePackResult(data), progress: [] };
       },
-      getRefAdvertisement: async () => {
-        throw new Error("not used");
-      },
-      postUploadPack: async () => {
-        throw new Error("not used");
-      },
     };
+    const adv = await transport.getReceivePackRefs();
 
-    const result = await push(store, refStore, "dummy", {
-      transport,
+    const result = await push(store, refStore, transport, adv, {
       refSpecs: ["refs/heads/main:refs/heads/main"],
     });
 
@@ -774,7 +685,7 @@ describe("push() 对缺失 unpack 的非法响应处理", () => {
     });
     refStore.write("refs/heads/main", hash);
 
-    const transport: RemoteTransport = {
+    const transport: ReceivePackTransport = {
       getReceivePackRefs: async () => ({
         capabilities: { "report-status": true },
         refs: [],
@@ -785,16 +696,10 @@ describe("push() 对缺失 unpack 的非法响应处理", () => {
         const refUpdates = parseReceivePackResult(data);
         return { data, refUpdates, progress: [] };
       },
-      getRefAdvertisement: async () => {
-        throw new Error("not used");
-      },
-      postUploadPack: async () => {
-        throw new Error("not used");
-      },
     };
+    const adv = await transport.getReceivePackRefs();
 
-    const pushPromise = push(store, refStore, "dummy", {
-      transport,
+    const pushPromise = push(store, refStore, transport, adv, {
       refSpecs: ["refs/heads/main:refs/heads/main"],
     });
 
