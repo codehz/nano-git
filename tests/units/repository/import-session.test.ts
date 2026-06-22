@@ -511,6 +511,67 @@ describe("Phase 2 PlanBuilder — 分支/tag/HEAD 物化", () => {
     expect(warns.length).toBeGreaterThan(0);
   });
 
+  test("setHead 指向镜像命名空间时报错", () => {
+    const defaultBranch = session.defaultBranch();
+    const preview = session
+      .plan()
+      .materialize(defaultBranch)
+      .toNamespace("refs/mirrors/upstream/*", {
+        policy: { mode: "mirror" },
+      })
+      .materialize(defaultBranch)
+      .setHead()
+      .preview();
+
+    expect(preview.headOperation).toBeUndefined();
+    expect(preview.canApply).toBe(false);
+    expect(
+      preview.diagnostics.some(
+        (d) => d.level === "error" && d.message.includes("setHead() 只能指向 refs/heads/*"),
+      ),
+    ).toBe(true);
+  });
+
+  test("setHead 指向 tag 时报错", () => {
+    const tagRef = session.selectRefs(["refs/tags/v1.0.0"]);
+    const preview = session
+      .plan()
+      .materialize(tagRef)
+      .toTag("stable-v1")
+      .materialize(tagRef)
+      .setHead()
+      .preview();
+
+    expect(preview.headOperation).toBeUndefined();
+    expect(preview.canApply).toBe(false);
+    expect(
+      preview.diagnostics.some(
+        (d) => d.level === "error" && d.message.includes("setHead() 只能指向 refs/heads/*"),
+      ),
+    ).toBe(true);
+  });
+
+  test("setHead({ detach: true }) 仍要求目标是 refs/heads/*", () => {
+    const defaultBranch = session.defaultBranch();
+    const preview = session
+      .plan()
+      .materialize(defaultBranch)
+      .toNamespace("refs/mirrors/upstream/*", {
+        policy: { mode: "mirror" },
+      })
+      .materialize(defaultBranch)
+      .setHead({ detach: true })
+      .preview();
+
+    expect(preview.headOperation).toBeUndefined();
+    expect(preview.canApply).toBe(false);
+    expect(
+      preview.diagnostics.some(
+        (d) => d.level === "error" && d.message.includes("setHead() 只能指向 refs/heads/*"),
+      ),
+    ).toBe(true);
+  });
+
   test("toBranch 多 ref 视图直接报错", () => {
     const branches = session.select("refs/heads/*");
     const preview = session.plan().materialize(branches).toBranch("main").preview();
@@ -653,6 +714,17 @@ describe("Phase 2 PlanBuilder — 前置条件与诊断", () => {
     expect(
       preview.diagnostics.some(
         (d) => d.level === "error" && d.message.includes("需要显式指定 policy"),
+      ),
+    ).toBe(true);
+  });
+
+  test("命名视图标签会出现在诊断中", () => {
+    const namedEmptyView = session.select("refs/heads/nonexistent/*").name("empty-branches");
+    const preview = session.plan().materialize(namedEmptyView).toBranch("ghost").preview();
+
+    expect(
+      preview.diagnostics.some(
+        (d) => d.level === "warn" && d.message.includes('命名视图 "empty-branches"'),
       ),
     ).toBe(true);
   });
@@ -822,6 +894,45 @@ describe("Phase 3 — apply 写 ref", () => {
     return { backend, treeHash, commitHash, commitHash2, blobHash };
   }
 
+  test("preview 阶段直接拒绝非 fast-forward 更新", () => {
+    const { backend, commitHash, commitHash2 } = createRepoWithObjects();
+    backend.refs.write("refs/heads/main", commitHash2);
+
+    const adv = createAdvForCommit(commitHash);
+    const session = createImportSession(MOCK_SOURCE, backend, adv);
+    const preview = session.plan().materialize(session.defaultBranch()).toBranch("main").preview();
+
+    expect(preview.canApply).toBe(false);
+    expect(
+      preview.diagnostics.some(
+        (d) => d.level === "error" && d.message.includes('ref "refs/heads/main" 无法 fast-forward'),
+      ),
+    ).toBe(true);
+  });
+
+  test("preview 阶段直接拒绝把非 commit 对象物化到 refs/heads/*", () => {
+    const { backend, blobHash } = createRepoWithObjects();
+    const adv: RefAdvertisement = {
+      capabilities: {},
+      refs: [
+        { hash: blobHash, name: "HEAD", symrefTarget: "refs/heads/main" },
+        { hash: blobHash, name: "refs/heads/main" },
+      ],
+      defaultBranch: "refs/heads/main",
+    };
+    const session = createImportSession(MOCK_SOURCE, backend, adv);
+    const preview = session.plan().materialize(session.defaultBranch()).toBranch("main").preview();
+
+    expect(preview.canApply).toBe(false);
+    expect(
+      preview.diagnostics.some(
+        (d) =>
+          d.level === "error" &&
+          d.message.includes("refs/heads/* can only point to commit objects"),
+      ),
+    ).toBe(true);
+  });
+
   test("toBranch 创建本地分支", async () => {
     const { backend, commitHash } = createRepoWithObjects();
     const adv = createAdvForCommit(commitHash);
@@ -881,6 +992,12 @@ describe("Phase 3 — apply 写 ref", () => {
       .plan()
       .materialize(defaultBranch)
       .toBranch("main", { policy: { mode: "mirror" } });
+
+    const preview = plan.preview();
+    expect(preview.canApply).toBe(true);
+    expect(
+      preview.diagnostics.some((d) => d.level === "info" && d.message.includes("mirror 策略覆盖")),
+    ).toBe(true);
 
     const result = await plan.apply();
 

@@ -6,14 +6,10 @@ import { describe, test, expect, beforeEach } from "bun:test";
 
 import { sha1, type SHA1 } from "@/core/types.ts";
 import { createMemoryRepository, type Repository } from "@/repository/index.ts";
-import {
-  resolveEffectivePushUrl,
-  resolveEffectivePushRefSpecs,
-  resolveEffectivePushBoundaries,
-} from "@/repository/remote-resolution.ts";
+import { resolveEffectivePushBoundaries } from "@/repository/remote-resolution.ts";
 
 import type { GitAuthor } from "@/core/types.ts";
-import type { RemoteConfig, PushRemoteOptions } from "@/repository/remote-types.ts";
+import type { RepositoryPushOptions } from "@/repository/remote-types.ts";
 
 const testAuthor: GitAuthor = {
   name: "Test User",
@@ -179,14 +175,14 @@ describe("createMemoryRepository()", () => {
 });
 
 // ============================================================================
-// PushRemoteOptions 决策测试（含边界回退）
+// RepositoryPushOptions 决策测试（含边界回退）
 // ============================================================================
 
 describe("resolveEffectivePushBoundaries", () => {
   const sampleShallow: SHA1[] = [sha1("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")];
 
   test("options.pushShallowBoundaries 优先", () => {
-    const opts: Pick<PushRemoteOptions, "pushShallowBoundaries"> = {
+    const opts: Pick<RepositoryPushOptions, "pushShallowBoundaries"> = {
       pushShallowBoundaries: [sha1("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")],
     };
     const result = resolveEffectivePushBoundaries(opts, sampleShallow);
@@ -211,24 +207,5 @@ describe("resolveEffectivePushBoundaries", () => {
   test("未传 options 且 backend.shallow 为空数组时回退为 []", () => {
     const result = resolveEffectivePushBoundaries(undefined, []);
     expect(result).toEqual([]);
-  });
-});
-
-describe("resolve push url/refspecs", () => {
-  const remote: RemoteConfig = {
-    name: "origin",
-    url: "https://example.com/repo.git",
-    pushUrl: "https://example.com/push.git",
-    pushRefSpecs: ["refs/heads/*:refs/heads/*"],
-  };
-
-  test("pushUrl 优先级", () => {
-    expect(resolveEffectivePushUrl(remote, { pushUrl: "u" })).toBe("u");
-    expect(resolveEffectivePushUrl(remote, {})).toBe("https://example.com/push.git");
-  });
-
-  test("refSpecs 优先级", () => {
-    expect(resolveEffectivePushRefSpecs(remote, { refSpecs: ["a:b"] })).toEqual(["a:b"]);
-    expect(resolveEffectivePushRefSpecs(remote, {})).toEqual(["refs/heads/*:refs/heads/*"]);
   });
 });

@@ -175,4 +175,58 @@ describe("Import Session", () => {
 
     expect(plan.apply()).rejects.toThrow(/无法执行/);
   });
+
+  test("setHead 不能绑定到镜像命名空间", async () => {
+    const repo = initRepository(localDir);
+    const session = await repo.openImportSession({ url: server.url });
+    const defaultBranch = session.defaultBranch();
+
+    const preview = session
+      .plan()
+      .materialize(defaultBranch)
+      .toNamespace("refs/mirrors/upstream/*", {
+        policy: { mode: "mirror" },
+      })
+      .materialize(defaultBranch)
+      .setHead()
+      .preview();
+
+    expect(preview.headOperation).toBeUndefined();
+    expect(preview.canApply).toBe(false);
+    expect(
+      preview.diagnostics.some(
+        (diagnostic) =>
+          diagnostic.level === "error" &&
+          diagnostic.message.includes("setHead() 只能指向 refs/heads/*"),
+      ),
+    ).toBe(true);
+  });
+
+  test("setHead 不能绑定到 tag 物化结果", async () => {
+    git(["checkout", "main"], workDir);
+    git(["tag", "v1.0.0", mainCommitHash], workDir);
+    git(["push", repoDir, "refs/tags/v1.0.0"], workDir);
+
+    const repo = initRepository(localDir);
+    const session = await repo.openImportSession({ url: server.url });
+    const tags = session.select("refs/tags/*");
+
+    const preview = session
+      .plan()
+      .materialize(tags)
+      .toTag("stable-v1")
+      .materialize(tags.where((ref) => ref.name === "refs/tags/v1.0.0"))
+      .setHead()
+      .preview();
+
+    expect(preview.headOperation).toBeUndefined();
+    expect(preview.canApply).toBe(false);
+    expect(
+      preview.diagnostics.some(
+        (diagnostic) =>
+          diagnostic.level === "error" &&
+          diagnostic.message.includes("setHead() 只能指向 refs/heads/*"),
+      ),
+    ).toBe(true);
+  });
 });

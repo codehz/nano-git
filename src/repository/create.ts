@@ -6,7 +6,7 @@ import { createRepoImportOperations } from "./import-session.ts";
 import { createMaintenanceRepositoryOperations } from "./maintenance-operations.ts";
 import { createObjectRepositoryOperations } from "./object-operations.ts";
 import { createRefRepositoryOperations } from "./ref-operations.ts";
-import { createRemoteRepositoryOperations } from "./remote-operations.ts";
+import { createPushRepositoryOperations } from "./remote-operations.ts";
 
 import type { RepositoryBackend } from "./backend/index.ts";
 import type { Repository } from "./types.ts";
@@ -38,7 +38,7 @@ export function createRepository(backend: RepositoryBackend): Repository {
     ...createObjectRepositoryOperations(objects),
     ...createRefRepositoryOperations(backend),
     ...createMaintenanceRepositoryOperations(objects, refs, packs),
-    ...createRemoteRepositoryOperations(backend),
+    ...createPushRepositoryOperations(backend),
     ...createRepoImportOperations(backend),
   };
 }

@@ -1,17 +1,12 @@
 /**
- * Remote 操作编排
+ * Push 操作编排
  *
- * 统一维护 remote 配置，并编排 push 的完整流程：
- * - 配置管理：addRemote / getRemote / listRemotes
- * - Push：advertiseRemote → determinePushRefs → checkFastForward → push
- *
- * repository 层定义自有结果类型，transport 返回值仅在内部消费并转换。
+ * repository 层只保留显式 URL 的 push 入口。
  *
  * @example
  * ```ts
- * const ops = createRemoteRepositoryOperations(backend);
- * ops.addRemote({ name: "origin", url: "https://example.com/repo.git" });
- * const result = await ops.pushRemote("origin", {
+ * const ops = createPushRepositoryOperations(backend);
+ * const result = await ops.push("https://example.com/repo.git", {
  *   refSpecs: ["refs/heads/main:refs/heads/main"],
  * });
  * console.log(`Pushed ${result.pushedRefs.length} refs`);
@@ -19,14 +14,13 @@
  */
 
 import { GitError } from "../core/errors.ts";
-import { runPushRemote, runPushToUrl } from "./push-remote.ts";
+import { runPushToUrl } from "./push-remote.ts";
 
 import type { RepositoryBackend } from "./backend/types.ts";
 import type {
-  RemoteConfig,
-  PushRemoteOptions,
-  PushRemoteResult,
-  RepositoryRemoteOperations,
+  RepositoryPushOptions,
+  RepositoryPushOperations,
+  RepositoryPushResult,
 } from "./remote-types.ts";
 
 // ============================================================================
@@ -48,41 +42,16 @@ export class PushError extends GitError {
 // ============================================================================
 
 /**
- * 创建 Remote 操作集合
- *
- * 仅保留 push 和 remote 配置管理。fetch 相关操作已由 ImportSession API 替代。
+ * 创建仓库 push 操作集合
  *
  * @param backend - 仓库后端
- * @returns Remote 操作集合
+ * @returns push 操作集合
  */
-export function createRemoteRepositoryOperations(
+export function createPushRepositoryOperations(
   backend: RepositoryBackend,
-): RepositoryRemoteOperations {
-  const { remotes } = backend;
-
+): RepositoryPushOperations {
   return {
-    addRemote(config: RemoteConfig): void {
-      remotes.set(config);
-    },
-
-    getRemote(name: string): RemoteConfig | null {
-      return remotes.get(name);
-    },
-
-    listRemotes(): string[] {
-      return remotes.list().map((remote) => remote.name);
-    },
-
-    async pushRemote(name: string, options?: PushRemoteOptions): Promise<PushRemoteResult> {
-      const remote = remotes.get(name);
-      if (!remote) {
-        throw new PushError(`Remote "${name}" not found`);
-      }
-
-      return runPushRemote(backend, remote, options);
-    },
-
-    async push(url: string, options?: PushRemoteOptions): Promise<PushRemoteResult> {
+    async push(url: string, options?: RepositoryPushOptions): Promise<RepositoryPushResult> {
       return runPushToUrl(backend, url, options);
     },
   };

@@ -11,7 +11,7 @@ import type { RepoImportOperations } from "./import-session-types.ts";
 import type { RepositoryMaintenanceOperations } from "./maintenance-types.ts";
 import type { RepositoryObjectOperations } from "./object-types.ts";
 import type { RepositoryRefOperations } from "./ref-types.ts";
-import type { RepositoryRemoteOperations } from "./remote-types.ts";
+import type { RepositoryPushOperations } from "./remote-types.ts";
 
 /**
  * Git 仓库接口
@@ -22,5 +22,5 @@ export interface Repository
     RepositoryObjectOperations,
     RepositoryRefOperations,
     RepositoryMaintenanceOperations,
-    RepositoryRemoteOperations,
+    RepositoryPushOperations,
     RepoImportOperations {}

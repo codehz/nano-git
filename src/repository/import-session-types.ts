@@ -18,7 +18,7 @@ import type { RemoteRef, RefAdvertisement } from "../transport/types.ts";
  * 远端 Git 数据来源
  *
  * 只描述"从哪里读"，不描述"写到哪里"。
- * 与 RemoteConfig 不同，ImportSource 不包含命名空间映射规则。
+ * ImportSource 不包含命名空间映射规则。
  */
 export interface ImportSource {
   /** 远端仓库 URL */
@@ -145,6 +145,9 @@ export interface TagMaterializationOptions {
 
 /**
  * HEAD 物化选项
+ *
+ * setHead() 只能绑定到同一 plan 中已物化出的 `refs/heads/*`。
+ * `detach` 仅改变 HEAD 最终写入方式，不放宽目标命名空间。
  */
 export interface HeadMaterializationOptions {
   readonly detach?: boolean;
@@ -239,6 +242,9 @@ export interface PlannedRefOperation {
 
 /**
  * 计划中的 HEAD 操作
+ *
+ * targetRef 始终是同一计划内已物化成功的本地 branch ref，
+ * 且必须位于 `refs/heads/*`。
  */
 export interface PlannedHeadOperation {
   readonly targetRef: string;

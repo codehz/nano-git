@@ -808,17 +808,12 @@ describe("push() 端到端", () => {
     const repo = createMemoryRepository();
     const author = { ...FIXED_AUTHOR };
 
-    // 添加 remote 并先 fetch，使本地 store 拥有服务端对象（避免 push 时 parent commit 缺失）
-    repo.addRemote({
-      name: "origin",
-      url: serverUrl,
-    });
-    // 使用 Import Session API 获取远端 refs
+    // 先导入远端对象，使本地 store 拥有服务端提交（避免 push 时 parent commit 缺失）
     const importSession = await repo.openImportSession({ url: serverUrl });
     await importSession
       .plan()
       .materialize(importSession.allRefs())
-      .toNamespace("refs/remotes/origin/*", { policy: { mode: "mirror" }, prune: true })
+      .toNamespace("refs/mirrors/upstream/*", { policy: { mode: "mirror" }, prune: true })
       .apply();
 
     // 清理可能残留的 server feature ref，保证测试隔离
@@ -830,9 +825,9 @@ describe("push() 端到端", () => {
     repo.refs.write(HEAD_REF, `ref: ${HEADS_PREFIX}feature`);
 
     // 获取本地已有的 main 作为 base（fetch 后存在）
-    const trackingMain = repo.refs.read("refs/remotes/origin/main");
-    if (!trackingMain) throw new Error("tracking main missing after fetch");
-    const baseCommit = sha1(trackingMain);
+    const mirroredMain = repo.refs.read("refs/mirrors/upstream/main");
+    if (!mirroredMain) throw new Error("mirrored main missing after import");
+    const baseCommit = sha1(mirroredMain);
 
     // 在 feature 分支上创建 commit（基于已 fetch 的对象）
     const fileHash = repo.writeBlob(Buffer.from("feature branch content"));

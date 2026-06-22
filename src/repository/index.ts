@@ -11,9 +11,8 @@ export type { TreePatchOp, TreePatchResult } from "./tree-patch.ts";
 export type { RepositoryRefOperations } from "./ref-types.ts";
 export type { RepositoryMaintenanceOperations } from "./maintenance-types.ts";
 export type {
-  RemoteConfig,
-  PushRemoteOptions,
-  PushRemoteResult,
+  RepositoryPushOptions,
+  RepositoryPushResult,
   PushRefUpdateResult,
 } from "./remote-types.ts";
 export type {

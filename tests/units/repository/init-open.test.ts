@@ -49,19 +49,6 @@ describe("initRepository()", () => {
     expect(repo.refs).toBeDefined();
     expect(repo.backend.gitDir).toBe(join(tempDir, ".git"));
   });
-
-  test("文件后端会将 remote 配置持久化到 .git/config", () => {
-    const repo = initRepository(tempDir);
-
-    repo.addRemote({
-      name: "origin",
-      url: "https://example.com/repo.git",
-    });
-
-    const config = readFileSync(join(tempDir, ".git", "config"), "utf-8");
-    expect(config).toContain('[remote "origin"]');
-    expect(config).toContain("\turl = https://example.com/repo.git");
-  });
 });
 
 describe("createRepository()", () => {
@@ -116,47 +103,6 @@ describe("openRepository()", () => {
     initRepository(tempDir);
     const repo = openRepository(tempDir);
     expect(repo.gitDir).toBe(join(tempDir, ".git"));
-  });
-
-  test("重新打开仓库时会读取已持久化的 remote 配置", () => {
-    const repo = initRepository(tempDir);
-    repo.addRemote({
-      name: "origin",
-      url: "https://example.com/repo.git",
-    });
-
-    const reopened = openRepository(tempDir);
-    expect(reopened.listRemotes()).toEqual(["origin"]);
-    expect(reopened.getRemote("origin")?.url).toBe("https://example.com/repo.git");
-  });
-
-  test("写入 remote 配置时保留已有的其他 config section", () => {
-    initRepository(tempDir);
-    writeFileSync(
-      join(tempDir, ".git", "config"),
-      [
-        "[core]",
-        "\trepositoryformatversion = 0",
-        "\tfilemode = true",
-        "",
-        '[remote "upstream"]',
-        "\turl = https://example.com/upstream.git",
-        "\tfetch = +refs/heads/*:refs/remotes/upstream/*",
-        "",
-      ].join("\n"),
-    );
-
-    const repo = openRepository(tempDir);
-    repo.addRemote({
-      name: "origin",
-      url: "https://example.com/repo.git",
-    });
-
-    const config = readFileSync(join(tempDir, ".git", "config"), "utf-8");
-    expect(config).toContain("[core]");
-    expect(config).toContain("\trepositoryformatversion = 0");
-    expect(config).toContain('[remote "upstream"]');
-    expect(config).toContain('[remote "origin"]');
   });
 
   test("打开不存在的仓库应抛出异常", () => {

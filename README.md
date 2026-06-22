@@ -158,7 +158,7 @@ const defaultBranch = session.defaultBranch();
 const plan = session
   .plan()
   .materialize(branches)
-  .toNamespace("refs/remotes/origin/*", {
+  .toNamespace("refs/mirrors/upstream/*", {
     policy: { mode: "mirror" },
     prune: true,
   })
@@ -192,7 +192,7 @@ await session.plan().materialize(session.defaultBranch()).toBranch("main").apply
 await session2
   .plan()
   .materialize(session2.allRefs())
-  .toNamespace("refs/remotes/origin/*", {
+  .toNamespace("refs/mirrors/upstream/*", {
     policy: { mode: "mirror" },
     prune: true,
   })

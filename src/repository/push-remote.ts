@@ -1,40 +1,17 @@
 /**
- * Push remote 内部编排
+ * 仓库 push 内部编排
  *
- * 与 fetch-remote 对称：支持 preAdvertised、transportFactory 注入。
+ * 支持 preAdvertised、transportFactory 注入。
  */
 
 import { push as transportPush } from "../transport/push.ts";
 import { createReceivePackHttpClient } from "../transport/smart-http.ts";
-import {
-  resolveEffectivePushBoundaries,
-  resolveEffectivePushRefSpecs,
-  resolveEffectivePushUrl,
-} from "./remote-resolution.ts";
+import { resolveEffectivePushBoundaries } from "./remote-resolution.ts";
 
 import type { SHA1 } from "../core/types.ts";
 import type { ReceivePackTransport, RefAdvertisement } from "../transport/types.ts";
 import type { RepositoryBackend } from "./backend/types.ts";
-import type { RemoteConfig, PushRemoteOptions, PushRemoteResult } from "./remote-types.ts";
-
-/**
- * 执行 push remote 内部流程
- */
-export async function runPushRemote(
-  backend: RepositoryBackend,
-  remote: RemoteConfig,
-  options?: PushRemoteOptions,
-  preAdvertised?: RefAdvertisement,
-  transportFactory?: (url: string, options?: PushRemoteOptions) => ReceivePackTransport,
-): Promise<PushRemoteResult> {
-  const effectivePushUrl = resolveEffectivePushUrl(remote, options);
-  const pushOptions: PushRemoteOptions = {
-    ...options,
-    refSpecs: resolveEffectivePushRefSpecs(remote, options),
-  };
-
-  return runPushWithUrl(backend, effectivePushUrl, pushOptions, preAdvertised, transportFactory);
-}
+import type { RepositoryPushOptions, RepositoryPushResult } from "./remote-types.ts";
 
 /**
  * 按 URL push（不依赖 remote 配置）
@@ -42,20 +19,20 @@ export async function runPushRemote(
 export async function runPushToUrl(
   backend: RepositoryBackend,
   url: string,
-  options?: PushRemoteOptions,
+  options?: RepositoryPushOptions,
   preAdvertised?: RefAdvertisement,
-  transportFactory?: (url: string, options?: PushRemoteOptions) => ReceivePackTransport,
-): Promise<PushRemoteResult> {
+  transportFactory?: (url: string, options?: RepositoryPushOptions) => ReceivePackTransport,
+): Promise<RepositoryPushResult> {
   return runPushWithUrl(backend, url, options, preAdvertised, transportFactory);
 }
 
 async function runPushWithUrl(
   backend: RepositoryBackend,
   pushUrl: string,
-  options?: PushRemoteOptions,
+  options?: RepositoryPushOptions,
   preAdvertised?: RefAdvertisement,
-  transportFactory?: (url: string, options?: PushRemoteOptions) => ReceivePackTransport,
-): Promise<PushRemoteResult> {
+  transportFactory?: (url: string, options?: RepositoryPushOptions) => ReceivePackTransport,
+): Promise<RepositoryPushResult> {
   const createTransport =
     transportFactory ??
     ((url: string) =>
@@ -98,7 +75,7 @@ function convertPushResult(
   }>,
   objectCount: number,
   progress: string[],
-): PushRemoteResult {
+): RepositoryPushResult {
   return {
     pushedRefs: refUpdates.map((u) => ({
       refName: u.refName,

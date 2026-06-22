@@ -201,7 +201,7 @@ export {
   openRepository,
   createMemoryRepository,
   type Repository,
-  // 新 Import Session API（替代 fetchRemote / bootstrapRemote）
+  // 新 Import Session API（repository 主路径只保留 import session 模型）
   type ImportSource,
   type ImportView,
   type NamedImportView,
@@ -222,9 +222,8 @@ export {
   type BranchMaterializationOptions,
   type TagMaterializationOptions,
   type HeadMaterializationOptions,
-  type RemoteConfig,
-  type PushRemoteOptions,
-  type PushRemoteResult,
+  type RepositoryPushOptions,
+  type RepositoryPushResult,
 } from "./repository/index.ts";
 
 // ============================================================================
@@ -315,4 +314,4 @@ export {
 
 // --- 内部传输 Result 类型（仅在需要详细传输结果时导入） ---
 // FetchPackResult, ApplyRefUpdatesResult, PushResult
-// 推荐优先使用 repository 层的结果类型（FetchRemoteResult, PushRemoteResult）
+// 推荐优先使用 repository 层的结果类型（ImportApplyResult, RepositoryPushResult）
