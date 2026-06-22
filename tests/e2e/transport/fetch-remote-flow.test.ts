@@ -195,6 +195,49 @@ describe("fetch remote 流程", () => {
     expect(result.updatedRefs.size).toBe(0);
     expect(repo.refs.read("refs/remotes/origin/main")).toBeNull();
   });
+
+  test("fetch 返回 rejectedRefs：非强制更新已有 tag 应被拒绝", async () => {
+    // 1. 创建 tag 并推送
+    git(["tag", "v1.0", "HEAD"], workDir);
+    git(["push", serverRepoDir, "v1.0"], workDir);
+
+    const localDir = join(tempDir, "local-rejected-tag");
+    const repo = initRepository(localDir);
+
+    // 2. 使用非 force tag 规则首次 fetch 创建 tag
+    repo.addRemote({
+      name: "origin",
+      url: serverUrl,
+      fetchRules: [
+        { source: "+refs/heads/*", target: "refs/remotes/origin/*" },
+        { source: "refs/tags/*", target: "refs/tags/*" },
+      ],
+    });
+
+    const result1 = await repo.fetchRemote("origin");
+    expect(result1.fetchedObjects).toBeGreaterThan(0);
+    // tag 无冲突时创建成功
+    expect(result1.updatedRefs.has("refs/tags/v1.0")).toBe(true);
+
+    // 3. 服务端更新 tag 到另一个 commit
+    createFile(workDir, "v2.txt", "version 2\n");
+    git(["add", "v2.txt"], workDir);
+    git(["commit", "-m", "Second version"], workDir);
+    git(["tag", "-f", "v1.0", "HEAD"], workDir);
+    git(["push", "--force", serverRepoDir, "v1.0"], workDir);
+
+    // 4. 再次 fetch（仍使用非 force tag 规则）
+    //    本地已有 v1.0 且与新远程 hash 不同 → 应因"already exists"被拒绝
+    const result2 = await repo.fetchRemote("origin");
+    expect(result2.rejectedRefs.length).toBeGreaterThan(0);
+
+    const tagRejection = result2.rejectedRefs.find((r) => r.localRef === "refs/tags/v1.0");
+    expect(tagRejection).toBeDefined();
+    expect(tagRejection!.reason).toContain("already exists");
+
+    // fetch 本身成功，没有被整体拒绝（refs/remotes/origin/main 无变化所以不在 updatedRefs 中）
+    expect(result2.fetchedObjects).toBeGreaterThan(0);
+  });
 });
 
 // ============================================================================

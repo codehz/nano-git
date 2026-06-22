@@ -5,8 +5,10 @@
  * Remote 只存在于 repository 层，transport 层不感知 remote 实体。
  *
  * 结果类型为 repository 自有语义，不直接复用 transport 层传输类型。
+ * 哈希字段使用 SHA1 branded type 保证类型安全。
  */
 
+import type { SHA1 } from "../core/types.ts";
 import type { RefMappingRule } from "../transport/types.ts";
 import type { PushOptions } from "../transport/types.ts";
 
@@ -74,7 +76,7 @@ export interface FetchRemoteResult {
   /** 本次获取的对象数量 */
   readonly fetchedObjects: number;
   /** 已更新的 ref 映射（ref 名称 → SHA1） */
-  readonly updatedRefs: ReadonlyMap<string, string>;
+  readonly updatedRefs: ReadonlyMap<string, SHA1>;
   /** 被拒绝的 ref 更新列表 */
   readonly rejectedRefs: readonly RefUpdateRejection[];
   /** 远端默认分支（可能为 undefined） */
@@ -125,9 +127,9 @@ export interface PushRefUpdateResult {
   /** 引用名称，如 "refs/heads/main" */
   readonly refName: string;
   /** 更新前的哈希（服务端原有值） */
-  readonly oldHash: string | null;
+  readonly oldHash: SHA1 | null;
   /** 更新后的哈希 */
-  readonly newHash: string | null;
+  readonly newHash: SHA1 | null;
   /** 是否成功 */
   readonly success: boolean;
   /** 失败时的错误消息 */

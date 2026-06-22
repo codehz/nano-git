@@ -211,14 +211,18 @@ export {
 } from "./repository/index.ts";
 
 // ============================================================================
-// Smart HTTP Fetch 传输层
+// Transport / Plumbing 低层 API
+//
+// 注意：如果只需要高层仓库操作（fetch/push/clone），请使用 repository 模块。
+// 以下为底层协议实现，适用于需要直接操作传输协议的场景。
 // ============================================================================
+
+// --- 传输层类型 ---
 
 export type {
   RemoteRef,
   RefAdvertisement,
   PushOptions,
-  PushResult,
   PushRefUpdate,
   SmartHttpClient,
   UploadPackResult,
@@ -237,10 +241,10 @@ export type {
   RefUpdatePlan,
   FetchTransferPlan,
   FetchPackOptions,
-  FetchPackResult,
-  RefUpdateRejection,
-  ApplyRefUpdatesResult,
 } from "./transport/index.ts";
+
+// --- 传输层函数 ---
+
 export {
   // pkt-line 编解码
   encodePktLine,
@@ -289,3 +293,7 @@ export {
   push,
   PushError,
 } from "./transport/index.ts";
+
+// --- 内部传输 Result 类型（仅在需要详细传输结果时导入） ---
+// FetchPackResult, ApplyRefUpdatesResult, PushResult
+// 推荐优先使用 repository 层的结果类型（FetchRemoteResult, PushRemoteResult）

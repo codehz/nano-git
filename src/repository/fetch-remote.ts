@@ -26,7 +26,7 @@ import { getLocalRefs } from "../transport/ref-collection.ts";
 import { applyRefUpdates } from "../transport/update-refs.ts";
 
 import type { SHA1 } from "../core/types.ts";
-import type { RemoteAdvertisement, ApplyRefUpdatesResult } from "../transport/types.ts";
+import type { RemoteAdvertisement } from "../transport/types.ts";
 import type { RepositoryBackend } from "./backend/types.ts";
 import type { RemoteConfig, FetchRemoteOptions, FetchRemoteResult } from "./remote-types.ts";
 
@@ -113,12 +113,21 @@ export async function runFetchRemote(
   // 9. 应用 ref 更新（无论是否有传输，只要 plan.updates 有内容就执行）
   //    典型场景：本地对象已存在但 tracking ref 未创建时，
   //    无需传输对象但仍需更新 ref。
-  const refUpdateResult =
-    plan.updates.length > 0
-      ? applyRefUpdates(objects, refs, plan.updates)
-      : { updatedRefs: new Map<string, SHA1>(), rejectedRefs: [] };
+  let transportUpdatedRefs = new Map<string, SHA1>();
+  let transportRejectedRefs: Array<{ localRef: string; reason: string }> = [];
 
-  return convertToFetchRemoteResult(packResult, refUpdateResult, adv.defaultBranch);
+  if (plan.updates.length > 0) {
+    const refUpdateResult = applyRefUpdates(objects, refs, plan.updates);
+    transportUpdatedRefs = refUpdateResult.updatedRefs;
+    transportRejectedRefs = refUpdateResult.rejectedRefs;
+  }
+
+  return convertToFetchRemoteResult(
+    packResult,
+    transportUpdatedRefs,
+    transportRejectedRefs,
+    adv.defaultBranch,
+  );
 }
 
 // ============================================================================
@@ -197,20 +206,21 @@ export function selectHaveTipsForRemote(
 // ============================================================================
 
 /**
- * 将 transport 层结果转换为 repository 自有类型
+ * 将原始数据转换为 repository 自有类型
  *
- * 确保 repository 层不直接暴露 transport 类型，
- * transport 返回值只在内部消费并转换。
+ * 接受最小必要参数，不依赖 transport 层类型的形状。
+ * transport 返回值仅在调用方提取字段后传入。
  */
 function convertToFetchRemoteResult(
   packResult: { objectCount: number } | undefined,
-  refUpdateResult: ApplyRefUpdatesResult,
+  transportUpdatedRefs: Map<string, SHA1>,
+  transportRejectedRefs: Array<{ localRef: string; reason: string }>,
   defaultBranch?: string,
 ): FetchRemoteResult {
   return {
     fetchedObjects: packResult?.objectCount ?? 0,
-    updatedRefs: refUpdateResult.updatedRefs,
-    rejectedRefs: refUpdateResult.rejectedRefs.map((r) => ({
+    updatedRefs: transportUpdatedRefs,
+    rejectedRefs: transportRejectedRefs.map((r) => ({
       localRef: r.localRef,
       reason: r.reason,
     })),

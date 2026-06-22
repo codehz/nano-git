@@ -19,11 +19,16 @@
  */
 
 import { GitError } from "../core/errors.ts";
-import { sha1 } from "../core/types.ts";
+import { sha1, type SHA1 } from "../core/types.ts";
 import { advertiseRemote } from "../transport/advertise.ts";
 import { push as transportPush } from "../transport/push.ts";
 import { runFetchRemote } from "./fetch-remote.ts";
 import { mapDefaultBranchToTrackingRef } from "./remote-mapping.ts";
+import {
+  resolveEffectivePushUrl,
+  resolveEffectivePushRefSpecs,
+  resolveEffectiveShallowBoundaries,
+} from "./remote-resolution.ts";
 
 import type { PushOptions } from "../transport/types.ts";
 import type { RepositoryBackend } from "./backend/types.ts";
@@ -195,16 +200,16 @@ async function runPushRemote(
   remote: RemoteConfig,
   options?: PushRemoteOptions,
 ): Promise<PushRemoteResult> {
-  const effectivePushUrl = options?.pushUrl ?? remote.pushUrl ?? remote.url;
+  const effectivePushUrl = resolveEffectivePushUrl(remote, options);
   const currentShallow = backend.shallow.read();
 
-  const effectiveRefSpecs = options?.refSpecs ?? remote.pushRefSpecs;
+  const effectiveRefSpecs = resolveEffectivePushRefSpecs(remote, options);
+  const shallowResult = resolveEffectiveShallowBoundaries(options, currentShallow);
 
   const effectiveOptions: PushOptions = {
     ...options,
     refSpecs: effectiveRefSpecs,
-    shallowBoundaries:
-      options?.shallowBoundaries ?? (currentShallow.length > 0 ? currentShallow : undefined),
+    shallowBoundaries: shallowResult as SHA1[] | undefined,
   };
 
   const transportResult = await transportPush(
@@ -214,7 +219,11 @@ async function runPushRemote(
     effectiveOptions,
   );
 
-  return convertPushResult(transportResult);
+  return convertPushResult(
+    transportResult.refUpdates,
+    transportResult.objectCount,
+    transportResult.progress,
+  );
 }
 
 /**
@@ -226,22 +235,39 @@ async function runPushToUrl(
   options?: PushOptions,
 ): Promise<PushRemoteResult> {
   const currentShallow = backend.shallow.read();
+  const shallowBoundaries = resolveEffectiveShallowBoundaries(options, currentShallow);
   const effectiveOptions: PushOptions = {
     ...options,
-    shallowBoundaries:
-      options?.shallowBoundaries ?? (currentShallow.length > 0 ? currentShallow : undefined),
+    shallowBoundaries: shallowBoundaries as SHA1[] | undefined,
   };
 
   const transportResult = await transportPush(backend.objects, backend.refs, url, effectiveOptions);
 
-  return convertPushResult(transportResult);
+  return convertPushResult(
+    transportResult.refUpdates,
+    transportResult.objectCount,
+    transportResult.progress,
+  );
 }
 
 /**
- * 将 transport PushResult 转换为 repository PushRemoteResult
+ * 将 transport 推送结果转换为 repository PushRemoteResult
+ *
+ * 只提取最小必要字段，不依赖 transport PushResult 类型的完整形状。
  */
-function convertPushResult(result: import("../transport/types.ts").PushResult): PushRemoteResult {
-  const pushedRefs: PushRefUpdateResult[] = result.refUpdates.map((u) => ({
+function convertPushResult(
+  refUpdates: Array<{
+    refName: string;
+    oldHash: SHA1 | null;
+    newHash: SHA1 | null;
+    success: boolean;
+    error?: string;
+    forced: boolean;
+  }>,
+  objectCount: number,
+  progress: string[],
+): PushRemoteResult {
+  const pushedRefs: PushRefUpdateResult[] = refUpdates.map((u) => ({
     refName: u.refName,
     oldHash: u.oldHash,
     newHash: u.newHash,
@@ -252,7 +278,7 @@ function convertPushResult(result: import("../transport/types.ts").PushResult): 
 
   return {
     pushedRefs,
-    objectCount: result.objectCount,
-    progress: result.progress,
+    objectCount,
+    progress,
   };
 }

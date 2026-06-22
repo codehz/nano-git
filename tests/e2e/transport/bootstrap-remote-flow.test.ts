@@ -13,10 +13,11 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
-import { git, gitInit, createTempDir, cleanupDir, createFile } from "../helpers.ts";
+import { git, gitInit, createTempDir, cleanupDir, createFile, FIXED_AUTHOR } from "../helpers.ts";
 import { startGitHttpBackendServer } from "./http-server.ts";
 import { sha1 } from "@/core/types.ts";
 import { initRepository } from "@/repository/index.ts";
+import { RemoteError } from "@/repository/remote-operations.ts";
 
 describe("bootstrap remote 流程", () => {
   let tempDir: string;
@@ -244,5 +245,28 @@ describe("bootstrap remote 错误处理", () => {
 
     const bootstrapPromise = repo.bootstrapRemote("nonexistent");
     expect(bootstrapPromise).rejects.toThrow(/not found/i);
+  });
+
+  test("默认 branch tracking ref 被拒绝时 bootstrap 应报错", async () => {
+    // 场景：fetchRules 为 refs/heads/*:refs/heads/*（无 force），
+    // 本地已有不同的 refs/heads/main，导致 fetch 阶段 rejected
+    const localDir = join(tempDir, "local-rejected-default");
+    const repo = initRepository(localDir);
+
+    // 创建一个不同的 HEAD commit，使本地与远端不兼容
+    const author = { ...FIXED_AUTHOR };
+    const fileHash = repo.writeBlob(Buffer.from("different initial commit"));
+    const treeHash = repo.createTree([{ mode: "100644", name: "init.txt", hash: fileHash }]);
+    const commitHash = repo.createCommit(treeHash, [], "Different initial", author);
+    repo.updateRef("refs/heads/main", commitHash);
+
+    repo.addRemote({
+      name: "origin",
+      url: serverUrl,
+      // 非 force 的 refs/heads/* → refs/heads/* 映射
+      fetchRules: [{ source: "refs/heads/*", target: "refs/heads/*" }],
+    });
+
+    expect(repo.bootstrapRemote("origin")).rejects.toBeInstanceOf(RemoteError);
   });
 });
