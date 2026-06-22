@@ -109,7 +109,7 @@ export interface NamedImportView extends ImportView {
 }
 
 // ============================================================================
-// ImportPlanBuilder（Phase 1 只返回 stub）
+// ImportPlanBuilder
 // ============================================================================
 
 /**

@@ -1,20 +1,20 @@
 /**
  * Remote 操作编排
  *
- * 统一维护 remote 配置，编排 fetch 和 push 的完整流程：
+ * 统一维护 remote 配置，并编排 push 的完整流程：
  * - 配置管理：addRemote / getRemote / listRemotes
- * - Fetch：advertiseRemote → planRefUpdates → fetchPack → applyRefUpdates
  * - Push：advertiseRemote → determinePushRefs → checkFastForward → push
- * - Bootstrap：fetch + 创建本地分支 + 设置 HEAD
  *
  * repository 层定义自有结果类型，transport 返回值仅在内部消费并转换。
  *
  * @example
  * ```ts
  * const ops = createRemoteRepositoryOperations(backend);
- * ops.addRemote({ name: "origin", url: "https://...", fetchRules: [...] });
- * const result = await ops.fetchRemote("origin");
- * console.log(`Fetched ${result.fetchedObjects} objects`);
+ * ops.addRemote({ name: "origin", url: "https://example.com/repo.git" });
+ * const result = await ops.pushRemote("origin", {
+ *   refSpecs: ["refs/heads/main:refs/heads/main"],
+ * });
+ * console.log(`Pushed ${result.pushedRefs.length} refs`);
  * ```
  */
 

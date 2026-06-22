@@ -239,7 +239,7 @@ describe("ImportSession", () => {
   });
 
   test("source 冻结：保持传入的 source 配置", () => {
-    expect(session.source).toBe(MOCK_SOURCE);
+    expect(session.source).toEqual(MOCK_SOURCE);
     expect(session.source.url).toBe("https://example.com/repo.git");
   });
 });
@@ -320,6 +320,21 @@ describe("会话冻结语义", () => {
     // 修改 advertisement 不影响已派生的 view
     adv.refs = [];
     expect(branches.refs.length).toBe(3);
+  });
+
+  test("source 在会话内冻结为快照", () => {
+    const backend = createMemoryRepositoryBackend();
+    const source = {
+      url: "https://example.com/original.git",
+      headers: { Authorization: "Bearer token-a" },
+    };
+    const session = createImportSession(source, backend, createMockAdvertisement());
+
+    source.url = "https://example.com/changed.git";
+    source.headers.Authorization = "Bearer token-b";
+
+    expect(session.source.url).toBe("https://example.com/original.git");
+    expect(session.source.headers?.Authorization).toBe("Bearer token-a");
   });
 });
 
@@ -552,6 +567,19 @@ describe("Phase 2 PlanBuilder — 前置条件与诊断", () => {
     const mainOps = preview.refOperations.filter((r) => r.localRef === "refs/heads/main");
     expect(mainOps.length).toBe(0);
   });
+
+  test("自定义命名空间未显式指定 policy 时拒绝 apply", () => {
+    const branches = session.select("refs/heads/*");
+    const plan = session.plan().materialize(branches).toNamespace("refs/mirrors/upstream/*");
+    const preview = plan.preview();
+
+    expect(preview.canApply).toBe(false);
+    expect(
+      preview.diagnostics.some(
+        (d) => d.level === "error" && d.message.includes("需要显式指定 policy"),
+      ),
+    ).toBe(true);
+  });
 });
 
 describe("Phase 2 PlanBuilder — 边界与错误", () => {
@@ -701,6 +729,28 @@ describe("Phase 3 — apply 写 ref", () => {
     expect(backend.refs.read("HEAD")).toBe("ref: refs/heads/main");
   });
 
+  test("setHead({ detach: true }) 写入 detached HEAD", async () => {
+    const { backend, commitHash } = createRepoWithObjects();
+    const adv = createAdvForCommit(commitHash);
+    const session = createImportSession(MOCK_SOURCE, backend, adv);
+    const defaultBranch = session.defaultBranch();
+
+    const plan = session
+      .plan()
+      .materialize(defaultBranch)
+      .toBranch("main")
+      .materialize(defaultBranch)
+      .setHead({ detach: true });
+
+    const preview = plan.preview();
+    expect(preview.headOperation?.detach).toBe(true);
+
+    const result = await plan.apply();
+
+    expect(result.headTarget).toBe("refs/heads/main");
+    expect(backend.refs.read("HEAD")).toBe(commitHash);
+  });
+
   test("toNamespace 创建镜像 refs", async () => {
     const { backend, commitHash, commitHash2 } = createRepoWithObjects();
     const adv = createAdvForCommit(commitHash, [
@@ -809,6 +859,23 @@ describe("Phase 3 — apply 错误处理", () => {
 
     // apply 应因前置条件变化而失败
     expect(plan.apply()).rejects.toThrow(/前置条件/);
+  });
+
+  test("preview 后追加动作时 apply 使用最新计划", async () => {
+    const { backend, commitHash } = createRepoWithObjects();
+    const adv = createAdvForCommit(commitHash);
+    const session = createImportSession(MOCK_SOURCE, backend, adv);
+    const defaultBranch = session.defaultBranch();
+
+    const plan = session.plan();
+    const firstPreview = plan.preview();
+    expect(firstPreview.refOperations.length).toBe(0);
+
+    plan.materialize(defaultBranch).toBranch("main");
+    const result = await plan.apply();
+
+    expect(result.updatedRefs.get("refs/heads/main")).toBe(commitHash);
+    expect(backend.refs.read("refs/heads/main")).toBe(commitHash);
   });
 
   test("create-only 策略拒绝已有 ref", async () => {

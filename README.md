@@ -13,7 +13,7 @@
 - ✅ **引用管理** — refs 验证、解析、存储（文件系统 + 内存）
 - ✅ **仓库 API** — 类似 Git plumbing 命令的高层接口（init、hash-object、cat-file、commit-tree、update-ref 等）
 - ✅ **可达性遍历与 GC** — 基于 refs 的可达对象收集、repack、gc
-- ✅ **Smart HTTP Fetch 客户端** — 基于 Bun fetch 的 Git 协议客户端，支持 clone/fetch，支持 Bearer Token 与自定义请求头认证
+- ✅ **Smart HTTP 导入客户端** — 基于 Bun fetch 的 Git 协议客户端，支持 Import Session、对象导入与自定义 ref 物化，支持 Bearer Token 与自定义请求头认证
 - ✅ **类型安全** — 完整的 TypeScript 类型定义
 
 ## 安装
@@ -141,41 +141,62 @@ const result = repo.gc();
 console.log(result.objectCount);
 ```
 
-### 从远程仓库 Fetch（Smart HTTP）
+### 从远程仓库导入（Import Session）
 
 ```typescript
 import { initRepository } from "nano-git";
 
 const repo = initRepository("/tmp/my-clone");
 
-// 从远程仓库拉取对象和引用
-const result = await repo.fetch("https://github.com/user/repo");
-console.log(`Fetched ${result.fetchedObjects} objects`);
+const session = await repo.openImportSession({
+  url: "https://github.com/user/repo",
+});
 
-// 远程分支以 refs/remotes/origin/* 写入
-const mainRef = repo.readRef("refs/remotes/origin/main");
-if (mainRef) {
-  const commit = repo.catFile(mainRef);
-  console.log(`Main branch: ${commit.type} ${mainRef}`);
-}
+const branches = session.select("refs/heads/*");
+const defaultBranch = session.defaultBranch();
 
-// 执行增量 fetch（仅拉取新对象）
-const result2 = await repo.fetch("https://github.com/user/repo");
-console.log(`New objects: ${result2.fetchedObjects}`); // 0（已是最新）
+const plan = session
+  .plan()
+  .materialize(branches)
+  .toNamespace("refs/remotes/origin/*", {
+    policy: { mode: "mirror" },
+    prune: true,
+  })
+  .materialize(defaultBranch)
+  .toBranch("main")
+  .materialize(defaultBranch)
+  .setHead();
+
+const preview = plan.preview();
+console.log(preview.refOperations.map((op) => op.localRef));
+
+const result = await plan.apply();
+console.log(`Imported ${result.importedObjects} objects`);
+console.log(`Updated ${result.updatedRefs.size} refs`);
 ```
 
-带认证的 fetch（私有仓库）：
+带认证的导入（私有仓库）：
 
 ```typescript
-// 使用 Personal Access Token
-const result = await repo.fetch("https://github.com/org/private-repo", {
+const session = await repo.openImportSession({
+  url: "https://github.com/org/private-repo",
   token: "ghp_xxxxxxxxxxxx",
 });
 
-// 或使用自定义请求头（GitLab CI Job Token 等）
-const result2 = await repo.fetch("https://gitlab.com/org/private-repo", {
+const session2 = await repo.openImportSession({
+  url: "https://gitlab.com/org/private-repo",
   headers: { "Job-Token": "xxxxxxxx" },
 });
+
+await session.plan().materialize(session.defaultBranch()).toBranch("main").apply();
+await session2
+  .plan()
+  .materialize(session2.allRefs())
+  .toNamespace("refs/remotes/origin/*", {
+    policy: { mode: "mirror" },
+    prune: true,
+  })
+  .apply();
 ```
 
 如果你需要更底层的控制，也可以直接使用 transport 层的独立函数：
@@ -334,7 +355,7 @@ bun test
 - [x] 引用管理（refs、HEAD、符号引用解析）
 - [x] 仓库 API（init、open、hash-object、cat-file、write-tree、commit-tree、update-ref、branch、tag）
 - [x] 可达性遍历与 GC（repack、gc）
-- [x] **Smart HTTP Fetch 客户端** — pkt-line 编解码、ref 广告解析、side-band 解复用、请求生成、HTTP 传输、fetch 编排、`repo.fetch()` 集成
+- [x] **Smart HTTP 导入客户端** — pkt-line 编解码、ref 广告解析、side-band 解复用、请求生成、HTTP 传输、Import Session / `openImportSession()` 集成
 
 ### 规划中（聚焦裸仓库/服务端场景）
 

@@ -254,6 +254,14 @@ function createPlanBuilder(
 
   let lastPreview: ImportPreview | null = null;
 
+  /**
+   * 计划动作变更后必须丢弃旧 preview，
+   * 否则 apply() 可能基于过期计划执行。
+   */
+  function invalidatePreview(): void {
+    lastPreview = null;
+  }
+
   const builder: ImportPlanBuilder = {
     materialize(view: ImportView): RefMaterializationBuilder {
       const viewRefs = view.refs;
@@ -270,6 +278,7 @@ function createPlanBuilder(
             policy: options?.policy,
             prune: options?.prune,
           });
+          invalidatePreview();
           return builder;
         },
 
@@ -280,6 +289,7 @@ function createPlanBuilder(
             target: branchName,
             policy: options?.policy ?? { mode: "fast-forward" },
           });
+          invalidatePreview();
           return builder;
         },
 
@@ -290,6 +300,7 @@ function createPlanBuilder(
             target: tagName,
             policy: options?.policy ?? { mode: "create-only" },
           });
+          invalidatePreview();
           return builder;
         },
 
@@ -301,6 +312,7 @@ function createPlanBuilder(
             policy: { mode: "replace" },
             detach: options?.detach,
           });
+          invalidatePreview();
           return builder;
         },
       };
@@ -316,7 +328,7 @@ function createPlanBuilder(
         policy: RefUpdatePolicy;
       }> = [];
 
-      const headMappings: Array<{ localRef: string }> = [];
+      const headMappings: Array<{ localRef: string; detach: boolean }> = [];
       const pruneNamespaces: Array<{ prefix: string; currentRefs: Set<string> }> = [];
       const diagnostics: ImportDiagnostic[] = [];
 
@@ -439,7 +451,10 @@ function createPlanBuilder(
           case "head": {
             if (resolvedMappings.length > 0) {
               const lastMapping = resolvedMappings[resolvedMappings.length - 1]!;
-              headMappings.push({ localRef: lastMapping.localRef });
+              headMappings.push({
+                localRef: lastMapping.localRef,
+                detach: act.detach ?? false,
+              });
             } else {
               diagnostics.push({
                 level: "warn",
@@ -543,7 +558,7 @@ function createPlanBuilder(
         const lastHead = headMappings[headMappings.length - 1]!;
         headOperation = {
           targetRef: lastHead.localRef,
-          detach: false,
+          detach: lastHead.detach,
         };
       }
 
@@ -691,7 +706,21 @@ function createPlanBuilder(
 
       // Step 5: 设置 HEAD
       if (p.headOperation) {
-        backend.refs.write("HEAD", `ref: ${p.headOperation.targetRef}`);
+        if (p.headOperation.detach) {
+          const detachedTarget = updatedRefs.get(p.headOperation.targetRef);
+          const existingTarget = currentLocalRefs.get(p.headOperation.targetRef);
+          const resolvedTarget = detachedTarget ?? existingTarget;
+
+          if (!resolvedTarget) {
+            throw new Error(
+              `无法将 HEAD detached 到 "${p.headOperation.targetRef}"：目标 ref 不存在。`,
+            );
+          }
+
+          backend.refs.write("HEAD", resolvedTarget);
+        } else {
+          backend.refs.write("HEAD", `ref: ${p.headOperation.targetRef}`);
+        }
       }
 
       // Step 6: 执行 prune
@@ -735,17 +764,23 @@ function createImportSession(
   advertisement: RefAdvertisement,
   transportFactory?: (url: string) => UploadPackTransport,
 ): ImportSession {
+  const frozenSource = Object.freeze({
+    url: source.url,
+    token: source.token,
+    headers: source.headers ? Object.freeze({ ...source.headers }) : undefined,
+  }) as Readonly<ImportSource>;
+
   // 冻结 advertisement 快照，确保会话级别不可变
   const frozenAdvertisement = Object.freeze({
     ...advertisement,
     refs: Object.freeze([...advertisement.refs]),
-    capabilities: { ...advertisement.capabilities },
+    capabilities: Object.freeze({ ...advertisement.capabilities }),
   }) as Readonly<RefAdvertisement>;
 
   const allRefs: readonly RemoteRef[] = frozenAdvertisement.refs;
 
   return {
-    source,
+    source: frozenSource,
     get advertisement(): RefAdvertisement {
       return frozenAdvertisement;
     },
@@ -798,7 +833,7 @@ function createImportSession(
     },
 
     plan(): ImportPlanBuilder {
-      return createPlanBuilder(backend, frozenAdvertisement, source, transportFactory);
+      return createPlanBuilder(backend, frozenAdvertisement, frozenSource, transportFactory);
     },
   };
 }

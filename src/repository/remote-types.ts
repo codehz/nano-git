@@ -1,7 +1,7 @@
 /**
  * 仓库 Remote 操作类型定义
  *
- * 定义仓库级别的 remote 配置与 fetch/push 操作接口。
+ * 定义仓库级别的 remote 配置与 push 操作接口。
  * Remote 只存在于 repository 层，transport 层不感知 remote 实体。
  *
  * 结果类型为 repository 自有语义，不直接复用 transport 层传输类型。
@@ -23,7 +23,7 @@ import type { SHA1 } from "../core/types.ts";
 export interface RemoteConfig {
   readonly name: string;
 
-  /** fetch 用的 remote URL，也作为 pushUrl 的默认值 */
+  /** remote 主 URL，也作为 pushUrl 的默认值 */
   readonly url: string;
 
   /** push 用的 remote URL，不指定时复用 url */
@@ -35,14 +35,6 @@ export interface RemoteConfig {
 
 // ============================================================================
 // 拒绝项类型（repository 自有语义）
-// ============================================================================
-
-// ============================================================================
-// Fetch Remote 操作
-// ============================================================================
-
-// ============================================================================
-// Bootstrap Remote 操作
 // ============================================================================
 
 // ============================================================================
@@ -119,13 +111,13 @@ export interface PushRemoteResult {
 }
 
 // ============================================================================
-// Repository Remote 操作接口（合并 fetch + push）
+// Repository Remote 操作接口
 // ============================================================================
 
 /**
  * 仓库 remote 相关操作
  *
- * 统一提供 fetch 和 push 的 remote 操作入口。
+ * 统一提供 remote 配置管理与 push 入口。
  */
 export interface RepositoryRemoteOperations {
   /** 添加 remote 配置 */
