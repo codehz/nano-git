@@ -46,5 +46,5 @@ export interface ObjectStore extends ObjectSource {
    *
    * 如果对象已存在，则跳过写入（Git 的内容寻址特性）。
    */
-  write(obj: GitObject): SHA1;
+  write<const T extends GitObject>(obj: T): SHA1;
 }

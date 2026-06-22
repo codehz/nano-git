@@ -2,6 +2,7 @@
  * 仓库实例创建逻辑
  */
 
+import { createRepoImportOperations } from "./import-session.ts";
 import { createMaintenanceRepositoryOperations } from "./maintenance-operations.ts";
 import { createObjectRepositoryOperations } from "./object-operations.ts";
 import { createRefRepositoryOperations } from "./ref-operations.ts";
@@ -38,5 +39,6 @@ export function createRepository(backend: RepositoryBackend): Repository {
     ...createRefRepositoryOperations(backend),
     ...createMaintenanceRepositoryOperations(objects, refs, packs),
     ...createRemoteRepositoryOperations(backend),
+    ...createRepoImportOperations(backend),
   };
 }

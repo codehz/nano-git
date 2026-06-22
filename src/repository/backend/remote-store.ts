@@ -8,8 +8,6 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { parseRefSpec } from "../../transport/refspec.ts";
-import { type RefMappingRule } from "../../transport/types.ts";
 import { type RemoteConfig } from "../remote-types.ts";
 import { type GitConfigSection, parseGitConfig, renderGitConfig } from "./git-config.ts";
 
@@ -34,7 +32,7 @@ export interface RemoteStore {
  * @example
  * ```ts
  * const store = createMemoryRemoteStore();
- * store.set({ name: "origin", url: "https://example.com/repo.git", fetchRules: [] });
+ * store.set({ name: "origin", url: "https://example.com/repo.git" });
  * ```
  */
 export function createMemoryRemoteStore(initialRemotes: RemoteConfig[] = []): RemoteStore {
@@ -90,8 +88,6 @@ export function createFileRemoteStore(gitDir: string): RemoteStore {
 
   return {
     set(config: RemoteConfig): void {
-      validateRemoteConfig(config);
-
       const sections = readSections().filter(
         (section) => !(section.name === "remote" && section.subsection === config.name),
       );
@@ -99,10 +95,7 @@ export function createFileRemoteStore(gitDir: string): RemoteStore {
       sections.push({
         name: "remote",
         subsection: config.name,
-        entries: [
-          { key: "url", value: config.url },
-          ...config.fetchRules.map((rule) => ({ key: "fetch", value: mappingRuleToRefSpec(rule) })),
-        ],
+        entries: [{ key: "url", value: config.url }],
       });
 
       writeSections(sections);
@@ -137,50 +130,14 @@ function sectionToRemoteConfig(section: GitConfigSection): RemoteConfig {
     throw new Error(`Remote "${name}" is missing url in config`);
   }
 
-  const fetchRules = section.entries
-    .filter((entry) => entry.key === "fetch")
-    .map((entry) => refSpecToMappingRule(entry.value));
-
   return {
     name,
     url,
-    fetchRules,
-  };
-}
-
-function validateRemoteConfig(config: RemoteConfig): void {
-  if (!config.name) {
-    throw new Error("Remote name cannot be empty");
-  }
-  if (!config.url) {
-    throw new Error(`Remote "${config.name}" url cannot be empty`);
-  }
-
-  for (const rule of config.fetchRules) {
-    mappingRuleToRefSpec(rule);
-  }
-}
-
-function mappingRuleToRefSpec(rule: RefMappingRule): string {
-  const forceFromSource = rule.source.startsWith("+");
-  const cleanSource = forceFromSource ? rule.source.slice(1) : rule.source;
-  const force = rule.force ?? forceFromSource;
-  const refSpec = `${force ? "+" : ""}${cleanSource}:${rule.target}`;
-  parseRefSpec(refSpec);
-  return refSpec;
-}
-
-function refSpecToMappingRule(refSpec: string): RefMappingRule {
-  const parsed = parseRefSpec(refSpec);
-  return {
-    source: `${parsed.force ? "+" : ""}${parsed.srcPattern}${parsed.isWildcard ? "*" : ""}`,
-    target: `${parsed.dstPattern}${parsed.isWildcard ? "*" : ""}`,
   };
 }
 
 function cloneRemoteConfig(config: RemoteConfig): RemoteConfig {
   return {
     ...config,
-    fetchRules: config.fetchRules.map((rule) => ({ ...rule })),
   };
 }

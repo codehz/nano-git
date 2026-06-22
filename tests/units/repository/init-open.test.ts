@@ -56,13 +56,11 @@ describe("initRepository()", () => {
     repo.addRemote({
       name: "origin",
       url: "https://example.com/repo.git",
-      fetchRules: [{ source: "+refs/heads/*", target: "refs/remotes/origin/*" }],
     });
 
     const config = readFileSync(join(tempDir, ".git", "config"), "utf-8");
     expect(config).toContain('[remote "origin"]');
     expect(config).toContain("\turl = https://example.com/repo.git");
-    expect(config).toContain("\tfetch = +refs/heads/*:refs/remotes/origin/*");
   });
 });
 
@@ -125,16 +123,11 @@ describe("openRepository()", () => {
     repo.addRemote({
       name: "origin",
       url: "https://example.com/repo.git",
-      fetchRules: [{ source: "+refs/heads/*", target: "refs/remotes/origin/*" }],
     });
 
     const reopened = openRepository(tempDir);
     expect(reopened.listRemotes()).toEqual(["origin"]);
-    expect(reopened.getRemote("origin")).toEqual({
-      name: "origin",
-      url: "https://example.com/repo.git",
-      fetchRules: [{ source: "+refs/heads/*", target: "refs/remotes/origin/*" }],
-    });
+    expect(reopened.getRemote("origin")?.url).toBe("https://example.com/repo.git");
   });
 
   test("写入 remote 配置时保留已有的其他 config section", () => {
@@ -157,7 +150,6 @@ describe("openRepository()", () => {
     repo.addRemote({
       name: "origin",
       url: "https://example.com/repo.git",
-      fetchRules: [{ source: "+refs/heads/*", target: "refs/remotes/origin/*" }],
     });
 
     const config = readFileSync(join(tempDir, ".git", "config"), "utf-8");

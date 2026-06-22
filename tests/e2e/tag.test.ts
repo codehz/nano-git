@@ -20,7 +20,7 @@ import {
 import { sha1 } from "@/core/types.ts";
 import { openRepository } from "@/repository/index.ts";
 
-import type { GitAuthor, GitTag } from "@/core/types.ts";
+import type { GitAuthor } from "@/core/types.ts";
 
 const testAuthor: GitAuthor = {
   name: FIXED_AUTHOR.name,
@@ -51,15 +51,14 @@ describe("Tag 兼容性", () => {
       const treeHash = repo.createTree([{ mode: "100644", name: "file.txt", hash: fileHash }]);
       const commitHash = repo.createCommit(treeHash, [], "Tagged commit", testAuthor);
 
-      const tag: GitTag = {
+      const tagHash = repo.objects.write({
         type: "tag",
         object: commitHash,
         objectType: "commit",
         tag: "v1.0.0",
         tagger: testAuthor,
         message: "Release v1.0.0\n",
-      };
-      const tagHash = repo.objects.write(tag);
+      });
 
       expect(gitCatFileType(tempDir, tagHash)).toBe("tag");
       const output = gitCatFile(tempDir, tagHash);

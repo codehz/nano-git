@@ -7,6 +7,7 @@
  */
 
 import type { RepositoryContext } from "./context-types.ts";
+import type { RepoImportOperations } from "./import-session-types.ts";
 import type { RepositoryMaintenanceOperations } from "./maintenance-types.ts";
 import type { RepositoryObjectOperations } from "./object-types.ts";
 import type { RepositoryRefOperations } from "./ref-types.ts";
@@ -21,4 +22,5 @@ export interface Repository
     RepositoryObjectOperations,
     RepositoryRefOperations,
     RepositoryMaintenanceOperations,
-    RepositoryRemoteOperations {}
+    RepositoryRemoteOperations,
+    RepoImportOperations {}

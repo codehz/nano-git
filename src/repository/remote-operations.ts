@@ -19,20 +19,11 @@
  */
 
 import { GitError } from "../core/errors.ts";
-import { sha1 } from "../core/types.ts";
-import { advertiseRemote } from "../transport/advertise.ts";
-import { runFetchRemote, runFetchToUrl } from "./fetch-remote.ts";
 import { runPushRemote, runPushToUrl } from "./push-remote.ts";
-import { mapDefaultBranchToTrackingRef } from "./remote-mapping.ts";
 
 import type { RepositoryBackend } from "./backend/types.ts";
 import type {
   RemoteConfig,
-  FetchRemoteOptions,
-  FetchUrlOptions,
-  FetchRemoteResult,
-  BootstrapRemoteOptions,
-  BootstrapRemoteResult,
   PushRemoteOptions,
   PushRemoteResult,
   RepositoryRemoteOperations,
@@ -43,12 +34,12 @@ import type {
 // ============================================================================
 
 /**
- * Remote 操作错误
+ * Push 操作错误
  */
-export class RemoteError extends GitError {
+export class PushError extends GitError {
   constructor(message: string) {
-    super(`Remote error: ${message}`);
-    this.name = "RemoteError";
+    super(`Push error: ${message}`);
+    this.name = "PushError";
   }
 }
 
@@ -59,13 +50,15 @@ export class RemoteError extends GitError {
 /**
  * 创建 Remote 操作集合
  *
+ * 仅保留 push 和 remote 配置管理。fetch 相关操作已由 ImportSession API 替代。
+ *
  * @param backend - 仓库后端
  * @returns Remote 操作集合
  */
 export function createRemoteRepositoryOperations(
   backend: RepositoryBackend,
 ): RepositoryRemoteOperations {
-  const { refs, remotes } = backend;
+  const { remotes } = backend;
 
   return {
     addRemote(config: RemoteConfig): void {
@@ -80,101 +73,10 @@ export function createRemoteRepositoryOperations(
       return remotes.list().map((remote) => remote.name);
     },
 
-    async fetchRemote(name: string, options?: FetchRemoteOptions): Promise<FetchRemoteResult> {
-      const remote = remotes.get(name);
-      if (!remote) {
-        throw new RemoteError(`Remote "${name}" not found`);
-      }
-
-      return runFetchRemote(backend, remote, options);
-    },
-
-    async fetch(url: string, options?: FetchUrlOptions): Promise<FetchRemoteResult> {
-      return runFetchToUrl(backend, url, options);
-    },
-
-    async bootstrapRemote(
-      name: string,
-      options?: BootstrapRemoteOptions,
-    ): Promise<BootstrapRemoteResult> {
-      const remote = remotes.get(name);
-      if (!remote) {
-        throw new RemoteError(`Remote "${name}" not found`);
-      }
-
-      // 1. 获取远端广告以确定默认分支
-      const adv = await advertiseRemote(remote.url, {
-        token: options?.token,
-        headers: options?.headers,
-      });
-
-      if (!adv.defaultBranch) {
-        throw new RemoteError(
-          `Remote "${name}" at ${remote.url} does not advertise a default branch. ` +
-            `Cannot bootstrap without a known default branch.`,
-        );
-      }
-
-      // 2. 执行 fetch（复用已获取的广告，避免重复请求）
-      const fetchResult = await runFetchRemote(backend, remote, options, adv);
-
-      // 3. 确定本地分支名
-      const localBranch = options?.branch ?? adv.defaultBranch.replace("refs/heads/", "");
-
-      // 4. 校验远端默认分支是否在本次更新结果中
-      const branchRef = localBranch.startsWith("refs/heads/")
-        ? localBranch
-        : `refs/heads/${localBranch}`;
-      const trackingRef = mapDefaultBranchToTrackingRef(adv.defaultBranch, remote.fetchRules);
-
-      if (!trackingRef) {
-        throw new RemoteError(
-          `Cannot map remote default branch "${adv.defaultBranch}" to a local tracking ref. ` +
-            `Check fetchRules configuration for remote "${name}".`,
-        );
-      }
-
-      // 检查默认分支的 tracking ref 是否被拒绝
-      const rejectedRef = fetchResult.rejectedRefs.find((r) => r.localRef === trackingRef);
-      if (rejectedRef) {
-        throw new RemoteError(
-          `Default branch "${adv.defaultBranch}" tracking ref "${trackingRef}" was rejected: ` +
-            `${rejectedRef.reason}`,
-        );
-      }
-
-      // 优先从 fetch 结果取，若未变化则回退读取现有 tracking ref
-      const branchHash =
-        fetchResult.updatedRefs.get(trackingRef) ??
-        (() => {
-          const existing = refs.read(trackingRef);
-          if (existing && /^[0-9a-f]{40}$/.test(existing)) {
-            return sha1(existing);
-          }
-          return undefined;
-        })();
-
-      if (!branchHash) {
-        throw new RemoteError(
-          `Default branch "${adv.defaultBranch}" was not fetched. ` +
-            `Its tracking ref "${trackingRef}" is missing from both fetch result and local refs.`,
-        );
-      }
-
-      // 5. 创建本地分支并设置 HEAD
-      refs.write(branchRef, branchHash);
-      refs.write("HEAD", `ref: ${branchRef}`);
-
-      return {
-        ...fetchResult,
-        localBranch: branchRef,
-      };
-    },
-
     async pushRemote(name: string, options?: PushRemoteOptions): Promise<PushRemoteResult> {
       const remote = remotes.get(name);
       if (!remote) {
-        throw new RemoteError(`Remote "${name}" not found`);
+        throw new PushError(`Remote "${name}" not found`);
       }
 
       return runPushRemote(backend, remote, options);

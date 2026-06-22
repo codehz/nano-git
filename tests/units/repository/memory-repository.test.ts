@@ -219,7 +219,6 @@ describe("resolve push url/refspecs", () => {
     name: "origin",
     url: "https://example.com/repo.git",
     pushUrl: "https://example.com/push.git",
-    fetchRules: [],
     pushRefSpecs: ["refs/heads/*:refs/heads/*"],
   };
 

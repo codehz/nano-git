@@ -9,7 +9,6 @@
  */
 
 import type { SHA1 } from "../core/types.ts";
-import type { RefMappingRule } from "../transport/types.ts";
 
 // ============================================================================
 // Remote 配置
@@ -30,9 +29,6 @@ export interface RemoteConfig {
   /** push 用的 remote URL，不指定时复用 url */
   readonly pushUrl?: string;
 
-  /** fetch 映射规则，如 [{ source: "+refs/heads/*", target: "refs/remotes/origin/*" }] */
-  readonly fetchRules: RefMappingRule[];
-
   /** push 默认 refspec，如 ["refs/heads/main:refs/heads/main"] */
   readonly pushRefSpecs?: string[];
 }
@@ -41,74 +37,13 @@ export interface RemoteConfig {
 // 拒绝项类型（repository 自有语义）
 // ============================================================================
 
-/**
- * Ref 更新拒绝项
- */
-export interface RefUpdateRejection {
-  readonly localRef: string;
-  readonly reason: string;
-}
-
 // ============================================================================
 // Fetch Remote 操作
 // ============================================================================
 
-/**
- * Fetch remote 操作选项
- *
- * fetchRemote 只更新 remote-tracking refs，不创建本地分支，不修改 HEAD。
- */
-export interface FetchRemoteOptions {
-  readonly depth?: number;
-  readonly token?: string;
-  readonly headers?: Record<string, string>;
-  readonly maxCandidates?: number;
-}
-
-/**
- * 按 URL fetch 的选项（在 FetchRemoteOptions 基础上可覆盖 ref 映射规则）
- */
-export interface FetchUrlOptions extends FetchRemoteOptions {
-  /** 不指定时使用 `+refs/heads/*:refs/remotes/origin/*` */
-  readonly fetchRules?: readonly RefMappingRule[];
-}
-
-/**
- * Fetch remote 操作结果（repository 自有语义）
- *
- * 不直接暴露 transport 层的 FetchPackResult / ApplyRefUpdatesResult，
- * 只暴露仓库层关心的语义字段。
- */
-export interface FetchRemoteResult {
-  /** 本次获取的对象数量 */
-  readonly fetchedObjects: number;
-  /** 已更新的 ref 映射（ref 名称 → SHA1） */
-  readonly updatedRefs: ReadonlyMap<string, SHA1>;
-  /** 被拒绝的 ref 更新列表 */
-  readonly rejectedRefs: readonly RefUpdateRejection[];
-  /** 远端默认分支（可能为 undefined） */
-  readonly defaultBranch?: string;
-}
-
 // ============================================================================
 // Bootstrap Remote 操作
 // ============================================================================
-
-/**
- * Bootstrap remote 操作选项
- */
-export interface BootstrapRemoteOptions extends FetchRemoteOptions {
-  /** 创建本地分支时使用的名称，不指定则采用远端默认分支名 */
-  readonly branch?: string;
-}
-
-/**
- * Bootstrap remote 操作结果
- */
-export interface BootstrapRemoteResult extends FetchRemoteResult {
-  /** 创建的本地分支名 */
-  readonly localBranch: string;
-}
 
 // ============================================================================
 // Push Remote 操作
@@ -199,34 +134,6 @@ export interface RepositoryRemoteOperations {
   getRemote(name: string): RemoteConfig | null;
   /** 列出所有 remote 名称 */
   listRemotes(): string[];
-
-  /**
-   * 从已配置的 remote 拉取对象和更新 remote-tracking refs
-   *
-   * 等价于 `git fetch <remote>`。
-   * 只更新 remote-tracking refs（如 refs/remotes/origin/*），
-   * 不创建本地分支，不修改 HEAD。
-   */
-  fetchRemote(name: string, options?: FetchRemoteOptions): Promise<FetchRemoteResult>;
-
-  /**
-   * 从远程 URL 拉取（不依赖 remote 配置）
-   *
-   * 等价于 `git fetch <url>`。
-   */
-  fetch(url: string, options?: FetchUrlOptions): Promise<FetchRemoteResult>;
-
-  /**
-   * 从 remote 拉取并创建本地分支和 HEAD
-   *
-   * 等价于 `git clone <url>` 的完整流程（但使用已配置的 remote）。
-   * 先执行 fetchRemote()，然后根据远端默认分支：
-   * - 创建 refs/heads/<branch>
-   * - 设置 HEAD -> refs/heads/<branch>
-   *
-   * 这是唯一会创建本地分支和设置 HEAD 的 API。
-   */
-  bootstrapRemote(name: string, options?: BootstrapRemoteOptions): Promise<BootstrapRemoteResult>;
 
   /**
    * 推送到已配置的 remote

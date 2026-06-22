@@ -12,16 +12,32 @@ export type { RepositoryRefOperations } from "./ref-types.ts";
 export type { RepositoryMaintenanceOperations } from "./maintenance-types.ts";
 export type {
   RemoteConfig,
-  FetchRemoteOptions,
-  FetchUrlOptions,
-  FetchRemoteResult,
-  BootstrapRemoteOptions,
-  BootstrapRemoteResult,
   PushRemoteOptions,
   PushRemoteResult,
   PushRefUpdateResult,
-  RefUpdateRejection,
-  RepositoryRemoteOperations,
 } from "./remote-types.ts";
+export type {
+  ImportSource,
+  ImportView,
+  NamedImportView,
+  ImportSession,
+  ImportPlanBuilder,
+  RefMaterializationBuilder,
+  ImportPreview,
+  ImportApplyResult,
+  RefUpdatePolicy,
+  PlannedRemoteRef,
+  LocalPrecondition,
+  PlannedRefOperation,
+  PlannedRefDeletion,
+  PlannedHeadOperation,
+  ImportDiagnostic,
+  OpenImportSessionOptions,
+  NamespaceMaterializationOptions,
+  BranchMaterializationOptions,
+  TagMaterializationOptions,
+  HeadMaterializationOptions,
+  RepoImportOperations,
+} from "./import-session-types.ts";
 export { createRepository } from "./create.ts";
 export { initRepository, openRepository, createMemoryRepository } from "./init.ts";

@@ -1,0 +1,318 @@
+/**
+ * Import Session 类型定义
+ *
+ * 新的远端导入模型：source → session → named views → plan → apply。
+ * 彻底替代旧的 fetchRemote() / bootstrapRemote() / fetch(url) API。
+ *
+ * @see .drafts/import-session-rfc.md
+ */
+
+import type { SHA1 } from "../core/types.ts";
+import type { RemoteRef, RefAdvertisement } from "../transport/types.ts";
+
+// ============================================================================
+// ImportSource
+// ============================================================================
+
+/**
+ * 远端 Git 数据来源
+ *
+ * 只描述"从哪里读"，不描述"写到哪里"。
+ * 与 RemoteConfig 不同，ImportSource 不包含命名空间映射规则。
+ */
+export interface ImportSource {
+  /** 远端仓库 URL */
+  readonly url: string;
+
+  /** 认证 token（用于 bearer 或 basic auth） */
+  readonly token?: string;
+
+  /** 自定义请求头 */
+  readonly headers?: Record<string, string>;
+}
+
+/**
+ * 打开 Import Session 的选项
+ */
+export interface OpenImportSessionOptions {
+  /** 认证 token */
+  readonly token?: string;
+
+  /** 自定义请求头 */
+  readonly headers?: Record<string, string>;
+
+  /**
+   * Transport 工厂（用于测试注入）
+   * 调用方可以注入自定义 UploadPackTransport 实现以替代默认的 HTTP transport。
+   */
+  readonly transportFactory?: (url: string) => import("../transport/types.ts").UploadPackTransport;
+}
+
+// ============================================================================
+// ImportView
+// ============================================================================
+
+/**
+ * 远端 ref 视图
+ *
+ * 一个可命名、可复用、冻结的远端 ref 集合。
+ * view 是冻结集合，不是活查询。
+ * view 可以被多个物化步骤复用。
+ */
+export interface ImportView {
+  /** 视图包含的远端 ref 列表（冻结快照） */
+  readonly refs: readonly RemoteRef[];
+
+  /**
+   * 通过谓词过滤当前视图
+   *
+   * @param predicate - 过滤谓词，返回 true 的 ref 保留
+   * @returns 新的 ImportView
+   */
+  where(predicate: (ref: RemoteRef) => boolean): ImportView;
+
+  /**
+   * 排除匹配指定 glob 模式的 ref
+   *
+   * @param pattern - glob 模式，如 "refs/tags/*beta*"
+   * @returns 新的 ImportView
+   */
+  exclude(pattern: string): ImportView;
+
+  /**
+   * 与另一个 view 取并集
+   *
+   * @param other - 另一个 view
+   * @returns 新的 ImportView（含两个 view 的 refs，去重保留首次出现的 ref）
+   */
+  union(other: ImportView): ImportView;
+
+  /**
+   * 为当前视图命名
+   *
+   * 命名后的 view 可用于 plan 阶段引用。
+   *
+   * @param label - 视图名称
+   * @returns NamedImportView
+   */
+  name(label: string): NamedImportView;
+}
+
+/**
+ * 命名的远端 ref 视图
+ *
+ * 在 ImportView 基础上增加 label 属性，用于 plan 阶段的语义引用。
+ */
+export interface NamedImportView extends ImportView {
+  /** 视图名称 */
+  readonly label: string;
+}
+
+// ============================================================================
+// ImportPlanBuilder（Phase 1 只返回 stub）
+// ============================================================================
+
+/**
+ * Ref 更新策略
+ */
+export type RefUpdatePolicy =
+  | { mode: "fast-forward" }
+  | { mode: "replace" }
+  | { mode: "create-only" }
+  | { mode: "mirror" };
+
+/**
+ * 命名空间物化选项
+ */
+export interface NamespaceMaterializationOptions {
+  readonly policy?: RefUpdatePolicy;
+  readonly prune?: boolean;
+}
+
+/**
+ * Branch 物化选项
+ */
+export interface BranchMaterializationOptions {
+  readonly policy?: RefUpdatePolicy;
+}
+
+/**
+ * Tag 物化选项
+ */
+export interface TagMaterializationOptions {
+  readonly policy?: RefUpdatePolicy;
+}
+
+/**
+ * HEAD 物化选项
+ */
+export interface HeadMaterializationOptions {
+  readonly detach?: boolean;
+}
+
+/**
+ * Ref 物化构建器
+ */
+export interface RefMaterializationBuilder {
+  toNamespace(targetPattern: string, options?: NamespaceMaterializationOptions): ImportPlanBuilder;
+
+  toBranch(branchName: string, options?: BranchMaterializationOptions): ImportPlanBuilder;
+
+  toTag(tagName: string, options?: TagMaterializationOptions): ImportPlanBuilder;
+
+  setHead(options?: HeadMaterializationOptions): ImportPlanBuilder;
+}
+
+/**
+ * 导入计划构建器
+ */
+export interface ImportPlanBuilder {
+  materialize(view: ImportView): RefMaterializationBuilder;
+
+  preview(): ImportPreview;
+
+  apply(): Promise<ImportApplyResult>;
+}
+
+// ============================================================================
+// Preview 与 Apply 结果类型
+// ============================================================================
+
+/**
+ * 计划中的远端 ref 项
+ */
+export interface PlannedRemoteRef {
+  readonly remoteRef: RemoteRef;
+  readonly localTarget: string;
+  readonly policy: RefUpdatePolicy;
+}
+
+/**
+ * 本地前置条件
+ */
+export interface LocalPrecondition {
+  readonly refName: string;
+  readonly expectedHash: SHA1 | null;
+}
+
+/**
+ * 计划中的 ref 操作
+ */
+export interface PlannedRefOperation {
+  readonly localRef: string;
+  readonly newHash: SHA1;
+  readonly policy: RefUpdatePolicy;
+}
+
+/**
+ * 计划中的 HEAD 操作
+ */
+export interface PlannedHeadOperation {
+  readonly targetRef: string;
+  readonly detach: boolean;
+}
+
+/**
+ * 计划中的 ref 删除
+ */
+export interface PlannedRefDeletion {
+  readonly refName: string;
+  readonly reason: string;
+}
+
+/**
+ * 导入诊断信息
+ */
+export interface ImportDiagnostic {
+  readonly level: "info" | "warn" | "error";
+  readonly message: string;
+  readonly refName?: string;
+}
+
+/**
+ * 导入预览结果
+ *
+ * preview() 的目标是明确展示将会发生什么，
+ * 让调用者在 apply() 前有完整的认识。
+ */
+export interface ImportPreview {
+  readonly remoteSnapshot: RefAdvertisement;
+  readonly selectedRefs: readonly PlannedRemoteRef[];
+  readonly objectRoots: readonly SHA1[];
+  readonly localPreconditions: readonly LocalPrecondition[];
+  readonly refOperations: readonly PlannedRefOperation[];
+  readonly headOperation?: PlannedHeadOperation;
+  readonly pruneOperations: readonly PlannedRefDeletion[];
+  readonly diagnostics: readonly ImportDiagnostic[];
+  readonly canApply: boolean;
+}
+
+/**
+ * 导入执行结果
+ */
+export interface ImportApplyResult {
+  readonly importedObjects: number;
+  readonly updatedRefs: ReadonlyMap<string, SHA1>;
+  readonly deletedRefs: readonly string[];
+  readonly headTarget?: string;
+}
+
+// ============================================================================
+// ImportSession
+// ============================================================================
+
+/**
+ * 导入会话
+ *
+ * 一次冻结的远端快照 + 本地前置条件基线。
+ * 在创建时拉取一次 advertisement，所有派生 view 和 plan 都基于该快照。
+ * 想刷新远端状态时，必须重新创建 session。
+ */
+export interface ImportSession {
+  readonly source: ImportSource;
+  readonly advertisement: RefAdvertisement;
+
+  select(pattern: string): ImportView;
+
+  selectRefs(patterns: readonly string[]): ImportView;
+
+  defaultBranch(): ImportView;
+
+  headTarget(): ImportView;
+
+  allRefs(): ImportView;
+
+  plan(): ImportPlanBuilder;
+}
+
+// ============================================================================
+// Repository 导入操作接口
+// ============================================================================
+
+/**
+ * 仓库导入操作
+ */
+export interface RepoImportOperations {
+  /**
+   * 打开一次导入会话
+   *
+   * 创建时自动拉取远端 advertisement。
+   * 会话及其所有派生 view 都是基于该快照的冻结视图。
+   *
+   * @param source - 导入源配置
+   * @param options - 可选参数
+   * @returns ImportSession
+   *
+   * @example
+   * ```ts
+   * const session = await repo.openImportSession({
+   *   url: "https://example.com/repo.git",
+   * });
+   * const branches = session.select("refs/heads/*");
+   * ```
+   */
+  openImportSession(
+    source: ImportSource,
+    options?: OpenImportSessionOptions,
+  ): Promise<ImportSession>;
+}

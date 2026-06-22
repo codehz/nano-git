@@ -6,7 +6,7 @@
  * - 使用 remote.pushUrl 作为默认目标地址
  * - options.pushUrl 覆盖 remote.pushUrl
  * - options.refSpecs 覆盖 remote.pushRefSpecs
- * - remote 不存在时抛 RemoteError
+ * - remote 不存在时抛 PushError
  *
  * 不同于 transport/push.test.ts 专注于协议行为，
  * 此处专注于 repository 层的 remote 配置决策路径。
@@ -20,7 +20,7 @@ import { git, gitInit, createTempDir, cleanupDir, createFile, FIXED_AUTHOR } fro
 import { startGitHttpBackendServer } from "./http-server.ts";
 import { createMemoryRepositoryBackend } from "@/repository/backend/memory-backend.ts";
 import { createRepository } from "@/repository/index.ts";
-import { RemoteError } from "@/repository/remote-operations.ts";
+import { PushError } from "@/repository/remote-operations.ts";
 
 // ============================================================================
 // 辅助函数
@@ -79,7 +79,7 @@ describe("pushRemote() 主路径", () => {
           {
             name: "origin",
             url: serverUrl,
-            fetchRules: [{ source: "+refs/heads/*", target: "refs/remotes/origin/*" }],
+
             pushRefSpecs: ["+refs/heads/main:refs/heads/main"],
           },
         ],
@@ -118,7 +118,7 @@ describe("pushRemote() 主路径", () => {
             name: "origin",
             url: serverUrl,
             pushUrl: altServer.url,
-            fetchRules: [{ source: "+refs/heads/*", target: "refs/remotes/origin/*" }],
+
             pushRefSpecs: ["+refs/heads/main:refs/heads/main"],
           },
         ],
@@ -169,7 +169,7 @@ describe("pushRemote() 主路径", () => {
             name: "origin",
             url: serverUrl,
             pushUrl: serverUrl,
-            fetchRules: [{ source: "+refs/heads/*", target: "refs/remotes/origin/*" }],
+
             pushRefSpecs: ["+refs/heads/main:refs/heads/main"],
           },
         ],
@@ -213,7 +213,7 @@ describe("pushRemote() 主路径", () => {
           {
             name: "origin",
             url: serverUrl,
-            fetchRules: [{ source: "+refs/heads/*", target: "refs/remotes/origin/*" }],
+
             // remote 默认值指向 develop
             pushRefSpecs: ["+refs/heads/develop:refs/heads/develop"],
           },
@@ -243,10 +243,10 @@ describe("pushRemote() 主路径", () => {
     expect(serverRef).toBe(commitHash);
   });
 
-  test("remote 不存在时抛 RemoteError", async () => {
+  test("remote 不存在时抛 PushError", async () => {
     const repo = createRepository(createMemoryRepositoryBackend());
 
-    expect(repo.pushRemote("nonexistent")).rejects.toThrow(RemoteError);
+    expect(repo.pushRemote("nonexistent")).rejects.toThrow(PushError);
   });
 
   test("pushRemote 返回结果包含 pushedRefs 和 objectCount", async () => {
@@ -256,7 +256,7 @@ describe("pushRemote() 主路径", () => {
           {
             name: "origin",
             url: serverUrl,
-            fetchRules: [{ source: "+refs/heads/*", target: "refs/remotes/origin/*" }],
+
             pushRefSpecs: ["+refs/heads/main:refs/heads/main"],
           },
         ],

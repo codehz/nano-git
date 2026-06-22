@@ -812,9 +812,14 @@ describe("push() 端到端", () => {
     repo.addRemote({
       name: "origin",
       url: serverUrl,
-      fetchRules: [{ source: "+refs/heads/*", target: "refs/remotes/origin/*" }],
     });
-    await repo.fetchRemote("origin");
+    // 使用 Import Session API 获取远端 refs
+    const importSession = await repo.openImportSession({ url: serverUrl });
+    await importSession
+      .plan()
+      .materialize(importSession.allRefs())
+      .toNamespace("refs/remotes/origin/*", { policy: { mode: "mirror" }, prune: true })
+      .apply();
 
     // 清理可能残留的 server feature ref，保证测试隔离
     try {
