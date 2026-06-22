@@ -38,13 +38,14 @@ import type { RemoteConfig, FetchRemoteOptions, FetchRemoteResult } from "./remo
  * 执行 fetch remote 的内部流程
  *
  * 步骤：广告获取 → ref 规划 → fetch-pack → ref 更新 → shallow 持久化
- * 返回阶段化结果（transfer + refUpdates），不丢失决策上下文。
+ * 返回 repository 自有聚合结果（fetchedObjects / updatedRefs / rejectedRefs）。
+ * 内部仍按阶段执行，但对外不暴露 transport 阶段结构。
  *
  * @param backend - 仓库后端
  * @param remote - remote 配置
  * @param options - fetch 选项
  * @param preAdvertised - 可选的预获取广告（避免 bootstrapRemote 等场景重复请求）
- * @returns 阶段化 fetch 结果
+ * @returns fetch 结果（repository 自有语义）
  *
  * @example
  * ```ts

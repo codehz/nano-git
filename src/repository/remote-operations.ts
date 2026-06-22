@@ -204,12 +204,12 @@ async function runPushRemote(
   const currentShallow = backend.shallow.read();
 
   const effectiveRefSpecs = resolveEffectivePushRefSpecs(remote, options);
-  const shallowResult = resolveEffectiveShallowBoundaries(options, currentShallow);
+  const shallowBoundaries = resolveEffectiveShallowBoundaries(options, currentShallow);
 
   const effectiveOptions: PushOptions = {
     ...options,
     refSpecs: effectiveRefSpecs,
-    shallowBoundaries: shallowResult as SHA1[] | undefined,
+    shallowBoundaries,
   };
 
   const transportResult = await transportPush(
@@ -238,7 +238,7 @@ async function runPushToUrl(
   const shallowBoundaries = resolveEffectiveShallowBoundaries(options, currentShallow);
   const effectiveOptions: PushOptions = {
     ...options,
-    shallowBoundaries: shallowBoundaries as SHA1[] | undefined,
+    shallowBoundaries,
   };
 
   const transportResult = await transportPush(backend.objects, backend.refs, url, effectiveOptions);

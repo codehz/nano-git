@@ -16,6 +16,7 @@
  * ```
  */
 
+import type { SHA1 } from "../core/types.ts";
 import type { PushOptions } from "../transport/types.ts";
 import type { RemoteConfig, PushRemoteOptions } from "./remote-types.ts";
 
@@ -55,14 +56,18 @@ export function resolveEffectivePushRefSpecs(
  * 解析 effective shallow boundaries
  *
  * 优先级：options.shallowBoundaries > backend.shallow.read()（非空时）
+ * 返回 mutable 数组以兼容 transport PushOptions。
  *
  * @param options - push 选项（可选）
- * @param currentShallow - 当前 shallow 集合
+ * @param currentShallow - 当前 shallow 集合（SHA1[] 类型）
  * @returns effective shallow boundaries，可能为 undefined
  */
 export function resolveEffectiveShallowBoundaries(
-  options: { shallowBoundaries?: readonly string[] } | undefined,
-  currentShallow: readonly string[],
-): readonly string[] | undefined {
-  return options?.shallowBoundaries ?? (currentShallow.length > 0 ? currentShallow : undefined);
+  options: { shallowBoundaries?: SHA1[] } | undefined,
+  currentShallow: SHA1[],
+): SHA1[] | undefined {
+  if (options?.shallowBoundaries !== undefined) {
+    return options.shallowBoundaries;
+  }
+  return currentShallow.length > 0 ? currentShallow : undefined;
 }

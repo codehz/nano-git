@@ -104,7 +104,7 @@ describe("pushRemote() 主路径", () => {
   });
 
   test("pushRemote 使用 remote.pushUrl 作为默认目标地址", async () => {
-    // 创建替代服务端
+    // 创建替代服务端（pushUrl 指向此仓库）
     const altRepoDir = join(tempDir, "alt.git");
     mkdirSync(altRepoDir);
     git(["init", "--bare"], altRepoDir);
@@ -131,21 +131,26 @@ describe("pushRemote() 主路径", () => {
     const commitHash = repo.createCommit(treeHash, [], "Push via pushUrl", author);
     repo.updateRef("refs/heads/main", commitHash);
 
+    // 取得初始 server 仓库 main hash，用于比对
+    const initialServerHash = git(
+      ["--git-dir", serverRepoDir, "rev-parse", "refs/heads/main"],
+      tempDir,
+    );
+
     const result = await repo.pushRemote("origin");
 
     expect(result.pushedRefs).toHaveLength(1);
     expect(result.pushedRefs[0]!.success).toBe(true);
+    expect(result.pushedRefs[0]!.refName).toBe("refs/heads/main");
+    expect(result.pushedRefs[0]!.newHash).toBe(commitHash);
 
-    // pushUrl 仓库应有新 commit，url 仓库仍只有初始 commit
-    const serverRefCount = git(
-      ["--git-dir", serverRepoDir, "rev-list", "--all", "--count"],
-      tempDir,
-    );
-    expect(serverRefCount).toBe("1");
+    // 双边验证：pushUrl 仓库的 refs/heads/main 已更新
+    const altRef = git(["--git-dir", altRepoDir, "rev-parse", "refs/heads/main"], tempDir);
+    expect(altRef).toBe(commitHash);
 
-    const altRefCount = git(["--git-dir", altRepoDir, "rev-list", "--all", "--count"], tempDir);
-    // Alt 仓库原本为空，收到 1 个新 commit
-    expect(altRefCount).toBe("1");
+    // 双边验证：url 仓库的 refs/heads/main 仍保持原值（不被推送）
+    const serverHash = git(["--git-dir", serverRepoDir, "rev-parse", "refs/heads/main"], tempDir);
+    expect(serverHash).toBe(initialServerHash);
 
     await altServer.stop();
   });
@@ -177,11 +182,26 @@ describe("pushRemote() 主路径", () => {
     const commitHash = repo.createCommit(treeHash, [], "Push via override pushUrl", author);
     repo.updateRef("refs/heads/main", commitHash);
 
-    // 使用 options.pushUrl 覆盖
+    const initialServerHash = git(
+      ["--git-dir", serverRepoDir, "rev-parse", "refs/heads/main"],
+      tempDir,
+    );
+
+    // 使用 options.pushUrl 覆盖 remote.pushUrl（应推送到 altServer，而非 server）
     const result = await repo.pushRemote("origin", { pushUrl: altServer.url });
 
     expect(result.pushedRefs).toHaveLength(1);
     expect(result.pushedRefs[0]!.success).toBe(true);
+    expect(result.pushedRefs[0]!.refName).toBe("refs/heads/main");
+    expect(result.pushedRefs[0]!.newHash).toBe(commitHash);
+
+    // 双边验证：options.pushUrl 仓库收到新 commit
+    const altRef = git(["--git-dir", altRepoDir, "rev-parse", "refs/heads/main"], tempDir);
+    expect(altRef).toBe(commitHash);
+
+    // 双边验证：remote.pushUrl 所指向的 server 仓库保持不变
+    const serverHash = git(["--git-dir", serverRepoDir, "rev-parse", "refs/heads/main"], tempDir);
+    expect(serverHash).toBe(initialServerHash);
 
     await altServer.stop();
   });
@@ -194,7 +214,7 @@ describe("pushRemote() 主路径", () => {
             name: "origin",
             url: serverUrl,
             fetchRules: [{ source: "+refs/heads/*", target: "refs/remotes/origin/*" }],
-            // 默认上去 develop，但 options.refSpecs 应覆盖
+            // remote 默认值指向 develop
             pushRefSpecs: ["+refs/heads/develop:refs/heads/develop"],
           },
         ],
@@ -212,9 +232,15 @@ describe("pushRemote() 主路径", () => {
       refSpecs: ["+refs/heads/main:refs/heads/main"],
     });
 
+    // 验证推送到的是 main 而非 develop
     expect(result.pushedRefs).toHaveLength(1);
     expect(result.pushedRefs[0]!.success).toBe(true);
     expect(result.pushedRefs[0]!.refName).toBe("refs/heads/main");
+    expect(result.pushedRefs[0]!.newHash).toBe(commitHash);
+
+    // 服务端 refs/heads/main 已更新
+    const serverRef = git(["--git-dir", serverRepoDir, "rev-parse", "refs/heads/main"], tempDir);
+    expect(serverRef).toBe(commitHash);
   });
 
   test("remote 不存在时抛 RemoteError", async () => {
