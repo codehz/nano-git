@@ -5,6 +5,7 @@
  */
 
 import { InvalidObjectError } from "../core/errors.ts";
+import { assertObjectType } from "../core/types.ts";
 import { serializeBlob, deserializeBlob } from "./blob.ts";
 import { serializeCommit, deserializeCommit } from "./commit.ts";
 import { serializeTag, deserializeTag } from "./tag.ts";
@@ -53,7 +54,7 @@ export function deserialize(data: Buffer): GitObject {
     throw new InvalidObjectError(`invalid header: ${header}`);
   }
 
-  const type = match[1] as ObjectType;
+  const type = assertObjectType(match[1]!);
   const size = parseInt(match[2]!, 10);
   const content = data.subarray(nullIndex + 1);
 

@@ -18,7 +18,6 @@
 import { GitError } from "../core/errors.ts";
 import { parsePktLines } from "./pkt-line.ts";
 
-import type { PktLineData } from "./pkt-line.ts";
 import type { PushRefUpdate } from "./types.ts";
 
 // ============================================================================
@@ -80,7 +79,7 @@ export function parseReceivePackResult(data: Buffer): PushRefUpdate[] {
       continue;
     }
 
-    const payload = (line as PktLineData).payload.toString("utf-8").trimEnd();
+    const payload = line.payload.toString("utf-8").trimEnd();
 
     if (payload.length === 0) {
       continue;

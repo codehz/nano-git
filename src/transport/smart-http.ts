@@ -85,9 +85,9 @@ function applyAuthHeaders(
 async function readResponseBody(response: Response, context: string): Promise<Buffer> {
   try {
     return Buffer.from(await response.arrayBuffer());
-  } catch (err) {
+  } catch (err: unknown) {
     throw new SmartHttpError(
-      `Failed to read response body (${context}): ${(err as Error).message}`,
+      `Failed to read response body (${context}): ${err instanceof Error ? err.message : String(err)}`,
     );
   }
 }
@@ -114,9 +114,9 @@ function createGitServiceHttpClient(
       let response: Response;
       try {
         response = await fetch(url, { headers: applyAuthHeaders({}, auth) });
-      } catch (err) {
+      } catch (err: unknown) {
         throw new SmartHttpError(
-          `Failed to fetch ref advertisement from ${url}: ${(err as Error).message}`,
+          `Failed to fetch ref advertisement from ${url}: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
 
@@ -131,11 +131,13 @@ function createGitServiceHttpClient(
 
       try {
         return parseRefAdvertisement(data, config.advertiseService);
-      } catch (err) {
+      } catch (err: unknown) {
         if (err instanceof RefAdvertisementError) {
           throw err;
         }
-        throw new SmartHttpError(`Failed to parse ref advertisement: ${(err as Error).message}`);
+        throw new SmartHttpError(
+          `Failed to parse ref advertisement: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     },
 
@@ -149,8 +151,10 @@ function createGitServiceHttpClient(
           headers: applyAuthHeaders({ "Content-Type": config.rpcRequestContentType }, auth),
           body,
         });
-      } catch (err) {
-        throw new SmartHttpError(`Failed to POST RPC request to ${url}: ${(err as Error).message}`);
+      } catch (err: unknown) {
+        throw new SmartHttpError(
+          `Failed to POST RPC request to ${url}: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
 
       if (!response.ok) {

@@ -24,6 +24,7 @@
  */
 
 import { GitError } from "../core/errors.ts";
+import { sha1 } from "../core/types.ts";
 import { encodePktLine, encodeFlushPkt, splitPktLinesFromBuffer } from "./pkt-line.ts";
 
 import type { SHA1 } from "../core/types.ts";
@@ -110,11 +111,11 @@ export function collectHaveCommits(
       const obj = store.read(hash);
       if (obj.type !== "commit") continue;
 
-      const commit = obj as import("../core/types.ts").GitCommit;
-      commits.push({ hash, timestamp: commit.committer.timestamp });
+      // obj 已被窄化为 GitCommit，可直接访问 committer/parents
+      commits.push({ hash, timestamp: obj.committer.timestamp });
 
       // 将父 commit 加入遍历队列
-      for (const parentHash of commit.parents) {
+      for (const parentHash of obj.parents) {
         if (!seen.has(parentHash) && seen.size < effectiveMax) {
           queue.push(parentHash);
         }
@@ -440,6 +441,20 @@ export function nextHaveChunk(haves: SHA1[], state: NegotiationState, maxPerRoun
 export type UploadPackAckStatus = "continue" | "common" | "ready";
 
 /**
+ * 安全转换字符串为 ACK 状态，无效值时返回 undefined
+ */
+function toAckStatus(s: string | undefined): UploadPackAckStatus | undefined {
+  switch (s) {
+    case "continue":
+    case "common":
+    case "ready":
+      return s;
+    default:
+      return undefined;
+  }
+}
+
+/**
  * upload-pack 协商响应解析结果
  */
 export interface UploadPackNegotiationResponse {
@@ -498,21 +513,21 @@ export function parseUploadPackNegotiationResponse(data: Buffer): UploadPackNego
 
     const shallowMatch = text.match(/^shallow ([0-9a-f]{40})$/);
     if (shallowMatch) {
-      shallow.push(shallowMatch[1] as SHA1);
+      shallow.push(sha1(shallowMatch[1]!));
       continue;
     }
 
     const unshallowMatch = text.match(/^unshallow ([0-9a-f]{40})$/);
     if (unshallowMatch) {
-      unshallow.push(unshallowMatch[1] as SHA1);
+      unshallow.push(sha1(unshallowMatch[1]!));
       continue;
     }
 
     const match = text.match(/^ACK ([0-9a-f]{40})(?: (continue|common|ready))?$/);
     if (match) {
       acknowledgements.push({
-        hash: match[1]! as SHA1,
-        status: (match[2] as UploadPackAckStatus | undefined) ?? "common",
+        hash: sha1(match[1]!),
+        status: toAckStatus(match[2]) ?? "common",
       });
     }
   }

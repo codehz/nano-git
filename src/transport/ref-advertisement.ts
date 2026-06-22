@@ -18,7 +18,6 @@
 import { sha1, type SHA1 } from "../core/types.ts";
 import { parsePktLines, PktLineError } from "./pkt-line.ts";
 
-import type { PktLineData } from "./pkt-line.ts";
 import type { RemoteRef, RefAdvertisement } from "./types.ts";
 
 /** 服务端能力声明键值对 */
@@ -84,23 +83,28 @@ export function parseRefAdvertisement(
   // 1. 检查并跳过服务头信息
   //    Smart HTTP 协议要求：如果存在服务头，则服务名必须匹配，且其后紧跟 flush-pkt。
   //    原生 Git 协议无服务头，直接解析 refs。
-  if (pktLines[idx]!.type === "data") {
-    const firstPayload = (pktLines[idx] as PktLineData).payload.toString("utf-8");
-    if (firstPayload.startsWith(SERVICE_HEADER_PREFIX)) {
-      // 提取服务名（# service=<name>\n）
-      const headerService = firstPayload.slice(SERVICE_HEADER_PREFIX.length).trim();
-      if (headerService !== service) {
-        throw new RefAdvertisementError(`Expected service "${service}" but got "${headerService}"`);
-      }
-      idx++; // 跳过服务头
+  if (idx < pktLines.length) {
+    const firstPkt = pktLines[idx]!;
+    if (firstPkt.type === "data") {
+      const firstPayload = firstPkt.payload.toString("utf-8");
+      if (firstPayload.startsWith(SERVICE_HEADER_PREFIX)) {
+        // 提取服务名（# service=<name>\n）
+        const headerService = firstPayload.slice(SERVICE_HEADER_PREFIX.length).trim();
+        if (headerService !== service) {
+          throw new RefAdvertisementError(
+            `Expected service "${service}" but got "${headerService}"`,
+          );
+        }
+        idx++; // 跳过服务头
 
-      // 服务头后必须跟一个 flush-pkt
-      if (idx >= pktLines.length || pktLines[idx]!.type !== "flush") {
-        throw new RefAdvertisementError(
-          `Expected flush-pkt after service header "# service=${service}"`,
-        );
+        // 服务头后必须跟一个 flush-pkt
+        if (idx >= pktLines.length || pktLines[idx]!.type !== "flush") {
+          throw new RefAdvertisementError(
+            `Expected flush-pkt after service header "# service=${service}"`,
+          );
+        }
+        idx++; // 跳过 flush
       }
-      idx++; // 跳过 flush
     }
   }
 

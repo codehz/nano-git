@@ -7,13 +7,31 @@
  * - 对象以 "<type> <size>\0<content>" 格式存储
  */
 
-import { InvalidSHA1Error } from "./errors.ts";
+import { InvalidSHA1Error, InvalidObjectError } from "./errors.ts";
 
 /** SHA-1 哈希值（40 个十六进制字符） */
 export type SHA1 = string & { readonly __brand: "SHA1" };
 
 /** Git 对象类型 */
 export type ObjectType = "blob" | "tree" | "commit" | "tag";
+
+/**
+ * 验证并转换字符串为 ObjectType
+ *
+ * @throws InvalidObjectError 如果字符串不是合法的 ObjectType
+ *
+ * @example
+ * ```ts
+ * assertObjectType("blob"); // => "blob"
+ * assertObjectType("invalid"); // throws InvalidObjectError
+ * ```
+ */
+export function assertObjectType(value: string): ObjectType {
+  if (value === "blob" || value === "tree" || value === "commit" || value === "tag") {
+    return value;
+  }
+  throw new InvalidObjectError(`unknown object type: ${value}`);
+}
 
 /** Blob 对象 — 存储文件内容 */
 export interface GitBlob {

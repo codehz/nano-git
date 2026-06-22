@@ -22,7 +22,7 @@ export interface MemoryObjectStore extends ObjectStore {}
  * 所有对象存储在内存中，程序退出后丢失。
  */
 export function createMemoryObjectStore(): MemoryObjectStore {
-  const store = new Map<string, Buffer>();
+  const store = new Map<SHA1, Buffer>();
 
   return {
     write(obj: GitObject): SHA1 {
@@ -45,7 +45,7 @@ export function createMemoryObjectStore(): MemoryObjectStore {
     },
 
     list(): SHA1[] {
-      return Array.from(store.keys()) as SHA1[];
+      return Array.from(store.keys());
     },
   };
 }

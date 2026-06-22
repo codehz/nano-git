@@ -13,7 +13,7 @@
  */
 
 import { InvalidObjectError } from "../core/errors.ts";
-import { sha1 } from "../core/types.ts";
+import { assertObjectType, sha1 } from "../core/types.ts";
 import { formatAuthor, parseAuthor } from "./author.ts";
 
 import type { GitTag, ObjectType, SHA1 } from "../core/types.ts";
@@ -82,7 +82,7 @@ export function deserializeTag(content: Buffer): GitTag {
         object = sha1(value);
         break;
       case "type":
-        objectType = value as ObjectType;
+        objectType = assertObjectType(value);
         break;
       case "tag":
         tagName = value;

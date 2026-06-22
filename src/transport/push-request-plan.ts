@@ -4,13 +4,13 @@
  * refspec 归一化、能力校验、receive-pack 命令与请求 body 构造。
  */
 
+import { sha1 } from "../core/types.ts";
 import { PushError } from "./push-error.ts";
 import { resolveDefaultRefSpec } from "./push-ref-plan.ts";
 import { buildReceivePackRequest } from "./receive-pack-request.ts";
 import { parseRefSpec } from "./refspec.ts";
 import { extractCapabilities, PUSH_CAPABILITIES } from "./transport-capabilities.ts";
 
-import type { SHA1 } from "../core/types.ts";
 import type { RefStore } from "../refs/types.ts";
 import type { PushRefItem } from "./push-ref-plan.ts";
 import type { ReceivePackCommand } from "./receive-pack-request.ts";
@@ -18,7 +18,7 @@ import type { ParsedRefSpec } from "./refspec.ts";
 import type { RefAdvertisement, PushOptions } from "./types.ts";
 
 /** 零哈希（表示新建引用或删除引用） */
-const ZERO_HASH = "0000000000000000000000000000000000000000";
+const ZERO_HASH = sha1("0000000000000000000000000000000000000000");
 
 /**
  * 解析并归一化 push refspec
@@ -66,8 +66,8 @@ export function validatePushCapabilities(
  */
 export function buildPushCommands(pushRefs: PushRefItem[]): ReceivePackCommand[] {
   return pushRefs.map((r) => ({
-    oldHash: r.remoteHash ?? (ZERO_HASH as SHA1),
-    newHash: r.localHash ?? (ZERO_HASH as SHA1),
+    oldHash: r.remoteHash ?? ZERO_HASH,
+    newHash: r.localHash ?? ZERO_HASH,
     refName: r.remoteRef,
   }));
 }

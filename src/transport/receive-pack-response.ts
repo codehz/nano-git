@@ -8,7 +8,6 @@ import { GitError } from "../core/errors.ts";
 import { parsePktLines } from "./pkt-line.ts";
 import { parseReceivePackResult } from "./receive-pack-result.ts";
 
-import type { PktLineData } from "./pkt-line.ts";
 import type { PushRefUpdate } from "./types.ts";
 
 /**
@@ -42,7 +41,7 @@ export function decodeReceivePackResponse(data: Buffer): DecodedReceivePackRespo
   const pktLines = parsePktLines(data);
 
   if (pktLines.length > 0 && pktLines[0]!.type === "data") {
-    const firstPayload = (pktLines[0] as PktLineData).payload;
+    const firstPayload = pktLines[0]!.payload;
     if (
       firstPayload.length > 0 &&
       (firstPayload[0] === 0x01 || firstPayload[0] === 0x02 || firstPayload[0] === 0x03)
