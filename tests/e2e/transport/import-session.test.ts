@@ -22,7 +22,7 @@ describe("Import Session", () => {
   let mainCommitHash: ReturnType<typeof sha1>;
   let server: ReturnType<typeof startGitHttpBackendServer>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     tempDir = createTempDir("e2e-http-import-session");
     localDir = join(tempDir, "local");
 
@@ -43,16 +43,21 @@ describe("Import Session", () => {
     const repo = initRepository(localDir);
     const session = await repo.openImportSession({ url: server.url });
     const defaultBranch = session.defaultBranch();
-
-    const result = await session
+    const plan = session
       .plan()
       .materialize(defaultBranch)
       .toBranch("main")
       .materialize(defaultBranch)
-      .setHead()
-      .apply();
+      .setHead();
+
+    const preview = await plan.preview();
+    expect(preview.canApply).toBe(true);
+    expect(preview.prefetchedObjects).toBeGreaterThan(0);
+
+    const result = await plan.apply();
 
     expect(result.updatedRefs.get("refs/heads/main")).toBe(mainCommitHash);
+    expect(result.importedObjects).toBe(preview.prefetchedObjects);
     expect(result.headTarget).toBe("refs/heads/main");
     expect(repo.refs.read("HEAD")).toBe("ref: refs/heads/main");
     expect(repo.readRef("HEAD")).toBe(mainCommitHash);
@@ -149,7 +154,7 @@ describe("Import Session", () => {
     const session = await repo.openImportSession({ url: server.url });
 
     const plan = session.plan().materialize(session.defaultBranch()).toBranch("main");
-    const preview = plan.preview();
+    const preview = await plan.preview();
 
     expect(preview.canApply).toBe(true);
 
@@ -163,7 +168,7 @@ describe("Import Session", () => {
     const session = await repo.openImportSession({ url: server.url });
 
     const plan = session.plan().materialize(session.allRefs()).toNamespace("refs/vendor/*");
-    const preview = plan.preview();
+    const preview = await plan.preview();
 
     expect(preview.canApply).toBe(false);
     expect(
@@ -181,7 +186,7 @@ describe("Import Session", () => {
     const session = await repo.openImportSession({ url: server.url });
     const defaultBranch = session.defaultBranch();
 
-    const preview = session
+    const preview = await session
       .plan()
       .materialize(defaultBranch)
       .toNamespace("refs/mirrors/upstream/*", {
@@ -211,7 +216,7 @@ describe("Import Session", () => {
     const session = await repo.openImportSession({ url: server.url });
     const tags = session.select("refs/tags/*");
 
-    const preview = session
+    const preview = await session
       .plan()
       .materialize(tags)
       .toTag("stable-v1")

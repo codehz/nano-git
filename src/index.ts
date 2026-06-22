@@ -217,7 +217,6 @@ export {
   type PlannedRefDeletion,
   type PlannedHeadOperation,
   type ImportDiagnostic,
-  type OpenImportSessionOptions,
   type NamespaceMaterializationOptions,
   type BranchMaterializationOptions,
   type TagMaterializationOptions,

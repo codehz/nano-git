@@ -26,10 +26,48 @@ import type { RemoteRef, RefAdvertisement } from "@/transport/types.ts";
 // Mock 数据
 // ============================================================================
 
-const MOCK_HASH_A = sha1("a".repeat(40));
-const MOCK_HASH_B = sha1("b".repeat(40));
-const MOCK_HASH_C = sha1("c".repeat(40));
-const MOCK_HASH_D = sha1("d".repeat(40));
+function populateMockObjects(backend: ReturnType<typeof createMemoryRepositoryBackend>) {
+  const treeHash = backend.objects.write({
+    type: "tree",
+    entries: [],
+  });
+
+  const createCommit = (parents: readonly string[], message: string) =>
+    backend.objects.write({
+      type: "commit",
+      tree: treeHash,
+      parents: parents.map((parent) => sha1(parent)),
+      author: { name: "Test", email: "test@test", timestamp: 0, timezone: "+0000" },
+      committer: { name: "Test", email: "test@test", timestamp: 0, timezone: "+0000" },
+      message,
+    });
+
+  const mainHash = createCommit([], "main\n");
+  const developHash = createCommit([mainHash], "develop\n");
+  const releaseHash = createCommit([developHash], "release-v1\n");
+  const betaHash = createCommit([releaseHash], "release-v2-beta\n");
+
+  return {
+    mainHash,
+    developHash,
+    releaseHash,
+    betaHash,
+  };
+}
+
+function createBackendWithMockObjects() {
+  const backend = createMemoryRepositoryBackend();
+  populateMockObjects(backend);
+  return backend;
+}
+
+const mockFixtureBackend = createMemoryRepositoryBackend();
+const mockHashes = populateMockObjects(mockFixtureBackend);
+
+const MOCK_HASH_A = mockHashes.mainHash;
+const MOCK_HASH_B = mockHashes.developHash;
+const MOCK_HASH_C = mockHashes.releaseHash;
+const MOCK_HASH_D = mockHashes.betaHash;
 
 function createMockAdvertisement(overrides?: Partial<RefAdvertisement>): RefAdvertisement {
   const refs: RemoteRef[] = [
@@ -57,28 +95,28 @@ const MOCK_SOURCE = { url: "https://example.com/repo.git" };
 // ============================================================================
 
 describe("glob 模式匹配", () => {
-  test("精确匹配", () => {
+  test("精确匹配", async () => {
     expect(matchRefGlob("refs/heads/main", "refs/heads/main")).toBe(true);
   });
 
-  test("通配符匹配分支", () => {
+  test("通配符匹配分支", async () => {
     expect(matchRefGlob("refs/heads/*", "refs/heads/main")).toBe(true);
     expect(matchRefGlob("refs/heads/*", "refs/heads/develop")).toBe(true);
     expect(matchRefGlob("refs/heads/*", "refs/tags/v1.0")).toBe(false);
   });
 
-  test("通配符匹配 tag 前缀", () => {
+  test("通配符匹配 tag 前缀", async () => {
     expect(matchRefGlob("refs/tags/v*", "refs/tags/v1.0.0")).toBe(true);
     expect(matchRefGlob("refs/tags/v*", "refs/tags/v2.0.0-beta")).toBe(true);
     expect(matchRefGlob("refs/tags/v*", "refs/heads/main")).toBe(false);
   });
 
-  test("不匹配不相关模式", () => {
+  test("不匹配不相关模式", async () => {
     expect(matchRefGlob("refs/heads/main", "refs/heads/develop")).toBe(false);
     expect(matchRefGlob("refs/heads/*", "refs/tags/v1.0")).toBe(false);
   });
 
-  test("通配符匹配子路径", () => {
+  test("通配符匹配子路径", async () => {
     expect(matchRefGlob("refs/heads/*", "refs/heads/feature/login")).toBe(true);
   });
 });
@@ -90,7 +128,7 @@ describe("glob 模式匹配", () => {
 describe("ImportView", () => {
   const adv = createMockAdvertisement();
 
-  test("where 过滤保留匹配项", () => {
+  test("where 过滤保留匹配项", async () => {
     const view = createImportView(adv.refs) as ReturnType<typeof createImportView>;
     const branches = view.where((ref) => ref.name.startsWith("refs/heads/"));
     expect(branches.refs.length).toBe(3);
@@ -101,20 +139,20 @@ describe("ImportView", () => {
     ]);
   });
 
-  test("where 空条件返回空视图", () => {
+  test("where 空条件返回空视图", async () => {
     const view = createImportView(adv.refs) as ReturnType<typeof createImportView>;
     const empty = view.where(() => false);
     expect(empty.refs.length).toBe(0);
   });
 
-  test("exclude 排除匹配模式", () => {
+  test("exclude 排除匹配模式", async () => {
     const view = createImportView(adv.refs) as ReturnType<typeof createImportView>;
     const withoutBeta = view.exclude("refs/tags/*beta*");
     expect(withoutBeta.refs.some((r) => r.name === "refs/tags/v2.0.0-beta")).toBe(false);
     expect(withoutBeta.refs.some((r) => r.name === "refs/tags/v1.0.0")).toBe(true);
   });
 
-  test("union 合并两个视图", () => {
+  test("union 合并两个视图", async () => {
     const view = createImportView(adv.refs) as ReturnType<typeof createImportView>;
     const branches = view.where((ref) => ref.name.startsWith("refs/heads/"));
     const tags = view.where((ref) => ref.name.startsWith("refs/tags/"));
@@ -123,14 +161,14 @@ describe("ImportView", () => {
     expect(combined.refs.length).toBe(6);
   });
 
-  test("union 去重", () => {
+  test("union 去重", async () => {
     const view = createImportView(adv.refs) as ReturnType<typeof createImportView>;
     const same = view.union(view);
     // 不包含 HEAD 时，adv.refs 长度为 7（含 HEAD），allRefs 去重后应与原数量一致
     expect(same.refs.length).toBe(adv.refs.length);
   });
 
-  test("name 创建命名视图", () => {
+  test("name 创建命名视图", async () => {
     const view = createImportView(adv.refs) as ReturnType<typeof createImportView>;
     const named = view.name("branches");
     expect(named.label).toBe("branches");
@@ -138,12 +176,12 @@ describe("ImportView", () => {
     expect(named.refs.length).toBe(adv.refs.length);
   });
 
-  test("视图冻结：refs 不可变", () => {
+  test("视图冻结：refs 不可变", async () => {
     const view = createImportView(adv.refs) as ReturnType<typeof createImportView>;
     expect(Object.isFrozen(view.refs)).toBe(true);
   });
 
-  test("view 链式调用", () => {
+  test("view 链式调用", async () => {
     const view = createImportView(adv.refs) as ReturnType<typeof createImportView>;
     const result = view
       .where((ref) => ref.name.startsWith("refs/heads/"))
@@ -168,7 +206,7 @@ describe("ImportSession", () => {
   const adv = createMockAdvertisement();
   const session = createImportSession(MOCK_SOURCE, backend, adv);
 
-  test("select 按 glob 选择 refs", () => {
+  test("select 按 glob 选择 refs", async () => {
     const branches = session.select("refs/heads/*");
     expect(branches.refs.length).toBe(3);
     branches.refs.forEach((ref) => {
@@ -176,32 +214,32 @@ describe("ImportSession", () => {
     });
   });
 
-  test("select 不匹配时返回空视图", () => {
+  test("select 不匹配时返回空视图", async () => {
     const result = session.select("refs/heads/nonexistent/*");
     expect(result.refs.length).toBe(0);
   });
 
-  test("selectRefs 多模式选择", () => {
+  test("selectRefs 多模式选择", async () => {
     const view = session.selectRefs(["refs/heads/main", "refs/tags/v1*"]);
     expect(view.refs.length).toBe(3);
     const names = view.refs.map((r) => r.name).sort();
     expect(names).toEqual(["refs/heads/main", "refs/tags/v1.0.0", "refs/tags/v1.1.0"]);
   });
 
-  test("selectRefs 去重", () => {
+  test("selectRefs 去重", async () => {
     const view = session.selectRefs(["refs/heads/*", "refs/heads/main"]);
     const mainCount = view.refs.filter((r) => r.name === "refs/heads/main").length;
     expect(mainCount).toBe(1);
   });
 
-  test("defaultBranch 返回默认分支视图", () => {
+  test("defaultBranch 返回默认分支视图", async () => {
     const view = session.defaultBranch();
     expect(view.refs.length).toBe(1);
     expect(view.refs[0]?.name).toBe("refs/heads/main");
     expect(view.refs[0]?.hash).toBe(MOCK_HASH_A);
   });
 
-  test("defaultBranch 无默认分支时返回空", () => {
+  test("defaultBranch 无默认分支时返回空", async () => {
     const noDefaultAdv: RefAdvertisement = {
       ...adv,
       defaultBranch: undefined,
@@ -211,13 +249,13 @@ describe("ImportSession", () => {
     expect(view.refs.length).toBe(0);
   });
 
-  test("headTarget 返回 HEAD 指向的分支", () => {
+  test("headTarget 返回 HEAD 指向的分支", async () => {
     const view = session.headTarget();
     expect(view.refs.length).toBe(1);
     expect(view.refs[0]?.name).toBe("refs/heads/main");
   });
 
-  test("headTarget 无 symrefTarget 时返回空", () => {
+  test("headTarget 无 symrefTarget 时返回空", async () => {
     const noSymrefAdv: RefAdvertisement = {
       ...adv,
       refs: [
@@ -230,18 +268,18 @@ describe("ImportSession", () => {
     expect(view.refs.length).toBe(0);
   });
 
-  test("allRefs 返回所有非 HEAD refs", () => {
+  test("allRefs 返回所有非 HEAD refs", async () => {
     const view = session.allRefs();
     // mock 有 6 个非 HEAD refs
     expect(view.refs.length).toBe(6);
     expect(view.refs.some((r) => r.name === "HEAD")).toBe(false);
   });
 
-  test("advertisement 冻结：可直接访问原始快照", () => {
+  test("advertisement 冻结：可直接访问原始快照", async () => {
     expect(session.advertisement).toEqual(adv);
   });
 
-  test("source 冻结：保持传入的 source 配置", () => {
+  test("source 冻结：保持传入的 source 配置", async () => {
     expect(session.source).toEqual(MOCK_SOURCE);
     expect(session.source.url).toBe("https://example.com/repo.git");
   });
@@ -252,11 +290,11 @@ describe("ImportSession", () => {
 // ============================================================================
 
 describe("ImportPlanBuilder 基础行为", () => {
-  const backend = createMemoryRepositoryBackend();
+  const backend = createBackendWithMockObjects();
   const adv = createMockAdvertisement();
   const session = createImportSession(MOCK_SOURCE, backend, adv);
 
-  test("plan() 返回 plan builder", () => {
+  test("plan() 返回 plan builder", async () => {
     const plan = session.plan();
     expect(plan).toBeDefined();
     expect(typeof plan.preview).toBe("function");
@@ -264,9 +302,9 @@ describe("ImportPlanBuilder 基础行为", () => {
     expect(typeof plan.materialize).toBe("function");
   });
 
-  test("preview() 返回 canApply = true", () => {
+  test("preview() 返回 canApply = true", async () => {
     const plan = session.plan();
-    const preview = plan.preview();
+    const preview = await plan.preview();
     expect(preview.canApply).toBe(true);
     expect(preview.remoteSnapshot).toEqual(adv);
   });
@@ -278,17 +316,18 @@ describe("ImportPlanBuilder 基础行为", () => {
     expect(result.updatedRefs.size).toBe(0);
   });
 
-  test("materialize 链式调用后 preview 返回真实 ref 操作", () => {
+  test("materialize 链式调用后 preview 返回真实 ref 操作", async () => {
     const defaultBranch = session.defaultBranch();
     const plan = session.plan();
 
     plan.materialize(defaultBranch).toBranch("main");
-    const preview = plan.preview();
+    const preview = await plan.preview();
 
     expect(preview.canApply).toBe(true);
     expect(preview.refOperations.length).toBeGreaterThan(0);
     expect(preview.selectedRefs.length).toBeGreaterThan(0);
-    expect(preview.objectRoots.length).toBeGreaterThan(0);
+    expect(preview.objectRoots.length).toBe(0);
+    expect(preview.prefetchedObjects).toBe(0);
     expect(preview.diagnostics.length).toBeGreaterThan(0);
   });
 });
@@ -298,7 +337,7 @@ describe("ImportPlanBuilder 基础行为", () => {
 // ============================================================================
 
 describe("会话冻结语义", () => {
-  test("多次调用 select 返回相同快照", () => {
+  test("多次调用 select 返回相同快照", async () => {
     const backend = createMemoryRepositoryBackend();
     const adv = createMockAdvertisement();
     const session = createImportSession(MOCK_SOURCE, backend, adv);
@@ -312,7 +351,7 @@ describe("会话冻结语义", () => {
     expect(session.advertisement.defaultBranch).toBe("refs/heads/main");
   });
 
-  test("view 派生后原 advertisement 修改不影响已有 view", () => {
+  test("view 派生后原 advertisement 修改不影响已有 view", async () => {
     const backend = createMemoryRepositoryBackend();
     const adv = createMockAdvertisement();
     const session = createImportSession(MOCK_SOURCE, backend, adv);
@@ -325,7 +364,7 @@ describe("会话冻结语义", () => {
     expect(branches.refs.length).toBe(3);
   });
 
-  test("advertisement 内部 ref 项也会被冻结复制", () => {
+  test("advertisement 内部 ref 项也会被冻结复制", async () => {
     const backend = createMemoryRepositoryBackend();
     const adv = createMockAdvertisement();
     const session = createImportSession(MOCK_SOURCE, backend, adv);
@@ -338,7 +377,7 @@ describe("会话冻结语义", () => {
     expect(session.advertisement.refs[1]?.name).toBe("refs/heads/main");
   });
 
-  test("source 在会话内冻结为快照", () => {
+  test("source 在会话内冻结为快照", async () => {
     const backend = createMemoryRepositoryBackend();
     const source = {
       url: "https://example.com/original.git",
@@ -359,18 +398,18 @@ describe("会话冻结语义", () => {
 // ============================================================================
 
 describe("Phase 2 PlanBuilder — 命名空间物化", () => {
-  const backend = createMemoryRepositoryBackend();
+  const backend = createBackendWithMockObjects();
   const adv = createMockAdvertisement();
   const session = createImportSession(MOCK_SOURCE, backend, adv);
 
-  test("toNamespace 将分支映射到镜像命名空间", () => {
+  test("toNamespace 将分支映射到镜像命名空间", async () => {
     const branches = session.select("refs/heads/*");
     const plan = session
       .plan()
       .materialize(branches)
       .toNamespace("refs/mirrors/upstream/*", { policy: { mode: "mirror" }, prune: true });
 
-    const preview = plan.preview();
+    const preview = await plan.preview();
 
     // 所有 3 个分支应映射到镜像命名空间
     expect(preview.selectedRefs.length).toBe(3);
@@ -384,27 +423,27 @@ describe("Phase 2 PlanBuilder — 命名空间物化", () => {
     expect(preview.canApply).toBe(true);
   });
 
-  test("toNamespace 精确目标（无通配符）重复映射", () => {
+  test("toNamespace 精确目标（无通配符）重复映射", async () => {
     const mainRef = session.selectRefs(["refs/heads/main"]);
     const plan = session.plan().materialize(mainRef).toNamespace("refs/heads/main-backup");
 
-    const preview = plan.preview();
+    const preview = await plan.preview();
     expect(preview.selectedRefs.length).toBe(1);
     expect(preview.selectedRefs[0]?.localTarget).toBe("refs/heads/main-backup");
   });
 
-  test("toNamespace 标签映射到 refs/tags/* 命名空间", () => {
+  test("toNamespace 标签映射到 refs/tags/* 命名空间", async () => {
     const tags = session.select("refs/tags/*");
     const plan = session.plan().materialize(tags).toNamespace("refs/tags/*");
 
-    const preview = plan.preview();
+    const preview = await plan.preview();
     // 标签的公共前缀是 refs/tags/，所以 * 匹配 v1.0.0, v1.1.0, v2.0.0-beta
     expect(preview.selectedRefs.length).toBe(3);
     const localRefs = preview.selectedRefs.map((r) => r.localTarget).sort();
     expect(localRefs).toEqual(["refs/tags/v1.0.0", "refs/tags/v1.1.0", "refs/tags/v2.0.0-beta"]);
   });
 
-  test("子路径分支保留嵌套路径", () => {
+  test("子路径分支保留嵌套路径", async () => {
     // feature/login 的公共前缀是 refs/heads/
     // 映射到 refs/mirrors/upstream/* 应保留 feature/login
     const branches = session.select("refs/heads/*");
@@ -413,7 +452,7 @@ describe("Phase 2 PlanBuilder — 命名空间物化", () => {
       .materialize(branches)
       .toNamespace("refs/mirrors/upstream/*", { policy: { mode: "mirror" } });
 
-    const preview = plan.preview();
+    const preview = await plan.preview();
     const loginTarget = preview.selectedRefs.find(
       (r) => r.remoteRef.name === "refs/heads/feature/login",
     );
@@ -423,33 +462,33 @@ describe("Phase 2 PlanBuilder — 命名空间物化", () => {
 });
 
 describe("Phase 2 PlanBuilder — 分支/tag/HEAD 物化", () => {
-  const backend = createMemoryRepositoryBackend();
+  const backend = createBackendWithMockObjects();
   const adv = createMockAdvertisement();
   const session = createImportSession(MOCK_SOURCE, backend, adv);
 
-  test("toBranch 创建本地分支", () => {
+  test("toBranch 创建本地分支", async () => {
     const defaultBranch = session.defaultBranch();
     const plan = session.plan().materialize(defaultBranch).toBranch("main");
 
-    const preview = plan.preview();
+    const preview = await plan.preview();
     expect(preview.selectedRefs.length).toBe(1);
     expect(preview.selectedRefs[0]?.localTarget).toBe("refs/heads/main");
     expect(preview.refOperations[0]?.localRef).toBe("refs/heads/main");
   });
 
-  test("toBranch 带 refs/heads/ 前缀", () => {
+  test("toBranch 带 refs/heads/ 前缀", async () => {
     const defaultBranch = session.defaultBranch();
     const plan = session.plan().materialize(defaultBranch).toBranch("refs/heads/custom-main");
 
-    const preview = plan.preview();
+    const preview = await plan.preview();
     expect(preview.selectedRefs[0]?.localTarget).toBe("refs/heads/custom-main");
   });
 
-  test("toTag 创建本地 tag", () => {
+  test("toTag 创建本地 tag", async () => {
     const tags = session.select("refs/tags/v1*");
     const plan = session.plan().materialize(tags).toTag("v1-current");
 
-    const preview = plan.preview();
+    const preview = await plan.preview();
     expect(preview.selectedRefs.length).toBe(0);
     expect(preview.canApply).toBe(false);
     expect(
@@ -459,15 +498,15 @@ describe("Phase 2 PlanBuilder — 分支/tag/HEAD 物化", () => {
     ).toBe(true);
   });
 
-  test("toTag 带 refs/tags/ 前缀", () => {
+  test("toTag 带 refs/tags/ 前缀", async () => {
     const tagRef = session.selectRefs(["refs/tags/v1.0.0"]);
     const plan = session.plan().materialize(tagRef).toTag("refs/tags/stable-v1");
 
-    const preview = plan.preview();
+    const preview = await plan.preview();
     expect(preview.selectedRefs[0]?.localTarget).toBe("refs/tags/stable-v1");
   });
 
-  test("setHead 设置 HEAD 到最后物化的 ref", () => {
+  test("setHead 设置 HEAD 到最后物化的 ref", async () => {
     const defaultBranch = session.defaultBranch();
     const plan = session
       .plan()
@@ -476,12 +515,12 @@ describe("Phase 2 PlanBuilder — 分支/tag/HEAD 物化", () => {
       .materialize(defaultBranch)
       .setHead();
 
-    const preview = plan.preview();
+    const preview = await plan.preview();
     expect(preview.headOperation).toBeDefined();
     expect(preview.headOperation!.targetRef).toBe("refs/heads/main");
   });
 
-  test("setHead 绑定当前 view 对应的前置物化结果，而不是全局最后一个映射", () => {
+  test("setHead 绑定当前 view 对应的前置物化结果，而不是全局最后一个映射", async () => {
     const branches = session.select("refs/heads/*");
     const defaultBranch = session.defaultBranch();
     const plan = session
@@ -495,15 +534,15 @@ describe("Phase 2 PlanBuilder — 分支/tag/HEAD 物化", () => {
       .materialize(defaultBranch)
       .setHead();
 
-    const preview = plan.preview();
+    const preview = await plan.preview();
     expect(preview.headOperation?.targetRef).toBe("refs/heads/main");
   });
 
-  test("setHead 无前置物化时发出警告", () => {
+  test("setHead 无前置物化时发出警告", async () => {
     const defaultBranch = session.defaultBranch();
     const plan = session.plan().materialize(defaultBranch).setHead();
 
-    const preview = plan.preview();
+    const preview = await plan.preview();
     // setHead 在物化操作中但没有前置 toBranch/toNamespace
     // headOperation 应为 undefined，同时发出警告
     expect(preview.headOperation).toBeUndefined();
@@ -511,9 +550,9 @@ describe("Phase 2 PlanBuilder — 分支/tag/HEAD 物化", () => {
     expect(warns.length).toBeGreaterThan(0);
   });
 
-  test("setHead 指向镜像命名空间时报错", () => {
+  test("setHead 指向镜像命名空间时报错", async () => {
     const defaultBranch = session.defaultBranch();
-    const preview = session
+    const preview = await session
       .plan()
       .materialize(defaultBranch)
       .toNamespace("refs/mirrors/upstream/*", {
@@ -532,9 +571,9 @@ describe("Phase 2 PlanBuilder — 分支/tag/HEAD 物化", () => {
     ).toBe(true);
   });
 
-  test("setHead 指向 tag 时报错", () => {
+  test("setHead 指向 tag 时报错", async () => {
     const tagRef = session.selectRefs(["refs/tags/v1.0.0"]);
-    const preview = session
+    const preview = await session
       .plan()
       .materialize(tagRef)
       .toTag("stable-v1")
@@ -551,9 +590,9 @@ describe("Phase 2 PlanBuilder — 分支/tag/HEAD 物化", () => {
     ).toBe(true);
   });
 
-  test("setHead({ detach: true }) 仍要求目标是 refs/heads/*", () => {
+  test("setHead({ detach: true }) 仍要求目标是 refs/heads/*", async () => {
     const defaultBranch = session.defaultBranch();
-    const preview = session
+    const preview = await session
       .plan()
       .materialize(defaultBranch)
       .toNamespace("refs/mirrors/upstream/*", {
@@ -572,9 +611,9 @@ describe("Phase 2 PlanBuilder — 分支/tag/HEAD 物化", () => {
     ).toBe(true);
   });
 
-  test("toBranch 多 ref 视图直接报错", () => {
+  test("toBranch 多 ref 视图直接报错", async () => {
     const branches = session.select("refs/heads/*");
-    const preview = session.plan().materialize(branches).toBranch("main").preview();
+    const preview = await session.plan().materialize(branches).toBranch("main").preview();
 
     expect(preview.canApply).toBe(false);
     expect(
@@ -584,7 +623,7 @@ describe("Phase 2 PlanBuilder — 分支/tag/HEAD 物化", () => {
     ).toBe(true);
   });
 
-  test("多个 materialize 链完整工作", () => {
+  test("多个 materialize 链完整工作", async () => {
     const branches = session.select("refs/heads/*");
     const releaseTags = session.selectRefs(["refs/tags/v1.0.0"]);
     const defaultBranch = session.defaultBranch();
@@ -604,7 +643,7 @@ describe("Phase 2 PlanBuilder — 分支/tag/HEAD 物化", () => {
       .materialize(defaultBranch)
       .setHead();
 
-    const preview = plan.preview();
+    const preview = await plan.preview();
 
     // 3 branches + 1 release tag + 1 branch + HEAD
     expect(preview.selectedRefs.length).toBe(5);
@@ -617,14 +656,14 @@ describe("Phase 2 PlanBuilder — 分支/tag/HEAD 物化", () => {
 });
 
 describe("Phase 2 PlanBuilder — 前置条件与诊断", () => {
-  const backend = createMemoryRepositoryBackend();
+  const backend = createBackendWithMockObjects();
   const adv = createMockAdvertisement();
   const session = createImportSession(MOCK_SOURCE, backend, adv);
 
-  test("preview 包含正确的 localPreconditions", () => {
+  test("preview 包含正确的 localPreconditions", async () => {
     const defaultBranch = session.defaultBranch();
     const plan = session.plan().materialize(defaultBranch).toBranch("new-main");
-    const preview = plan.preview();
+    const preview = await plan.preview();
 
     // 应有 refs/heads/new-main 的前置条件（不存在时为 null）
     const precondition = preview.localPreconditions.find(
@@ -635,7 +674,7 @@ describe("Phase 2 PlanBuilder — 前置条件与诊断", () => {
     expect(precondition!.expectedHash).toBeNull();
   });
 
-  test("setHead 会把 HEAD 纳入前置条件快照", () => {
+  test("setHead 会把 HEAD 纳入前置条件快照", async () => {
     backend.refs.write("HEAD", "ref: refs/heads/old-main");
 
     const defaultBranch = session.defaultBranch();
@@ -645,14 +684,14 @@ describe("Phase 2 PlanBuilder — 前置条件与诊断", () => {
       .toBranch("main")
       .materialize(defaultBranch)
       .setHead();
-    const preview = plan.preview();
+    const preview = await plan.preview();
 
     const headPrecondition = preview.localPreconditions.find((p) => p.refName === "HEAD");
     expect(headPrecondition).toBeDefined();
     expect(headPrecondition?.expectedValue).toBe("ref: refs/heads/old-main");
   });
 
-  test("create-only 策略检测已有 ref 冲突", () => {
+  test("create-only 策略检测已有 ref 冲突", async () => {
     // 先在本地创建一个 tag
     backend.refs.write("refs/tags/v1.0.0", sha1("e".repeat(40)));
 
@@ -662,7 +701,7 @@ describe("Phase 2 PlanBuilder — 前置条件与诊断", () => {
       .materialize(tagView)
       .toTag("v1.0.0", { policy: { mode: "create-only" } });
 
-    const preview = plan.preview();
+    const preview = await plan.preview();
 
     // 应有 error 级别的诊断信息
     const errors = preview.diagnostics.filter((d) => d.level === "error");
@@ -676,13 +715,13 @@ describe("Phase 2 PlanBuilder — 前置条件与诊断", () => {
     expect(tagOps.length).toBe(0);
   });
 
-  test("no-op 跳过（远程 hash 与本地相同）", () => {
+  test("no-op 跳过（远程 hash 与本地相同）", async () => {
     // 先写入一个与远端 hash 相同的 ref
     backend.refs.write("refs/heads/main", MOCK_HASH_A);
 
     const mainView = session.selectRefs(["refs/heads/main"]);
     const plan = session.plan().materialize(mainView).toBranch("main");
-    const preview = plan.preview();
+    const preview = await plan.preview();
 
     // 应为 info 级别的 "已是最新" 诊断
     const skipMessages = preview.diagnostics.filter((d) => d.message.includes("已是最新"));
@@ -693,22 +732,25 @@ describe("Phase 2 PlanBuilder — 前置条件与诊断", () => {
     expect(mainOps.length).toBe(0);
   });
 
-  test("hash 相同但对象缺失时仍会规划对象导入", () => {
-    backend.refs.write("refs/heads/main", MOCK_HASH_A);
+  test("hash 相同但对象缺失时仍会规划对象导入", async () => {
+    const isolatedBackend = createMemoryRepositoryBackend();
+    isolatedBackend.refs.write("refs/heads/main", MOCK_HASH_A);
+    const isolatedSession = createImportSession(MOCK_SOURCE, isolatedBackend, adv, () => ({
+      advertise: async () => adv,
+      request: async () => {
+        throw new Error("transport requested");
+      },
+    }));
 
-    const mainView = session.selectRefs(["refs/heads/main"]);
-    const plan = session.plan().materialize(mainView).toBranch("main");
-    const preview = plan.preview();
-
-    expect(preview.selectedRefs.length).toBe(1);
-    expect(preview.objectRoots).toContain(MOCK_HASH_A);
-    expect(preview.refOperations.length).toBe(0);
+    const mainView = isolatedSession.selectRefs(["refs/heads/main"]);
+    const plan = isolatedSession.plan().materialize(mainView).toBranch("main");
+    expect(plan.preview()).rejects.toThrow(/transport requested/);
   });
 
-  test("自定义命名空间未显式指定 policy 时拒绝 apply", () => {
+  test("自定义命名空间未显式指定 policy 时拒绝 apply", async () => {
     const branches = session.select("refs/heads/*");
     const plan = session.plan().materialize(branches).toNamespace("refs/mirrors/upstream/*");
-    const preview = plan.preview();
+    const preview = await plan.preview();
 
     expect(preview.canApply).toBe(false);
     expect(
@@ -718,9 +760,9 @@ describe("Phase 2 PlanBuilder — 前置条件与诊断", () => {
     ).toBe(true);
   });
 
-  test("命名视图标签会出现在诊断中", () => {
+  test("命名视图标签会出现在诊断中", async () => {
     const namedEmptyView = session.select("refs/heads/nonexistent/*").name("empty-branches");
-    const preview = session.plan().materialize(namedEmptyView).toBranch("ghost").preview();
+    const preview = await session.plan().materialize(namedEmptyView).toBranch("ghost").preview();
 
     expect(
       preview.diagnostics.some(
@@ -728,43 +770,59 @@ describe("Phase 2 PlanBuilder — 前置条件与诊断", () => {
       ),
     ).toBe(true);
   });
+
+  test("命名视图标签会结构化出现在 preview 中", async () => {
+    const namedDefaultBranch = session.defaultBranch().name("default-branch");
+    const preview = await session
+      .plan()
+      .materialize(namedDefaultBranch)
+      .toBranch("named-main")
+      .materialize(namedDefaultBranch)
+      .setHead()
+      .preview();
+
+    expect(preview.selectedRefs[0]?.viewLabel).toBe("default-branch");
+    expect(preview.refOperations[0]?.viewLabel).toBe("default-branch");
+    expect(preview.headOperation?.targetRef).toBe("refs/heads/named-main");
+    expect(preview.headOperation?.viewLabel).toBe("default-branch");
+  });
 });
 
 describe("Phase 2 PlanBuilder — 边界与错误", () => {
-  const backend = createMemoryRepositoryBackend();
+  const backend = createBackendWithMockObjects();
   const adv = createMockAdvertisement();
   const session = createImportSession(MOCK_SOURCE, backend, adv);
 
-  test("空 view 的 toBranch 发出警告但不崩溃", () => {
+  test("空 view 的 toBranch 发出警告但不崩溃", async () => {
     const emptyView = session.select("refs/heads/nonexistent/*");
     const plan = session.plan().materialize(emptyView).toBranch("ghost");
-    const preview = plan.preview();
+    const preview = await plan.preview();
 
     const warnings = preview.diagnostics.filter((d) => d.message.includes("view 为空"));
     expect(warnings.length).toBeGreaterThan(0);
     expect(preview.selectedRefs.length).toBe(0);
   });
 
-  test("空 view 的 toTag 发出警告但不崩溃", () => {
+  test("空 view 的 toTag 发出警告但不崩溃", async () => {
     const emptyView = session.select("refs/tags/nonexistent/*");
     const plan = session.plan().materialize(emptyView).toTag("ghost");
-    const preview = plan.preview();
+    const preview = await plan.preview();
 
     const warnings = preview.diagnostics.filter((d) => d.message.includes("view 为空"));
     expect(warnings.length).toBeGreaterThan(0);
   });
 
-  test("空 view 的 toNamespace 返回空映射", () => {
+  test("空 view 的 toNamespace 返回空映射", async () => {
     const emptyView = session.select("refs/heads/nonexistent/*");
     const plan = session.plan().materialize(emptyView).toNamespace("refs/mirrors/*");
-    const preview = plan.preview();
+    const preview = await plan.preview();
 
     expect(preview.selectedRefs.length).toBe(0);
   });
 
-  test("精确目标不允许开启 prune", () => {
+  test("精确目标不允许开启 prune", async () => {
     const mainRef = session.selectRefs(["refs/heads/main"]);
-    const preview = session
+    const preview = await session
       .plan()
       .materialize(mainRef)
       .toNamespace("refs/mirrors/upstream/main", {
@@ -781,11 +839,11 @@ describe("Phase 2 PlanBuilder — 边界与错误", () => {
     ).toBe(true);
   });
 
-  test("多个动作写入同一目标 ref 时拒绝 apply", () => {
+  test("多个动作写入同一目标 ref 时拒绝 apply", async () => {
     const mainRef = session.selectRefs(["refs/heads/main"]);
     const developRef = session.selectRefs(["refs/heads/develop"]);
 
-    const preview = session
+    const preview = await session
       .plan()
       .materialize(mainRef)
       .toBranch("shared")
@@ -810,16 +868,20 @@ describe("Phase 2 PlanBuilder — 边界与错误", () => {
     expect(result.updatedRefs.size).toBe(0);
   });
 
-  test("preview 保留 remoteSnapshot 快照", () => {
+  test("preview 保留 remoteSnapshot 快照", async () => {
     const plan = session.plan();
-    const preview = plan.preview();
+    const preview = await plan.preview();
 
     expect(preview.remoteSnapshot.defaultBranch).toBe("refs/heads/main");
     expect(preview.remoteSnapshot.refs.length).toBe(7);
   });
 
-  test("preview 结果会被冻结", () => {
-    const preview = session.plan().materialize(session.defaultBranch()).toBranch("main").preview();
+  test("preview 结果会被冻结", async () => {
+    const preview = await session
+      .plan()
+      .materialize(session.defaultBranch())
+      .toBranch("main")
+      .preview();
 
     expect(Object.isFrozen(preview)).toBe(true);
     expect(Object.isFrozen(preview.selectedRefs)).toBe(true);
@@ -894,13 +956,17 @@ describe("Phase 3 — apply 写 ref", () => {
     return { backend, treeHash, commitHash, commitHash2, blobHash };
   }
 
-  test("preview 阶段直接拒绝非 fast-forward 更新", () => {
+  test("preview 阶段直接拒绝非 fast-forward 更新", async () => {
     const { backend, commitHash, commitHash2 } = createRepoWithObjects();
     backend.refs.write("refs/heads/main", commitHash2);
 
     const adv = createAdvForCommit(commitHash);
     const session = createImportSession(MOCK_SOURCE, backend, adv);
-    const preview = session.plan().materialize(session.defaultBranch()).toBranch("main").preview();
+    const preview = await session
+      .plan()
+      .materialize(session.defaultBranch())
+      .toBranch("main")
+      .preview();
 
     expect(preview.canApply).toBe(false);
     expect(
@@ -910,7 +976,7 @@ describe("Phase 3 — apply 写 ref", () => {
     ).toBe(true);
   });
 
-  test("preview 阶段直接拒绝把非 commit 对象物化到 refs/heads/*", () => {
+  test("preview 阶段直接拒绝把非 commit 对象物化到 refs/heads/*", async () => {
     const { backend, blobHash } = createRepoWithObjects();
     const adv: RefAdvertisement = {
       capabilities: {},
@@ -921,7 +987,11 @@ describe("Phase 3 — apply 写 ref", () => {
       defaultBranch: "refs/heads/main",
     };
     const session = createImportSession(MOCK_SOURCE, backend, adv);
-    const preview = session.plan().materialize(session.defaultBranch()).toBranch("main").preview();
+    const preview = await session
+      .plan()
+      .materialize(session.defaultBranch())
+      .toBranch("main")
+      .preview();
 
     expect(preview.canApply).toBe(false);
     expect(
@@ -993,7 +1063,7 @@ describe("Phase 3 — apply 写 ref", () => {
       .materialize(defaultBranch)
       .toBranch("main", { policy: { mode: "mirror" } });
 
-    const preview = plan.preview();
+    const preview = await plan.preview();
     expect(preview.canApply).toBe(true);
     expect(
       preview.diagnostics.some((d) => d.level === "info" && d.message.includes("mirror 策略覆盖")),
@@ -1018,7 +1088,7 @@ describe("Phase 3 — apply 写 ref", () => {
       .materialize(defaultBranch)
       .setHead({ detach: true });
 
-    const preview = plan.preview();
+    const preview = await plan.preview();
     expect(preview.headOperation?.detach).toBe(true);
 
     const result = await plan.apply();
@@ -1212,7 +1282,7 @@ describe("Phase 3 — apply 错误处理", () => {
     const plan = session.plan().materialize(defaultBranch).toBranch("main");
 
     // preview 后，外部修改了本地 ref
-    const preview = plan.preview();
+    const preview = await plan.preview();
     expect(preview.canApply).toBe(true);
     expect(preview.localPreconditions.length).toBeGreaterThan(0);
 
@@ -1240,7 +1310,7 @@ describe("Phase 3 — apply 错误处理", () => {
       .materialize(defaultBranch)
       .setHead();
 
-    const preview = plan.preview();
+    const preview = await plan.preview();
     expect(preview.localPreconditions.some((p) => p.refName === "HEAD")).toBe(true);
 
     backend.refs.write("HEAD", "ref: refs/heads/changed");
@@ -1264,7 +1334,7 @@ describe("Phase 3 — apply 错误处理", () => {
         prune: true,
       });
 
-    const preview = plan.preview();
+    const preview = await plan.preview();
     expect(
       preview.localPreconditions.some((p) => p.namespacePrefix === "refs/mirrors/upstream/"),
     ).toBe(true);
@@ -1283,7 +1353,7 @@ describe("Phase 3 — apply 错误处理", () => {
     const defaultBranch = session.defaultBranch();
 
     const plan = session.plan();
-    const firstPreview = plan.preview();
+    const firstPreview = await plan.preview();
     expect(firstPreview.refOperations.length).toBe(0);
 
     plan.materialize(defaultBranch).toBranch("main");
@@ -1339,7 +1409,7 @@ describe("Phase 3 — apply 错误处理", () => {
       .materialize(session.defaultBranch())
       .toBranch("main", { policy: { mode: "create-only" } });
 
-    const preview = plan.preview();
+    const preview = await plan.preview();
     expect(preview.canApply).toBe(false);
     expect(
       preview.diagnostics.some(
@@ -1350,10 +1420,8 @@ describe("Phase 3 — apply 错误处理", () => {
     expect(plan.apply()).rejects.toThrow(/create-only/);
   });
 
-  test("对象缺失时 apply 失败（经 transport 拉取仍失败）", async () => {
+  test("对象缺失时 preview 预取失败会向上传递 transport 错误", async () => {
     const { backend } = createRepoWithObjects();
-    // 注意：这里 commitHash 对应的对象已存在于 backend 中
-    // 我们创建一个引用了一个不存在的 hash 的 advertisement
     const missingHash = sha1("c".repeat(40));
     const adv: RefAdvertisement = {
       capabilities: {},
@@ -1365,21 +1433,13 @@ describe("Phase 3 — apply 错误处理", () => {
     };
     const session = createImportSession(MOCK_SOURCE, backend, adv);
     const missingView = session.selectRefs(["refs/heads/missing"]);
-
     const plan = session.plan().materialize(missingView).toBranch("missing-tip");
 
-    // preview 应检测到可以 apply（有 ref 操作）
-    const preview = plan.preview();
-    expect(preview.canApply).toBe(true);
-    expect(preview.selectedRefs.length).toBeGreaterThan(0);
-
-    // apply 应尝试拉取（使用真实 transport 连接，会失败）
-    // 但这里不会连接真实服务，因为我们没有给 apply 传入 transport
-    // 它会尝试创建默认的 http transport，连接失败
+    expect(plan.preview()).rejects.toThrow();
     expect(plan.apply()).rejects.toThrow();
   });
 
-  test("hash 相同但对象缺失时 apply 仍会尝试导入对象", async () => {
+  test("hash 相同但对象缺失时 preview 会先尝试导入对象", async () => {
     const backend = createMemoryRepositoryBackend();
     backend.refs.write("refs/heads/main", MOCK_HASH_A);
 
@@ -1400,14 +1460,11 @@ describe("Phase 3 — apply 错误处理", () => {
     }));
 
     const plan = session.plan().materialize(session.defaultBranch()).toBranch("main");
-    const preview = plan.preview();
-
-    expect(preview.refOperations.length).toBe(0);
-    expect(preview.objectRoots).toContain(MOCK_HASH_A);
+    expect(plan.preview()).rejects.toThrow(/transport requested/);
     expect(plan.apply()).rejects.toThrow(/transport requested/);
   });
 
-  test("fetch-pack 期间本地 ref 漂移时 apply 在写入前失败", async () => {
+  test("preview 期间本地 ref 漂移会直接返回失败预览", async () => {
     const backend = createMemoryRepositoryBackend();
     const sourceRepo = createMemoryRepositoryBackend();
     const tree = {
@@ -1440,10 +1497,16 @@ describe("Phase 3 — apply 错误处理", () => {
     }));
 
     const plan = session.plan().materialize(session.defaultBranch()).toBranch("main");
-    const preview = plan.preview();
-    expect(preview.objectRoots).toContain(sha1(commitHash));
+    const preview = await plan.preview();
+    expect(preview.canApply).toBe(false);
+    expect(
+      preview.diagnostics.some(
+        (diagnostic) =>
+          diagnostic.level === "error" && diagnostic.message.includes("前置条件校验失败"),
+      ),
+    ).toBe(true);
 
-    expect(plan.apply()).rejects.toThrow(/前置条件/);
+    expect(plan.apply()).rejects.toThrow(/无法执行/);
     expect(backend.refs.read("refs/heads/main")).toBe(sha1("f".repeat(40)));
   });
 
@@ -1471,7 +1534,7 @@ describe("Phase 3 — apply 错误处理", () => {
       .materialize(session.defaultBranch())
       .toBranch("main", { policy: { mode: "mirror" } });
 
-    const preview = plan.preview();
+    const preview = await plan.preview();
     expect(preview.localPreconditions.some((p) => p.refName === "refs/heads/main")).toBe(true);
 
     backend.refs.write("refs/heads/main", "ref: refs/heads/other");
@@ -1480,22 +1543,18 @@ describe("Phase 3 — apply 错误处理", () => {
   });
 });
 
-describe("openImportSession 选项透传", () => {
-  test("options.token 会并入 session source 快照", async () => {
+describe("openImportSession source 透传", () => {
+  test("source.token 会并入 session source 快照", async () => {
     const backend = createMemoryRepositoryBackend();
-    const repo = createRepoImportOperations(backend);
     const advertised = createMockAdvertisement();
-
-    const session = await repo.openImportSession(
-      { url: "https://example.com/private.git" },
-      {
-        token: "secret-token",
-        transportFactory: () => ({
-          advertise: async () => advertised,
-          request: async () => Buffer.alloc(0),
-        }),
-      },
-    );
+    const repo = createRepoImportOperations(backend, () => ({
+      advertise: async () => advertised,
+      request: async () => Buffer.alloc(0),
+    }));
+    const session = await repo.openImportSession({
+      url: "https://example.com/private.git",
+      token: "secret-token",
+    });
 
     expect(session.source.token).toBe("secret-token");
   });

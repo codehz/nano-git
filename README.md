@@ -167,13 +167,16 @@ const plan = session
   .materialize(defaultBranch)
   .setHead();
 
-const preview = plan.preview();
+const preview = await plan.preview();
 console.log(preview.refOperations.map((op) => op.localRef));
+console.log(preview.prefetchedObjects);
 
 const result = await plan.apply();
 console.log(`Imported ${result.importedObjects} objects`);
 console.log(`Updated ${result.updatedRefs.size} refs`);
 ```
+
+`preview()` 可能会为严格校验预取缺失对象，但不会写入 refs 或 `HEAD`。`apply()` 只会消费同一计划的冻结 preview 结果。
 
 带认证的导入（私有仓库）：
 

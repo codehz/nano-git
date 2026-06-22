@@ -31,7 +31,6 @@ export type {
   PlannedRefDeletion,
   PlannedHeadOperation,
   ImportDiagnostic,
-  OpenImportSessionOptions,
   NamespaceMaterializationOptions,
   BranchMaterializationOptions,
   TagMaterializationOptions,

@@ -34,24 +34,6 @@ export interface ImportSource {
 /**
  * 打开 Import Session 的选项
  */
-export interface OpenImportSessionOptions {
-  /** 认证 token */
-  readonly token?: string;
-
-  /** 自定义请求头 */
-  readonly headers?: Record<string, string>;
-
-  /**
-   * Transport 工厂（用于测试注入）
-   * 调用方可以注入自定义 UploadPackTransport 实现以替代默认的 HTTP transport。
-   */
-  readonly transportFactory?: (url: string) => import("../transport/types.ts").UploadPackTransport;
-}
-
-// ============================================================================
-// ImportView
-// ============================================================================
-
 /**
  * 远端 ref 视图
  *
@@ -172,7 +154,7 @@ export interface RefMaterializationBuilder {
 export interface ImportPlanBuilder {
   materialize(view: ImportView): RefMaterializationBuilder;
 
-  preview(): ImportPreview;
+  preview(): Promise<ImportPreview>;
 
   apply(): Promise<ImportApplyResult>;
 }
@@ -188,6 +170,7 @@ export interface PlannedRemoteRef {
   readonly remoteRef: RemoteRef;
   readonly localTarget: string;
   readonly policy: RefUpdatePolicy;
+  readonly viewLabel?: string;
 }
 
 /**
@@ -238,6 +221,7 @@ export interface PlannedRefOperation {
   readonly localRef: string;
   readonly newHash: SHA1;
   readonly policy: RefUpdatePolicy;
+  readonly viewLabel?: string;
 }
 
 /**
@@ -249,6 +233,7 @@ export interface PlannedRefOperation {
 export interface PlannedHeadOperation {
   readonly targetRef: string;
   readonly detach: boolean;
+  readonly viewLabel?: string;
 }
 
 /**
@@ -257,6 +242,8 @@ export interface PlannedHeadOperation {
 export interface PlannedRefDeletion {
   readonly refName: string;
   readonly reason: string;
+  readonly namespacePattern: string;
+  readonly viewLabel?: string;
 }
 
 /**
@@ -278,6 +265,7 @@ export interface ImportPreview {
   readonly remoteSnapshot: RefAdvertisement;
   readonly selectedRefs: readonly PlannedRemoteRef[];
   readonly objectRoots: readonly SHA1[];
+  readonly prefetchedObjects: number;
   readonly localPreconditions: readonly LocalPrecondition[];
   readonly refOperations: readonly PlannedRefOperation[];
   readonly headOperation?: PlannedHeadOperation;
@@ -303,7 +291,7 @@ export interface ImportApplyResult {
 /**
  * 导入会话
  *
- * 一次冻结的远端快照 + 本地前置条件基线。
+ * 一次冻结的远端快照。
  * 在创建时拉取一次 advertisement，所有派生 view 和 plan 都基于该快照。
  * 想刷新远端状态时，必须重新创建 session。
  */
@@ -339,7 +327,6 @@ export interface RepoImportOperations {
    * 会话及其所有派生 view 都是基于该快照的冻结视图。
    *
    * @param source - 导入源配置
-   * @param options - 可选参数
    * @returns ImportSession
    *
    * @example
@@ -350,8 +337,5 @@ export interface RepoImportOperations {
    * const branches = session.select("refs/heads/*");
    * ```
    */
-  openImportSession(
-    source: ImportSource,
-    options?: OpenImportSessionOptions,
-  ): Promise<ImportSession>;
+  openImportSession(source: ImportSource): Promise<ImportSession>;
 }

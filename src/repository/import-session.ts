@@ -34,7 +34,6 @@ import type {
   PlannedHeadOperation,
   RefMaterializationBuilder,
   RefUpdatePolicy,
-  OpenImportSessionOptions,
 } from "./import-session-types.ts";
 
 // ============================================================================
@@ -210,6 +209,7 @@ interface NamespaceOwnership {
   readonly pattern: string;
   readonly prefix: string;
   readonly currentRefs: Set<string>;
+  viewLabel?: string;
   prune: boolean;
 }
 
@@ -258,6 +258,7 @@ function freezePreviewResult(
     remoteSnapshot: advertisement,
     selectedRefs: preview.selectedRefs,
     objectRoots: preview.objectRoots,
+    prefetchedObjects: preview.prefetchedObjects,
     localPreconditions: preview.localPreconditions,
     refOperations: preview.refOperations,
     headOperation: preview.headOperation,
@@ -347,6 +348,7 @@ function snapshotOwnedRefs(
   return backend.refs
     .listAll()
     .filter((refName) => matchRefGlob(pattern, refName))
+    .sort((left, right) => left.localeCompare(right))
     .map((refName) => ({
       refName,
       expectedValue: backend.refs.read(refName),
@@ -425,15 +427,581 @@ function createPlanBuilder(
   transportFactory?: (url: string) => UploadPackTransport,
 ): ImportPlanBuilder {
   const actions: MaterializationAction[] = [];
-
-  let lastPreview: ImportPreview | null = null;
+  let planVersion = 0;
+  let lastPreview: { readonly version: number; readonly preview: ImportPreview } | null = null;
 
   /**
    * 计划动作变更后必须丢弃旧 preview，
    * 否则 apply() 可能基于过期计划执行。
    */
   function invalidatePreview(): void {
+    planVersion += 1;
     lastPreview = null;
+  }
+
+  function inferNamespaceDefaultPolicy(targetPattern: string): RefUpdatePolicy | undefined {
+    const headRegex = globToRegex("refs/heads/*");
+    if (targetPattern === "refs/heads/*" || headRegex.test(targetPattern)) {
+      return { mode: "fast-forward" };
+    }
+    const tagRegex = globToRegex("refs/tags/*");
+    if (targetPattern === "refs/tags/*" || tagRegex.test(targetPattern)) {
+      return { mode: "create-only" };
+    }
+    return undefined;
+  }
+
+  function captureLocalPreconditions(
+    resolvedMappings: readonly ResolvedMapping[],
+    headRequests: readonly HeadRequest[],
+    namespaceOwnerships: ReadonlyMap<string, NamespaceOwnership>,
+  ): readonly LocalPrecondition[] {
+    const affectedRefNames = new Set<string>();
+    for (const mapping of resolvedMappings) {
+      affectedRefNames.add(mapping.localRef);
+    }
+    if (headRequests.length > 0) {
+      affectedRefNames.add("HEAD");
+    }
+
+    const localRefs = getLocalRefs(backend.refs);
+    const localPreconditions: LocalPrecondition[] = [];
+    for (const refName of affectedRefNames) {
+      const expectedValue = backend.refs.read(refName);
+      localPreconditions.push({
+        refName,
+        expectedHash: localRefs.get(refName) ?? null,
+        expectedValue,
+      });
+    }
+
+    for (const ownership of namespaceOwnerships.values()) {
+      if (!ownership.prune) {
+        continue;
+      }
+      localPreconditions.push({
+        refName: ownership.pattern,
+        expectedHash: null,
+        namespacePrefix: ownership.prefix,
+        namespacePattern: ownership.pattern,
+        expectedRefs: snapshotOwnedRefs(backend, ownership.pattern),
+      });
+    }
+
+    return localPreconditions;
+  }
+
+  function createPreviewResult(params: {
+    readonly selectedRefs: readonly PlannedRemoteRef[];
+    readonly objectRoots: readonly SHA1[];
+    readonly prefetchedObjects: number;
+    readonly localPreconditions: readonly LocalPrecondition[];
+    readonly refOperations: readonly PlannedRefOperation[];
+    readonly headOperation?: PlannedHeadOperation;
+    readonly pruneOperations: readonly PlannedRefDeletion[];
+    readonly diagnostics: readonly ImportDiagnostic[];
+  }): ImportPreview {
+    const canApply = !params.diagnostics.some((diagnostic) => diagnostic.level === "error");
+    return freezePreviewResult(
+      {
+        remoteSnapshot: advertisement,
+        selectedRefs: params.selectedRefs,
+        objectRoots: params.objectRoots,
+        prefetchedObjects: params.prefetchedObjects,
+        localPreconditions: params.localPreconditions,
+        refOperations: params.refOperations,
+        headOperation: params.headOperation,
+        pruneOperations: params.pruneOperations,
+        diagnostics: params.diagnostics,
+        canApply,
+      },
+      advertisement,
+    );
+  }
+
+  function buildPreviewSkeleton(): {
+    readonly resolvedMappings: readonly ResolvedMapping[];
+    readonly headRequests: readonly HeadRequest[];
+    readonly namespaceOwnerships: ReadonlyMap<string, NamespaceOwnership>;
+    readonly selectedRefs: readonly PlannedRemoteRef[];
+    readonly objectRoots: readonly SHA1[];
+    readonly localPreconditions: readonly LocalPrecondition[];
+    readonly diagnostics: readonly ImportDiagnostic[];
+    readonly conflictedTargets: ReadonlySet<string>;
+  } {
+    const resolvedMappings: ResolvedMapping[] = [];
+    const headRequests: HeadRequest[] = [];
+    const namespaceOwnerships = new Map<string, NamespaceOwnership>();
+    const diagnostics: ImportDiagnostic[] = [];
+
+    for (const act of actions) {
+      let effectivePolicy: RefUpdatePolicy | undefined = act.policy;
+
+      if (act.action === "namespace" && effectivePolicy === undefined) {
+        effectivePolicy = inferNamespaceDefaultPolicy(act.target);
+        if (effectivePolicy === undefined) {
+          diagnostics.push({
+            level: "error",
+            message:
+              `${describeView(act.viewLabel)}：命名空间 "${act.target}" 需要显式指定 policy 参数。` +
+              `refs/heads/* 和 refs/tags/* 之外的命名空间必须显式声明 RefUpdatePolicy。`,
+          });
+          continue;
+        }
+
+        diagnostics.push({
+          level: "info",
+          message: `${describeView(act.viewLabel)}：命名空间 "${act.target}" 使用默认策略 ${effectivePolicy.mode}。`,
+        });
+      }
+
+      if (effectivePolicy === undefined) {
+        continue;
+      }
+
+      switch (act.action) {
+        case "namespace": {
+          if (act.prune && !act.target.includes("*")) {
+            diagnostics.push({
+              level: "error",
+              message:
+                `${describeView(act.viewLabel)}：toNamespace("${act.target}")：` +
+                "prune 只允许用于带 * 的命名空间投影。",
+            });
+            break;
+          }
+
+          const targets = resolveNamespaceTargets(act.viewRefs, act.target);
+          for (const target of targets) {
+            resolvedMappings.push({
+              remoteRef: target.remoteRef,
+              localRef: target.localRef,
+              policy: effectivePolicy,
+              viewLabel: act.viewLabel,
+            });
+          }
+
+          const namespacePrefix = getNamespacePatternPrefix(act.target);
+          if (namespacePrefix !== null) {
+            const ownership = namespaceOwnerships.get(act.target) ?? {
+              pattern: act.target,
+              prefix: namespacePrefix,
+              currentRefs: new Set<string>(),
+              prune: false,
+              viewLabel: act.viewLabel,
+            };
+            for (const target of targets) {
+              ownership.currentRefs.add(target.localRef);
+            }
+            ownership.prune = ownership.prune || (act.prune ?? false);
+            ownership.viewLabel = act.viewLabel ?? ownership.viewLabel;
+            namespaceOwnerships.set(act.target, ownership);
+          }
+          break;
+        }
+
+        case "branch": {
+          if (act.viewRefs.length === 0) {
+            diagnostics.push({
+              level: "warn",
+              message: `${describeView(act.viewLabel)}：toBranch("${act.target}")：view 为空，不会创建分支。`,
+            });
+            break;
+          }
+
+          if (act.viewRefs.length > 1) {
+            diagnostics.push({
+              level: "error",
+              message:
+                `${describeView(act.viewLabel)}：toBranch("${act.target}") 需要单一 ref 视图，` +
+                `当前收到 ${act.viewRefs.length} 个 refs。`,
+            });
+            break;
+          }
+
+          resolvedMappings.push({
+            remoteRef: act.viewRefs[0]!,
+            localRef: act.target.startsWith("refs/heads/")
+              ? act.target
+              : `refs/heads/${act.target}`,
+            policy: effectivePolicy,
+            viewLabel: act.viewLabel,
+          });
+          break;
+        }
+
+        case "tag": {
+          if (act.viewRefs.length === 0) {
+            diagnostics.push({
+              level: "warn",
+              message: `${describeView(act.viewLabel)}：toTag("${act.target}")：view 为空，不会创建 tag。`,
+            });
+            break;
+          }
+
+          if (act.viewRefs.length > 1) {
+            diagnostics.push({
+              level: "error",
+              message:
+                `${describeView(act.viewLabel)}：toTag("${act.target}") 需要单一 ref 视图，` +
+                `当前收到 ${act.viewRefs.length} 个 refs。`,
+            });
+            break;
+          }
+
+          resolvedMappings.push({
+            remoteRef: act.viewRefs[0]!,
+            localRef: act.target.startsWith("refs/tags/") ? act.target : `refs/tags/${act.target}`,
+            policy: effectivePolicy,
+            viewLabel: act.viewLabel,
+          });
+          break;
+        }
+
+        case "head": {
+          if (act.viewRefs.length === 0) {
+            diagnostics.push({
+              level: "warn",
+              message: `${describeView(act.viewLabel)}：setHead() 的 view 为空，HEAD 将被跳过。`,
+            });
+            break;
+          }
+
+          if (act.viewRefs.length > 1) {
+            diagnostics.push({
+              level: "error",
+              message:
+                `${describeView(act.viewLabel)}：setHead() 需要单一 ref 视图，` +
+                `当前收到 ${act.viewRefs.length} 个 refs。`,
+            });
+            break;
+          }
+
+          const targetRemoteRef = act.viewRefs[0]!;
+          const lastMapping = [...resolvedMappings]
+            .reverse()
+            .find((mapping) => isSameRemoteRef(mapping.remoteRef, targetRemoteRef));
+
+          if (!lastMapping) {
+            diagnostics.push({
+              level: "warn",
+              message:
+                `${describeView(act.viewLabel)}：setHead() 找不到 view "${targetRemoteRef.name}" ` +
+                "对应的前置物化结果，HEAD 将被跳过。",
+            });
+            break;
+          }
+
+          if (!lastMapping.localRef.startsWith("refs/heads/")) {
+            diagnostics.push({
+              level: "error",
+              message:
+                `${describeView(act.viewLabel)}：setHead() 只能指向 refs/heads/*。` +
+                `当前目标为 "${lastMapping.localRef}"。`,
+              refName: lastMapping.localRef,
+            });
+            break;
+          }
+
+          headRequests.push({
+            localRef: lastMapping.localRef,
+            detach: act.detach ?? false,
+            viewLabel: act.viewLabel,
+          });
+          break;
+        }
+      }
+    }
+
+    const conflictedTargets = new Set<string>();
+    const mappingsByLocalRef = new Map<string, ResolvedMapping[]>();
+    for (const mapping of resolvedMappings) {
+      const existing = mappingsByLocalRef.get(mapping.localRef) ?? [];
+      existing.push(mapping);
+      mappingsByLocalRef.set(mapping.localRef, existing);
+    }
+    for (const [localRef, mappings] of mappingsByLocalRef) {
+      if (mappings.length <= 1) {
+        continue;
+      }
+
+      conflictedTargets.add(localRef);
+      diagnostics.push({
+        level: "error",
+        message:
+          `本地 ref "${localRef}" 被多个物化动作同时写入：` +
+          `${mappings
+            .map((mapping) =>
+              mapping.viewLabel
+                ? `${mapping.remoteRef.name}（${mapping.viewLabel}）`
+                : mapping.remoteRef.name,
+            )
+            .join(", ")}。`,
+        refName: localRef,
+      });
+    }
+
+    const selectedRefs = resolvedMappings.map<PlannedRemoteRef>((mapping) => ({
+      remoteRef: mapping.remoteRef,
+      localTarget: mapping.localRef,
+      policy: mapping.policy,
+      viewLabel: mapping.viewLabel,
+    }));
+
+    const objectRoots = [
+      ...new Set(
+        resolvedMappings
+          .filter((mapping) => !conflictedTargets.has(mapping.localRef))
+          .map((mapping) => mapping.remoteRef.hash)
+          .filter((hash) => !backend.objects.exists(hash)),
+      ),
+    ] as SHA1[];
+
+    const localPreconditions = captureLocalPreconditions(
+      resolvedMappings,
+      headRequests,
+      namespaceOwnerships,
+    );
+
+    return {
+      resolvedMappings,
+      headRequests,
+      namespaceOwnerships,
+      selectedRefs,
+      objectRoots,
+      localPreconditions,
+      diagnostics,
+      conflictedTargets,
+    };
+  }
+
+  async function fetchPreviewObjects(
+    objectRoots: readonly SHA1[],
+    localPreconditions: readonly LocalPrecondition[],
+  ): Promise<number> {
+    if (objectRoots.length === 0) {
+      return 0;
+    }
+
+    const currentLocalRefs = getLocalRefs(backend.refs);
+    const localHaveTips: SHA1[] = [];
+    for (const [, hash] of currentLocalRefs) {
+      if (!localHaveTips.some((existingHash) => existingHash === hash)) {
+        localHaveTips.push(hash);
+      }
+    }
+
+    const createTransport =
+      transportFactory ??
+      ((url: string) =>
+        createUploadPackHttpClient(url, {
+          token: source.token,
+          headers: source.headers,
+        }));
+    const transport = createTransport(source.url);
+    const packResult = await fetchPack(backend.objects, transport, advertisement, {
+      wants: [...objectRoots],
+      haves: localHaveTips.length > 0 ? localHaveTips : undefined,
+    });
+
+    validateLocalPreconditions(backend, localPreconditions);
+    return packResult.objectCount;
+  }
+
+  function finalizePreview(
+    skeleton: ReturnType<typeof buildPreviewSkeleton>,
+    prefetchedObjects: number,
+  ): ImportPreview {
+    const diagnostics = [...skeleton.diagnostics];
+    const refOperations: PlannedRefOperation[] = [];
+    const validHeadTargets = new Set<string>();
+    const localRefs = getLocalRefs(backend.refs);
+
+    for (const mapping of skeleton.resolvedMappings) {
+      if (skeleton.conflictedTargets.has(mapping.localRef)) {
+        continue;
+      }
+
+      const existingValue = backend.refs.read(mapping.localRef);
+      const existingHash = localRefs.get(mapping.localRef) ?? null;
+      const refExists = existingValue !== null;
+
+      if (!backend.objects.exists(mapping.remoteRef.hash)) {
+        diagnostics.push({
+          level: "error",
+          message:
+            `${describeView(mapping.viewLabel)}：对象 "${mapping.remoteRef.hash}" ` +
+            "在 preview() 预取后仍不存在。",
+          refName: mapping.localRef,
+        });
+        continue;
+      }
+
+      let targetHash = mapping.remoteRef.hash;
+      if (mapping.localRef.startsWith("refs/heads/")) {
+        try {
+          targetHash = resolveBranchTargetHash(
+            backend.objects,
+            mapping.remoteRef.hash,
+            mapping.localRef,
+          );
+        } catch (err: unknown) {
+          diagnostics.push({
+            level: "error",
+            message: `${describeView(mapping.viewLabel)}：${err instanceof Error ? err.message : String(err)}`,
+            refName: mapping.localRef,
+          });
+          continue;
+        }
+      }
+
+      if (existingHash === targetHash) {
+        diagnostics.push({
+          level: "info",
+          message: `${describeView(mapping.viewLabel)}："${mapping.localRef}" 已是最新，跳过。`,
+          refName: mapping.localRef,
+        });
+        if (mapping.localRef.startsWith("refs/heads/")) {
+          validHeadTargets.add(mapping.localRef);
+        }
+        continue;
+      }
+
+      if (refExists && mapping.policy.mode === "create-only") {
+        diagnostics.push({
+          level: "error",
+          message: `${describeView(mapping.viewLabel)}："${mapping.localRef}" 已存在，create-only 策略拒绝更新。`,
+          refName: mapping.localRef,
+        });
+        continue;
+      }
+
+      if (refExists && mapping.policy.mode === "fast-forward") {
+        if (existingHash === null) {
+          diagnostics.push({
+            level: "error",
+            message:
+              `${describeView(mapping.viewLabel)}：ref "${mapping.localRef}" 当前存在，` +
+              "但无法解析为可比较的提交哈希。",
+            refName: mapping.localRef,
+          });
+          continue;
+        }
+
+        if (!isAncestor(backend.objects, existingHash, targetHash)) {
+          diagnostics.push({
+            level: "error",
+            message:
+              `${describeView(mapping.viewLabel)}：ref "${mapping.localRef}" 无法 fast-forward。` +
+              `当前 ${existingHash}，目标 ${targetHash}。`,
+            refName: mapping.localRef,
+          });
+          continue;
+        }
+
+        diagnostics.push({
+          level: "info",
+          message: `${describeView(mapping.viewLabel)}："${mapping.localRef}" 的 fast-forward 检查已通过。`,
+          refName: mapping.localRef,
+        });
+      }
+
+      if (refExists && mapping.policy.mode === "mirror") {
+        diagnostics.push({
+          level: "info",
+          message:
+            `${describeView(mapping.viewLabel)}："${mapping.localRef}" 将按 mirror 策略覆盖，` +
+            "不执行 fast-forward 限制。",
+          refName: mapping.localRef,
+        });
+      }
+
+      refOperations.push({
+        localRef: mapping.localRef,
+        newHash: targetHash,
+        policy: mapping.policy,
+        viewLabel: mapping.viewLabel,
+      });
+      if (mapping.localRef.startsWith("refs/heads/")) {
+        validHeadTargets.add(mapping.localRef);
+      }
+    }
+
+    const pruneOperations: PlannedRefDeletion[] = [];
+    const scheduledPruneRefs = new Set<string>();
+    for (const ownership of skeleton.namespaceOwnerships.values()) {
+      if (!ownership.prune) {
+        continue;
+      }
+
+      for (const refName of backend.refs.listAll()) {
+        if (
+          matchRefGlob(ownership.pattern, refName) &&
+          !ownership.currentRefs.has(refName) &&
+          !scheduledPruneRefs.has(refName)
+        ) {
+          scheduledPruneRefs.add(refName);
+          pruneOperations.push({
+            refName,
+            reason: `命名空间 "${ownership.pattern}" 的 prune 清理。`,
+            namespacePattern: ownership.pattern,
+            viewLabel: ownership.viewLabel,
+          });
+        }
+      }
+    }
+
+    let headOperation: PlannedHeadOperation | undefined;
+    if (skeleton.headRequests.length > 0) {
+      const lastHead = skeleton.headRequests[skeleton.headRequests.length - 1]!;
+      if (skeleton.conflictedTargets.has(lastHead.localRef)) {
+        diagnostics.push({
+          level: "error",
+          message:
+            `${describeView(lastHead.viewLabel)}：setHead() 目标 "${lastHead.localRef}" ` +
+            "存在冲突，HEAD 无法确定。",
+          refName: lastHead.localRef,
+        });
+      } else if (!validHeadTargets.has(lastHead.localRef)) {
+        diagnostics.push({
+          level: "error",
+          message:
+            `${describeView(lastHead.viewLabel)}：setHead() 目标 "${lastHead.localRef}" ` +
+            "对应的 branch 物化未通过校验。",
+          refName: lastHead.localRef,
+        });
+      } else {
+        headOperation = {
+          targetRef: lastHead.localRef,
+          detach: lastHead.detach,
+          viewLabel: lastHead.viewLabel,
+        };
+      }
+    }
+
+    if (skeleton.resolvedMappings.length > 0) {
+      diagnostics.push({
+        level: "info",
+        message: `计划更新 ${refOperations.length} 个 ref，删除 ${pruneOperations.length} 个 ref。`,
+      });
+    }
+    if (pruneOperations.length > 0) {
+      diagnostics.push({
+        level: "info",
+        message: `prune 将删除 ${pruneOperations.length} 个陈旧 ref。`,
+      });
+    }
+
+    return createPreviewResult({
+      selectedRefs: skeleton.selectedRefs,
+      objectRoots: skeleton.objectRoots,
+      prefetchedObjects,
+      localPreconditions: skeleton.localPreconditions,
+      refOperations,
+      headOperation,
+      pruneOperations,
+      diagnostics,
+    });
   }
 
   const builder: ImportPlanBuilder = {
@@ -499,490 +1067,63 @@ function createPlanBuilder(
       return matBuilder;
     },
 
-    preview(): ImportPreview {
-      // Step 1: 解析所有物化动作，计算完整的 ref 映射
-      const resolvedMappings: ResolvedMapping[] = [];
-      const headRequests: HeadRequest[] = [];
-      const namespaceOwnerships = new Map<string, NamespaceOwnership>();
-      const diagnostics: ImportDiagnostic[] = [];
-
-      // 辅助函数：根据目标模式推断命名空间默认策略
-      const inferNamespaceDefaultPolicy = (targetPattern: string): RefUpdatePolicy | undefined => {
-        const headRegex = globToRegex("refs/heads/*");
-        if (targetPattern === "refs/heads/*" || headRegex.test(targetPattern)) {
-          return { mode: "fast-forward" };
-        }
-        const tagRegex = globToRegex("refs/tags/*");
-        if (targetPattern === "refs/tags/*" || tagRegex.test(targetPattern)) {
-          return { mode: "create-only" };
-        }
-        return undefined;
-      };
-
-      for (const act of actions) {
-        let effectivePolicy: RefUpdatePolicy | undefined = act.policy;
-
-        // namespace action 且未显式指定 policy 时推断默认策略
-        if (act.action === "namespace" && effectivePolicy === undefined) {
-          effectivePolicy = inferNamespaceDefaultPolicy(act.target);
-
-          if (effectivePolicy === undefined) {
-            diagnostics.push({
-              level: "error",
-              message:
-                `${describeView(act.viewLabel)}：命名空间 "${act.target}" 需要显式指定 policy 参数。` +
-                `refs/heads/* 和 refs/tags/* 之外的命名空间必须显式声明 RefUpdatePolicy。`,
-            });
-            continue; // 跳过整个 namespace action
-          }
-
-          diagnostics.push({
-            level: "info",
-            message: `${describeView(act.viewLabel)}：命名空间 "${act.target}" 使用默认策略 ${effectivePolicy.mode}。`,
-          });
-        }
-
-        if (effectivePolicy === undefined) {
-          // 不应发生：branch/tag/head 都有硬编码默认值
-          continue;
-        }
-
-        switch (act.action) {
-          case "namespace": {
-            if (act.prune && !act.target.includes("*")) {
-              diagnostics.push({
-                level: "error",
-                message:
-                  `${describeView(act.viewLabel)}：toNamespace("${act.target}")：` +
-                  "prune 只允许用于带 * 的命名空间投影。",
-              });
-              break;
-            }
-
-            const targets = resolveNamespaceTargets(act.viewRefs, act.target);
-
-            for (const t of targets) {
-              resolvedMappings.push({
-                remoteRef: t.remoteRef,
-                localRef: t.localRef,
-                policy: effectivePolicy,
-                viewLabel: act.viewLabel,
-              });
-            }
-
-            const namespacePrefix = getNamespacePatternPrefix(act.target);
-            if (namespacePrefix !== null) {
-              const ownership = namespaceOwnerships.get(act.target) ?? {
-                pattern: act.target,
-                prefix: namespacePrefix,
-                currentRefs: new Set<string>(),
-                prune: false,
-              };
-
-              for (const t of targets) {
-                ownership.currentRefs.add(t.localRef);
-              }
-              ownership.prune = ownership.prune || (act.prune ?? false);
-              namespaceOwnerships.set(act.target, ownership);
-            }
-            break;
-          }
-
-          case "branch": {
-            if (act.viewRefs.length === 0) {
-              diagnostics.push({
-                level: "warn",
-                message: `${describeView(act.viewLabel)}：toBranch("${act.target}")：view 为空，不会创建分支。`,
-              });
-              break;
-            }
-
-            if (act.viewRefs.length > 1) {
-              diagnostics.push({
-                level: "error",
-                message:
-                  `${describeView(act.viewLabel)}：toBranch("${act.target}") 需要单一 ref 视图，` +
-                  `当前收到 ${act.viewRefs.length} 个 refs。`,
-              });
-              break;
-            }
-
-            const branchRef = act.target.startsWith("refs/heads/")
-              ? act.target
-              : `refs/heads/${act.target}`;
-            resolvedMappings.push({
-              remoteRef: act.viewRefs[0]!,
-              localRef: branchRef,
-              policy: effectivePolicy,
-              viewLabel: act.viewLabel,
-            });
-            break;
-          }
-
-          case "tag": {
-            if (act.viewRefs.length === 0) {
-              diagnostics.push({
-                level: "warn",
-                message: `${describeView(act.viewLabel)}：toTag("${act.target}")：view 为空，不会创建 tag。`,
-              });
-              break;
-            }
-
-            if (act.viewRefs.length > 1) {
-              diagnostics.push({
-                level: "error",
-                message:
-                  `${describeView(act.viewLabel)}：toTag("${act.target}") 需要单一 ref 视图，` +
-                  `当前收到 ${act.viewRefs.length} 个 refs。`,
-              });
-              break;
-            }
-
-            const tagRef = act.target.startsWith("refs/tags/")
-              ? act.target
-              : `refs/tags/${act.target}`;
-            resolvedMappings.push({
-              remoteRef: act.viewRefs[0]!,
-              localRef: tagRef,
-              policy: effectivePolicy,
-              viewLabel: act.viewLabel,
-            });
-            break;
-          }
-
-          case "head": {
-            if (act.viewRefs.length === 0) {
-              diagnostics.push({
-                level: "warn",
-                message: `${describeView(act.viewLabel)}：setHead() 的 view 为空，HEAD 将被跳过。`,
-              });
-              break;
-            }
-
-            if (act.viewRefs.length > 1) {
-              diagnostics.push({
-                level: "error",
-                message:
-                  `${describeView(act.viewLabel)}：setHead() 需要单一 ref 视图，` +
-                  `当前收到 ${act.viewRefs.length} 个 refs。`,
-              });
-              break;
-            }
-
-            const targetRemoteRef = act.viewRefs[0]!;
-            const lastMapping = [...resolvedMappings]
-              .reverse()
-              .find((mapping) => isSameRemoteRef(mapping.remoteRef, targetRemoteRef));
-
-            if (!lastMapping) {
-              diagnostics.push({
-                level: "warn",
-                message:
-                  `${describeView(act.viewLabel)}：setHead() 找不到 view "${targetRemoteRef.name}" ` +
-                  "对应的前置物化结果，HEAD 将被跳过。",
-              });
-              break;
-            }
-
-            if (!lastMapping.localRef.startsWith("refs/heads/")) {
-              diagnostics.push({
-                level: "error",
-                message:
-                  `${describeView(act.viewLabel)}：setHead() 只能指向 refs/heads/*。` +
-                  `当前目标为 "${lastMapping.localRef}"。`,
-                refName: lastMapping.localRef,
-              });
-              break;
-            }
-
-            headRequests.push({
-              localRef: lastMapping.localRef,
-              detach: act.detach ?? false,
-              viewLabel: act.viewLabel,
-            });
-            break;
-          }
-        }
-      }
-
-      const conflictedTargets = new Set<string>();
-      const mappingsByLocalRef = new Map<string, ResolvedMapping[]>();
-      for (const mapping of resolvedMappings) {
-        const existing = mappingsByLocalRef.get(mapping.localRef) ?? [];
-        existing.push(mapping);
-        mappingsByLocalRef.set(mapping.localRef, existing);
-      }
-      for (const [localRef, mappings] of mappingsByLocalRef) {
-        if (mappings.length <= 1) {
-          continue;
-        }
-
-        conflictedTargets.add(localRef);
-        diagnostics.push({
-          level: "error",
-          message:
-            `本地 ref "${localRef}" 被多个物化动作同时写入：` +
-            `${mappings
-              .map((m) =>
-                m.viewLabel ? `${m.remoteRef.name}（${m.viewLabel}）` : m.remoteRef.name,
-              )
-              .join(", ")}。`,
-          refName: localRef,
-        });
-      }
-
-      // Step 2: 捕获本地前置条件（冻结 affected refs 的当前状态）
-      const affectedRefNames = new Set<string>();
-
-      for (const m of resolvedMappings) {
-        affectedRefNames.add(m.localRef);
-      }
-      if (headRequests.length > 0) {
-        affectedRefNames.add("HEAD");
-      }
-
-      const localRefs = getLocalRefs(backend.refs);
-      const localPreconditions: LocalPrecondition[] = [];
-      for (const refName of affectedRefNames) {
-        const expectedValue = backend.refs.read(refName);
-        const hash = localRefs.get(refName) ?? null;
-        localPreconditions.push({
-          refName,
-          expectedHash: hash,
-          expectedValue,
-        });
-      }
-      for (const ownership of namespaceOwnerships.values()) {
-        if (!ownership.prune) {
-          continue;
-        }
-
-        localPreconditions.push({
-          refName: ownership.pattern,
-          expectedHash: null,
-          namespacePrefix: ownership.prefix,
-          namespacePattern: ownership.pattern,
-          expectedRefs: snapshotOwnedRefs(backend, ownership.pattern),
-        });
-      }
-
-      // Step 3: 执行全部本地可判定的策略校验，并生成 ref 操作与对象根
-      const refOperations: PlannedRefOperation[] = [];
-      const selectedRefs: PlannedRemoteRef[] = [];
-      const objectRootsSet = new Set<string>();
-      const validHeadTargets = new Set<string>();
-
-      for (const m of resolvedMappings) {
-        const existingValue = backend.refs.read(m.localRef);
-        const existingHash = localRefs.get(m.localRef) ?? null;
-        const refExists = existingValue !== null;
-        const hasObject = backend.objects.exists(m.remoteRef.hash);
-        let branchTargetResolved = false;
-        let targetHash = m.remoteRef.hash;
-
-        selectedRefs.push({
-          remoteRef: m.remoteRef,
-          localTarget: m.localRef,
-          policy: m.policy,
-        });
-
-        if (conflictedTargets.has(m.localRef)) {
-          continue;
-        }
-
-        if (m.localRef.startsWith("refs/heads/") && hasObject) {
-          try {
-            targetHash = resolveBranchTargetHash(backend.objects, m.remoteRef.hash, m.localRef);
-            branchTargetResolved = true;
-          } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : String(err);
-            diagnostics.push({
-              level: "error",
-              message: `${describeView(m.viewLabel)}：${message}`,
-              refName: m.localRef,
-            });
-            continue;
-          }
-        }
-
-        if (existingHash === m.remoteRef.hash) {
-          diagnostics.push({
-            level: "info",
-            message: `${describeView(m.viewLabel)}："${m.localRef}" 已是最新，跳过。`,
-            refName: m.localRef,
-          });
-          if (m.localRef.startsWith("refs/heads/")) {
-            validHeadTargets.add(m.localRef);
-          }
-          if (!hasObject) {
-            objectRootsSet.add(m.remoteRef.hash);
-          }
-          continue;
-        }
-
-        if (refExists && m.policy.mode === "create-only") {
-          diagnostics.push({
-            level: "error",
-            message: `${describeView(m.viewLabel)}："${m.localRef}" 已存在，create-only 策略拒绝更新。`,
-            refName: m.localRef,
-          });
-          if (!hasObject) {
-            objectRootsSet.add(m.remoteRef.hash);
-          }
-          continue;
-        }
-
-        if (refExists && m.policy.mode === "fast-forward") {
-          if (existingHash === null) {
-            diagnostics.push({
-              level: "error",
-              message:
-                `${describeView(m.viewLabel)}：ref "${m.localRef}" 当前存在，` +
-                "但无法解析为可比较的提交哈希。",
-              refName: m.localRef,
-            });
-            continue;
-          }
-
-          if (branchTargetResolved && !isAncestor(backend.objects, existingHash, targetHash)) {
-            diagnostics.push({
-              level: "error",
-              message:
-                `${describeView(m.viewLabel)}：ref "${m.localRef}" 无法 fast-forward。` +
-                `当前 ${existingHash}，目标 ${targetHash}。`,
-              refName: m.localRef,
-            });
-            continue;
-          }
-
-          diagnostics.push({
-            level: "info",
-            message: branchTargetResolved
-              ? `${describeView(m.viewLabel)}："${m.localRef}" 的 fast-forward 检查已通过。`
-              : `${describeView(m.viewLabel)}："${m.localRef}" 需要在对象导入后完成 fast-forward 检查。`,
-            refName: m.localRef,
-          });
-        }
-
-        if (refExists && m.policy.mode === "mirror") {
-          diagnostics.push({
-            level: "info",
-            message:
-              `${describeView(m.viewLabel)}："${m.localRef}" 将按 mirror 策略覆盖，` +
-              "不执行 fast-forward 限制。",
-            refName: m.localRef,
-          });
-        }
-
-        refOperations.push({
-          localRef: m.localRef,
-          newHash: m.remoteRef.hash,
-          policy: m.policy,
-        });
-        if (m.localRef.startsWith("refs/heads/")) {
-          validHeadTargets.add(m.localRef);
-        }
-
-        if (!hasObject) {
-          objectRootsSet.add(m.remoteRef.hash);
-        }
-      }
-
-      // Step 4: 计算 prune 操作
-      const pruneOperations: PlannedRefDeletion[] = [];
-      const scheduledPruneRefs = new Set<string>();
-      for (const ns of namespaceOwnerships.values()) {
-        if (!ns.prune) {
-          continue;
-        }
-
-        for (const refName of backend.refs.listAll()) {
-          if (
-            matchRefGlob(ns.pattern, refName) &&
-            !ns.currentRefs.has(refName) &&
-            !scheduledPruneRefs.has(refName)
-          ) {
-            scheduledPruneRefs.add(refName);
-            pruneOperations.push({
-              refName,
-              reason: `命名空间 "${ns.pattern}" 的 prune 清理。`,
-            });
-          }
-        }
-      }
-
-      // Step 5: HEAD 操作
-      let headOperation: PlannedHeadOperation | undefined;
-
-      if (headRequests.length > 0) {
-        const lastHead = headRequests[headRequests.length - 1]!;
-        if (conflictedTargets.has(lastHead.localRef)) {
-          diagnostics.push({
-            level: "error",
-            message:
-              `${describeView(lastHead.viewLabel)}：setHead() 目标 "${lastHead.localRef}" ` +
-              "存在冲突，HEAD 无法确定。",
-            refName: lastHead.localRef,
-          });
-        } else if (!validHeadTargets.has(lastHead.localRef)) {
-          diagnostics.push({
-            level: "error",
-            message:
-              `${describeView(lastHead.viewLabel)}：setHead() 目标 "${lastHead.localRef}" ` +
-              "对应的 branch 物化未通过校验。",
-            refName: lastHead.localRef,
-          });
-        } else {
-          headOperation = {
-            targetRef: lastHead.localRef,
-            detach: lastHead.detach,
-          };
-        }
-      }
-
-      // Step 6: 总览诊断
-      if (resolvedMappings.length > 0) {
-        diagnostics.push({
-          level: "info",
-          message: `计划更新 ${refOperations.length} 个 ref，删除 ${pruneOperations.length} 个 ref。`,
-        });
-      }
-
-      if (pruneOperations.length > 0) {
-        diagnostics.push({
-          level: "info",
-          message: `prune 将删除 ${pruneOperations.length} 个陈旧 ref。`,
-        });
-      }
-
-      const objectRoots = [...objectRootsSet];
-
-      // canApply: 不存在 error 级别诊断时计划可用
-      const canApply = !diagnostics.some((d) => d.level === "error");
-
-      const _previewResult = freezePreviewResult(
-        {
-          remoteSnapshot: advertisement,
-          selectedRefs,
-          objectRoots: objectRoots as import("../core/types.ts").SHA1[],
-          localPreconditions,
-          refOperations,
-          pruneOperations,
-          headOperation,
-          diagnostics,
-          canApply,
-        },
-        advertisement,
+    async preview(): Promise<ImportPreview> {
+      const currentVersion = planVersion;
+      lastPreview = null;
+      const skeleton = buildPreviewSkeleton();
+      const hasStaticErrors = skeleton.diagnostics.some(
+        (diagnostic) => diagnostic.level === "error",
       );
-      lastPreview = _previewResult;
-      return _previewResult;
+
+      let prefetchedObjects = 0;
+      if (!hasStaticErrors) {
+        try {
+          prefetchedObjects = await fetchPreviewObjects(
+            skeleton.objectRoots,
+            skeleton.localPreconditions,
+          );
+        } catch (err: unknown) {
+          if (err instanceof Error && err.message.includes("前置条件校验失败")) {
+            const preview = createPreviewResult({
+              selectedRefs: skeleton.selectedRefs,
+              objectRoots: skeleton.objectRoots,
+              prefetchedObjects,
+              localPreconditions: skeleton.localPreconditions,
+              refOperations: [],
+              pruneOperations: [],
+              diagnostics: [
+                ...skeleton.diagnostics,
+                {
+                  level: "error",
+                  message: err.message,
+                },
+              ],
+            });
+            lastPreview = null;
+            return preview;
+          }
+          throw err;
+        }
+      }
+
+      const preview = finalizePreview(skeleton, prefetchedObjects);
+      if (preview.canApply && currentVersion === planVersion) {
+        lastPreview = {
+          version: currentVersion,
+          preview,
+        };
+      } else {
+        lastPreview = null;
+      }
+      return preview;
     },
 
     async apply(): Promise<ImportApplyResult> {
-      // Step 1: 使用缓存的 preview 结果校验前置条件
-      const p = lastPreview ?? builder.preview();
+      const p =
+        lastPreview !== null && lastPreview.version === planVersion
+          ? lastPreview.preview
+          : await builder.preview();
 
-      // 若 preview 指示计划不可执行，则提前失败
       if (!p.canApply) {
         const errorMessages = p.diagnostics
           .filter((d) => d.level === "error")
@@ -994,8 +1135,7 @@ function createPlanBuilder(
         );
       }
 
-      // Step 2: 校验前置条件 — 当前本地 refs 与 preview 快照一致
-      let currentLocalRefs = validateLocalPreconditions(backend, p.localPreconditions);
+      const currentLocalRefs = validateLocalPreconditions(backend, p.localPreconditions);
 
       if (
         p.refOperations.length === 0 &&
@@ -1004,57 +1144,19 @@ function createPlanBuilder(
         p.pruneOperations.length === 0
       ) {
         return {
-          importedObjects: 0,
+          importedObjects: p.prefetchedObjects,
           updatedRefs: new Map<string, SHA1>(),
           deletedRefs: [],
         };
       }
 
-      // Step 3: 拉取对象（仅拉取本地缺失的）
-      let importedObjects = 0;
-      const unresolvedWants = p.objectRoots.filter((h) => !backend.objects.exists(h));
-
-      if (unresolvedWants.length > 0) {
-        const createTransportImpl =
-          transportFactory ??
-          ((url: string) =>
-            createUploadPackHttpClient(url, {
-              token: source.token,
-              headers: source.headers,
-            }));
-        const transport = createTransportImpl(source.url);
-
-        // 收集本地已有 commit tips 作为 have 候选
-        const localHaveTips: SHA1[] = [];
-        for (const [, hash] of currentLocalRefs) {
-          if (!localHaveTips.some((h) => h === hash)) {
-            localHaveTips.push(hash);
-          }
-        }
-
-        const packResult = await fetchPack(backend.objects, transport, advertisement, {
-          wants: unresolvedWants,
-          haves: localHaveTips.length > 0 ? localHaveTips : undefined,
-        });
-        importedObjects = packResult.objectCount;
-
-        // fetch-pack 是异步阶段，结束后需要重新校验一次本地前置条件，
-        // 防止 preview 与 ref 写入之间出现并发漂移。
-        currentLocalRefs = validateLocalPreconditions(backend, p.localPreconditions);
-      }
-
-      // Step 4: 策略预校验 — 在进入 ref 物化之前完成全部策略校验
       const pendingWrites: Array<{ localRef: string; writeHash: SHA1 }> = [];
       for (const op of p.refOperations) {
         const currentValue = backend.refs.read(op.localRef);
         const refExists = currentValue !== null;
         const currentHash = currentLocalRefs.get(op.localRef) ?? null;
-        const targetHash = op.localRef.startsWith("refs/heads/")
-          ? resolveBranchTargetHash(backend.objects, op.newHash, op.localRef)
-          : op.newHash;
-
-        if (!backend.objects.exists(targetHash)) {
-          throw new Error(`导入计划校验失败：对象 "${targetHash}" 在本地对象库中不存在。`);
+        if (!backend.objects.exists(op.newHash)) {
+          throw new Error(`导入计划校验失败：对象 "${op.newHash}" 在本地对象库中不存在。`);
         }
 
         if (op.policy.mode === "create-only" && refExists) {
@@ -1069,28 +1171,26 @@ function createPlanBuilder(
               `导入计划校验失败：ref "${op.localRef}" 当前存在，但无法解析为可比较的提交哈希。`,
             );
           }
-          if (!isAncestor(backend.objects, currentHash, targetHash)) {
+          if (!isAncestor(backend.objects, currentHash, op.newHash)) {
             throw new Error(
               `导入计划校验失败：ref "${op.localRef}" 无法 fast-forward。` +
-                `当前 ${currentHash}，目标 ${targetHash}。`,
+                `当前 ${currentHash}，目标 ${op.newHash}。`,
             );
           }
         }
 
         pendingWrites.push({
           localRef: op.localRef,
-          writeHash: targetHash,
+          writeHash: op.newHash,
         });
       }
 
-      // Step 5: 写 ref
       const updatedRefs = new Map<string, SHA1>();
       for (const op of pendingWrites) {
         backend.refs.write(op.localRef, op.writeHash);
         updatedRefs.set(op.localRef, op.writeHash);
       }
 
-      // Step 6: 设置 HEAD
       if (p.headOperation) {
         if (!p.headOperation.targetRef.startsWith("refs/heads/")) {
           throw new Error(
@@ -1115,7 +1215,6 @@ function createPlanBuilder(
         }
       }
 
-      // Step 7: 执行 prune
       const deletedRefs: string[] = [];
       for (const op of p.pruneOperations) {
         try {
@@ -1127,7 +1226,7 @@ function createPlanBuilder(
       }
 
       return {
-        importedObjects,
+        importedObjects: p.prefetchedObjects,
         updatedRefs,
         deletedRefs,
         headTarget: p.headOperation?.targetRef,
@@ -1244,30 +1343,22 @@ function createImportSession(
  */
 export function createRepoImportOperations(
   backend: RepositoryBackend,
+  transportFactory?: (url: string) => UploadPackTransport,
 ): import("./import-session-types.ts").RepoImportOperations {
   return {
-    async openImportSession(
-      source: ImportSource,
-      options?: OpenImportSessionOptions,
-    ): Promise<ImportSession> {
-      const sessionSource: ImportSource = {
-        url: source.url,
-        token: options?.token ?? source.token,
-        headers: options?.headers ?? source.headers,
-      };
-
+    async openImportSession(source: ImportSource): Promise<ImportSession> {
       const createTransport =
-        options?.transportFactory ??
+        transportFactory ??
         ((url: string) =>
           createUploadPackHttpClient(url, {
-            token: sessionSource.token,
-            headers: sessionSource.headers,
+            token: source.token,
+            headers: source.headers,
           }));
 
       const transport = createTransport(source.url);
       const advertisement = await transport.advertise();
 
-      return createImportSession(sessionSource, backend, advertisement, options?.transportFactory);
+      return createImportSession(source, backend, advertisement, transportFactory);
     },
   };
 }
