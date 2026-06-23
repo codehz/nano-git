@@ -8,7 +8,7 @@
 import { existsSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 
-import { type SHA1 } from "../core/types.ts";
+import { type RawGitObject, type SHA1 } from "../core/types.ts";
 import { createFileObjectStore } from "../odb/file.ts";
 import { createCompositeObjectDatabase } from "../pack/composite-store.ts";
 import { createPackBuilder } from "../pack/pack-builder.ts";
@@ -58,7 +58,7 @@ export function createFileRepositoryBackend(
   function writeFromSource(source: ObjectSource, hashes: Iterable<SHA1>) {
     const builder = createPackBuilder(gitDir);
     for (const hash of hashes) {
-      builder.addObject(source.read(hash));
+      builder.addRaw(source.read(hash));
     }
     const result = builder.build();
     refreshPackView();
@@ -87,10 +87,10 @@ export function createFileRepositoryBackend(
     createBuilder() {
       return createPackBuilder(gitDir);
     },
-    writeRawObjects(objects) {
+    writeRawObjects(objects: Iterable<RawGitObject>) {
       const builder = createPackBuilder(gitDir);
       for (const obj of objects) {
-        builder.addObject(obj);
+        builder.addRaw(obj);
       }
       const result = builder.build();
       refreshPackView();

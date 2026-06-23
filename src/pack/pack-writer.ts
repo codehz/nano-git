@@ -21,7 +21,7 @@
 
 import { buildEncodedPack, type EncodedPackObject, toEncodedPackObject } from "./pack-encoding.ts";
 
-import type { GitObject, SHA1 } from "../core/types.ts";
+import type { RawGitObject, SHA1 } from "../core/types.ts";
 
 // ============================================================================
 // Packfile 写入器
@@ -56,18 +56,18 @@ export class PackWriter {
   private readonly hashes: Set<SHA1> = new Set();
 
   /**
-   * 添加一个 Git 对象到 packfile
+   * 添加一个原始对象到 packfile
    *
-   * @param obj - Git 对象
+   * @param raw - 原始 Git 对象
    * @returns 对象的 SHA-1 哈希
    *
    * @example
    * ```ts
-   * const hash = writer.addObject({ type: "blob", content: Buffer.from("hello") });
+   * const hash = writer.addRaw(raw);
    * ```
    */
-  addObject(obj: GitObject): SHA1 {
-    const entry = toEncodedPackObject(obj);
+  addRaw(raw: RawGitObject): SHA1 {
+    const entry = toEncodedPackObject(raw);
     const hash = entry.hash;
 
     if (this.hashes.has(hash)) {

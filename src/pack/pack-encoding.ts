@@ -5,19 +5,17 @@
 import { createHash } from "node:crypto";
 import { deflateSync } from "node:zlib";
 
-import { hashObject } from "../core/hash.ts";
-import { serializeContent } from "../objects/index.ts";
 import { PACK_SIGNATURE, PACK_VERSION, objectTypeToNumber } from "./constants.ts";
 import { crc32Value } from "./crc32.ts";
 import { encodeObjectHeader } from "./utils.ts";
 
-import type { GitObject, SHA1 } from "../core/types.ts";
+import type { RawGitObject, SHA1 } from "../core/types.ts";
 
 /**
  * 用于 pack 编码的对象条目
  */
 export interface EncodedPackObject {
-  type: GitObject["type"];
+  type: RawGitObject["type"];
   hash: SHA1;
   data: Buffer;
 }
@@ -42,22 +40,24 @@ export interface EncodedPackResult {
 }
 
 /**
- * 将 Git 对象标准化为 pack 编码条目
+ * 将原始对象标准化为 pack 编码条目
  *
- * @param obj - Git 对象
+ * RawGitObject 的 { type, hash, content } 直接映射到 EncodedPackObject 的
+ * { type, hash, data }，无需额外哈希计算或序列化。
+ *
+ * @param raw - 原始对象
  * @returns 编码条目
  *
  * @example
  * ```ts
- * const entry = toEncodedPackObject(obj);
+ * const entry = toEncodedPackObject(raw);
  * ```
  */
-export function toEncodedPackObject(obj: GitObject): EncodedPackObject {
-  const data = serializeContent(obj);
+export function toEncodedPackObject(raw: RawGitObject): EncodedPackObject {
   return {
-    type: obj.type,
-    hash: hashObject(obj.type, data),
-    data,
+    type: raw.type,
+    hash: raw.hash,
+    data: raw.content,
   };
 }
 

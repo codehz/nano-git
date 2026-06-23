@@ -22,7 +22,7 @@ import { join } from "node:path";
 import { buildEncodedPack, type EncodedPackObject, toEncodedPackObject } from "./pack-encoding.ts";
 import { createPackIndexWriter } from "./pack-index.ts";
 
-import type { GitObject, SHA1 } from "../core/types.ts";
+import type { RawGitObject, SHA1 } from "../core/types.ts";
 import type { PackBuildResult } from "./pack-builder-types.ts";
 
 export type { PackBuildResult } from "./pack-builder-types.ts";
@@ -39,12 +39,12 @@ export interface PackBuilder {
   readonly objectCount: number;
 
   /**
-   * 添加一个 Git 对象
+   * 添加一个原始对象
    *
-   * @param obj - Git 对象
+   * @param raw - 原始 Git 对象
    * @returns 对象的 SHA-1 哈希
    */
-  addObject(obj: GitObject): SHA1;
+  addRaw(raw: RawGitObject): SHA1;
 
   /**
    * 构建 packfile 和索引文件
@@ -75,9 +75,8 @@ export interface PackBuilder {
  * ```ts
  * const builder = createPackBuilder("/path/to/.git");
  *
- * // 添加对象
- * builder.addObject({ type: "blob", content: Buffer.from("hello") });
- * builder.addObject({ type: "blob", content: Buffer.from("world") });
+ * // 添加原始对象
+ * builder.addRaw(raw);
  *
  * // 构建并写入
  * const result = builder.build();
@@ -88,8 +87,8 @@ export function createPackBuilder(gitDir: string): PackBuilder {
   const objects: EncodedPackObject[] = [];
   const hashes: Set<SHA1> = new Set();
 
-  function addObject(obj: GitObject): SHA1 {
-    const entry = toEncodedPackObject(obj);
+  function addRaw(raw: RawGitObject): SHA1 {
+    const entry = toEncodedPackObject(raw);
     const hash = entry.hash;
 
     if (hashes.has(hash)) {
@@ -135,7 +134,7 @@ export function createPackBuilder(gitDir: string): PackBuilder {
     get objectCount(): number {
       return objects.length;
     },
-    addObject,
+    addRaw,
     build,
   };
 }

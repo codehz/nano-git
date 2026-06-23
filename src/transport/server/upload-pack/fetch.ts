@@ -7,7 +7,6 @@
  */
 
 import { sha1 } from "../../../core/types.ts";
-import { tryReadObject } from "../../../objects/raw.ts";
 import { createPackWriter } from "../../../pack/pack-writer.ts";
 import { resolveRefHash } from "../../../refs/resolve.ts";
 import { collectReachable } from "../../protocol/object-graph.ts";
@@ -188,9 +187,9 @@ function generatePackfileResponse(
   // 构建 packfile
   const writer = createPackWriter();
   for (const hash of toPack) {
-    const obj = tryReadObject(backend.objects, hash);
-    if (obj) {
-      writer.addObject(obj);
+    const raw = backend.objects.tryRead(hash);
+    if (raw) {
+      writer.addRaw(raw);
     }
   }
 
