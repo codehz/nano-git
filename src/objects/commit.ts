@@ -17,7 +17,174 @@ import { InvalidObjectError } from "../core/errors.ts";
 import { sha1 } from "../core/types.ts";
 import { formatAuthor, parseAuthor } from "./author.ts";
 
-import type { GitCommit, SHA1 } from "../core/types.ts";
+import type { GitCommit, GitCommitExtraHeader, SHA1 } from "../core/types.ts";
+
+interface ParsedCommitHeader {
+  readonly name: string;
+  value: string;
+}
+
+interface PendingCommitHeaders {
+  tree?: SHA1;
+  readonly parents: SHA1[];
+  author?: ReturnType<typeof parseAuthor>;
+  committer?: ReturnType<typeof parseAuthor>;
+  encoding?: string;
+  gpgsig?: string;
+  readonly mergetag: string[];
+  readonly extraHeaders: GitCommitExtraHeader[];
+}
+
+// ============================================================================
+// Header 编解码辅助
+// ============================================================================
+
+const BUILTIN_COMMIT_HEADERS = new Set<string>([
+  "tree",
+  "parent",
+  "author",
+  "committer",
+  "encoding",
+  "gpgsig",
+  "mergetag",
+]);
+
+function validateExtraHeaderName(name: string): void {
+  if (name.length === 0 || /\s/.test(name) || name.includes("\0")) {
+    throw new InvalidObjectError(`invalid commit extra header name: ${name}`);
+  }
+  if (BUILTIN_COMMIT_HEADERS.has(name)) {
+    throw new InvalidObjectError(
+      `commit extra header "${name}" 与内建字段冲突，请改用对应的专用字段。`,
+    );
+  }
+}
+
+function parseCommitHeaders(headerText: string): ParsedCommitHeader[] {
+  if (headerText.length === 0) {
+    return [];
+  }
+
+  const rawLines = headerText.split("\n");
+  const headers: ParsedCommitHeader[] = [];
+  let current: ParsedCommitHeader | undefined;
+
+  for (const line of rawLines) {
+    if (line.startsWith(" ")) {
+      if (!current) {
+        throw new InvalidObjectError("invalid commit header continuation without base header");
+      }
+      current.value += `\n${line.slice(1)}`;
+      continue;
+    }
+
+    const spaceIndex = line.indexOf(" ");
+    if (spaceIndex === -1) {
+      throw new InvalidObjectError(`invalid commit header: ${line}`);
+    }
+
+    current = {
+      name: line.slice(0, spaceIndex),
+      value: line.slice(spaceIndex + 1),
+    };
+    headers.push(current);
+  }
+
+  return headers;
+}
+
+function applyParsedHeader(state: PendingCommitHeaders, header: ParsedCommitHeader): void {
+  switch (header.name) {
+    case "tree":
+      if (state.tree !== undefined) {
+        throw new InvalidObjectError("commit has multiple tree headers");
+      }
+      state.tree = sha1(header.value);
+      return;
+    case "parent":
+      state.parents.push(sha1(header.value));
+      return;
+    case "author":
+      if (state.author !== undefined) {
+        throw new InvalidObjectError("commit has multiple author headers");
+      }
+      state.author = parseAuthor(header.value);
+      return;
+    case "committer":
+      if (state.committer !== undefined) {
+        throw new InvalidObjectError("commit has multiple committer headers");
+      }
+      state.committer = parseAuthor(header.value);
+      return;
+    case "encoding":
+      if (state.encoding !== undefined) {
+        throw new InvalidObjectError("commit has multiple encoding headers");
+      }
+      state.encoding = header.value;
+      return;
+    case "gpgsig":
+      if (state.gpgsig !== undefined) {
+        throw new InvalidObjectError("commit has multiple gpgsig headers");
+      }
+      state.gpgsig = header.value;
+      return;
+    case "mergetag":
+      state.mergetag.push(header.value);
+      return;
+    default:
+      state.extraHeaders.push({
+        name: header.name,
+        value: header.value,
+      });
+  }
+}
+
+function encodeCommitHeader(name: string, value: string): string[] {
+  const parts = value.split("\n");
+  const encoded = [`${name} ${parts[0] ?? ""}`];
+
+  for (let i = 1; i < parts.length; i++) {
+    encoded.push(` ${parts[i] ?? ""}`);
+  }
+
+  return encoded;
+}
+
+function buildCommitHeaderLines(commit: GitCommit): string[] {
+  const lines: string[] = [];
+
+  lines.push(`tree ${commit.tree}`);
+
+  for (const parent of commit.parents) {
+    lines.push(`parent ${parent}`);
+  }
+
+  lines.push(`author ${formatAuthor(commit.author)}`);
+  lines.push(`committer ${formatAuthor(commit.committer)}`);
+
+  if (commit.encoding !== undefined) {
+    lines.push(...encodeCommitHeader("encoding", commit.encoding));
+  }
+
+  if (commit.gpgsig !== undefined) {
+    lines.push(...encodeCommitHeader("gpgsig", commit.gpgsig));
+  }
+
+  for (const tag of commit.mergetag ?? []) {
+    lines.push(...encodeCommitHeader("mergetag", tag));
+  }
+
+  for (const header of commit.extraHeaders ?? []) {
+    validateExtraHeaderName(header.name);
+    lines.push(...encodeCommitHeader(header.name, header.value));
+  }
+
+  return lines;
+}
+
+// ============================================================================
+// Commit 编解码
+// ============================================================================
 
 /**
  * 序列化 Commit 对象
@@ -36,21 +203,11 @@ import type { GitCommit, SHA1 } from "../core/types.ts";
  * ```
  */
 export function serializeCommit(commit: GitCommit): Buffer {
-  const lines: string[] = [];
-
-  lines.push(`tree ${commit.tree}`);
-
-  for (const parent of commit.parents) {
-    lines.push(`parent ${parent}`);
-  }
-
-  lines.push(`author ${formatAuthor(commit.author)}`);
-  lines.push(`committer ${formatAuthor(commit.committer)}`);
-  lines.push(""); // 空行分隔 header 和 message
-  // Git 确保 message 末尾恰好有一个换行符，保证相同内容产生相同的哈希
-  lines.push(commit.message.replace(/\n+$/, ""));
-
-  return Buffer.from(lines.join("\n") + "\n", "utf-8");
+  const headerLines = buildCommitHeaderLines(commit);
+  return Buffer.from(
+    `${headerLines.join("\n")}\n\n${commit.message.replace(/\n+$/, "")}\n`,
+    "utf-8",
+  );
 }
 
 /**
@@ -58,55 +215,35 @@ export function serializeCommit(commit: GitCommit): Buffer {
  */
 export function deserializeCommit(content: Buffer): GitCommit {
   const text = content.toString("utf-8");
-  const lines = text.split("\n");
+  const separatorIndex = text.indexOf("\n\n");
+  const headerText = separatorIndex === -1 ? text : text.slice(0, separatorIndex);
+  const rawMessage = separatorIndex === -1 ? "" : text.slice(separatorIndex + 2);
 
-  let tree: SHA1 | undefined;
-  const parents: SHA1[] = [];
-  let author: ReturnType<typeof parseAuthor> | undefined;
-  let committer: ReturnType<typeof parseAuthor> | undefined;
-  let messageStart = 0;
+  const parsedHeaders = parseCommitHeaders(headerText);
+  const state: PendingCommitHeaders = {
+    parents: [],
+    mergetag: [],
+    extraHeaders: [],
+  };
 
-  // 解析 headers
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]!;
-
-    // 空行表示 header 结束
-    if (line === "") {
-      messageStart = i + 1;
-      break;
-    }
-
-    const spaceIndex = line.indexOf(" ");
-    if (spaceIndex === -1) {
-      throw new InvalidObjectError(`invalid commit header: ${line}`);
-    }
-
-    const key = line.slice(0, spaceIndex);
-    const value = line.slice(spaceIndex + 1);
-
-    switch (key) {
-      case "tree":
-        tree = sha1(value);
-        break;
-      case "parent":
-        parents.push(sha1(value));
-        break;
-      case "author":
-        author = parseAuthor(value);
-        break;
-      case "committer":
-        committer = parseAuthor(value);
-        break;
-    }
+  for (const header of parsedHeaders) {
+    applyParsedHeader(state, header);
   }
 
-  if (!tree) throw new InvalidObjectError("commit missing tree");
-  if (!author) throw new InvalidObjectError("commit missing author");
-  if (!committer) throw new InvalidObjectError("commit missing committer");
+  if (!state.tree) throw new InvalidObjectError("commit missing tree");
+  if (!state.author) throw new InvalidObjectError("commit missing author");
+  if (!state.committer) throw new InvalidObjectError("commit missing committer");
 
-  // 剩余部分是 message
-  // Git 序列化时会在末尾添加一个换行符，反序列化时需要去掉
-  const message = lines.slice(messageStart).join("\n").replace(/\n$/, "");
-
-  return { type: "commit", tree, parents, author, committer, message };
+  return {
+    type: "commit",
+    tree: state.tree,
+    parents: state.parents,
+    author: state.author,
+    committer: state.committer,
+    encoding: state.encoding,
+    gpgsig: state.gpgsig,
+    mergetag: state.mergetag.length > 0 ? state.mergetag : undefined,
+    extraHeaders: state.extraHeaders.length > 0 ? state.extraHeaders : undefined,
+    message: rawMessage.replace(/\n$/, ""),
+  };
 }

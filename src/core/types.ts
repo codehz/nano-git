@@ -55,6 +55,18 @@ export interface GitTree {
   entries: TreeEntry[];
 }
 
+/** Commit 自定义 header */
+export interface GitCommitExtraHeader {
+  /**
+   * Header 名称
+   *
+   * 不能与内建字段重名。
+   */
+  name: string;
+  /** Header 值（多行 header 使用 `\n` 表示续行） */
+  value: string;
+}
+
 /** Commit 对象 — 存储快照信息 */
 export interface GitCommit {
   type: "commit";
@@ -66,6 +78,18 @@ export interface GitCommit {
   author: GitAuthor;
   /** 提交者信息 */
   committer: GitAuthor;
+  /** 可选字符编码声明 */
+  encoding?: string;
+  /** GPG 签名块（不含 continuation 行前导空格） */
+  gpgsig?: string;
+  /** merge tag 块列表（不含 continuation 行前导空格） */
+  mergetag?: string[];
+  /**
+   * 自定义 header 列表
+   *
+   * 序列化时会按数组顺序输出在内建 header 之后。
+   */
+  extraHeaders?: GitCommitExtraHeader[];
   /** 提交信息 */
   message: string;
 }

@@ -40,6 +40,7 @@ export type {
   GitBlob,
   GitTree,
   GitCommit,
+  GitCommitExtraHeader,
   GitTag,
   GitAuthor,
   TreeEntry,
