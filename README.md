@@ -378,13 +378,14 @@ bun test
 
 ### 规划中（聚焦裸仓库/服务端场景）
 
-- [ ] **多格式哈希支持** — SHA-256 兼容准备
+- [ ] **Git Protocol v2** — 支持 Git 协议第二版（协议扩展、能力协商、ref-in-want 等）
 
 ### 非目标（明确不实现）
 
 - ~~暂存区（index）操作~~ — 如 `git add`、`git status`
 - ~~工作目录管理~~ — 如 `git checkout`、`git restore`
 - ~~文件级别的差异计算（diff）~~ — 如 `git diff`
+- ~~多格式哈希支持~~ — SHA-256 兼容准备（当前仅 SHA-1）
 
 ## 参考资料
 
