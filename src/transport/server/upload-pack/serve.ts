@@ -13,7 +13,7 @@
  */
 
 import { sha1 } from "../../../core/types.ts";
-import { createPackWriter } from "../../../odb/pack/pack-writer.ts";
+import { createPackWriter } from "../../../pack/pack-writer.ts";
 import { resolveRefHash } from "../../../refs/resolve.ts";
 import { collectReachable } from "../../shared/object-graph.ts";
 import {
@@ -23,8 +23,8 @@ import {
   parsePktLines,
 } from "../../shared/pkt-line.ts";
 
+import type { RepositoryBackend } from "../../../backend/types.ts";
 import type { SHA1 } from "../../../core/types.ts";
-import type { RepositoryBackend } from "../../../repository/backend/types.ts";
 
 // ============================================================================
 // 常量

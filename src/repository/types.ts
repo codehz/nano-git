@@ -6,16 +6,16 @@
  * 这些操作对应 git 的 plumbing 命令。
  */
 
+import type { RepositoryPackSupport } from "../backend/index.ts";
 import type { ObjectStore } from "../odb/types.ts";
+import type { ShallowStore } from "../refs/shallow/types.ts";
 import type { RefStore } from "../refs/types.ts";
-import type { ShallowStore } from "../shallow/types.ts";
-import type { RepositoryPackSupport } from "./backend/index.ts";
-import type { RepositoryFetchOperations } from "./fetch-types.ts";
-import type { RepoImportOperations } from "./import-session-types.ts";
-import type { RepositoryMaintenanceOperations } from "./maintenance-types.ts";
-import type { RepositoryObjectOperations } from "./object-types.ts";
-import type { RepositoryPushOperations } from "./push-types.ts";
-import type { RepositoryRefOperations } from "./ref-types.ts";
+import type { RepoImportOperations } from "./import/import-session-types.ts";
+import type { RepositoryFetchOperations } from "./ops/fetch-types.ts";
+import type { RepositoryMaintenanceOperations } from "./ops/maintenance-types.ts";
+import type { RepositoryObjectOperations } from "./ops/object-types.ts";
+import type { RepositoryPushOperations } from "./ops/push-types.ts";
+import type { RepositoryRefOperations } from "./ops/ref-types.ts";
 
 /**
  * Git 仓库接口

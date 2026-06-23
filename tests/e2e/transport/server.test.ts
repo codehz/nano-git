@@ -15,7 +15,7 @@ import { createMemoryRepository, initRepository } from "@/repository/index.ts";
 import { createV2HttpTransport } from "@/transport/client/git-transport.ts";
 
 import type { NanoGitServer } from "./nano-git-server.ts";
-import type { RepositoryBackend } from "@/repository/backend/types.ts";
+import type { RepositoryBackend } from "@/backend/types.ts";
 
 // ============================================================================
 // 测试辅助：用系统 git 创建带提交的目录

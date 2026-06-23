@@ -19,8 +19,8 @@ import {
   createFile,
   FIXED_AUTHOR,
 } from "./helpers.ts";
-import { createPackBuilder } from "@/odb/pack/pack-builder.ts";
-import { createPackObjectStore } from "@/odb/pack/pack-store.ts";
+import { createPackBuilder } from "@/pack/pack-builder.ts";
+import { createPackObjectStore } from "@/pack/pack-store.ts";
 
 import type { GitBlob, GitTree, GitCommit, GitAuthor, SHA1 } from "@/core/types.ts";
 

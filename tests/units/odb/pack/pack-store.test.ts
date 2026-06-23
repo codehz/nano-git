@@ -7,8 +7,8 @@ import { mkdirSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createPackBuilder } from "@/odb/pack/pack-builder.ts";
-import { createPackObjectStore } from "@/odb/pack/pack-store.ts";
+import { createPackBuilder } from "@/pack/pack-builder.ts";
+import { createPackObjectStore } from "@/pack/pack-store.ts";
 
 import type { GitBlob } from "@/core/types.ts";
 

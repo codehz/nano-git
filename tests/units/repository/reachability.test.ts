@@ -6,7 +6,7 @@ import { describe, test, expect } from "bun:test";
 
 import { createMemoryObjectStore } from "@/odb/memory.ts";
 import { createMemoryRefStore } from "@/refs/memory.ts";
-import { listReachableObjects } from "@/repository/reachability.ts";
+import { listReachableObjects } from "@/repository/ops/reachability.ts";
 
 describe("listReachableObjects", () => {
   test("空仓库应返回空列表", () => {

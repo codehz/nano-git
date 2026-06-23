@@ -15,7 +15,7 @@ import { serialize, deserialize } from "../src/objects/index.ts";
 import { readTree, patchTree } from "../src/repository/index.ts";
 import { createMemoryRepository } from "../src/repository/memory.ts";
 
-import type { GitBlob, GitAuthor } from "../src/types/index.ts";
+import type { GitBlob, GitAuthor } from "../src/core/types.ts";
 
 console.log("=== nano-git 演示 ===\n");
 

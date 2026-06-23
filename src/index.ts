@@ -18,16 +18,16 @@
  * | `nano-git/objects` | 对象序列化/反序列化 | 纯 TS |
  * | `nano-git/odb/memory` | 内存对象存储 | 纯 TS |
  * | `nano-git/odb/file` | 文件对象存储 | `node:fs` + `node:zlib` |
- * | `nano-git/odb/pack` | Packfile 读写 | `node:fs` + `node:zlib` |
+ * | `nano-git/pack` | Packfile 读写 | `node:fs` + `node:zlib` |
  * | `nano-git/refs/memory` | 内存 Refs 存储 | 纯 TS |
  * | `nano-git/refs/file` | 文件 Refs 存储 | `node:fs` |
- * | `nano-git/shallow/memory` | 内存 Shallow 存储 | 纯 TS |
- * | `nano-git/shallow/file` | 文件 Shallow 存储 | `node:fs` |
+ * | `nano-git/refs/shallow/memory` | 内存 Shallow 存储 | 纯 TS |
+ * | `nano-git/refs/shallow/file` | 文件 Shallow 存储 | `node:fs` |
  * | `nano-git/repository/create` | 仓库创建（高阶函数） | 纯 TS |
  * | `nano-git/repository/memory` | 内存仓库便捷函数 | 仅 memory 后端 |
  * | `nano-git/repository/file` | 文件仓库便捷函数 | 完整 file 后端 |
+ * | `nano-git/backend` | 仓库后端抽象 | 按后端类型 |
  * | `nano-git/transport` | 传输层全量 barrel | 全套协议 |
- * | `nano-git/types` | 公共类型入口 | 编译期擦除 |
  */
 
 // ============================================================================
@@ -44,13 +44,15 @@ export type {
   GitAuthor,
   TreeEntry,
   GitObject,
-} from "./types/index.ts";
+} from "./core/types.ts";
 
 // ============================================================================
 // SHA-1 哈希工具（仅 node:crypto）
 // ============================================================================
 
-export { sha1, hashData, hashObject, isValidSHA1, assertObjectType } from "./sha1.ts";
+export { sha1, assertObjectType } from "./core/types.ts";
+
+export { hashData, hashObject, isValidSHA1 } from "./core/hash.ts";
 
 // ============================================================================
 // 错误类型（纯定义）
@@ -70,4 +72,4 @@ export {
   DeltaError,
   TransactionError,
   PreconditionCheckError,
-} from "./errors.ts";
+} from "./core/errors.ts";

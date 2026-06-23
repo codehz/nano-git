@@ -19,7 +19,7 @@ import {
   V2ServeError,
 } from "./upload-pack/serve.ts";
 
-import type { RepositoryBackend } from "../../repository/backend/types.ts";
+import type { RepositoryBackend } from "../../backend/types.ts";
 
 /**
  * Upload-Pack 服务错误

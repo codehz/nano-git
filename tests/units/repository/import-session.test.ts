@@ -6,12 +6,15 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { createMemoryRepositoryBackend } from "@/backend/index.ts";
 import { sha1 } from "@/core/types.ts";
-import { createPackWriter } from "@/odb/pack/index.ts";
-import { createMemoryRepositoryBackend } from "@/repository/backend/index.ts";
-import { matchRefGlob } from "@/repository/import-glob.ts";
-import { createImportSession, createRepoImportOperations } from "@/repository/import-session.ts";
-import { createImportView } from "@/repository/import-view.ts";
+import { createPackWriter } from "@/pack/index.ts";
+import { matchRefGlob } from "@/repository/import/import-glob.ts";
+import {
+  createImportSession,
+  createRepoImportOperations,
+} from "@/repository/import/import-session.ts";
+import { createImportView } from "@/repository/import/import-view.ts";
 import { encodePktLine } from "@/transport/shared/pkt-line.ts";
 
 import type { V2GitServiceTransport } from "@/transport/client/protocol-types.ts";

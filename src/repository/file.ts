@@ -15,8 +15,8 @@
 import { mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
+import { createFileRepositoryBackend } from "../backend/index.ts";
 import { RepositoryError } from "../core/errors.ts";
-import { createFileRepositoryBackend } from "./backend/index.ts";
 import { createRepository } from "./create.ts";
 
 import type { Repository } from "./types.ts";

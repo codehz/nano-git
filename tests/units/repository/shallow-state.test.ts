@@ -14,15 +14,12 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { createFileRepositoryBackend, createMemoryRepositoryBackend } from "@/backend/index.ts";
 import { sha1, type SHA1, type GitCommit } from "@/core/types.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
-import {
-  createFileRepositoryBackend,
-  createMemoryRepositoryBackend,
-} from "@/repository/backend/index.ts";
+import { createFileShallowStore } from "@/refs/shallow/file.ts";
+import { createMemoryShallowStore } from "@/refs/shallow/memory.ts";
 import { createRepository, createMemoryRepository } from "@/repository/index.ts";
-import { createFileShallowStore } from "@/shallow/file.ts";
-import { createMemoryShallowStore } from "@/shallow/memory.ts";
 import { collectReachable } from "@/transport/shared/object-graph.ts";
 
 import type { ObjectStore } from "@/odb/types.ts";

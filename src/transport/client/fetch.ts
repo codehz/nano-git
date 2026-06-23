@@ -645,7 +645,7 @@ export async function v2FetchObjects(
   }
 
   // 解析 packfile 并写入对象
-  const { createPackReader } = await import("../../odb/pack/pack-reader.ts");
+  const { createPackReader } = await import("../../pack/pack-reader.ts");
   const { deserializeContent } = await import("../../objects/codec.ts");
   const reader = createPackReader(result.packfile);
   let count = 0;

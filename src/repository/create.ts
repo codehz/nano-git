@@ -2,14 +2,14 @@
  * 仓库实例创建逻辑
  */
 
-import { createFetchRepositoryOperations } from "./fetch-operations.ts";
-import { createRepoImportOperations } from "./import-session.ts";
-import { createMaintenanceRepositoryOperations } from "./maintenance-operations.ts";
-import { createObjectRepositoryOperations } from "./object-operations.ts";
-import { createPushRepositoryOperations } from "./push-operations.ts";
-import { createRefRepositoryOperations } from "./ref-operations.ts";
+import { createRepoImportOperations } from "./import/import-session.ts";
+import { createFetchRepositoryOperations } from "./ops/fetch-operations.ts";
+import { createMaintenanceRepositoryOperations } from "./ops/maintenance-operations.ts";
+import { createObjectRepositoryOperations } from "./ops/object-operations.ts";
+import { createPushRepositoryOperations } from "./ops/push-operations.ts";
+import { createRefRepositoryOperations } from "./ops/ref-operations.ts";
 
-import type { RepositoryBackend } from "./backend/index.ts";
+import type { RepositoryBackend } from "../backend/index.ts";
 import type { Repository } from "./types.ts";
 
 /**

@@ -5,7 +5,7 @@
 import { describe, test, expect } from "bun:test";
 
 import { InvalidPackError } from "@/core/errors.ts";
-import { createPackWriter, createPackReader } from "@/odb/pack/index.ts";
+import { createPackWriter, createPackReader } from "@/pack/index.ts";
 
 import type { GitBlob, GitTree, GitCommit, GitAuthor } from "@/core/types.ts";
 

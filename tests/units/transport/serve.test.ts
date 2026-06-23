@@ -7,8 +7,8 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { createMemoryRepositoryBackend } from "@/backend/index.ts";
 import { sha1 } from "@/core/types.ts";
-import { createMemoryRepositoryBackend } from "@/repository/backend/index.ts";
 import { createUploadPackService } from "@/transport/server/upload-pack.ts";
 import {
   parseV2Command,

@@ -11,7 +11,7 @@ import {
   createFileRepositoryBackend,
   createMemoryRepositoryBackend,
   type RepositoryBackend,
-} from "@/repository/backend/index.ts";
+} from "@/backend/index.ts";
 import { createRepository, initRepository, openRepository } from "@/repository/index.ts";
 
 describe("initRepository()", () => {

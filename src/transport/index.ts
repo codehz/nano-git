@@ -5,8 +5,7 @@
  * - shared/       : 协议无关的共享工具
  * - client/       : 客户端代码（push 除外的大多数协议使用 v2 作为默认协议）
  * - client/push/  : Push 客户端（v1 receive-pack 协议）
- * - server/       : 服务端代码
- * - receive-pack/ : v1 receive-pack 服务端
+ * - server/       : 服务端代码（含 upload-pack 和 receive-pack）
  */
 
 // ============================================================================
@@ -117,13 +116,13 @@ export {
   handleV1ReceivePush,
   parseV1ReceivePackRequest,
   V1ReceivePackError,
-} from "./receive-pack/index.ts";
+} from "./server/receive-pack/index.ts";
 export type {
   V1ReceivePackCommand,
   ParsedV1ReceivePackRequest,
   V1RefUpdateResult,
   V1ReceivePackOptions,
-} from "./receive-pack/index.ts";
+} from "./server/receive-pack/index.ts";
 
 // ============================================================================
 // 客户端（v2 默认协议：fetch、ls-refs、object-info）

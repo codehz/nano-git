@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { hashToPath } from "@/core/hash.ts";
-import { createPackBuilder } from "@/odb/pack/index.ts";
+import { createPackBuilder } from "@/pack/index.ts";
 import { initRepository, openRepository, type Repository } from "@/repository/index.ts";
 
 import type { GitAuthor, TreeEntry } from "@/core/types.ts";

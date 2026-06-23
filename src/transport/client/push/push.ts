@@ -22,7 +22,7 @@
  * ```
  */
 
-import { createPackWriter } from "../../../odb/pack/pack-writer.ts";
+import { createPackWriter } from "../../../pack/pack-writer.ts";
 import { getLocalRefs, remoteRefsToMap } from "../../shared/ref-collection.ts";
 import { PushError } from "./push-error.ts";
 import { mergePushBoundaries, computeObjectsToSend } from "./push-pack-plan.ts";
