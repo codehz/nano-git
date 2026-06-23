@@ -83,7 +83,7 @@ export async function detectProtocol(
   // 检查是否为 v2 响应：必须以 "000eversion 2\n" 开头
   const headerHex = data.subarray(0, 16).toString("utf-8");
   const isV2Response =
-    headerHex.startsWith("000e") && data.subarray(4, 14).toString("utf-8").trim() === "version 2";
+    /^000e/i.test(headerHex) && data.subarray(4, 14).toString("utf-8").trim() === "version 2";
 
   if (isV2Response) {
     try {

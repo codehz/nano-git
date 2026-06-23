@@ -79,11 +79,15 @@ function validateServiceRequest(method: string, contentType: string | null): Res
  */
 function handleInfoRefs(service: string): Response {
   const advertise = serveV2Advertise(service);
+  // service 为 "git-upload-pack"，Content-Type 应为 "application/x-git-upload-pack-advertisement"
+  const contentType = service.startsWith("git-")
+    ? `application/x-${service}-advertisement`
+    : `application/x-git-${service}-advertisement`;
 
   return new Response(advertise, {
     status: 200,
     headers: {
-      "Content-Type": `application/x-git-${service}-advertisement`,
+      "Content-Type": contentType,
       "Cache-Control": "no-cache",
     },
   });
