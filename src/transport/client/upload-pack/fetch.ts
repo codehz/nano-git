@@ -39,7 +39,7 @@
 import { GitError } from "../../../core/errors.ts";
 import { splitPktLinesFromBuffer } from "../../protocol/pkt-line.ts";
 
-import type { ObjectStore } from "../../../odb/types.ts";
+import type { ObjectDatabase } from "../../../odb/types.ts";
 import type { V2GitServiceTransport, V2FetchResponse } from "./types.ts";
 
 // ============================================================================
@@ -632,7 +632,7 @@ export async function negotiateV2Fetch(
  * @returns 导入的对象数量
  */
 export async function v2FetchObjects(
-  store: ObjectStore,
+  store: ObjectDatabase,
   v2Trans: V2GitServiceTransport,
   wants: string[],
   haves?: string[],

@@ -20,7 +20,7 @@
 import { ObjectNotFoundError } from "../core/errors.ts";
 
 import type { GitObject, SHA1 } from "../core/types.ts";
-import type { ObjectSource, ObjectStore } from "../odb/types.ts";
+import type { ObjectSource, ObjectDatabase } from "../odb/types.ts";
 
 // ============================================================================
 // 组合对象存储
@@ -46,21 +46,21 @@ import type { ObjectSource, ObjectStore } from "../odb/types.ts";
  * store.write(blob);
  * ```
  */
-export function createCompositeObjectStore(
-  primary: ObjectStore,
+export function createCompositeObjectDatabase(
+  primary: ObjectDatabase,
   ...secondary: ObjectSource[]
-): CompositeObjectStore {
-  return new CompositeObjectStore(primary, secondary);
+): CompositeObjectDatabase {
+  return new CompositeObjectDatabase(primary, secondary);
 }
 
 /**
  * 组合对象存储类
  */
-export class CompositeObjectStore implements ObjectStore {
-  private readonly primary: ObjectStore;
+export class CompositeObjectDatabase implements ObjectDatabase {
+  private readonly primary: ObjectDatabase;
   private readonly secondary: ObjectSource[];
 
-  constructor(primary: ObjectStore, secondary: ObjectSource[]) {
+  constructor(primary: ObjectDatabase, secondary: ObjectSource[]) {
     this.primary = primary;
     this.secondary = secondary;
   }
@@ -177,7 +177,7 @@ export class CompositeObjectStore implements ObjectStore {
   /**
    * 获取主存储
    */
-  getPrimary(): ObjectStore {
+  getPrimary(): ObjectDatabase {
     return this.primary;
   }
 

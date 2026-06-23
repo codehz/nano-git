@@ -7,7 +7,7 @@
  */
 
 import type { RepositoryPackSupport } from "../backend/index.ts";
-import type { ObjectStore } from "../odb/types.ts";
+import type { ObjectDatabase } from "../odb/types.ts";
 import type { ShallowStore } from "../refs/shallow/types.ts";
 import type { RefStore } from "../refs/types.ts";
 import type { RepoImportOperations } from "./import/import-session-types.ts";
@@ -28,8 +28,8 @@ export interface Repository
     RepositoryPushOperations,
     RepositoryFetchOperations,
     RepoImportOperations {
-  /** Git 对象存储 */
-  readonly objects: ObjectStore;
+  /** Git 对象数据库（raw-first） */
+  readonly objects: ObjectDatabase;
 
   /** Git 引用存储 */
   readonly refs: RefStore;

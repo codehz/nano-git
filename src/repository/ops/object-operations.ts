@@ -23,7 +23,7 @@ import type {
   SHA1,
   TreeEntry,
 } from "../../core/types.ts";
-import type { ObjectStore } from "../../odb/types.ts";
+import type { ObjectDatabase } from "../../odb/types.ts";
 import type { RepositoryObjectOperations } from "./object-types.ts";
 
 /**
@@ -35,7 +35,7 @@ import type { RepositoryObjectOperations } from "./object-types.ts";
  * const hash = ops.writeBlob(Buffer.from("hello"));
  * ```
  */
-export function createObjectRepositoryOperations(objects: ObjectStore): RepositoryObjectOperations {
+export function createObjectRepositoryOperations(objects: ObjectDatabase): RepositoryObjectOperations {
   function writeBlob(data: Buffer): SHA1 {
     const blob: GitBlob = { type: "blob", content: data };
     return objects.write(blob);

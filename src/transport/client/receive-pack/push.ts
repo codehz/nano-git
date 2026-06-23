@@ -39,7 +39,7 @@ import { decodeReceivePackResponse } from "./response.ts";
 import { ReceivePackResultError } from "./result.ts";
 
 import type { SHA1 } from "../../../core/types.ts";
-import type { ObjectStore } from "../../../odb/types.ts";
+import type { ObjectDatabase } from "../../../odb/types.ts";
 import type { RefStore } from "../../../refs/types.ts";
 import type {
   ReceivePackTransport,
@@ -83,7 +83,7 @@ export type { PushRefItem } from "./push-ref-plan.ts";
  * ```
  */
 export async function push(
-  store: ObjectStore,
+  store: ObjectDatabase,
   refs: RefStore,
   transport: ReceivePackTransport,
   advertisement: RefAdvertisement,

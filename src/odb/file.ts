@@ -20,7 +20,7 @@ import {
 } from "./file-utils.ts";
 
 import type { GitObject, SHA1 } from "../core/types.ts";
-import type { ObjectStore } from "./types.ts";
+import type { ObjectDatabase } from "./types.ts";
 
 /**
  * 创建基于文件系统的对象存储
@@ -39,7 +39,7 @@ import type { ObjectStore } from "./types.ts";
  * const obj = store.read(hash);
  * ```
  */
-export function createFileObjectStore(gitDir: string): ObjectStore {
+export function createFileObjectStore(gitDir: string): ObjectDatabase {
   const objectsDir = join(gitDir, "objects");
 
   return {

@@ -14,7 +14,7 @@
  */
 
 import type { GitTree, SHA1, TreeEntry } from "../../core/types.ts";
-import type { ObjectStore } from "../../odb/types.ts";
+import type { ObjectDatabase } from "../../odb/types.ts";
 
 // ============================================================================
 // 类型定义
@@ -75,7 +75,7 @@ export interface TreePatchResult {
  * ```
  */
 export function patchTree(
-  objects: ObjectStore,
+  objects: ObjectDatabase,
   rootHash: SHA1,
   ops: TreePatchOp[],
 ): TreePatchResult {
@@ -113,7 +113,7 @@ export function patchTree(
  * rename op 单独执行，每次在当前 tree 状态上查找源路径并转换为 upsert+delete。
  */
 function processOpsSequentially(
-  objects: ObjectStore,
+  objects: ObjectDatabase,
   rootHash: SHA1,
   ops: TreePatchOp[],
 ): { hash: SHA1; written: SHA1[] } {
@@ -164,7 +164,7 @@ function processOpsSequentially(
  * 沿路径依次读取 tree 对象，最后一段返回目标条目。
  * 中间段必须为目录（mode "40000"），否则抛出异常。
  */
-function findEntryByPath(objects: ObjectStore, treeHash: SHA1, path: string): TreeEntry | null {
+function findEntryByPath(objects: ObjectDatabase, treeHash: SHA1, path: string): TreeEntry | null {
   const segments = path.split("/");
   let currentHash = treeHash;
 
@@ -246,7 +246,7 @@ function dedupOpsByPath(ops: TreePatchOp[]): TreePatchOp[] {
  * 该函数不处理 rename 操作——调用方保证传入的 ops 不含 rename。
  */
 function applyPatchBatch(
-  objects: ObjectStore,
+  objects: ObjectDatabase,
   rootHash: SHA1,
   ops: TreePatchOp[],
 ): { hash: SHA1; written: SHA1[] } {
@@ -284,7 +284,7 @@ function applyPatchBatch(
  * @param upsertedPaths - 原始操作列表中所有 upsert 的全路径集合
  */
 function applyPatchRecursive(
-  objects: ObjectStore,
+  objects: ObjectDatabase,
   treeHash: SHA1 | null,
   ops: TreePatchOp[],
   prefix: string,
@@ -400,7 +400,7 @@ function applyPatchRecursive(
 /**
  * 读取 tree 对象的条目列表
  */
-function readTreeEntries(objects: ObjectStore, treeHash: SHA1 | null): TreeEntry[] {
+function readTreeEntries(objects: ObjectDatabase, treeHash: SHA1 | null): TreeEntry[] {
   if (treeHash === null) {
     return [];
   }

@@ -1,5 +1,5 @@
 /**
- * CompositeObjectStore 单元测试
+ * CompositeObjectDatabase 单元测试
  */
 
 import { describe, test, expect } from "bun:test";
@@ -9,17 +9,17 @@ import { join } from "node:path";
 
 import { createFileObjectStore } from "@/odb/file.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
-import { createCompositeObjectStore } from "@/pack/composite-store.ts";
+import { createCompositeObjectDatabase } from "@/pack/composite-store.ts";
 import { createPackBuilder } from "@/pack/pack-builder.ts";
 import { createPackObjectStore } from "@/pack/pack-store.ts";
 
 import type { GitBlob } from "@/core/types.ts";
 
-describe("CompositeObjectStore", () => {
+describe("CompositeObjectDatabase", () => {
   test("从主存储读取", () => {
     const primary = createMemoryObjectStore();
     const secondary = createMemoryObjectStore();
-    const composite = createCompositeObjectStore(primary, secondary);
+    const composite = createCompositeObjectDatabase(primary, secondary);
 
     const blob: GitBlob = { type: "blob", content: Buffer.from("primary") };
     const hash = primary.write(blob);
@@ -34,7 +34,7 @@ describe("CompositeObjectStore", () => {
   test("从辅助存储读取", () => {
     const primary = createMemoryObjectStore();
     const secondary = createMemoryObjectStore();
-    const composite = createCompositeObjectStore(primary, secondary);
+    const composite = createCompositeObjectDatabase(primary, secondary);
 
     const blob: GitBlob = { type: "blob", content: Buffer.from("secondary") };
     const hash = secondary.write(blob);
@@ -49,7 +49,7 @@ describe("CompositeObjectStore", () => {
   test("写入到主存储", () => {
     const primary = createMemoryObjectStore();
     const secondary = createMemoryObjectStore();
-    const composite = createCompositeObjectStore(primary, secondary);
+    const composite = createCompositeObjectDatabase(primary, secondary);
 
     const blob: GitBlob = { type: "blob", content: Buffer.from("new") };
     const hash = composite.write(blob);
@@ -61,7 +61,7 @@ describe("CompositeObjectStore", () => {
   test("主存储优先级高于辅助存储", () => {
     const primary = createMemoryObjectStore();
     const secondary = createMemoryObjectStore();
-    const composite = createCompositeObjectStore(primary, secondary);
+    const composite = createCompositeObjectDatabase(primary, secondary);
 
     const blob1: GitBlob = { type: "blob", content: Buffer.from("primary version") };
     const blob2: GitBlob = { type: "blob", content: Buffer.from("secondary version") };
@@ -97,7 +97,7 @@ describe("CompositeObjectStore", () => {
       content: Buffer.from("loose version"),
     });
 
-    const composite = createCompositeObjectStore(fileStore, createPackObjectStore(gitDir));
+    const composite = createCompositeObjectDatabase(fileStore, createPackObjectStore(gitDir));
     const looseObj = composite.read(looseHash);
     const packedObj = composite.read(packedHash);
 

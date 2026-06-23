@@ -6,7 +6,7 @@ import { readFileSync, readdirSync, lstatSync, readlinkSync } from "node:fs";
 import { join } from "node:path";
 
 import type { GitBlob, GitTree, TreeEntry, SHA1 } from "../../core/types.ts";
-import type { ObjectStore } from "../../odb/types.ts";
+import type { ObjectDatabase } from "../../odb/types.ts";
 
 /**
  * 递归将目录写入 tree 对象
@@ -24,7 +24,7 @@ import type { ObjectStore } from "../../odb/types.ts";
  * console.log(hash);
  * ```
  */
-export function writeTreeRecursive(store: ObjectStore, dirPath: string): SHA1 {
+export function writeTreeRecursive(store: ObjectDatabase, dirPath: string): SHA1 {
   const entries: TreeEntry[] = [];
   const items = readdirSync(dirPath).sort();
 

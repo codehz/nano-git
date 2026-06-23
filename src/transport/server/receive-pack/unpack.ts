@@ -21,7 +21,7 @@ import { decodeObjectHeader, decodeOfsDeltaOffset } from "../../../pack/utils.ts
 import { ReceivePackServiceError } from "./types.ts";
 
 import type { ObjectType } from "../../../core/types.ts";
-import type { ObjectStore } from "../../../odb/types.ts";
+import type { ObjectDatabase } from "../../../odb/types.ts";
 
 /**
  * 将 push packfile 中的对象解包到对象存储中
@@ -33,7 +33,7 @@ import type { ObjectStore } from "../../../odb/types.ts";
  * @param packfile - push 请求中的 packfile 数据
  * @throws {ReceivePackServiceError} 当解包失败时
  */
-export function unpackPackfile(store: ObjectStore, packfile: Buffer): void {
+export function unpackPackfile(store: ObjectDatabase, packfile: Buffer): void {
   if (packfile.length < PACK_HEADER_SIZE + PACK_CHECKSUM_SIZE) {
     throw new ReceivePackServiceError("Packfile too small to contain any objects");
   }

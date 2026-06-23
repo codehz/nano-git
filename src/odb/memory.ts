@@ -9,14 +9,14 @@ import { hashObject } from "../core/hash.ts";
 import { serialize, deserialize, serializeContent } from "../objects/index.ts";
 
 import type { GitObject, SHA1 } from "../core/types.ts";
-import type { ObjectStore } from "./types.ts";
+import type { ObjectDatabase } from "./types.ts";
 
-export type { ObjectStore } from "./types.ts";
+export type { ObjectDatabase } from "./types.ts";
 
 /**
  * 内存对象存储接口（扩展了 list 方法）
  */
-export type MemoryObjectStore = ObjectStore;
+export type MemoryObjectDatabase = ObjectDatabase;
 
 /**
  * 创建内存对象存储
@@ -28,7 +28,7 @@ export type MemoryObjectStore = ObjectStore;
  * const store = createMemoryObjectStore();
  * ```
  */
-export function createMemoryObjectStore(): MemoryObjectStore {
+export function createMemoryObjectStore(): MemoryObjectDatabase {
   const store = new Map<SHA1, Buffer>();
 
   return {

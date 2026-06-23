@@ -5,8 +5,8 @@
  * 底层对象存储、引用存储和仓库布局信息通过 Backend 注入。
  */
 
-import type { GitObject, SHA1 } from "../core/types.ts";
-import type { ObjectSource, ObjectStore } from "../odb/types.ts";
+import type { RawGitObject, SHA1 } from "../core/types.ts";
+import type { ObjectSource, ObjectDatabase } from "../odb/types.ts";
 import type { PackBuildResult } from "../pack/pack-builder.ts";
 import type { PackBuilder } from "../pack/pack-builder.ts";
 import type { PackObjectStore } from "../pack/pack-store.ts";
@@ -70,8 +70,8 @@ export interface RepositoryPackSupport {
   /** 创建底层 PackBuilder */
   createBuilder(): PackBuilder;
 
-  /** 将给定对象集合写入新的 packfile */
-  writeObjects(objects: Iterable<GitObject>): PackBuildResult;
+  /** 将给定原始对象集合写入新的 packfile */
+  writeRawObjects(objects: Iterable<RawGitObject>): PackBuildResult;
 
   /** 从对象源中读取指定对象并写入新的 packfile */
   writeFromSource(source: ObjectSource, hashes: Iterable<SHA1>): PackBuildResult;
@@ -91,8 +91,8 @@ export interface RepositoryPackSupport {
  * - gitDir: .git 目录路径（内存仓库为 null）
  */
 export interface RepositoryBackend {
-  /** Git 对象存储 */
-  readonly objects: ObjectStore;
+  /** Git 对象数据库（raw-first） */
+  readonly objects: ObjectDatabase;
 
   /** Git 引用存储 */
   readonly refs: RefStore;

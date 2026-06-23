@@ -10,7 +10,7 @@ import { join } from "node:path";
 
 import { type SHA1 } from "../core/types.ts";
 import { createFileObjectStore } from "../odb/file.ts";
-import { createCompositeObjectStore } from "../pack/composite-store.ts";
+import { createCompositeObjectDatabase } from "../pack/composite-store.ts";
 import { createPackBuilder } from "../pack/pack-builder.ts";
 import { createPackObjectStore } from "../pack/pack-store.ts";
 import { createFileRefStore } from "../refs/file.ts";
@@ -49,7 +49,7 @@ export function createFileRepositoryBackend(
   const objects =
     options.includePack === false
       ? looseObjects
-      : createCompositeObjectStore(looseObjects, packSource);
+      : createCompositeObjectDatabase(looseObjects, packSource);
 
   function refreshPackView(): void {
     packSource.refresh();
@@ -87,7 +87,7 @@ export function createFileRepositoryBackend(
     createBuilder() {
       return createPackBuilder(gitDir);
     },
-    writeObjects(objects) {
+    writeRawObjects(objects) {
       const builder = createPackBuilder(gitDir);
       for (const obj of objects) {
         builder.addObject(obj);

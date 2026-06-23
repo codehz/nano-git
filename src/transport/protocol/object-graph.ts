@@ -16,7 +16,7 @@
 import { ObjectNotFoundError } from "../../core/errors.ts";
 
 import type { SHA1 } from "../../core/types.ts";
-import type { ObjectStore } from "../../odb/types.ts";
+import type { ObjectDatabase } from "../../odb/types.ts";
 
 // ============================================================================
 // 可达性遍历
@@ -26,7 +26,7 @@ import type { ObjectStore } from "../../odb/types.ts";
 export type CollectReachableMissing = "throw" | "skip" | "skip-commit-parents";
 
 function throwIfMissingObject(
-  objects: ObjectStore,
+  objects: ObjectDatabase,
   hash: SHA1,
   missing: CollectReachableMissing,
   viaCommitParent: boolean,
@@ -62,7 +62,7 @@ function throwIfMissingObject(
  * @param viaCommitParent - 当前边是否来自 commit 的 parent 引用
  */
 function collectReachableFrom(
-  objects: ObjectStore,
+  objects: ObjectDatabase,
   hash: SHA1,
   reachable: Set<SHA1>,
   missing: CollectReachableMissing = "skip",
@@ -117,7 +117,7 @@ function collectReachableFrom(
  * ```
  */
 export function collectReachable(
-  objects: ObjectStore,
+  objects: ObjectDatabase,
   roots: SHA1[],
   missing: CollectReachableMissing = "skip",
   shallowBoundaries?: Set<SHA1>,
@@ -150,7 +150,7 @@ export function collectReachable(
  * const peeled = peelTagChain(store, tagHash);
  * ```
  */
-export function peelTagChain(store: ObjectStore, hash: SHA1, shallowBoundaries?: Set<SHA1>): SHA1 {
+export function peelTagChain(store: ObjectDatabase, hash: SHA1, shallowBoundaries?: Set<SHA1>): SHA1 {
   let current = hash;
 
   while (true) {
@@ -195,7 +195,7 @@ export function peelTagChain(store: ObjectStore, hash: SHA1, shallowBoundaries?:
  * ```
  */
 export function isAncestor(
-  store: ObjectStore,
+  store: ObjectDatabase,
   oldHash: SHA1,
   newHash: SHA1,
   shallowBoundaries?: Set<SHA1>,

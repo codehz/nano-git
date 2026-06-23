@@ -6,7 +6,7 @@
  */
 
 import type { SHA1, TreeEntry } from "../../core/types.ts";
-import type { ObjectStore } from "../../odb/types.ts";
+import type { ObjectDatabase } from "../../odb/types.ts";
 
 /**
  * 带完整路径的 tree 条目
@@ -31,7 +31,7 @@ export interface TreeEntryWithPath extends TreeEntry {
  * }
  * ```
  */
-export function readTree(objects: ObjectStore, rootHash: SHA1): TreeEntryWithPath[] {
+export function readTree(objects: ObjectDatabase, rootHash: SHA1): TreeEntryWithPath[] {
   const result: TreeEntryWithPath[] = [];
   walkTreeRecursive(objects, rootHash, "", result);
   return result;
@@ -54,7 +54,7 @@ export function readTree(objects: ObjectStore, rootHash: SHA1): TreeEntryWithPat
  * ```
  */
 export function walkTree(
-  objects: ObjectStore,
+  objects: ObjectDatabase,
   rootHash: SHA1,
   visit: (entry: TreeEntryWithPath) => void,
 ): void {
@@ -62,7 +62,7 @@ export function walkTree(
 }
 
 function walkTreeRecursive(
-  objects: ObjectStore,
+  objects: ObjectDatabase,
   treeHash: SHA1,
   prefix: string,
   result?: TreeEntryWithPath[],

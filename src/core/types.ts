@@ -16,6 +16,23 @@ export type SHA1 = string & { readonly __brand: "SHA1" };
 export type ObjectType = "blob" | "tree" | "commit" | "tag";
 
 /**
+ * 底层原始 Git 对象（ODB 的真实边界）
+ *
+ * 直接对应 Git 存储格式中的 "<type> <size>\0<content>"，
+ * ODB 的 read/ingest 操作均以此为单元，不再直接操作 GitObject。
+ *
+ * @see GitObject - 语义层 AST，供查看、遍历、构造新对象使用
+ */
+export interface RawGitObject {
+  /** SHA-1 哈希（由 type + content 计算得出） */
+  readonly hash: SHA1;
+  /** 对象类型 */
+  readonly type: ObjectType;
+  /** 去 header 后的原始内容 */
+  readonly content: Buffer;
+}
+
+/**
  * 验证并转换字符串为 ObjectType
  *
  * @throws InvalidObjectError 如果字符串不是合法的 ObjectType
@@ -127,7 +144,14 @@ export interface GitTag {
   message: string;
 }
 
-/** 所有 Git 对象的联合类型 */
+/**
+ * 所有 Git 对象的联合类型（语义层 AST）
+ *
+ * 用于查看、遍历和构造新对象。不直接作为 ODB 的存储边界。
+ * ODB 的真实边界是 RawGitObject。
+ *
+ * @see RawGitObject - ODB 层使用的底层原始对象
+ */
 export type GitObject = GitBlob | GitTree | GitCommit | GitTag;
 
 /**

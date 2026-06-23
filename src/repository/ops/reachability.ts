@@ -8,7 +8,7 @@ import { resolveRefHash } from "../../refs/resolve.ts";
 import { HEAD_REF, HEADS_PREFIX, TAGS_PREFIX } from "../../refs/types.ts";
 
 import type { SHA1 } from "../../core/types.ts";
-import type { ObjectStore } from "../../odb/types.ts";
+import type { ObjectDatabase } from "../../odb/types.ts";
 import type { RefStore } from "../../refs/types.ts";
 
 function listRootRefs(refs: RefStore): string[] {
@@ -26,7 +26,7 @@ function listRootRefs(refs: RefStore): string[] {
 }
 
 function collectReachableObjectHashesFrom(
-  objects: ObjectStore,
+  objects: ObjectDatabase,
   hash: SHA1,
   reachable: Set<SHA1>,
 ): void {
@@ -83,7 +83,7 @@ function collectReachableObjectHashesFrom(
  * console.log(hashes.length);
  * ```
  */
-export function listReachableObjects(objects: ObjectStore, refs: RefStore): SHA1[] {
+export function listReachableObjects(objects: ObjectDatabase, refs: RefStore): SHA1[] {
   const reachable = new Set<SHA1>();
 
   for (const ref of listRootRefs(refs)) {

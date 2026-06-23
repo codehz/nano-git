@@ -23,7 +23,7 @@ import { createRepository } from "@/repository/create.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
 import { collectReachable } from "@/transport/protocol/object-graph.ts";
 
-import type { ObjectStore } from "@/odb/types.ts";
+import type { ObjectDatabase } from "@/odb/types.ts";
 
 // ============================================================================
 // 辅助函数
@@ -285,7 +285,7 @@ describe("Repository 层 shallow 编排", () => {
 // ============================================================================
 
 describe("collectReachable 与 shallow boundaries", () => {
-  let store: ObjectStore;
+  let store: ObjectDatabase;
   let emptyTree: SHA1;
   let rootHash: SHA1;
   let aHash: SHA1;

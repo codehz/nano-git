@@ -15,7 +15,7 @@ import { GitError } from "../../core/errors.ts";
 import { isAncestor } from "./object-graph.ts";
 
 import type { SHA1 } from "../../core/types.ts";
-import type { ObjectStore } from "../../odb/types.ts";
+import type { ObjectDatabase } from "../../odb/types.ts";
 import type { RefStore } from "../../refs/types.ts";
 import type { ApplyRefUpdatesResult, RefUpdateRejection } from "./types.ts";
 
@@ -60,7 +60,7 @@ export class RefUpdateError extends GitError {
  * @returns 可用于写入 refs/heads/* 的哈希
  * @throws RefUpdateError 如果目标对象不存在或不是 commit
  */
-export function resolveBranchTargetHash(store: ObjectStore, hash: SHA1, refName: string): SHA1 {
+export function resolveBranchTargetHash(store: ObjectDatabase, hash: SHA1, refName: string): SHA1 {
   const obj = store.tryRead(hash);
   if (obj === undefined) {
     throw new RefUpdateError(
@@ -123,7 +123,7 @@ export function isRefNamespaceRequiringFastForward(refName: string): boolean {
  * ```
  */
 export function applyRefUpdates(
-  store: ObjectStore,
+  store: ObjectDatabase,
   refs: RefStore,
   updates: RefUpdatePlanItem[],
 ): ApplyRefUpdatesResult {

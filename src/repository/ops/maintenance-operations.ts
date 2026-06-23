@@ -18,7 +18,7 @@ import type {
   RepositoryRepackOptions,
 } from "../../backend/index.ts";
 import type { SHA1 } from "../../core/types.ts";
-import type { ObjectStore } from "../../odb/types.ts";
+import type { ObjectDatabase } from "../../odb/types.ts";
 import type { PackBuildResult } from "../../pack/pack-builder.ts";
 import type { RefStore } from "../../refs/types.ts";
 import type { RepositoryMaintenanceOperations } from "./maintenance-types.ts";
@@ -33,7 +33,7 @@ import type { RepositoryMaintenanceOperations } from "./maintenance-types.ts";
  * ```
  */
 export function createMaintenanceRepositoryOperations(
-  objects: ObjectStore,
+  objects: ObjectDatabase,
   refs: RefStore,
   packs: RepositoryPackSupport | null,
 ): RepositoryMaintenanceOperations {

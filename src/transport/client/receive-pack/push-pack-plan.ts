@@ -17,7 +17,7 @@ import { collectReachable } from "../../protocol/object-graph.ts";
 import { PushError } from "./push-error.ts";
 
 import type { SHA1 } from "../../../core/types.ts";
-import type { ObjectStore } from "../../../odb/types.ts";
+import type { ObjectDatabase } from "../../../odb/types.ts";
 import type { PushRefItem } from "./push-ref-plan.ts";
 
 /**
@@ -59,7 +59,7 @@ export function mergePushBoundaries(
  * @throws PushError 当本地对象损坏导致无法遍历时
  */
 export function computeObjectsToSend(
-  store: ObjectStore,
+  store: ObjectDatabase,
   pushRefs: PushRefItem[],
   remoteRefs: Map<string, SHA1>,
   pushBoundaries: Set<SHA1> | undefined,
