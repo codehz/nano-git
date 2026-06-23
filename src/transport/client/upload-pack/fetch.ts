@@ -632,7 +632,7 @@ export async function negotiateV2Fetch(
  * @returns 导入的对象数量
  */
 export async function v2FetchObjects(
-  store: ObjectDatabase,
+  db: ObjectDatabase,
   v2Trans: V2GitServiceTransport,
   wants: string[],
   haves?: string[],
@@ -644,15 +644,13 @@ export async function v2FetchObjects(
     return { objectCount: 0 };
   }
 
-  // 解析 packfile 并写入对象
-  const { createPackReader } = await import("../../../pack/pack-reader.ts");
-  const { deserializeContent } = await import("../../../objects/codec.ts");
+  // 解析 packfile 并直接摄入原始对象（跳过语义反序列化）
+  const { createPackReader, packObjectToRaw } = await import("../../../pack/pack-reader.ts");
   const reader = createPackReader(result.packfile);
   let count = 0;
 
   for (const packObj of reader.objects()) {
-    const gitObj = deserializeContent(packObj.type, packObj.data);
-    store.write(gitObj as import("../../../core/types.ts").GitObject);
+    db.ingest(packObjectToRaw(packObj));
     count++;
   }
 

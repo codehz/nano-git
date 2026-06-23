@@ -1,13 +1,14 @@
 /**
- * Push packfile 解包
+ * Push packfile 解包（raw-first）
  *
  * 将 receive-pack push 请求中的 packfile 解包，
- * 将对象写入对象存储，处理 ofs_delta 和 ref_delta。
+ * 将对象以 RawGitObject 形式摄入对象数据库，处理 ofs_delta 和 ref_delta。
+ *
+ * 所有对象按 canonical raw object 直接写入，不经过语义序列化/反序列化。
  */
 
 import { hashObject } from "../../../core/hash.ts";
 import { sha1 } from "../../../core/types.ts";
-import { deserializeContent, serializeContent } from "../../../objects/index.ts";
 import {
   PACK_HEADER_SIZE,
   PACK_CHECKSUM_SIZE,
@@ -20,20 +21,21 @@ import { readCompressedData, parsePackHeader } from "../../../pack/pack-reader-u
 import { decodeObjectHeader, decodeOfsDeltaOffset } from "../../../pack/utils.ts";
 import { ReceivePackServiceError } from "./types.ts";
 
-import type { ObjectType } from "../../../core/types.ts";
+import type { ObjectType, RawGitObject } from "../../../core/types.ts";
 import type { ObjectDatabase } from "../../../odb/types.ts";
 
 /**
- * 将 push packfile 中的对象解包到对象存储中
+ * 将 push packfile 中的对象解包到对象数据库中
  *
  * 处理非 delta、ofs_delta 和 ref_delta 三种对象类型。
- * 对于 ref_delta，如果 base 不在当前 packfile 中，则从已存在的存储中查找。
+ * 对于 ref_delta，如果 base 不在当前 packfile 中，则从已存在的数据库查找。
+ * 所有对象通过 db.ingest() 以 RawGitObject 形式直接写入。
  *
- * @param store - 对象存储
+ * @param db - 对象数据库
  * @param packfile - push 请求中的 packfile 数据
  * @throws {ReceivePackServiceError} 当解包失败时
  */
-export function unpackPackfile(store: ObjectDatabase, packfile: Buffer): void {
+export function unpackPackfile(db: ObjectDatabase, packfile: Buffer): void {
   if (packfile.length < PACK_HEADER_SIZE + PACK_CHECKSUM_SIZE) {
     throw new ReceivePackServiceError("Packfile too small to contain any objects");
   }
@@ -73,8 +75,9 @@ export function unpackPackfile(store: ObjectDatabase, packfile: Buffer): void {
       const resolvedData = applyDelta(base.data, deltaData);
       const hash = hashObject(base.type, resolvedData);
 
-      // 写入存储
-      store.write(deserializeContent(base.type, resolvedData));
+      // 直接 ingest raw object
+      const raw: RawGitObject = { hash, type: base.type, content: resolvedData };
+      db.ingest(raw);
 
       resolvedByOffset.set(objOffset, { type: base.type, data: resolvedData });
       resolvedByHash.set(hash, { type: base.type, data: resolvedData });
@@ -86,18 +89,18 @@ export function unpackPackfile(store: ObjectDatabase, packfile: Buffer): void {
       const [deltaData, compressedBytes] = readCompressedData(packfile, offset);
       offset += compressedBytes;
 
-      // 查找 base：先在已解析缓存中查找，再在已有存储中查找
+      // 查找 base：先在已解析缓存中查找，再在已有数据库中查找
       let base: { type: ObjectType; data: Buffer } | undefined;
       const cachedBase = resolvedByHash.get(baseHash);
 
       if (cachedBase) {
         base = cachedBase;
-      } else if (store.exists(sha1(baseHash))) {
-        // 从已有存储中读取并序列化为原始内容（用于 delta 应用）
-        const obj = store.read(sha1(baseHash));
+      } else if (db.exists(sha1(baseHash))) {
+        // 从已有数据库中直接读取 raw content
+        const raw = db.read(sha1(baseHash));
         base = {
-          type: obj.type,
-          data: serializeContent(obj),
+          type: raw.type,
+          data: raw.content,
         };
       }
 
@@ -109,8 +112,9 @@ export function unpackPackfile(store: ObjectDatabase, packfile: Buffer): void {
       const resolvedData = applyDelta(base.data, deltaData);
       const resolvedHash = hashObject(base.type, resolvedData);
 
-      // 写入存储
-      store.write(deserializeContent(base.type, resolvedData));
+      // 直接 ingest raw object
+      const raw: RawGitObject = { hash: resolvedHash, type: base.type, content: resolvedData };
+      db.ingest(raw);
 
       resolvedByOffset.set(objOffset, { type: base.type, data: resolvedData });
       resolvedByHash.set(resolvedHash, { type: base.type, data: resolvedData });
@@ -122,8 +126,9 @@ export function unpackPackfile(store: ObjectDatabase, packfile: Buffer): void {
       const type = numberToObjectType(typeNum);
       const hash = hashObject(type, compressedData);
 
-      // 写入存储
-      store.write(deserializeContent(type, compressedData));
+      // 直接 ingest raw object
+      const raw: RawGitObject = { hash, type, content: compressedData };
+      db.ingest(raw);
 
       resolvedByOffset.set(objOffset, { type, data: compressedData });
       resolvedByHash.set(hash, { type, data: compressedData });
