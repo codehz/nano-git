@@ -14,7 +14,7 @@
 - ✅ **仓库 API** — 类似 Git plumbing 命令的高层接口（init、hash-object、cat-file、commit-tree、update-ref 等）
 - ✅ **增量 Tree Patch** — 不经暂存区直接修改目录结构（`patchTree`、`readTree`、`walkTree`）
 - ✅ **可达性遍历与 GC** — 基于 refs 的可达对象收集、repack、gc
-- ✅ **Smart HTTP 客户端** — 基于 Bun fetch 的 Git 协议客户端，支持 `fetch()`/`push()` 与自定义 ref 物化
+- ✅ **Smart HTTP 传输** — 基于 Bun fetch 的 Git 协议客户端，支持 `fetch()`/`push()` 与完整的 Import Session 物化流程
 - ✅ **类型安全** — 完整的 TypeScript 类型定义
 
 ## 安装
@@ -289,7 +289,7 @@ nano-git/
 │   ├── objects/          # blob/tree/commit/tag 序列化
 │   ├── odb/              # 对象数据库与 pack 支持
 │   ├── refs/             # 引用解析、校验、存储
-│   ├── transport/        # Smart HTTP Fetch 协议客户端
+│   ├── transport/        # Smart HTTP 传输协议（Fetch / Push）
 │   └── repository/       # 仓库 API 与后端
 ├── tests/
 │   ├── units/            # 单元测试
@@ -372,11 +372,10 @@ bun test
 - [x] 引用管理（refs、HEAD、符号引用解析）
 - [x] 仓库 API（init、open、hash-object、cat-file、write-tree、commit-tree、update-ref、branch、tag）
 - [x] 可达性遍历与 GC（repack、gc）
-- [x] **Smart HTTP 导入客户端** — pkt-line 编解码、ref 广告解析、side-band 解复用、请求生成、HTTP 传输、Import Session / `openImportSession()` 集成
+- [x] **Smart HTTP 传输** — pkt-line 编解码、ref 广告解析、side-band 解复用、Fetch / Push 协议、Import Session 集成
 
 ### 规划中（聚焦裸仓库/服务端场景）
 
-- [ ] **Smart HTTP Push / receive-pack** — `git push` 的协议层
 - [ ] **Reference Transaction** — 引用更新钩子与事务
 - [ ] **多格式哈希支持** — SHA-256 兼容准备
 
