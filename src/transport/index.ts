@@ -182,4 +182,4 @@ export type {
 
 // HTTP 适配器
 export { createSmartHttpHandler } from "./server/smart-http.ts";
-export type { GitHttpRequest, GitHttpResponse, SmartHttpHandler } from "./server/types.ts";
+export type { SmartHttpHandler } from "./server/types.ts";

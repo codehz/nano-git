@@ -93,29 +93,11 @@ console.log(`Created commit: ${commitHash}`);
 import { openRepository } from "nano-git/repository/file";
 import { createSmartHttpHandler } from "nano-git/transport/server/smart-http";
 
-// 创建 Git HTTP 后端处理函数（框架无关）
+// 创建 Git HTTP 后端处理函数（框架无关，标准 Request/Response）
 const handler = createSmartHttpHandler(openRepository("/path/to/repo"));
 
-// 接入 Bun.serve
-Bun.serve({
-  port: 8080,
-  async fetch(req) {
-    const url = new URL(req.url);
-    const gitReq = {
-      method: req.method,
-      path: url.pathname,
-      query: Object.fromEntries(url.searchParams),
-      headers: Object.fromEntries(req.headers),
-      body: req.body ? Buffer.from(await req.arrayBuffer()) : null,
-    };
-
-    const gitResp = await handler(gitReq);
-    return new Response(gitResp.body, {
-      status: gitResp.status,
-      headers: gitResp.headers,
-    });
-  },
-});
+// 接入 Bun.serve — 直接作为 fetch 处理器
+Bun.serve({ port: 8080, fetch: handler });
 
 console.log("Git server running on http://localhost:8080");
 // 客户端可用 `git clone http://localhost:8080/` 拉取

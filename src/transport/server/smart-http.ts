@@ -1,11 +1,10 @@
 /**
  * Smart HTTP 后端适配器
  *
- * 类似 git-http-backend 的职责，但以纯 TypeScript 接口形式提供：
- * - 接收框架无关的 HTTP 请求
- * - 解析 Git 协议路由
- * - 委托给 v2 服务层处理
- * - 返回框架无关的 HTTP 响应
+ * 类似 git-http-backend 的职责，但基于标准 Web API 的 Request/Response：
+ * - 接收标准 Request，返回标准 Response
+ * - 框架无关（Bun、Deno、Node.js、Cloudflare Workers 等均可直接使用）
+ * - 无自定义 HTTP 抽象层
  *
  * 当前支持 Git Wire 协议 v2 的 upload-pack（fetch + ls-refs）。
  *
@@ -19,7 +18,7 @@
 import { V2ServeError, createV2UploadPackService, serveV2Advertise } from "../v2/serve.ts";
 
 import type { RepositoryBackend } from "../../repository/backend/types.ts";
-import type { GitHttpRequest, GitHttpResponse, SmartHttpHandler } from "./types.ts";
+import type { SmartHttpHandler } from "./types.ts";
 
 // ============================================================================
 // 错误响应
@@ -28,46 +27,25 @@ import type { GitHttpRequest, GitHttpResponse, SmartHttpHandler } from "./types.
 /**
  * 创建 HTTP 错误响应
  */
-function errorResponse(status: number, message: string): GitHttpResponse {
-  return {
+function errorResponse(status: number, message: string): Response {
+  return new Response(`${status} ${message}\n`, {
     status,
     headers: { "Content-Type": "text/plain" },
-    body: Buffer.from(`${status} ${message}\n`, "utf-8"),
-  };
+  });
 }
 
 // ============================================================================
-// 路由解析
-// ============================================================================
-
-/**
- * 检查请求是否为 v2 协议
- *
- * 通过 Git-Protocol 头检测客户端是否请求 v2 协议。
- */
-function isV2Protocol(headers: Record<string, string>): boolean {
-  const protocol = headers["git-protocol"] ?? "";
-  return protocol.includes("version=2");
-}
-
-// ============================================================================
-// 请求头处理
+// 请求解析辅助
 // ============================================================================
 
 /**
  * 验证 info/refs 请求
- *
- * 返回错误响应或 null（验证通过）。
  */
-function validateInfoRefsRequest(
-  method: string,
-  query: Record<string, string>,
-): GitHttpResponse | null {
+function validateInfoRefsRequest(method: string, service: string | null): Response | null {
   if (method !== "GET") {
     return errorResponse(405, "Method Not Allowed: info/refs requires GET");
   }
 
-  const service = query.service;
   if (service !== "git-upload-pack" && service !== "git-receive-pack") {
     return errorResponse(400, `Unknown service: ${service}`);
   }
@@ -78,10 +56,7 @@ function validateInfoRefsRequest(
 /**
  * 验证服务请求（/git-upload-pack 等）
  */
-function validateServiceRequest(
-  method: string,
-  contentType: string | undefined,
-): GitHttpResponse | null {
+function validateServiceRequest(method: string, contentType: string | null): Response | null {
   if (method !== "POST") {
     return errorResponse(405, "Method Not Allowed: service requires POST");
   }
@@ -100,31 +75,25 @@ function validateServiceRequest(
 /**
  * 处理 info/refs GET 请求
  *
- * 返回 v2 能力广告（当 Git-Protocol: version=2 头存在时）。
+ * 返回 v2 能力广告。
  */
-function handleInfoRefs(_request: GitHttpRequest, service: string): GitHttpResponse {
+function handleInfoRefs(service: string): Response {
   const advertise = serveV2Advertise(service);
 
-  return {
+  return new Response(advertise, {
     status: 200,
     headers: {
       "Content-Type": `application/x-git-${service}-advertisement`,
       "Cache-Control": "no-cache",
     },
-    body: advertise,
-  };
+  });
 }
 
 /**
  * 处理 /git-upload-pack POST 请求
- *
- * 解析 v2 命令并委托给对应的处理函数。
  */
-async function handleUploadPack(
-  request: GitHttpRequest,
-  backend: RepositoryBackend,
-): Promise<GitHttpResponse> {
-  if (!request.body) {
+async function handleUploadPack(body: Buffer, backend: RepositoryBackend): Promise<Response> {
+  if (body.length === 0) {
     return errorResponse(400, "Request body is required");
   }
 
@@ -132,7 +101,7 @@ async function handleUploadPack(
 
   let response: Buffer;
   try {
-    response = service.handleCommand(request.body);
+    response = service.handleCommand(body);
   } catch (err) {
     if (err instanceof V2ServeError) {
       return errorResponse(400, err.message);
@@ -140,14 +109,13 @@ async function handleUploadPack(
     throw err;
   }
 
-  return {
+  return new Response(response, {
     status: 200,
     headers: {
       "Content-Type": "application/x-git-upload-pack-result",
       "Cache-Control": "no-cache",
     },
-    body: response,
-  };
+  });
 }
 
 // ============================================================================
@@ -157,68 +125,73 @@ async function handleUploadPack(
 /**
  * 创建 Smart HTTP 处理函数
  *
- * 这是类似 git-http-backend 的核心入口。
- * 接收框架无关的 HTTP 请求，返回 HTTP 响应。
+ * 类似 git-http-backend 的核心入口。
+ * 接收标准 Request，返回标准 Response，框架无关。
  *
  * @param backend - 仓库后端
  * @returns HTTP 处理函数
  *
  * @example
  * ```ts
- * // Bun.serve 示例
+ * // Bun.serve — 直接作为 fetch 处理器
  * import { createSmartHttpHandler } from "nano-git/transport/server/smart-http";
  * import { openRepository } from "nano-git/repository/file";
+ * Bun.serve({ port: 8080, fetch: createSmartHttpHandler(openRepository("/repo")) });
  *
+ * // Node.js http
+ * import { createServer } from "node:http";
  * const handler = createSmartHttpHandler(openRepository("/repo"));
+ * createServer(async (req, res) => {
+ *   const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
+ *   const body = await new Promise<Buffer>((resolve) => {
+ *     const chunks: Buffer[] = [];
+ *     req.on("data", (c) => chunks.push(c));
+ *     req.on("end", () => resolve(Buffer.concat(chunks)));
+ *   });
+ *   const response = await handler(new Request(url, {
+ *     method: req.method,
+ *     headers: Object.fromEntries(Object.entries(req.headers).map(([k, v]) => [k, String(v)])),
+ *     body: req.method === "POST" ? body : undefined,
+ *   }));
+ *   res.writeHead(response.status, Object.fromEntries(response.headers));
+ *   res.end(Buffer.from(await response.arrayBuffer()));
+ * }).listen(8080);
  *
- * Bun.serve({
- *   port: 8080,
- *   async fetch(req) {
- *     const url = new URL(req.url);
- *     const gitReq = {
- *       method: req.method,
- *       path: url.pathname,
- *       query: Object.fromEntries(url.searchParams),
- *       headers: Object.fromEntries(req.headers),
- *       body: Buffer.from(await req.arrayBuffer()),
- *     };
- *     const gitResp = await handler(gitReq);
- *     return new Response(gitResp.body, {
- *       status: gitResp.status,
- *       headers: gitResp.headers,
- *     });
- *   },
- * });
+ * // Cloudflare Workers / Deno
+ * export default { fetch: createSmartHttpHandler(openRepository("./repo")) };
  * ```
  */
 export function createSmartHttpHandler(backend: RepositoryBackend): SmartHttpHandler {
-  return async (request: GitHttpRequest): Promise<GitHttpResponse> => {
-    const { method, path, query, headers } = request;
+  return async (request: Request): Promise<Response> => {
+    const url = new URL(request.url);
+    const { pathname: path } = url;
+    const method = request.method;
 
     // 路由：info/refs（能力广告）
     if (path === "/info/refs" || path.endsWith("/info/refs")) {
-      const validationError = validateInfoRefsRequest(method, query);
+      const service = url.searchParams.get("service");
+      const validationError = validateInfoRefsRequest(method, service);
       if (validationError) return validationError;
 
-      const service = query.service!;
-
       // v2 协议检测
-      if (!isV2Protocol(headers)) {
+      const gitProtocol = request.headers.get("git-protocol") ?? "";
+      if (!gitProtocol.includes("version=2")) {
         return errorResponse(
           400,
           "Only Git Wire Protocol v2 is supported. Set Git-Protocol: version=2 header.",
         );
       }
 
-      return handleInfoRefs(request, service);
+      return handleInfoRefs(service!);
     }
 
     // 路由：/git-upload-pack（fetch / ls-refs 命令）
     if (path === "/git-upload-pack" || path.endsWith("/git-upload-pack")) {
-      const validationError = validateServiceRequest(method, headers["content-type"]);
+      const validationError = validateServiceRequest(method, request.headers.get("content-type"));
       if (validationError) return validationError;
 
-      return handleUploadPack(request, backend);
+      const body = Buffer.from(await request.arrayBuffer());
+      return handleUploadPack(body, backend);
     }
 
     // 路由：/git-receive-pack（push 命令 — 尚未实现）
