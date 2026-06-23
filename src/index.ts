@@ -148,7 +148,6 @@ export {
   openRepository,
   createMemoryRepository,
   type Repository,
-  // 新 Import Session API（repository 主路径只保留 import session 模型）
   type ImportSource,
   type ImportView,
   type NamedImportView,
@@ -168,7 +167,6 @@ export {
   type BranchMaterializationOptions,
   type TagMaterializationOptions,
   type HeadMaterializationOptions,
-  /** @deprecated RepoImportOperations 是内部接口，请使用 ImportSession */
   type RepoImportOperations,
   type RepositoryPushOptions,
   type RepositoryPushResult,
@@ -182,13 +180,3 @@ export {
   type TreePatchResult,
   type TreeEntryWithPath,
 } from "./repository/index.ts";
-
-// ============================================================================
-// Transport / Plumbing 低层 API
-//
-// Transport 层已移入子路径 "nano-git/transport"。
-// 如果只需要高层仓库操作，请使用 repository 模块的 fetch/push API。
-//
-// import { fetchPack } from "nano-git/transport";
-// import type { RemoteRef } from "nano-git/transport";
-// ============================================================================
