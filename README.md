@@ -29,7 +29,7 @@ bun install
 ### 5 行完成"创建 → 写入 → 提交"
 
 ```typescript
-import { createMemoryRepository } from "nano-git";
+import { createMemoryRepository } from "nano-git/repository/memory";
 
 const repo = createMemoryRepository();
 const treeHash = repo.createTree([
@@ -47,6 +47,8 @@ console.log(`Created commit: ${commitHash}`);
 ### 从远端仓库拉取
 
 ```typescript
+import { initRepository } from "nano-git/repository/file";
+
 const repo = initRepository("/tmp/project");
 await repo.fetch("https://github.com/user/repo.git");
 // 所有分支和标签已就绪
@@ -56,7 +58,8 @@ console.log(repo.listBranches());
 ### 内存仓库完整工作流
 
 ```typescript
-import { createMemoryRepository, type GitAuthor } from "nano-git";
+import { createMemoryRepository } from "nano-git/repository/memory";
+import type { GitAuthor } from "nano-git/types";
 
 const repo = createMemoryRepository();
 
@@ -87,7 +90,8 @@ console.log(`Created commit: ${commitHash}`);
 ### 使用显式仓库后端
 
 ```typescript
-import { createMemoryRepositoryBackend, createRepository } from "nano-git";
+import { createMemoryRepositoryBackend } from "nano-git/repository";
+import { createRepository } from "nano-git/repository/create";
 
 const backend = createMemoryRepositoryBackend();
 const repo = createRepository(backend);
@@ -98,7 +102,7 @@ repo.createBranch("main", repo.createTree([]));
 ### 使用文件系统仓库
 
 ```typescript
-import { initRepository, openRepository } from "nano-git";
+import { initRepository, openRepository } from "nano-git/repository/file";
 
 // 初始化新仓库
 const repo = initRepository("/path/to/project");
@@ -121,7 +125,7 @@ repo.updateRef("refs/heads/main", commitHash);
 ### 生成 Packfile
 
 ```typescript
-import { openRepository } from "nano-git";
+import { openRepository } from "nano-git/repository/file";
 
 const repo = openRepository("/path/to/repo");
 
@@ -133,7 +137,7 @@ console.log(result.packPath);
 ### Repack 仓库
 
 ```typescript
-import { openRepository } from "nano-git";
+import { openRepository } from "nano-git/repository/file";
 
 const repo = openRepository("/path/to/repo");
 
@@ -147,7 +151,7 @@ repo.repack({ pruneLoose: true });
 ### 基于可达对象执行 GC
 
 ```typescript
-import { openRepository } from "nano-git";
+import { openRepository } from "nano-git/repository/file";
 
 const repo = openRepository("/path/to/repo");
 
@@ -159,7 +163,7 @@ console.log(result.objectCount);
 ### 从远程仓库导入（Import Session）
 
 ```typescript
-import { initRepository } from "nano-git";
+import { initRepository } from "nano-git/repository/file";
 
 const repo = initRepository("/tmp/my-clone");
 
@@ -224,8 +228,8 @@ import {
   buildUploadPackRequest,
   createUploadPackHttpClient,
   decodeUploadPackResponse,
-  sha1,
-} from "nano-git";
+} from "nano-git/transport";
+import { sha1 } from "nano-git/sha1";
 
 // 仅获取引用广告
 const client = createUploadPackHttpClient("https://github.com/user/repo");
@@ -250,7 +254,8 @@ const { packfile } = decodeUploadPackResponse(raw);
 ### 对象序列化
 
 ```typescript
-import { serialize, deserialize, type GitBlob } from "nano-git";
+import { serialize, deserialize } from "nano-git/objects";
+import type { GitBlob } from "nano-git/types";
 
 const blob: GitBlob = {
   type: "blob",
@@ -280,18 +285,58 @@ bun run examples/demo.ts
 - 创建 blob、tree、commit 对象
 - 对象存储和读取
 
-## 项目结构
+## 按需加载的入口设计
+
+本库采用 **tree-shakeable** 的入口设计：默认入口 `"nano-git"` 只导出核心类型和纯工具函数，
+**不包含任何后端实现**。使用子路径按需导入，让打包器可以消除未使用的代码。
+
+### 子路径入口一览
+
+| 入口                         | 内容                      | 依赖                    |
+| ---------------------------- | ------------------------- | ----------------------- |
+| `"nano-git"`                 | 核心类型 + SHA-1 + 错误类 | `node:crypto`           |
+| `nano-git/sha1`              | SHA-1 哈希工具            | `node:crypto`           |
+| `nano-git/errors`            | 全部错误类                | 纯定义                  |
+| `nano-git/objects`           | 对象序列化/反序列化       | 纯 TS                   |
+| `nano-git/odb/memory`        | 内存对象存储              | 纯 TS                   |
+| `nano-git/odb/file`          | 文件对象存储              | `node:fs` + `node:zlib` |
+| `nano-git/odb/pack`          | Packfile 读写             | `node:fs` + `node:zlib` |
+| `nano-git/refs/memory`       | 内存 Refs 存储            | 纯 TS                   |
+| `nano-git/refs/file`         | 文件 Refs 存储            | `node:fs`               |
+| `nano-git/repository/create` | 仓库创建（高阶函数）      | 纯 TS                   |
+| `nano-git/repository/memory` | 内存仓库便捷函数          | 仅 memory 后端          |
+| `nano-git/repository/file`   | 文件仓库便捷函数          | 完整 file 后端          |
+| `nano-git/transport`         | 传输层全量 barrel         | 全套协议                |
+| `nano-git/types`             | 公共类型入口              | 编译期擦除              |
+
+### 项目结构
 
 ```
 nano-git/
 ├── src/
-│   ├── index.ts          # 入口文件和公开导出
+│   ├── index.ts          # 最小入口（类型 + SHA-1 + 错误）
+│   ├── sha1.ts           # SHA-1 哈希工具
+│   ├── errors.ts         # 错误类型
+│   ├── objects.ts        # 对象序列化 re-export
+│   ├── hash-file.ts      # 文件哈希
+│   ├── types/            # 纯类型导出（编译期擦除）
 │   ├── core/             # 核心类型、错误、哈希工具
 │   ├── objects/          # blob/tree/commit/tag 序列化
 │   ├── odb/              # 对象数据库与 pack 支持
+│   │   ├── memory.ts     # 内存对象存储
+│   │   ├── file.ts       # 文件对象存储
+│   │   └── pack/         # Packfile 读写
 │   ├── refs/             # 引用解析、校验、存储
-│   ├── transport/        # Smart HTTP 传输协议（Fetch / Push）
+│   │   ├── memory.ts     # 内存 Refs 存储
+│   │   └── file.ts       # 文件 Refs 存储
+│   ├── shallow/          # Shallow 边界存储
+│   │   ├── memory.ts     # 内存 Shallow 存储
+│   │   └── file.ts       # 文件 Shallow 存储
+│   ├── transport/        # Smart HTTP 传输协议
 │   └── repository/       # 仓库 API 与后端
+│       ├── create.ts     # createRepository（高阶函数）
+│       ├── memory.ts     # 内存仓库便捷函数
+│       └── file.ts       # 文件仓库便捷函数
 ├── tests/
 │   ├── units/            # 单元测试
 │   ├── e2e/              # 端到端兼容性测试
