@@ -155,13 +155,13 @@ describe("createSmartHttpHandler — 路由", () => {
     expect(res.status).toBe(404);
   });
 
-  test("/git-receive-pack 返回 501（未实现）", async () => {
+  test("/git-receive-pack 需要有效的 Content-Type", async () => {
     const { backend } = createTestBackend();
     const handler = createSmartHttpHandler(backend);
 
     const req = createGitRequest("/git-receive-pack", { method: "POST" });
     const res = await handler(req);
-    expect(res.status).toBe(501);
+    expect(res.status).toBe(400);
   });
 });
 

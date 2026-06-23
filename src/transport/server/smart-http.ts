@@ -6,15 +6,20 @@
  * - 框架无关（Bun、Deno、Node.js、Cloudflare Workers 等均可直接使用）
  * - 无自定义 HTTP 抽象层
  *
- * 当前支持 Git Wire 协议 v2 的 upload-pack（fetch + ls-refs）。
+ * 当前支持：
+ * - Git Wire 协议 v2 的 upload-pack（fetch + ls-refs）
+ * - Git Wire 协议 v1 的 receive-pack（push）
  *
  * 路由：
- * - GET /info/refs?service=git-upload-pack → v2 能力广告
- * - POST /git-upload-pack → ls-refs / fetch 命令
+ * - GET /info/refs?service=git-upload-pack   → v2 能力广告
+ * - GET /info/refs?service=git-receive-pack  → v1 ref 广告（无 Git-Protocol 头时）/ v2 广告
+ * - POST /git-upload-pack                    → ls-refs / fetch 命令
+ * - POST /git-receive-pack                   → receive-pack（push）处理
  *
  * @see https://git-scm.com/docs/git-http-backend
  */
 
+import { serveV1Advertise, handleV1ReceivePush } from "../v1/receive-pack.ts";
 import { V2ServeError, createV2UploadPackService, serveV2Advertise } from "../v2/serve.ts";
 
 import type { RepositoryBackend } from "../../repository/backend/types.ts";
@@ -75,11 +80,32 @@ function validateServiceRequest(method: string, contentType: string | null): Res
 /**
  * 处理 info/refs GET 请求
  *
- * 返回 v2 能力广告。
+ * 根据 service 类型返回相应的 ref 广告：
+ * - git-upload-pack：返回 v2 能力广告
+ * - git-receive-pack（v2 协议）：返回 v2 能力广告
+ * - git-receive-pack（v1 协议）：返回 v1 ref 广告
+ *
+ * @param service - 服务类型（git-upload-pack 或 git-receive-pack）
+ * @param useV2 - 是否使用 v2 协议
+ * @param backend - 仓库后端（v1 广告需要）
  */
-function handleInfoRefs(service: string): Response {
+function handleInfoRefs(service: string, useV2: boolean, backend: RepositoryBackend): Response {
+  const isReceivePack = service === "git-receive-pack";
+
+  // git-receive-pack 在 v1 协议下走 v1 广告
+  if (isReceivePack && !useV2) {
+    const advertise = serveV1Advertise(backend);
+    return new Response(advertise, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/x-git-receive-pack-advertisement",
+        "Cache-Control": "no-cache",
+      },
+    });
+  }
+
+  // v2 广告（upload-pack 或 v2 receive-pack）
   const advertise = serveV2Advertise(service);
-  // service 为 "git-upload-pack"，Content-Type 应为 "application/x-git-upload-pack-advertisement"
   const contentType = service.startsWith("git-")
     ? `application/x-${service}-advertisement`
     : `application/x-git-${service}-advertisement`;
@@ -171,25 +197,28 @@ export function createSmartHttpHandler(backend: RepositoryBackend): SmartHttpHan
     const { pathname: path } = url;
     const method = request.method;
 
-    // 路由：info/refs（能力广告）
+    // 路由：info/refs（能力广告 / ref 广告）
     if (path === "/info/refs" || path.endsWith("/info/refs")) {
       const service = url.searchParams.get("service");
       const validationError = validateInfoRefsRequest(method, service);
       if (validationError) return validationError;
 
-      // v2 协议检测
       const gitProtocol = request.headers.get("git-protocol") ?? "";
-      if (!gitProtocol.includes("version=2")) {
+      const isV2 = gitProtocol.includes("version=2");
+
+      // git-upload-pack 只支持 v2
+      if (service === "git-upload-pack" && !isV2) {
         return errorResponse(
           400,
-          "Only Git Wire Protocol v2 is supported. Set Git-Protocol: version=2 header.",
+          "Only Git Wire Protocol v2 is supported for fetch. Set Git-Protocol: version=2 header.",
         );
       }
 
-      return handleInfoRefs(service!);
+      // git-receive-pack 支持 v1 和 v2
+      return handleInfoRefs(service!, isV2, backend);
     }
 
-    // 路由：/git-upload-pack（fetch / ls-refs 命令）
+    // 路由：/git-upload-pack（fetch / ls-refs 命令 — v2）
     if (path === "/git-upload-pack" || path.endsWith("/git-upload-pack")) {
       const validationError = validateServiceRequest(method, request.headers.get("content-type"));
       if (validationError) return validationError;
@@ -198,9 +227,21 @@ export function createSmartHttpHandler(backend: RepositoryBackend): SmartHttpHan
       return handleUploadPack(body, backend);
     }
 
-    // 路由：/git-receive-pack（push 命令 — 尚未实现）
+    // 路由：/git-receive-pack（push 命令 — v1 receive-pack）
     if (path === "/git-receive-pack" || path.endsWith("/git-receive-pack")) {
-      return errorResponse(501, "git-receive-pack not yet implemented in server mode");
+      const validationError = validateServiceRequest(method, request.headers.get("content-type"));
+      if (validationError) return validationError;
+
+      const body = Buffer.from(await request.arrayBuffer());
+      const response = handleV1ReceivePush(backend, body);
+
+      return new Response(response, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/x-git-receive-pack-result",
+          "Cache-Control": "no-cache",
+        },
+      });
     }
 
     // 未知路由

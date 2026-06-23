@@ -10,6 +10,7 @@
  *
  * 当前支持：
  * - Git Wire 协议 v2 upload-pack（ls-refs + fetch）
+ * - Git Wire 协议 v1 receive-pack（push）
  */
 
 export { createSmartHttpHandler } from "./smart-http.ts";

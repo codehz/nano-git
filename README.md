@@ -327,6 +327,7 @@ bun run examples/demo.ts
 | `nano-git/repository/tree-patch`       | Tree 增量修改                      | 纯 TS                   |
 | `nano-git/repository/tree-walk`        | Tree 递归遍历                      | 纯 TS                   |
 | `nano-git/transport`                   | 传输层全量 barrel                  | 全套协议                |
+| `nano-git/transport/v1`                | v1 receive-pack 服务端             | `node:zlib`             |
 | `nano-git/transport/v2/serve`          | v2 服务端核心逻辑                  | `node:crypto`           |
 | `nano-git/transport/server/types`      | HTTP 类型定义                      | 纯 TS                   |
 | `nano-git/transport/server/smart-http` | HTTP 适配器（类 git-http-backend） | `node:crypto`           |
@@ -356,6 +357,7 @@ nano-git/
 │   │   ├── memory.ts     # 内存 Shallow 存储
 │   │   └── file.ts       # 文件 Shallow 存储
 │   ├── transport/        # Smart HTTP 传输协议
+│   ├── v1/           # Git Wire 协议 v1 receive-pack（服务端）
 │   ├── v2/           # Git Wire 协议 v2（客户端 + 服务端）
 │   └── server/       # HTTP 适配器（类 git-http-backend）
 │   └── repository/       # 仓库 API 与后端
@@ -447,10 +449,10 @@ bun test
 - [x] **Reference Transaction** — 批量 ref 更新原子性、lock-then-rename 文件事务、生命周期 Hooks
 
 - [x] **Smart HTTP 服务端（v2 upload-pack）** — 类 git-http-backend、框架无关的 HTTP handler，支持 ls-refs 和 fetch 命令
+- [x] **Smart HTTP 服务端（v1 receive-pack）** — 服务端 push 支持，基于 v1 协议，含 ref 广告、packfile 解包、ref 校验与 report-status
 
 ### 规划中（聚焦裸仓库/服务端场景）
 
-- [ ] **Git Protocol v1 服务端 push** — 服务端 receive-pack 支持（v1 协议，暂不实现 v2 receive-pack，当前鲜有服务端和客户端支持）
 - [ ] **Partial Clone / Filter 支持** — 按需对象过滤传输
 
 ### 非目标（明确不实现）
