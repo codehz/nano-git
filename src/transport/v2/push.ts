@@ -23,8 +23,8 @@
  */
 
 import { GitError } from "../../core/errors.ts";
-import { parsePktLines } from "../shared/pkt-line.ts";
-import { parseReceivePackResult } from "../v1/receive-pack-result.ts";
+import { parsePktLines } from "../pkt-line.ts";
+import { parseReceivePackResult } from "../receive-pack-result.ts";
 
 import type { SHA1 } from "../../core/types.ts";
 import type { V2GitServiceTransport } from "./types.ts";

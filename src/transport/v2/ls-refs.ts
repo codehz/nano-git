@@ -27,10 +27,10 @@
 
 import { GitError } from "../../core/errors.ts";
 import { sha1 } from "../../core/types.ts";
-import { parsePktLines } from "../shared/pkt-line.ts";
+import { parsePktLines } from "../pkt-line.ts";
 
-import type { RemoteRef } from "../shared/types.ts";
-import type { RefAdvertisement } from "../v1/types.ts";
+import type { RemoteRef } from "../types.ts";
+import type { RefAdvertisement } from "../types.ts";
 import type { V2GitServiceTransport, LsRefsEntry } from "./types.ts";
 
 // ============================================================================

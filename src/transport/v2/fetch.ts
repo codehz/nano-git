@@ -37,7 +37,7 @@
  */
 
 import { GitError } from "../../core/errors.ts";
-import { splitPktLinesFromBuffer } from "../shared/pkt-line.ts";
+import { splitPktLinesFromBuffer } from "../pkt-line.ts";
 
 import type { ObjectStore } from "../../odb/types.ts";
 import type { V2GitServiceTransport, V2FetchResponse } from "./types.ts";

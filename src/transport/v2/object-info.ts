@@ -26,7 +26,7 @@
  */
 
 import { GitError } from "../../core/errors.ts";
-import { parsePktLines } from "../shared/pkt-line.ts";
+import { parsePktLines } from "../pkt-line.ts";
 
 import type { V2GitServiceTransport } from "./types.ts";
 
