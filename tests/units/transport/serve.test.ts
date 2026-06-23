@@ -17,7 +17,7 @@ import {
   generateLsRefsResponse,
   generateFetchResponse,
   serveV2Advertise,
-} from "@/transport/server/upload-pack/serve.ts";
+} from "@/transport/server/upload-pack/index.ts";
 import {
   encodePktLine,
   encodeDelimiterPkt,

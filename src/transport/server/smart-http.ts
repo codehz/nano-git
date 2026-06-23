@@ -21,7 +21,7 @@
 
 import { serveV1Advertise, handleV1ReceivePush } from "../server/receive-pack/index.ts";
 import { createUploadPackService, UploadPackError } from "./upload-pack.ts";
-import { serveV2Advertise } from "./upload-pack/serve.ts";
+import { serveV2Advertise } from "./upload-pack/advertise.ts";
 
 import type { RepositoryBackend } from "../../backend/types.ts";
 import type { SmartHttpHandler } from "./types.ts";
