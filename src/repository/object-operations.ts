@@ -5,6 +5,8 @@
 import { readFileSync } from "node:fs";
 
 import { hashObject } from "../core/hash.ts";
+import { detectProtocol } from "../transport/v2/detect.ts";
+import { objectInfo } from "../transport/v2/object-info.ts";
 import {
   patchTree as patchTreeImpl,
   type TreePatchOp,
@@ -91,6 +93,21 @@ export function createObjectRepositoryOperations(objects: ObjectStore): Reposito
 
     patchTree(rootHash: SHA1, ops: TreePatchOp[]): TreePatchResult {
       return patchTreeImpl(objects, rootHash, ops);
+    },
+
+    async fetchObjectInfo(
+      url: string,
+      oids: string[],
+      token?: string,
+    ): Promise<import("../transport/v2/object-info.ts").ObjectInfoQueryResult> {
+      const result = await detectProtocol(url, { token });
+      if (result.protocol !== "v2") {
+        throw new Error(
+          "Remote server does not support Git Wire protocol v2. " +
+            "object-info requires v2 protocol support.",
+        );
+      }
+      return objectInfo(result.transport, oids);
     },
   };
 }

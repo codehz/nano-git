@@ -104,6 +104,57 @@ describe("v2 协议 - 服务器能力", () => {
   });
 });
 
+describe("v2 协议 - object-info 命令", () => {
+  let tempDir: string;
+  let server: ReturnType<typeof startGitHttpBackendServer>;
+  let url: string;
+  let mainCommitHash: ReturnType<typeof sha1>;
+
+  beforeEach(async () => {
+    tempDir = createTempDir("e2e-v2-object-info");
+    const serverRepo = createServerRepo(tempDir, "server.git");
+    mainCommitHash = sha1(serverRepo.commitHash);
+    server = startGitHttpBackendServer(tempDir, "/server.git");
+    url = server.url;
+  });
+
+  afterEach(async () => {
+    await server?.stop();
+    cleanupDir(tempDir);
+  });
+
+  test("object-info 返回对象 size", async () => {
+    const { detectProtocol } = await import("@/transport/v2/detect.ts");
+    const { objectInfo } = await import("@/transport/v2/object-info.ts");
+    const result = await detectProtocol(url);
+    if (result.protocol !== "v2") return;
+
+    // object-info 需要服务端配置 uploadpack.advertiseObjectInfo=true
+    // 默认不启用，如果服务端不支持则跳过
+    const hasObjectInfo = result.capabilities.commands.some((c) => c.name === "object-info");
+    if (!hasObjectInfo) return;
+
+    const info = await objectInfo(result.transport, [mainCommitHash]);
+    expect(info.attrs).toContain("size");
+    expect(info.objects.length).toBeGreaterThan(0);
+    expect(info.objects[0]!.oid).toBe(mainCommitHash);
+  });
+
+  test("repo.fetchObjectInfo 高层 API 可用", async () => {
+    const { createMemoryRepository } = await import("@/repository/index.ts");
+    const repo = createMemoryRepository();
+    const result = await detectProtocol(url);
+    if (result.protocol !== "v2") return;
+
+    const hasObjectInfo = result.capabilities.commands.some((c) => c.name === "object-info");
+    if (!hasObjectInfo) return;
+
+    const info = await repo.fetchObjectInfo(url, [mainCommitHash]);
+    expect(info.objects.length).toBeGreaterThan(0);
+    expect(info.objects[0]!.oid).toBe(mainCommitHash);
+  });
+});
+
 describe("v2 协议 - fetch 命令", () => {
   let tempDir: string;
   let server: ReturnType<typeof startGitHttpBackendServer>;
