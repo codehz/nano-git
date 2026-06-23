@@ -5,7 +5,7 @@
 import { readFileSync } from "node:fs";
 
 import { hashObject } from "../../core/hash.ts";
-import { writeObject, readObject, tryReadObject } from "../../objects/raw.ts";
+import { writeObject, readObject } from "../../objects/raw.ts";
 import { createV2HttpTransport } from "../../transport/client/upload-pack/http.ts";
 import { objectInfo } from "../../transport/client/upload-pack/object-info.ts";
 import {

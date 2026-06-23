@@ -18,7 +18,6 @@ import { deflateSync, inflateSync } from "node:zlib";
 
 import { InvalidObjectError } from "../core/errors.ts";
 import { hashToPath } from "../core/hash.ts";
-import { hashObject } from "../core/hash.ts";
 import { sha1, assertObjectType } from "../core/types.ts";
 import { serialize, deserialize } from "../objects/index.ts";
 
