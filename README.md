@@ -59,7 +59,7 @@ console.log(repo.listBranches());
 
 ```typescript
 import { createMemoryRepository } from "nano-git/repository/memory";
-import type { GitAuthor } from "nano-git/types";
+import type { GitAuthor } from "nano-git";
 
 const repo = createMemoryRepository();
 
@@ -106,7 +106,7 @@ console.log("Git server running on http://localhost:8080");
 ### 使用显式仓库后端
 
 ```typescript
-import { createMemoryRepositoryBackend } from "nano-git/repository";
+import { createMemoryRepositoryBackend } from "nano-git/backend";
 import { createRepository } from "nano-git/repository/create";
 
 const backend = createMemoryRepositoryBackend();
@@ -245,7 +245,7 @@ import {
   createUploadPackHttpClient,
   decodeUploadPackResponse,
 } from "nano-git/transport";
-import { sha1 } from "nano-git/sha1";
+import { sha1 } from "nano-git";
 
 // 仅获取引用广告
 const client = createUploadPackHttpClient("https://github.com/user/repo");
@@ -271,7 +271,7 @@ const { packfile } = decodeUploadPackResponse(raw);
 
 ```typescript
 import { serialize, deserialize } from "nano-git/objects";
-import type { GitBlob } from "nano-git/types";
+import type { GitBlob } from "nano-git";
 
 const blob: GitBlob = {
   type: "blob",
@@ -303,80 +303,9 @@ bun run examples/demo.ts
 
 ## 按需加载的入口设计
 
-本库采用 **tree-shakeable** 的入口设计：默认入口 `"nano-git"` 只导出核心类型和纯工具函数，
-**不包含任何后端实现**。使用子路径按需导入，让打包器可以消除未使用的代码。
-
-### 子路径入口一览
-
-| 入口                                     | 内容                            | 依赖                    |
-| ---------------------------------------- | ------------------------------- | ----------------------- |
-| `"nano-git"`                             | 核心类型 + SHA-1 + 错误类       | `node:crypto`           |
-| `nano-git/sha1`                          | SHA-1 哈希工具                  | `node:crypto`           |
-| `nano-git/errors`                        | 全部错误类                      | 纯定义                  |
-| `nano-git/objects`                       | 对象序列化/反序列化             | 纯 TS                   |
-| `nano-git/odb/memory`                    | 内存对象存储                    | 纯 TS                   |
-| `nano-git/odb/file`                      | 文件对象存储                    | `node:fs` + `node:zlib` |
-| `nano-git/odb/pack`                      | Packfile 读写                   | `node:fs` + `node:zlib` |
-| `nano-git/refs/memory`                   | 内存 Refs 存储                  | 纯 TS                   |
-| `nano-git/refs/file`                     | 文件 Refs 存储                  | `node:fs`               |
-| `nano-git/refs/names`                    | Refs 名校验与转换               | 纯 TS                   |
-| `nano-git/refs/resolve`                  | 符号引用解析                    | 纯 TS                   |
-| `nano-git/repository/create`             | 仓库创建（高阶函数）            | 纯 TS                   |
-| `nano-git/repository/memory`             | 内存仓库便捷函数                | 仅 memory 后端          |
-| `nano-git/repository/file`               | 文件仓库便捷函数                | 完整 file 后端          |
-| `nano-git/repository/tree-patch`         | Tree 增量修改                   | 纯 TS                   |
-| `nano-git/repository/tree-walk`          | Tree 递归遍历                   | 纯 TS                   |
-| `nano-git/transport`                     | 传输层全量 barrel               | 全套协议                |
-| `nano-git/transport/client/upload-pack`  | Upload-Pack 客户端（v2）        | `node:crypto`           |
-| `nano-git/transport/client/receive-pack` | Receive-Pack 客户端（push）     | `node:zlib`             |
-| `nano-git/transport/server/upload-pack`  | Upload-Pack 服务端 Git service  | `node:crypto`           |
-| `nano-git/transport/server/receive-pack` | Receive-Pack 服务端 Git service | `node:zlib`             |
-| `nano-git/transport/http`                | Smart HTTP 服务端适配层         | `node:crypto`           |
-| `nano-git/transport/http/types`          | HTTP 适配层类型定义             | 纯 TS                   |
-| `nano-git/types`                         | 公共类型入口                    | 编译期擦除              |
-
-### 项目结构
-
-```
-nano-git/
-├── src/
-│   ├── index.ts          # 最小入口（类型 + SHA-1 + 错误）
-│   ├── sha1.ts           # SHA-1 哈希工具
-│   ├── errors.ts         # 错误类型
-│   ├── objects.ts        # 对象序列化 re-export
-│   ├── hash-file.ts      # 文件哈希
-│   ├── types/            # 纯类型导出（编译期擦除）
-│   ├── core/             # 核心类型、错误、哈希工具
-│   ├── objects/          # blob/tree/commit/tag 序列化
-│   ├── odb/              # 对象数据库与 pack 支持
-│   │   ├── memory.ts     # 内存对象存储
-│   │   ├── file.ts       # 文件对象存储
-│   │   └── pack/         # Packfile 读写
-│   ├── refs/             # 引用解析、校验、存储
-│   │   ├── memory.ts     # 内存 Refs 存储
-│   │   └── file.ts       # 文件 Refs 存储
-│   ├── shallow/          # Shallow 边界存储
-│   │   ├── memory.ts     # 内存 Shallow 存储
-│   │   └── file.ts       # 文件 Shallow 存储
-│   ├── transport/        # Git wire / Smart HTTP 传输层
-│   │   ├── protocol/     # 协议原语（pkt-line、refspec、对象图等）
-│   │   ├── client/       # 客户端代码，按 Git service 分组
-│   │   │   ├── upload-pack/  # v2 fetch / ls-refs / object-info
-│   │   │   └── receive-pack/ # v1 push
-│   │   ├── server/       # 服务端 Git service 实现
-│   │   └── http/         # Smart HTTP Request/Response 适配层
-│   └── repository/       # 仓库 API 与后端
-│       ├── create.ts     # createRepository（高阶函数）
-│       ├── memory.ts     # 内存仓库便捷函数
-│       └── file.ts       # 文件仓库便捷函数
-├── tests/
-│   ├── units/            # 单元测试
-│   ├── e2e/              # 端到端兼容性测试
-│   └── README.md
-├── examples/
-│   └── demo.ts           # 演示脚本
-└── README.md
-```
+本库采用 **tree-shakeable** 的子路径导出设计，各模块按后端实现类型隔离。
+默认入口 `"nano-git"` 只导出核心类型和纯工具函数，**不包含任何后端实现**。
+具体子路径入口见 `package.json` 的 `exports` 字段或 `src/index.ts` 的 JSDoc 文档。
 
 ## Git 对象模型
 
