@@ -16,9 +16,9 @@
  */
 
 import { GitError } from "../../../core/errors.ts";
-import { parsePktLines } from "../../shared/pkt-line.ts";
+import { parsePktLines } from "../../protocol/pkt-line.ts";
 
-import type { PushRefUpdate } from "../../shared/types.ts";
+import type { PushRefUpdate } from "../../protocol/types.ts";
 
 // ============================================================================
 // 错误类型

@@ -13,7 +13,7 @@
  * ```
  */
 
-export { PushError } from "../../transport/client/push/push-error.ts";
+export { PushError } from "../../transport/client/receive-pack/push-error.ts";
 import { runPushToUrl } from "./push-url.ts";
 
 import type { RepositoryBackend } from "../../backend/types.ts";

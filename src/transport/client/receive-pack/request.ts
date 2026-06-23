@@ -12,7 +12,7 @@
  * @see https://git-scm.com/docs/git-receive-pack#_request
  */
 
-import { encodePktLine, encodeFlushPkt } from "../../shared/pkt-line.ts";
+import { encodePktLine, encodeFlushPkt } from "../../protocol/pkt-line.ts";
 
 import type { SHA1 } from "../../../core/types.ts";
 

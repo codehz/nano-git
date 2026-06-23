@@ -16,7 +16,7 @@
  */
 
 import { sha1 } from "../../../core/types.ts";
-import { splitPktLinesFromBuffer } from "../../shared/pkt-line.ts";
+import { splitPktLinesFromBuffer } from "../../protocol/pkt-line.ts";
 import { V1ReceivePackError } from "./types.ts";
 
 import type { V1ReceivePackCommand, ParsedV1ReceivePackRequest } from "./types.ts";

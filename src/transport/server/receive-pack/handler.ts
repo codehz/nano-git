@@ -6,7 +6,7 @@
  */
 
 import { resolveRefHash } from "../../../refs/resolve.ts";
-import { encodeFlushPkt } from "../../shared/pkt-line.ts";
+import { encodeFlushPkt } from "../../protocol/pkt-line.ts";
 import { parseV1ReceivePackRequest } from "./parse.ts";
 import { generateV1ReportStatus } from "./report-status.ts";
 import { V1ReceivePackError, ZERO_HASH } from "./types.ts";

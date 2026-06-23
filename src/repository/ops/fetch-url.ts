@@ -4,7 +4,7 @@
  * 将 repo.fetch(url) 委托给 ImportSession 完成实际工作。
  */
 
-import { parseRefSpec } from "../../transport/shared/refspec.ts";
+import { parseRefSpec } from "../../transport/protocol/refspec.ts";
 
 import type { RepositoryBackend } from "../../backend/types.ts";
 import type { ImportSession } from "../import/import-session-types.ts";

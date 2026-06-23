@@ -9,8 +9,8 @@
 import { sha1 } from "../../../core/types.ts";
 import { createPackWriter } from "../../../pack/pack-writer.ts";
 import { resolveRefHash } from "../../../refs/resolve.ts";
-import { collectReachable } from "../../shared/object-graph.ts";
-import { encodePktLine, encodeFlushPkt, encodeDelimiterPkt } from "../../shared/pkt-line.ts";
+import { collectReachable } from "../../protocol/object-graph.ts";
+import { encodePktLine, encodeFlushPkt, encodeDelimiterPkt } from "../../protocol/pkt-line.ts";
 import { CHANNEL_PACKFILE, CHANNEL_FATAL, MAX_PKT_PAYLOAD, V2ServeError } from "./types.ts";
 
 import type { RepositoryBackend } from "../../../backend/types.ts";

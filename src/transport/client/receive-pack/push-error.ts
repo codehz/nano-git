@@ -8,7 +8,7 @@
 
 import { GitError } from "../../../core/errors.ts";
 
-import type { PushRefUpdate } from "../../shared/types.ts";
+import type { PushRefUpdate } from "../../protocol/types.ts";
 
 /**
  * Push 操作错误

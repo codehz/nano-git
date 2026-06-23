@@ -91,7 +91,7 @@ console.log(`Created commit: ${commitHash}`);
 
 ```typescript
 import { openRepository } from "nano-git/repository/file";
-import { createSmartHttpHandler } from "nano-git/transport/server/smart-http";
+import { createSmartHttpHandler } from "nano-git/transport/http/smart-http";
 
 // 创建 Git HTTP 后端处理函数（框架无关，标准 Request/Response）
 const handler = createSmartHttpHandler(openRepository("/path/to/repo"));
@@ -308,33 +308,32 @@ bun run examples/demo.ts
 
 ### 子路径入口一览
 
-| 入口                                    | 内容                                    | 依赖                    |
-| --------------------------------------- | --------------------------------------- | ----------------------- |
-| `"nano-git"`                            | 核心类型 + SHA-1 + 错误类               | `node:crypto`           |
-| `nano-git/sha1`                         | SHA-1 哈希工具                          | `node:crypto`           |
-| `nano-git/errors`                       | 全部错误类                              | 纯定义                  |
-| `nano-git/objects`                      | 对象序列化/反序列化                     | 纯 TS                   |
-| `nano-git/odb/memory`                   | 内存对象存储                            | 纯 TS                   |
-| `nano-git/odb/file`                     | 文件对象存储                            | `node:fs` + `node:zlib` |
-| `nano-git/odb/pack`                     | Packfile 读写                           | `node:fs` + `node:zlib` |
-| `nano-git/refs/memory`                  | 内存 Refs 存储                          | 纯 TS                   |
-| `nano-git/refs/file`                    | 文件 Refs 存储                          | `node:fs`               |
-| `nano-git/refs/names`                   | Refs 名校验与转换                       | 纯 TS                   |
-| `nano-git/refs/resolve`                 | 符号引用解析                            | 纯 TS                   |
-| `nano-git/repository/create`            | 仓库创建（高阶函数）                    | 纯 TS                   |
-| `nano-git/repository/memory`            | 内存仓库便捷函数                        | 仅 memory 后端          |
-| `nano-git/repository/file`              | 文件仓库便捷函数                        | 完整 file 后端          |
-| `nano-git/repository/tree-patch`        | Tree 增量修改                           | 纯 TS                   |
-| `nano-git/repository/tree-walk`         | Tree 递归遍历                           | 纯 TS                   |
-| `nano-git/transport`                    | 传输层全量 barrel                       | 全套协议                |
-| `nano-git/transport/client/push`        | Push 客户端（v1 receive-pack）          | `node:zlib`             |
-| `nano-git/transport/client/ls-refs`     | v2 ls-refs 命令                         | 纯 TS                   |
-| `nano-git/transport/client/fetch`       | v2 fetch 命令                           | `node:crypto`           |
-| `nano-git/transport/server/serve`       | v2 协议原语（广告、命令解析、响应生成） | `node:crypto`           |
-| `nano-git/transport/server/upload-pack` | Upload-Pack 服务编排器（协议无关）      | 纯 TS                   |
-| `nano-git/transport/server/types`       | HTTP 类型定义                           | 纯 TS                   |
-| `nano-git/transport/server/smart-http`  | HTTP 适配器（类 git-http-backend）      | `node:crypto`           |
-| `nano-git/types`                        | 公共类型入口                            | 编译期擦除              |
+| 入口                                     | 内容                            | 依赖                    |
+| ---------------------------------------- | ------------------------------- | ----------------------- |
+| `"nano-git"`                             | 核心类型 + SHA-1 + 错误类       | `node:crypto`           |
+| `nano-git/sha1`                          | SHA-1 哈希工具                  | `node:crypto`           |
+| `nano-git/errors`                        | 全部错误类                      | 纯定义                  |
+| `nano-git/objects`                       | 对象序列化/反序列化             | 纯 TS                   |
+| `nano-git/odb/memory`                    | 内存对象存储                    | 纯 TS                   |
+| `nano-git/odb/file`                      | 文件对象存储                    | `node:fs` + `node:zlib` |
+| `nano-git/odb/pack`                      | Packfile 读写                   | `node:fs` + `node:zlib` |
+| `nano-git/refs/memory`                   | 内存 Refs 存储                  | 纯 TS                   |
+| `nano-git/refs/file`                     | 文件 Refs 存储                  | `node:fs`               |
+| `nano-git/refs/names`                    | Refs 名校验与转换               | 纯 TS                   |
+| `nano-git/refs/resolve`                  | 符号引用解析                    | 纯 TS                   |
+| `nano-git/repository/create`             | 仓库创建（高阶函数）            | 纯 TS                   |
+| `nano-git/repository/memory`             | 内存仓库便捷函数                | 仅 memory 后端          |
+| `nano-git/repository/file`               | 文件仓库便捷函数                | 完整 file 后端          |
+| `nano-git/repository/tree-patch`         | Tree 增量修改                   | 纯 TS                   |
+| `nano-git/repository/tree-walk`          | Tree 递归遍历                   | 纯 TS                   |
+| `nano-git/transport`                     | 传输层全量 barrel               | 全套协议                |
+| `nano-git/transport/client/upload-pack`  | Upload-Pack 客户端（v2）        | `node:crypto`           |
+| `nano-git/transport/client/receive-pack` | Receive-Pack 客户端（push）     | `node:zlib`             |
+| `nano-git/transport/server/upload-pack`  | Upload-Pack 服务端 Git service  | `node:crypto`           |
+| `nano-git/transport/server/receive-pack` | Receive-Pack 服务端 Git service | `node:zlib`             |
+| `nano-git/transport/http`                | Smart HTTP 服务端适配层         | `node:crypto`           |
+| `nano-git/transport/http/types`          | HTTP 适配层类型定义             | 纯 TS                   |
+| `nano-git/types`                         | 公共类型入口                    | 编译期擦除              |
 
 ### 项目结构
 
@@ -359,12 +358,13 @@ nano-git/
 │   ├── shallow/          # Shallow 边界存储
 │   │   ├── memory.ts     # 内存 Shallow 存储
 │   │   └── file.ts       # 文件 Shallow 存储
-│   ├── transport/        # Smart HTTP 传输协议
-│   │   ├── shared/       # 协议无关共享工具（pkt-line、refspec、对象图等）
-│   │   ├── client/       # 客户端代码（push 除外默认使用 v2 协议）
-│   │   │   └── push/     # Push 客户端（v1 receive-pack 协议）
-│   │   ├── receive-pack/ # v1 receive-pack 服务端
-│   │   └── server/       # v2 服务端 + HTTP 适配器
+│   ├── transport/        # Git wire / Smart HTTP 传输层
+│   │   ├── protocol/     # 协议原语（pkt-line、refspec、对象图等）
+│   │   ├── client/       # 客户端代码，按 Git service 分组
+│   │   │   ├── upload-pack/  # v2 fetch / ls-refs / object-info
+│   │   │   └── receive-pack/ # v1 push
+│   │   ├── server/       # 服务端 Git service 实现
+│   │   └── http/         # Smart HTTP Request/Response 适配层
 │   └── repository/       # 仓库 API 与后端
 │       ├── create.ts     # createRepository（高阶函数）
 │       ├── memory.ts     # 内存仓库便捷函数

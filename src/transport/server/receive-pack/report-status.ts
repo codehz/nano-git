@@ -5,7 +5,7 @@
  * 支持 side-band-64k 编码（progress 在 channel 2，report-status 在 channel 1）。
  */
 
-import { encodePktLine, encodeFlushPkt } from "../../shared/pkt-line.ts";
+import { encodePktLine, encodeFlushPkt } from "../../protocol/pkt-line.ts";
 import { CHANNEL_PACKFILE, CHANNEL_PROGRESS } from "./types.ts";
 
 import type { V1RefUpdateResult } from "./types.ts";

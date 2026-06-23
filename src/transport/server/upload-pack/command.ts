@@ -15,7 +15,7 @@
  * @see https://git-scm.com/docs/protocol-v2#_request
  */
 
-import { parsePktLines } from "../../shared/pkt-line.ts";
+import { parsePktLines } from "../../protocol/pkt-line.ts";
 
 /**
  * 解析后的 v2 命令请求

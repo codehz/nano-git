@@ -13,7 +13,7 @@ import { startNanoGitServer, createDefaultBackend } from "./nano-git-server.ts";
 import { sha1, type SHA1 } from "@/core/types.ts";
 import { initRepository } from "@/repository/file.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
-import { createV2HttpTransport } from "@/transport/client/git-transport.ts";
+import { createV2HttpTransport } from "@/transport/client/upload-pack/http.ts";
 
 import type { NanoGitServer } from "./nano-git-server.ts";
 import type { RepositoryBackend } from "@/backend/types.ts";

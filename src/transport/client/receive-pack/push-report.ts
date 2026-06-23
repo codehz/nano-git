@@ -24,7 +24,7 @@
 
 import { PushError } from "./push-error.ts";
 
-import type { PushRefUpdate } from "../../shared/types.ts";
+import type { PushRefUpdate } from "../../protocol/types.ts";
 import type { PushRefItem } from "./push-ref-plan.ts";
 import type { ReceivePackCommand } from "./request.ts";
 

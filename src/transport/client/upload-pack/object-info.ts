@@ -25,10 +25,10 @@
  * @see https://git-scm.com/docs/protocol-v2#_object_info
  */
 
-import { GitError } from "../../core/errors.ts";
-import { parsePktLines } from "../shared/pkt-line.ts";
+import { GitError } from "../../../core/errors.ts";
+import { parsePktLines } from "../../protocol/pkt-line.ts";
 
-import type { V2GitServiceTransport } from "./protocol-types.ts";
+import type { V2GitServiceTransport } from "./types.ts";
 
 // ============================================================================
 // 错误类型

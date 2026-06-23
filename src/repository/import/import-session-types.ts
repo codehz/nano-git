@@ -6,7 +6,7 @@
  */
 
 import type { SHA1 } from "../../core/types.ts";
-import type { RemoteRef, RefAdvertisement } from "../../transport/shared/types.ts";
+import type { RemoteRef, RefAdvertisement } from "../../transport/protocol/types.ts";
 
 // ============================================================================
 // ImportSource

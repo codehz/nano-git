@@ -16,9 +16,9 @@ import { createServerRepo } from "./helpers.ts";
 import { startGitHttpBackendServer } from "./http-server.ts";
 import { sha1 } from "@/core/types.ts";
 import { initRepository } from "@/repository/file.ts";
-import { v2Fetch } from "@/transport/client/fetch.ts";
-import { createV2HttpTransport } from "@/transport/client/git-transport.ts";
-import { lsRefs, lsRefsToRefAdvertisement } from "@/transport/client/ls-refs.ts";
+import { v2Fetch } from "@/transport/client/upload-pack/fetch.ts";
+import { createV2HttpTransport } from "@/transport/client/upload-pack/http.ts";
+import { lsRefs, lsRefsToRefAdvertisement } from "@/transport/client/upload-pack/ls-refs.ts";
 
 describe("v2 协议 - 服务器能力", () => {
   let tempDir: string;
@@ -116,7 +116,7 @@ describe("v2 协议 - object-info 命令", () => {
     const transport = createV2HttpTransport(url);
     const caps = await transport.advertise();
 
-    const { objectInfo } = await import("@/transport/client/object-info.ts");
+    const { objectInfo } = await import("@/transport/client/upload-pack/object-info.ts");
 
     // object-info 需要服务端配置 uploadpack.advertiseObjectInfo=true
     // 默认不启用，如果服务端不支持则跳过

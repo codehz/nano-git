@@ -9,6 +9,12 @@ import { describe, test, expect } from "bun:test";
 
 import { createMemoryRepositoryBackend } from "@/backend/index.ts";
 import { sha1 } from "@/core/types.ts";
+import {
+  encodePktLine,
+  encodeDelimiterPkt,
+  encodeFlushPkt,
+  parsePktLines,
+} from "@/transport/protocol/pkt-line.ts";
 import { createUploadPackService } from "@/transport/server/upload-pack/index.ts";
 import {
   parseV2Command,
@@ -18,12 +24,6 @@ import {
   generateFetchResponse,
   serveV2Advertise,
 } from "@/transport/server/upload-pack/index.ts";
-import {
-  encodePktLine,
-  encodeDelimiterPkt,
-  encodeFlushPkt,
-  parsePktLines,
-} from "@/transport/shared/pkt-line.ts";
 
 import type { SHA1 } from "@/core/types.ts";
 

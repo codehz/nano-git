@@ -6,10 +6,10 @@
  */
 
 import { PreconditionCheckError } from "../../core/errors.ts";
-import { v2FetchObjects } from "../../transport/client/fetch.ts";
-import { isAncestor } from "../../transport/shared/object-graph.ts";
-import { getLocalRefs } from "../../transport/shared/ref-collection.ts";
-import { resolveBranchTargetHash } from "../../transport/shared/update-refs.ts";
+import { v2FetchObjects } from "../../transport/client/upload-pack/fetch.ts";
+import { isAncestor } from "../../transport/protocol/object-graph.ts";
+import { getLocalRefs } from "../../transport/protocol/ref-collection.ts";
+import { resolveBranchTargetHash } from "../../transport/protocol/update-refs.ts";
 import { matchRefGlob, globToRegex } from "./import-glob.ts";
 import {
   resolveNamespaceTargets,
@@ -19,12 +19,12 @@ import {
 
 import type { RepositoryBackend } from "../../backend/types.ts";
 import type { SHA1 } from "../../core/types.ts";
-import type { V2GitServiceTransport } from "../../transport/client/protocol-types.ts";
+import type { V2GitServiceTransport } from "../../transport/client/upload-pack/types.ts";
 import type {
   RemoteRef,
   RefAdvertisement,
   UploadPackTransport,
-} from "../../transport/shared/types.ts";
+} from "../../transport/protocol/types.ts";
 import type {
   ImportSource,
   ImportPlanBuilder,

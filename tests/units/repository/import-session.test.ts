@@ -15,10 +15,10 @@ import {
   createRepoImportOperations,
 } from "@/repository/import/import-session.ts";
 import { createImportView } from "@/repository/import/import-view.ts";
-import { encodePktLine } from "@/transport/shared/pkt-line.ts";
+import { encodePktLine } from "@/transport/protocol/pkt-line.ts";
 
-import type { V2GitServiceTransport } from "@/transport/client/protocol-types.ts";
-import type { RemoteRef, RefAdvertisement } from "@/transport/shared/types.ts";
+import type { V2GitServiceTransport } from "@/transport/client/upload-pack/types.ts";
+import type { RemoteRef, RefAdvertisement } from "@/transport/protocol/types.ts";
 
 // ============================================================================
 // Mock 数据

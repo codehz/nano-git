@@ -11,11 +11,14 @@ import { sha1 } from "@/core/types.ts";
 import {
   buildReceivePackRequest,
   type ReceivePackCommand,
-} from "@/transport/client/push/request.ts";
-import { parseReceivePackResult, ReceivePackResultError } from "@/transport/client/push/result.ts";
-import { parsePktLines, encodePktLine, encodeFlushPkt } from "@/transport/shared/pkt-line.ts";
+} from "@/transport/client/receive-pack/request.ts";
+import {
+  parseReceivePackResult,
+  ReceivePackResultError,
+} from "@/transport/client/receive-pack/result.ts";
+import { parsePktLines, encodePktLine, encodeFlushPkt } from "@/transport/protocol/pkt-line.ts";
 
-import type { PktLineData } from "@/transport/shared/pkt-line.ts";
+import type { PktLineData } from "@/transport/protocol/pkt-line.ts";
 
 // ============================================================================
 // 常量

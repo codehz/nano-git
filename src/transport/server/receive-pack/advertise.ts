@@ -9,7 +9,7 @@
 
 import { sha1 } from "../../../core/types.ts";
 import { resolveRefHash } from "../../../refs/resolve.ts";
-import { encodePktLine, encodeFlushPkt } from "../../shared/pkt-line.ts";
+import { encodePktLine, encodeFlushPkt } from "../../protocol/pkt-line.ts";
 import { ZERO_HASH, SERVER_AGENT, CAPABILITIES_REF } from "./types.ts";
 
 import type { RepositoryBackend } from "../../../backend/types.ts";

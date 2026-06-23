@@ -27,7 +27,7 @@
  * | `nano-git/repository/memory` | 内存仓库便捷函数 | 仅 memory 后端 |
  * | `nano-git/repository/file` | 文件仓库便捷函数 | 完整 file 后端 |
  * | `nano-git/backend` | 仓库后端抽象 | 按后端类型 |
- * | `nano-git/transport` | 传输层共享工具（shared/） | 纯 TS |
+ * | `nano-git/transport` | 传输层协议原语（protocol/） | 纯 TS |
  */
 
 // ============================================================================

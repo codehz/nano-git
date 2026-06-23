@@ -8,9 +8,9 @@
  */
 
 import { GitError } from "../../../core/errors.ts";
-import { parseRefAdvertisement, RefAdvertisementError } from "../../shared/ref-advertisement.ts";
+import { parseRefAdvertisement, RefAdvertisementError } from "../../protocol/ref-advertisement.ts";
 
-import type { RefAdvertisement, GitServiceTransport } from "../../shared/types.ts";
+import type { RefAdvertisement, GitServiceTransport } from "../../protocol/types.ts";
 
 // ============================================================================
 // 错误类型

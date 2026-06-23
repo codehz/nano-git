@@ -5,7 +5,7 @@
  * 生成 v2 协议的能力广告。
  */
 
-import { encodePktLine, encodeFlushPkt } from "../../shared/pkt-line.ts";
+import { encodePktLine, encodeFlushPkt } from "../../protocol/pkt-line.ts";
 import { SERVER_AGENT, V2ServeError } from "./types.ts";
 
 /**

@@ -5,15 +5,15 @@
  */
 
 import { sha1 } from "../../../core/types.ts";
-import { parseRefSpec } from "../../shared/refspec.ts";
-import { extractCapabilities, PUSH_CAPABILITIES } from "../../shared/transport-capabilities.ts";
+import { parseRefSpec } from "../../protocol/refspec.ts";
+import { extractCapabilities, PUSH_CAPABILITIES } from "../../protocol/transport-capabilities.ts";
 import { PushError } from "./push-error.ts";
 import { resolveDefaultRefSpec } from "./push-ref-plan.ts";
 import { buildReceivePackRequest } from "./request.ts";
 
 import type { RefStore } from "../../../refs/types.ts";
-import type { ParsedRefSpec } from "../../shared/refspec.ts";
-import type { RefAdvertisement, PushOptions } from "../../shared/types.ts";
+import type { ParsedRefSpec } from "../../protocol/refspec.ts";
+import type { RefAdvertisement, PushOptions } from "../../protocol/types.ts";
 import type { PushRefItem } from "./push-ref-plan.ts";
 import type { ReceivePackCommand } from "./request.ts";
 

@@ -1,5 +1,5 @@
 /**
- * Smart HTTP 服务器端类型定义
+ * Smart HTTP 适配层类型定义
  *
  * 基于标准 Web API 的 Request/Response，框架无关。
  * 任何支持 Web 标准的环境均可直接使用：

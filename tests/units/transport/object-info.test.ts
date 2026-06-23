@@ -4,8 +4,8 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { parseObjectInfoResponse } from "@/transport/client/object-info.ts";
-import { encodePktLine, encodeFlushPkt } from "@/transport/shared/pkt-line.ts";
+import { parseObjectInfoResponse } from "@/transport/client/upload-pack/object-info.ts";
+import { encodePktLine, encodeFlushPkt } from "@/transport/protocol/pkt-line.ts";
 
 describe("parseObjectInfoResponse()", () => {
   test("解析单条对象 size", () => {

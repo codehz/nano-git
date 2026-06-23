@@ -20,8 +20,8 @@
  */
 
 import { serveV1Advertise, handleV1ReceivePush } from "../server/receive-pack/index.ts";
-import { serveV2Advertise } from "./upload-pack/advertise.ts";
-import { createUploadPackService, UploadPackError } from "./upload-pack/index.ts";
+import { serveV2Advertise } from "../server/upload-pack/advertise.ts";
+import { createUploadPackService, UploadPackError } from "../server/upload-pack/index.ts";
 
 import type { RepositoryBackend } from "../../backend/types.ts";
 import type { SmartHttpHandler } from "./types.ts";
@@ -164,7 +164,7 @@ async function handleUploadPack(body: Buffer, backend: RepositoryBackend): Promi
  * @example
  * ```ts
  * // Bun.serve — 直接作为 fetch 处理器
- * import { createSmartHttpHandler } from "nano-git/transport/server/smart-http";
+ * import { createSmartHttpHandler } from "nano-git/transport/http/smart-http";
  * import { openRepository } from "nano-git/repository/file";
  * Bun.serve({ port: 8080, fetch: createSmartHttpHandler(openRepository("/repo")) });
  *

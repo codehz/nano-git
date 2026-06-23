@@ -22,7 +22,7 @@
  * ```
  */
 
-import { isAncestor, peelTagChain } from "../../shared/object-graph.ts";
+import { isAncestor, peelTagChain } from "../../protocol/object-graph.ts";
 import { PushError } from "./push-error.ts";
 
 import type { SHA1 } from "../../../core/types.ts";

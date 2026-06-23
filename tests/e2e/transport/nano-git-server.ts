@@ -6,7 +6,7 @@
  */
 
 import { createMemoryRepositoryBackend } from "@/backend/index.ts";
-import { createSmartHttpHandler } from "@/transport/server/smart-http.ts";
+import { createSmartHttpHandler } from "@/transport/http/smart-http.ts";
 
 import type { RepositoryBackend } from "@/backend/types.ts";
 

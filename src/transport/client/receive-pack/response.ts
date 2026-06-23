@@ -5,10 +5,10 @@
  */
 
 import { GitError } from "../../../core/errors.ts";
-import { parsePktLines } from "../../shared/pkt-line.ts";
+import { parsePktLines } from "../../protocol/pkt-line.ts";
 import { parseReceivePackResult } from "./result.ts";
 
-import type { PushRefUpdate } from "../../shared/types.ts";
+import type { PushRefUpdate } from "../../protocol/types.ts";
 
 /**
  * receive-pack 响应解码错误

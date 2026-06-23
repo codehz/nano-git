@@ -12,14 +12,14 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { encodePktLine } from "@/transport/shared/pkt-line.ts";
+import { encodePktLine } from "@/transport/protocol/pkt-line.ts";
 import {
   extractPackfile,
   extractProgress,
   extractRawPackfile,
   extractSideBandFatal,
   SideBandError,
-} from "@/transport/shared/side-band.ts";
+} from "@/transport/protocol/side-band.ts";
 
 // ============================================================================
 // 辅助函数

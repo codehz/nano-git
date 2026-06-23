@@ -21,7 +21,7 @@ import { createFileShallowStore } from "@/refs/shallow/file.ts";
 import { createMemoryShallowStore } from "@/refs/shallow/memory.ts";
 import { createRepository } from "@/repository/create.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
-import { collectReachable } from "@/transport/shared/object-graph.ts";
+import { collectReachable } from "@/transport/protocol/object-graph.ts";
 
 import type { ObjectStore } from "@/odb/types.ts";
 

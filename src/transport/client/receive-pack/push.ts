@@ -23,7 +23,7 @@
  */
 
 import { createPackWriter } from "../../../pack/pack-writer.ts";
-import { getLocalRefs, remoteRefsToMap } from "../../shared/ref-collection.ts";
+import { getLocalRefs, remoteRefsToMap } from "../../protocol/ref-collection.ts";
 import { PushError } from "./push-error.ts";
 import { mergePushBoundaries, computeObjectsToSend } from "./push-pack-plan.ts";
 import { checkFastForward } from "./push-policy.ts";
@@ -46,7 +46,7 @@ import type {
   RefAdvertisement,
   PushOptions,
   PushResult,
-} from "../../shared/types.ts";
+} from "../../protocol/types.ts";
 
 // ============================================================================
 // Re-export 子模块类型
@@ -136,7 +136,7 @@ export async function push(
 
   // 9. 发送请求并解码响应
   let progress: string[];
-  let refUpdates: import("../../shared/types.ts").PushRefUpdate[];
+  let refUpdates: import("../../protocol/types.ts").PushRefUpdate[];
   try {
     const raw = await transport.request(body);
     const decoded = decodeReceivePackResponse(raw);

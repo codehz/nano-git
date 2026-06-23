@@ -6,8 +6,8 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { createReceivePackHttpClient } from "@/transport/client/push/http.ts";
-import { decodeReceivePackResponse } from "@/transport/client/push/response.ts";
+import { createReceivePackHttpClient } from "@/transport/client/receive-pack/http.ts";
+import { decodeReceivePackResponse } from "@/transport/client/receive-pack/response.ts";
 
 describe("decodeReceivePackResponse 错误传播", () => {
   test("无效 pkt-line 响应应传播 PktLineError，而非静默返回空 refUpdates", async () => {
