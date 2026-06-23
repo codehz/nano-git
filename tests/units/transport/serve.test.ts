@@ -9,7 +9,7 @@ import { describe, test, expect } from "bun:test";
 
 import { createMemoryRepositoryBackend } from "@/backend/index.ts";
 import { sha1 } from "@/core/types.ts";
-import { createUploadPackService } from "@/transport/server/upload-pack.ts";
+import { createUploadPackService } from "@/transport/server/upload-pack/index.ts";
 import {
   parseV2Command,
   parseLsRefsArgs,

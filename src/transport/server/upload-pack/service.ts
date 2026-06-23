@@ -5,21 +5,17 @@
  * - 能力广告生成
  * - ls-refs / fetch 命令处理
  *
- * 协议实现细节（v2 协议原语）在 v2/serve.ts 中维护，
+ * 协议实现细节（v2 协议原语）在各子模块中维护，
  * 本文件仅提供协议无关的服务接口和工厂。
  */
 
-import {
-  serveV2Advertise,
-  parseV2Command,
-  parseLsRefsArgs,
-  generateLsRefsResponse,
-  parseFetchArgs,
-  generateFetchResponse,
-  V2ServeError,
-} from "./upload-pack/index.ts";
+import { serveV2Advertise } from "./advertise.ts";
+import { parseV2Command } from "./command.ts";
+import { parseFetchArgs, generateFetchResponse } from "./fetch.ts";
+import { parseLsRefsArgs, generateLsRefsResponse } from "./ls-refs.ts";
+import { V2ServeError } from "./types.ts";
 
-import type { RepositoryBackend } from "../../backend/types.ts";
+import type { RepositoryBackend } from "../../../backend/types.ts";
 
 /**
  * Upload-Pack 服务错误
