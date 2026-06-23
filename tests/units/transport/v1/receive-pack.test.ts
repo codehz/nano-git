@@ -286,7 +286,7 @@ describe("handleV1ReceivePush", () => {
     expect(text).toContain("ok refs/heads/main");
   });
 
-  test("删除 ref 不带 delete-refs 能力被拒绝", () => {
+  test("删除 ref 不带 delete-refs 能力成功（允许删除是默认行为）", () => {
     const { backend, commitHash } = createTestBackend();
 
     const body = Buffer.concat([
@@ -298,6 +298,6 @@ describe("handleV1ReceivePush", () => {
     const text = response.toString("utf-8");
 
     expect(text).toContain("unpack ok");
-    expect(text).toContain("ng refs/heads/main");
+    expect(text).toContain("ok refs/heads/main");
   });
 });

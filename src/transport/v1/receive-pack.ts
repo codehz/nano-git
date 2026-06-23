@@ -458,7 +458,7 @@ function unpackPackfile(store: ObjectStore, packfile: Buffer): void {
 function checkRefUpdate(
   backend: RepositoryBackend,
   cmd: V1ReceivePackCommand,
-  capabilities: string[],
+  _capabilities: string[],
   _options?: V1ReceivePackOptions,
 ): { ok: boolean; error?: string } {
   const { oldHash, newHash, refName } = cmd;
@@ -497,12 +497,6 @@ function checkRefUpdate(
 
   // --- 删除 ref ---
   if (isDelete) {
-    if (!capabilities.includes("delete-refs")) {
-      return {
-        ok: false,
-        error: "deleting refs not allowed (delete-refs capability not negotiated)",
-      };
-    }
     return { ok: true };
   }
 
@@ -579,33 +573,35 @@ function generateV1ReportStatus(
 
   const reportStatusData = Buffer.concat(statusLines);
 
-  if (!useSideBand) {
-    // 无 side-band：直接 pkt-line 编码后加 flush
-    const parts: Buffer[] = [];
+  // 构建 pkt-line 编码的 report-status 序列（无 side-band 时直接发送，有 side-band 时放在 channel 1 中）
+  const pktParts: Buffer[] = [];
 
-    // 将 report-status 拆分为 pkt-line 帧
-    const lines = reportStatusData.toString("utf-8").split("\n");
-    for (const line of lines) {
-      if (line.length > 0) {
-        parts.push(encodePktLine(line + "\n"));
-      }
+  // 将 report-status 拆分为 pkt-line 帧
+  const lines = reportStatusData.toString("utf-8").split("\n");
+  for (const line of lines) {
+    if (line.length > 0) {
+      pktParts.push(encodePktLine(line + "\n"));
     }
-    parts.push(encodeFlushPkt());
+  }
+  pktParts.push(encodeFlushPkt());
 
-    return Buffer.concat(parts);
+  const reportPktSequence = Buffer.concat(pktParts);
+
+  if (!useSideBand) {
+    return reportPktSequence;
   }
 
-  // 带 side-band-64k：report-status 在 channel 1，progress 在 channel 2
+  // 带 side-band-64k：progress 在 channel 2，report-status（pkt-line 编码）在 channel 1
   const parts: Buffer[] = [];
 
   // progress 消息
   const progressMsg = `Unpacking objects: 100% (${refResults.length}/${refResults.length})\n`;
   parts.push(encodeSideBandFrame(CHANNEL_PROGRESS, Buffer.from(progressMsg, "utf-8")));
 
-  // report-status 在 channel 1
-  parts.push(encodeSideBandFrame(CHANNEL_PACKFILE, reportStatusData));
+  // report-status 在 channel 1（内层已是 pkt-line 编码）
+  parts.push(encodeSideBandFrame(CHANNEL_PACKFILE, reportPktSequence));
 
-  // flush
+  // 外层 flush（终止 side-band demultiplexer）
   parts.push(encodeFlushPkt());
 
   return Buffer.concat(parts);
