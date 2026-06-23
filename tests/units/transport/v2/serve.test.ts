@@ -276,13 +276,8 @@ describe("serveV2Advertise", () => {
     expect(text).toContain("agent=nano-git/0.1");
   });
 
-  test("receive-pack 广告包含 push", () => {
-    const buf = serveV2Advertise("git-receive-pack");
-    const text = buf.toString("utf-8");
-
-    expect(text).toContain("version 2");
-    expect(text).toContain("push=report-status side-band-64k");
-    expect(text).toContain("agent=nano-git/0.1");
+  test("receive-pack 请求抛出错误（v2 receive-pack 未实现）", () => {
+    expect(() => serveV2Advertise("git-receive-pack")).toThrow("v2 serve");
   });
 
   test("未知 service 抛出错误", () => {

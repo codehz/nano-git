@@ -71,10 +71,8 @@ export function serveV2Advertise(service: string): Buffer {
   if (service === "git-upload-pack") {
     parts.push(encodePktLine("ls-refs\n"));
     parts.push(encodePktLine("fetch=shallow ref-in-want filter\n"));
-  } else if (service === "git-receive-pack") {
-    parts.push(encodePktLine("push=report-status side-band-64k\n"));
   } else {
-    throw new V2ServeError(`unknown service: ${service}`);
+    throw new V2ServeError(`unsupported service: ${service}`);
   }
 
   parts.push(encodePktLine(`agent=${SERVER_AGENT}\n`));

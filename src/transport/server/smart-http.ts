@@ -12,7 +12,7 @@
  *
  * 路由：
  * - GET /info/refs?service=git-upload-pack   → v2 能力广告
- * - GET /info/refs?service=git-receive-pack  → v1 ref 广告（无 Git-Protocol 头时）/ v2 广告
+ * - GET /info/refs?service=git-receive-pack  → v1 ref 广告
  * - POST /git-upload-pack                    → ls-refs / fetch 命令
  * - POST /git-receive-pack                   → receive-pack（push）处理
  *
@@ -82,18 +82,17 @@ function validateServiceRequest(method: string, contentType: string | null): Res
  *
  * 根据 service 类型返回相应的 ref 广告：
  * - git-upload-pack：返回 v2 能力广告
- * - git-receive-pack（v2 协议）：返回 v2 能力广告
- * - git-receive-pack（v1 协议）：返回 v1 ref 广告
+ * - git-receive-pack：始终返回 v1 ref 广告
  *
  * @param service - 服务类型（git-upload-pack 或 git-receive-pack）
- * @param useV2 - 是否使用 v2 协议
+ * @param _useV2 - 是否使用 v2 协议（仅 upload-pack 生效）
  * @param backend - 仓库后端（v1 广告需要）
  */
 function handleInfoRefs(service: string, useV2: boolean, backend: RepositoryBackend): Response {
   const isReceivePack = service === "git-receive-pack";
 
-  // git-receive-pack 在 v1 协议下走 v1 广告
-  if (isReceivePack && !useV2) {
+  // git-receive-pack 始终走 v1 广告（v2 receive-pack 未实现）
+  if (isReceivePack) {
     const advertise = serveV1Advertise(backend);
     return new Response(advertise, {
       status: 200,
@@ -104,7 +103,7 @@ function handleInfoRefs(service: string, useV2: boolean, backend: RepositoryBack
     });
   }
 
-  // v2 广告（upload-pack 或 v2 receive-pack）
+  // v2 广告（git-upload-pack）
   const advertise = serveV2Advertise(service);
   const contentType = service.startsWith("git-")
     ? `application/x-${service}-advertisement`

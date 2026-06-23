@@ -16,7 +16,7 @@ import { cleanupDir, createTempDir, gitRevParse } from "../helpers.ts";
 import { createServerRepo } from "./helpers.ts";
 import { startGitHttpBackendServer } from "./http-server.ts";
 import { sha1 } from "@/core/types.ts";
-import { createMemoryRepository, initRepository } from "@/repository/index.ts";
+import { initRepository } from "@/repository/index.ts";
 import { detectProtocol } from "@/transport/v2/detect.ts";
 import { v2Fetch } from "@/transport/v2/fetch.ts";
 import { lsRefs, lsRefsToRefAdvertisement } from "@/transport/v2/ls-refs.ts";
@@ -201,40 +201,6 @@ describe("v2 协议 - fetch 命令", () => {
     if (result.protocol !== "v2") return;
 
     expect(v2Fetch(result.transport, { wants: [], ofsDelta: true })).rejects.toBeInstanceOf(Error);
-  });
-});
-
-describe("v2 协议 - push 命令", () => {
-  let tempDir: string;
-  let server: ReturnType<typeof startGitHttpBackendServer>;
-  let url: string;
-
-  beforeEach(async () => {
-    tempDir = createTempDir("e2e-v2-push");
-    createServerRepo(tempDir, "server.git", true); // 启用 receive-pack
-    server = startGitHttpBackendServer(tempDir, "/server.git");
-    url = server.url;
-  });
-
-  afterEach(async () => {
-    await server?.stop();
-    cleanupDir(tempDir);
-  });
-
-  test("repo.push() 通过 v2 协议推送到远端", async () => {
-    const repo = createMemoryRepository();
-    const author = { name: "Test", email: "test@test", timestamp: 1700000000, timezone: "+0800" };
-
-    const fileHash = repo.writeBlob(Buffer.from("v2 push test"));
-    const treeHash = repo.createTree([{ mode: "100644", name: "readme.md", hash: fileHash }]);
-    const commitHash = repo.createCommit(treeHash, [], "Initial commit v2 push", author);
-    repo.updateRef("refs/heads/new-branch", commitHash);
-
-    const result = await repo.push(url, {
-      refSpecs: ["refs/heads/new-branch:refs/heads/new-branch"],
-    });
-    expect(result.pushedRefs.length).toBeGreaterThan(0);
-    expect(result.pushedRefs.every((r) => r.success)).toBe(true);
   });
 });
 

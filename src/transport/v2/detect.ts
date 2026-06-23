@@ -88,7 +88,7 @@ export async function detectProtocol(
   if (isV2Response) {
     try {
       const capabilities = parseV2CapabilityAdvertisement(data);
-      const transport = createV2HttpTransport(url, options, svc);
+      const transport = createV2HttpTransport(url, options);
       return { protocol: "v2", capabilities, transport };
     } catch (err) {
       if (err instanceof V2CapabilityError) {

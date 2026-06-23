@@ -87,8 +87,8 @@ export function parseV2CapabilityAdvertisement(data: Buffer): V2CapabilityAdvert
     const text = line.payload.toString("utf-8").trim();
     if (text.length === 0) continue;
 
-    // 检查是否为命令行（ls-refs, fetch, push, object-info 等）
-    const knownCommands = ["ls-refs", "fetch", "push", "object-info"];
+    // 检查是否为命令行（ls-refs, fetch, object-info 等）
+    const knownCommands = ["ls-refs", "fetch", "object-info"];
     const isCommand = knownCommands.some((cmd) => text.startsWith(cmd));
 
     if (isCommand) {
