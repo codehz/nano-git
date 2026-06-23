@@ -7,6 +7,9 @@
 export type { Repository } from "./types.ts";
 export type { RepositoryObjectOperations } from "./object-types.ts";
 export type { TreePatchOp, TreePatchResult } from "./tree-patch.ts";
+export { patchTree } from "./tree-patch.ts";
+export { readTree, walkTree } from "./tree-walk.ts";
+export type { TreeEntryWithPath } from "./tree-walk.ts";
 export type { RepositoryRefOperations } from "./ref-types.ts";
 export type { RepositoryMaintenanceOperations } from "./maintenance-types.ts";
 export type {
@@ -14,6 +17,11 @@ export type {
   RepositoryPushResult,
   PushRefUpdateResult,
 } from "./push-types.ts";
+export type {
+  RepositoryFetchOptions,
+  RepositoryFetchResult,
+  FetchRefUpdateResult,
+} from "./fetch-types.ts";
 export type {
   ImportSource,
   ImportView,

@@ -172,6 +172,15 @@ export {
   type RepoImportOperations,
   type RepositoryPushOptions,
   type RepositoryPushResult,
+  type RepositoryFetchOptions,
+  type RepositoryFetchResult,
+  // Tree 操作
+  patchTree,
+  readTree,
+  walkTree,
+  type TreePatchOp,
+  type TreePatchResult,
+  type TreeEntryWithPath,
 } from "./repository/index.ts";
 
 // ============================================================================
