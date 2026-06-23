@@ -1,55 +1,66 @@
 /**
- * 基于内存的对象存储
+ * 基于内存的对象数据库（raw-first）
  *
- * 所有对象存储在内存 Map 中，程序退出后丢失。
+ * 所有对象以 RawGitObject 形式存储在内存 Map 中，程序退出后丢失。
  * 适用于单元测试和临时操作场景。
+ *
+ * ODB 的真实边界是 RawGitObject，不是 GitObject。
  */
 
 import { hashObject } from "../core/hash.ts";
-import { serialize, deserialize, serializeContent } from "../objects/index.ts";
 
-import type { GitObject, SHA1 } from "../core/types.ts";
+import type { RawGitObject, SHA1 } from "../core/types.ts";
 import type { ObjectDatabase } from "./types.ts";
 
 export type { ObjectDatabase } from "./types.ts";
 
 /**
- * 内存对象存储接口（扩展了 list 方法）
+ * 内存对象数据库接口
  */
 export type MemoryObjectDatabase = ObjectDatabase;
 
 /**
- * 创建内存对象存储
+ * 创建基于内存的对象数据库
  *
  * 所有对象存储在内存中，程序退出后丢失。
  *
  * @example
  * ```ts
- * const store = createMemoryObjectStore();
+ * const db = createMemoryObjectStore();
+ * db.ingest(raw);
+ * const obj = db.read(hash);
  * ```
  */
 export function createMemoryObjectStore(): MemoryObjectDatabase {
-  const store = new Map<SHA1, Buffer>();
+  const store = new Map<SHA1, RawGitObject>();
 
   return {
-    write(obj: GitObject): SHA1 {
-      const hash = hashObject(obj.type, serializeContent(obj));
-      const serialized = serialize(obj);
-      store.set(hash, serialized);
-      return hash;
+    ingest(raw: RawGitObject): void {
+      const expectedHash = hashObject(raw.type, raw.content);
+      if (expectedHash !== raw.hash) {
+        throw new Error(`RawGitObject hash mismatch: expected ${expectedHash}, got ${raw.hash}`);
+      }
+      if (!store.has(raw.hash)) {
+        store.set(raw.hash, raw);
+      }
     },
 
-    read(hash: SHA1): GitObject {
-      const data = store.get(hash);
-      if (!data) {
+    ingestMany(objects: Iterable<RawGitObject>): void {
+      for (const raw of objects) {
+        this.ingest(raw);
+      }
+    },
+
+    read(hash: SHA1): RawGitObject {
+      const obj = store.get(hash);
+      if (!obj) {
         throw new Error(`Object not found: ${hash}`);
       }
-      return deserialize(data);
+      return obj;
     },
 
-    tryRead(hash: SHA1): GitObject | undefined {
-      const data = store.get(hash);
-      return data ? deserialize(data) : undefined;
+    tryRead(hash: SHA1): RawGitObject | undefined {
+      return store.get(hash);
     },
 
     exists(hash: SHA1): boolean {
