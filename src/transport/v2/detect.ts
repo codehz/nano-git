@@ -36,6 +36,7 @@ export type ProtocolDetectResult =
  *
  * @param url - 远端仓库 URL
  * @param options - 可选认证选项
+ * @param service - 服务类型（默认 git-upload-pack，push 应传 git-receive-pack）
  * @returns 协议检测结果
  *
  * @example
@@ -49,10 +50,11 @@ export type ProtocolDetectResult =
 export async function detectProtocol(
   url: string,
   options?: { token?: string; headers?: Record<string, string> },
+  service?: "git-upload-pack" | "git-receive-pack",
 ): Promise<ProtocolDetectResult> {
-  // 构建 advertise URL
+  const svc = service ?? "git-upload-pack";
   const baseUrl = url.replace(/\/$/, "");
-  const advertiseUrl = `${baseUrl}/info/refs?service=git-upload-pack`;
+  const advertiseUrl = `${baseUrl}/info/refs?service=${svc}`;
 
   const headers: Record<string, string> = {
     "Git-Protocol": "version=2",
@@ -86,7 +88,7 @@ export async function detectProtocol(
   if (isV2Response) {
     try {
       const capabilities = parseV2CapabilityAdvertisement(data);
-      const transport = createV2HttpTransport(url, options);
+      const transport = createV2HttpTransport(url, options, svc);
       return { protocol: "v2", capabilities, transport };
     } catch (err) {
       if (err instanceof V2CapabilityError) {

@@ -35,10 +35,13 @@ export class V2SmartHttpError extends Error {
 // ============================================================================
 
 /** v2 advertise 路径（与 v1 相同，但增加 Git-Protocol 头） */
-const ADVERTISE_PATH = "/info/refs?service=git-upload-pack";
+const ADVERTISE_PATH = "/info/refs";
 
 /** v2 命令执行路径 */
 const COMMAND_PATH = "/git-upload-pack";
+
+/** v2 receive-pack 命令执行路径 */
+const RECEIVE_PACK_PATH = "/git-receive-pack";
 
 // ============================================================================
 // 工厂函数
@@ -49,6 +52,7 @@ const COMMAND_PATH = "/git-upload-pack";
  *
  * @param url - 远端仓库 URL
  * @param options - 可选认证选项
+ * @param service - 服务类型（默认 git-upload-pack，push 应传 git-receive-pack）
  * @returns v2 传输接口
  *
  * @example
@@ -61,7 +65,9 @@ const COMMAND_PATH = "/git-upload-pack";
 export function createV2HttpTransport(
   url: string,
   options?: { token?: string; headers?: Record<string, string> },
+  service?: "git-upload-pack" | "git-receive-pack",
 ): V2GitServiceTransport {
+  const svc = service ?? "git-upload-pack";
   const baseUrl = url.replace(/\/$/, "");
 
   const baseHeaders: Record<string, string> = {
@@ -76,9 +82,12 @@ export function createV2HttpTransport(
     baseHeaders.Authorization = `Bearer ${options.token}`;
   }
 
+  const endpointPath = svc === "git-receive-pack" ? RECEIVE_PACK_PATH : COMMAND_PATH;
+
   return {
     async advertise(): Promise<V2CapabilityAdvertisement> {
-      const response = await fetch(`${baseUrl}${ADVERTISE_PATH}`, { headers: baseHeaders });
+      const query = `?service=${svc}`;
+      const response = await fetch(`${baseUrl}${ADVERTISE_PATH}${query}`, { headers: baseHeaders });
 
       if (!response.ok) {
         throw new V2SmartHttpError(`advertise failed: ${response.status} ${response.statusText}`);
@@ -126,7 +135,7 @@ export function createV2HttpTransport(
 
       const requestBody = Buffer.concat(lines);
 
-      const response = await fetch(`${baseUrl}${COMMAND_PATH}`, {
+      const response = await fetch(`${baseUrl}${endpointPath}`, {
         method: "POST",
         headers: baseHeaders,
         body: requestBody,

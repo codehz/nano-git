@@ -39,3 +39,6 @@ export {
   V2FetchError,
 } from "./fetch.ts";
 export type { V2FetchParams } from "./fetch.ts";
+
+export { v2Push, parseV2PushResponse, V2PushError, v1PushResultToV2 } from "./push.ts";
+export type { V2PushCommand, V2PushRefUpdate, V2PushResult } from "./push.ts";
