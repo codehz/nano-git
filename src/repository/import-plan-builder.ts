@@ -11,6 +11,7 @@ import { isAncestor } from "../transport/object-graph.ts";
 import { getLocalRefs } from "../transport/ref-collection.ts";
 import { createUploadPackHttpClient } from "../transport/smart-http.ts";
 import { resolveBranchTargetHash } from "../transport/update-refs.ts";
+import { v2FetchObjects } from "../transport/v2/fetch.ts";
 import { matchRefGlob, globToRegex } from "./import-glob.ts";
 import {
   resolveNamespaceTargets,
@@ -20,6 +21,7 @@ import {
 
 import type { SHA1 } from "../core/types.ts";
 import type { RemoteRef, RefAdvertisement, UploadPackTransport } from "../transport/types.ts";
+import type { V2GitServiceTransport } from "../transport/v2/types.ts";
 import type { RepositoryBackend } from "./backend/types.ts";
 import type {
   ImportSource,
@@ -228,6 +230,7 @@ export function createPlanBuilder(
   advertisement: Readonly<RefAdvertisement>,
   source: ImportSource,
   transportFactory?: (url: string) => UploadPackTransport,
+  v2Transport?: V2GitServiceTransport,
 ): ImportPlanBuilder {
   const actions: MaterializationAction[] = [];
   let planVersion = 0;
@@ -592,6 +595,15 @@ export function createPlanBuilder(
       if (!localHaveTips.some((existingHash) => existingHash === hash)) {
         localHaveTips.push(hash);
       }
+    }
+
+    if (v2Transport) {
+      // v2 fetch：使用 Git Wire 协议 v2 获取对象
+      const v2Wants = objectRoots.map((h) => h);
+      const v2Haves = localHaveTips.length > 0 ? localHaveTips.map((h) => h) : undefined;
+      await v2FetchObjects(v2Transport, v2Wants, v2Haves);
+      validateLocalPreconditions(backend, localPreconditions);
+      return 0;
     }
 
     const createTransport =

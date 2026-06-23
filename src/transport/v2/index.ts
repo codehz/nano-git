@@ -1,7 +1,7 @@
 /**
  * Git Wire 协议 v2 模块
  *
- * 导出所有 v2 协议相关的类型、解析函数和检测工具。
+ * 导出所有 v2 协议相关的类型、解析函数、命令实现和检测工具。
  */
 
 export type {
@@ -25,3 +25,17 @@ export {
 
 export { detectProtocol } from "./detect.ts";
 export type { ProtocolDetectResult } from "./detect.ts";
+
+export { createV2HttpTransport, V2SmartHttpError } from "./smart-http.ts";
+
+export { lsRefs, parseLsRefsResponse, lsRefsToRefAdvertisement, LsRefsError } from "./ls-refs.ts";
+export type { LsRefsOptions } from "./ls-refs.ts";
+
+export {
+  v2Fetch,
+  v2FetchObjects,
+  negotiateV2Fetch,
+  parseV2FetchResponse,
+  V2FetchError,
+} from "./fetch.ts";
+export type { V2FetchParams } from "./fetch.ts";

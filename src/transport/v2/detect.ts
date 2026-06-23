@@ -5,8 +5,8 @@
  * 如不兼容则返回 null 供调用方回退到 v1。
  */
 
-import { parsePktLines } from "../shared/pkt-line.ts";
 import { parseV2CapabilityAdvertisement, V2CapabilityError } from "./capability-advert.ts";
+import { createV2HttpTransport } from "./smart-http.ts";
 
 import type { V2CapabilityAdvertisement, V2GitServiceTransport } from "./types.ts";
 
@@ -79,11 +79,14 @@ export async function detectProtocol(
   const data = Buffer.from(await response.arrayBuffer());
 
   // 检查是否为 v2 响应：必须以 "000eversion 2\n" 开头
-  const firstPkt = parsePktLines(data.subarray(0, 32))[0];
-  if (firstPkt?.type === "data" && firstPkt.payload.toString("utf-8").trim() === "version 2") {
+  const headerHex = data.subarray(0, 16).toString("utf-8");
+  const isV2Response =
+    headerHex.startsWith("000e") && data.subarray(4, 14).toString("utf-8") === "version 2";
+
+  if (isV2Response) {
     try {
       const capabilities = parseV2CapabilityAdvertisement(data);
-      const transport = createV2Transport(url, options);
+      const transport = createV2HttpTransport(url, options);
       return { protocol: "v2", capabilities, transport };
     } catch (err) {
       if (err instanceof V2CapabilityError) {
@@ -97,106 +100,7 @@ export async function detectProtocol(
 }
 
 // ============================================================================
-// v2 传输适配器
+// v2 传输适配器（已移至 smart-http.ts）
 // ============================================================================
 
-/**
- * 创建 v2 HTTP 传输适配器
- *
- * v2 使用相同的 HTTP 端点但不同的请求/响应格式。
- *
- * @param url - 远端仓库 URL
- * @param options - 可选认证选项
- * @returns v2 传输接口
- */
-function createV2Transport(
-  url: string,
-  options?: { token?: string; headers?: Record<string, string> },
-): V2GitServiceTransport {
-  const baseUrl = url.replace(/\/$/, "");
-  const commandUrl = `${baseUrl}/git-upload-pack`;
-
-  const baseHeaders: Record<string, string> = {
-    "User-Agent": "nano-git/0.1",
-    "Content-Type": "application/x-git-upload-pack-request",
-    Accept: "application/x-git-upload-pack-result",
-    ...options?.headers,
-  };
-
-  if (options?.token) {
-    baseHeaders.Authorization = `Bearer ${options.token}`;
-  }
-
-  return {
-    async advertise(): Promise<V2CapabilityAdvertisement> {
-      const headers: Record<string, string> = {
-        ...baseHeaders,
-        "Git-Protocol": "version=2",
-      };
-
-      const response = await fetch(`${baseUrl}/info/refs?service=git-upload-pack`, { headers });
-
-      if (!response.ok) {
-        throw new Error(`v2 advertise failed: ${response.status} ${response.statusText}`);
-      }
-
-      const data = Buffer.from(await response.arrayBuffer());
-      return parseV2CapabilityAdvertisement(data);
-    },
-
-    async command(
-      command: string,
-      args?: string[],
-      capabilities?: string[],
-      body?: Buffer,
-    ): Promise<Buffer> {
-      // 构建 v2 命令请求体
-      const lines: Buffer[] = [];
-
-      // command=<name>\n
-      lines.push(Buffer.from(`command=${command}\n`, "utf-8"));
-
-      // capability-list（agent 等）
-      const allCaps = [...(capabilities ?? [])];
-      for (const cap of allCaps) {
-        lines.push(Buffer.from(`${cap}\n`, "utf-8"));
-      }
-
-      // delimiter
-      const { encodeDelimiterPkt } = await import("../shared/pkt-line.ts");
-      lines.push(encodeDelimiterPkt());
-
-      // command-args
-      if (args) {
-        for (const arg of args) {
-          lines.push(Buffer.from(`${arg}\n`, "utf-8"));
-        }
-      }
-
-      // flush
-      const { encodeFlushPkt } = await import("../shared/pkt-line.ts");
-      lines.push(encodeFlushPkt());
-
-      // 附加 body（如 push 的 packfile）
-      if (body) {
-        lines.push(body);
-      }
-
-      const requestBody = Buffer.concat(lines);
-
-      const response = await fetch(commandUrl, {
-        method: "POST",
-        headers: baseHeaders,
-        body: requestBody,
-      });
-
-      if (!response.ok) {
-        throw new Error(
-          `v2 command "${command}" failed: ${response.status} ${response.statusText}`,
-        );
-      }
-
-      return Buffer.from(await response.arrayBuffer());
-    },
-  };
-}
+export { createV2HttpTransport } from "./smart-http.ts";

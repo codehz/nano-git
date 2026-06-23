@@ -2,14 +2,18 @@
  * Import Session 实现
  *
  * 包含 session 创建和仓库级别导入操作工厂。
+ * 支持 Git Wire 协议 v2 的透明升级：自动检测远端 v2 支持，优先使用 ls-refs + v2 fetch。
  */
 
 import { createUploadPackHttpClient } from "../transport/smart-http.ts";
+import { detectProtocol } from "../transport/v2/detect.ts";
+import { lsRefs, lsRefsToRefAdvertisement } from "../transport/v2/ls-refs.ts";
 import { matchRefGlob } from "./import-glob.ts";
 import { createPlanBuilder } from "./import-plan-builder.ts";
 import { createImportView } from "./import-view.ts";
 
 import type { RemoteRef, RefAdvertisement, UploadPackTransport } from "../transport/types.ts";
+import type { V2GitServiceTransport } from "../transport/v2/types.ts";
 import type { RepositoryBackend } from "./backend/types.ts";
 import type {
   ImportSource,
@@ -35,6 +39,7 @@ function createImportSession(
   backend: RepositoryBackend,
   advertisement: RefAdvertisement,
   transportFactory?: (url: string) => UploadPackTransport,
+  v2Transport?: V2GitServiceTransport,
 ): ImportSession {
   const frozenSource = Object.freeze({
     url: source.url,
@@ -107,7 +112,13 @@ function createImportSession(
     },
 
     plan(): ImportPlanBuilder {
-      return createPlanBuilder(backend, frozenAdvertisement, frozenSource, transportFactory);
+      return createPlanBuilder(
+        backend,
+        frozenAdvertisement,
+        frozenSource,
+        transportFactory,
+        v2Transport,
+      );
     },
   };
 }
@@ -128,6 +139,30 @@ export function createRepoImportOperations(
 ): import("./import-session-types.ts").RepoImportOperations {
   return {
     async openImportSession(source: ImportSource): Promise<ImportSession> {
+      // 尝试 v2 协议（自动检测 + 透明升级）
+      const v2Result = await detectProtocol(source.url, {
+        token: source.token,
+        headers: source.headers,
+      });
+
+      if (v2Result.protocol === "v2") {
+        // v2 可用：使用 ls-refs 获取 ref 列表
+        const lsRefsEntries = await lsRefs(v2Result.transport, {
+          symrefs: true,
+          peel: true,
+          refPrefixes: ["refs/heads/", "refs/tags/"],
+        });
+        const advertisement = lsRefsToRefAdvertisement(lsRefsEntries);
+        return createImportSession(
+          source,
+          backend,
+          advertisement,
+          transportFactory,
+          v2Result.transport,
+        );
+      }
+
+      // v1 回退：使用传统 Smart HTTP 协议
       const createTransport =
         transportFactory ??
         ((url: string) =>
