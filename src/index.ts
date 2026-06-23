@@ -57,16 +57,7 @@ export {
   InvalidObjectError,
   InvalidSHA1Error,
   RepositoryError,
-  CircularReferenceError,
   RefNotFoundError,
-  /** @deprecated 请从 "nano-git/odb" 导入 */
-  PackError,
-  /** @deprecated 请从 "nano-git/odb" 导入 */
-  InvalidPackError,
-  /** @deprecated 请从 "nano-git/odb" 导入 */
-  PackIndexError,
-  /** @deprecated 请从 "nano-git/odb" 导入 */
-  DeltaError,
   PreconditionCheckError,
 } from "./core/index.ts";
 
@@ -110,73 +101,7 @@ export {
 // 对象数据库
 // ============================================================================
 
-export {
-  createFileObjectStore,
-  createMemoryObjectStore,
-  type ObjectStore,
-  /** @deprecated MemoryObjectStore 是空 marker 接口，将在下一大版本中移除 */
-  type MemoryObjectStore,
-} from "./odb/index.ts";
-
-// ============================================================================
-// Packfile 支持
-//
-// @deprecated 请从子路径 "nano-git/odb" 导入 packfile 相关工具。
-// 顶级入口将在下一大版本中移除这些 export。
-// ============================================================================
-
-/** @deprecated 请从 "nano-git/odb" 导入 */
-export {
-  // 常量和工具
-  OBJ_COMMIT,
-  OBJ_TREE,
-  OBJ_BLOB,
-  OBJ_TAG,
-  OBJ_OFS_DELTA,
-  OBJ_REF_DELTA,
-  objectTypeToNumber,
-  numberToObjectType,
-  isDeltaType,
-  // Delta 编解码
-  /** @deprecated 请从 "nano-git/odb" 导入 */
-  applyDelta,
-  /** @deprecated 请从 "nano-git/odb" 导入 */
-  createDelta,
-  /** @deprecated 请从 "nano-git/odb" 导入 */
-  createPackReader,
-  /** @deprecated 请从 "nano-git/odb" 导入 */
-  PackReader,
-  /** @deprecated 请从 "nano-git/odb" 导入 */
-  type PackObject,
-  /** @deprecated 请从 "nano-git/odb" 导入 */
-  createPackWriter,
-  /** @deprecated 请从 "nano-git/odb" 导入 */
-  PackWriter,
-  /** @deprecated 请从 "nano-git/odb" 导入 */
-  createPackIndexReader,
-  /** @deprecated 请从 "nano-git/odb" 导入 */
-  createPackIndexWriter,
-  /** @deprecated 请从 "nano-git/odb" 导入 */
-  type PackIndexReader,
-  /** @deprecated 请从 "nano-git/odb" 导入 */
-  type PackIndexWriter,
-  /** @deprecated 请从 "nano-git/odb" 导入 */
-  type PackIndexEntry,
-  /** @deprecated 请从 "nano-git/odb" 导入 */
-  createPackObjectStore,
-  /** @deprecated 请从 "nano-git/odb" 导入 */
-  type PackObjectStore,
-  /** @deprecated 请从 "nano-git/odb" 导入 */
-  createCompositeObjectStore,
-  /** @deprecated 请从 "nano-git/odb" 导入 */
-  CompositeObjectStore,
-  /** @deprecated 请从 "nano-git/odb" 导入 */
-  createPackBuilder,
-  /** @deprecated 请从 "nano-git/odb" 导入 */
-  type PackBuilder,
-  /** @deprecated 请从 "nano-git/odb" 导入 */
-  type PackBuildResult,
-} from "./odb/index.ts";
+export { createFileObjectStore, createMemoryObjectStore, type ObjectStore } from "./odb/index.ts";
 
 // ============================================================================
 // Refs 支持
@@ -254,92 +179,9 @@ export {
 // ============================================================================
 // Transport / Plumbing 低层 API
 //
-// @deprecated 请从子路径 "nano-git/transport" 导入传输层 API。
-// 以下 export 将在下一大版本中从顶级入口移除。
+// Transport 层已移入子路径 "nano-git/transport"。
 // 如果只需要高层仓库操作，请使用 repository 模块的 fetch/push API。
+//
+// import { fetchPack } from "nano-git/transport";
+// import type { RemoteRef } from "nano-git/transport";
 // ============================================================================
-
-// --- 传输层类型 ---
-
-/** @deprecated 请从 "nano-git/transport" 导入 */
-export type {
-  RemoteRef,
-  RefAdvertisement,
-  PushOptions,
-  PushRefUpdate,
-  GitServiceTransport,
-  UploadPackTransport,
-  ReceivePackTransport,
-  ParsedRefSpec,
-  PktLine,
-  PktLineData,
-  PktLineFlush,
-  PktLineDelimiter,
-  PktLineResponseEnd,
-  ReceivePackCommand,
-  AdvertiseOptions,
-  RefMappingRule,
-  MatchedRefItem, // 完整匹配结果；注意 matchedItems ≠ refUpdates，wants 可非空但 refUpdates 为空
-  RefUpdatePlanItem,
-  FetchPlan,
-  FetchPackOptions,
-} from "./transport/index.ts";
-
-// --- 传输层函数 ---
-
-/** @deprecated 请从 "nano-git/transport" 导入 */
-export {
-  // pkt-line 编解码
-  encodePktLine,
-  encodeFlushPkt,
-  encodeDelimiterPkt,
-  encodeResponseEndPkt,
-  parsePktLines,
-  PktLineError,
-  // ref 广告解析
-  parseRefAdvertisement,
-  RefAdvertisementError,
-  // side-band 解复用
-  extractPackfile,
-  extractProgress,
-  SideBandError,
-  // 请求生成
-  buildUploadPackRequest,
-  buildReceivePackRequest,
-  // 响应解析
-  parseReceivePackResult,
-  ReceivePackResultError,
-  decodeUploadPackResponse,
-  UploadPackResponseError,
-  decodeReceivePackResponse,
-  ReceivePackResponseError,
-  // HTTP 传输
-  createUploadPackHttpClient,
-  createReceivePackHttpClient,
-  SmartHttpError,
-  // 广告获取
-  advertiseRemote,
-  // Ref 规划
-  parseRefSpec,
-  matchesRefSpec,
-  mapRefName,
-  getLocalRefs,
-  planRefUpdates,
-  validateExactRules,
-  RefPlanError,
-  // Fetch-pack（对象同步）
-  fetchPack,
-  FetchPackError,
-  // Ref 更新
-  applyRefUpdates,
-  resolveBranchTargetHash,
-  isRefNamespaceRequiringFastForward,
-  RefUpdateError,
-  // push 编排
-  push,
-  PushError,
-} from "./transport/index.ts";
-
-// --- 内部传输 Result 类型（仅在需要详细传输结果时导入） ---
-// FetchPackResult, ApplyRefUpdatesResult, PushResult
-// 推荐优先使用 repository 层的结果类型（ImportApplyResult, RepositoryPushResult）
