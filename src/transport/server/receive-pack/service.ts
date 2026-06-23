@@ -1,5 +1,5 @@
 /**
- * Receive-Pack 服务编排器
+ * receive-pack 服务编排器
  *
  * 聚合 Git 协议 v1 receive-pack 的服务端能力：
  * - ref 广告生成
@@ -9,11 +9,11 @@
  * 本文件仅提供协议无关的服务接口和工厂。
  */
 
-import { serveV1Advertise } from "./advertise.ts";
-import { handleV1ReceivePush } from "./handler.ts";
+import { advertiseReceivePack } from "./advertise.ts";
+import { handleReceivePackRequest } from "./handler.ts";
 
 import type { RepositoryBackend } from "../../../backend/types.ts";
-import type { V1ReceivePackOptions } from "./types.ts";
+import type { ReceivePackOptions } from "./types.ts";
 
 /**
  * Receive-Pack 服务接口
@@ -53,15 +53,15 @@ export interface ReceivePackService {
  */
 export function createReceivePackService(
   backend: RepositoryBackend,
-  options?: V1ReceivePackOptions,
+  options?: ReceivePackOptions,
 ): ReceivePackService {
   return {
     advertise(): Buffer {
-      return serveV1Advertise(backend);
+      return advertiseReceivePack(backend);
     },
 
     handleRequest(body: Buffer): Buffer {
-      return handleV1ReceivePush(backend, body, options);
+      return handleReceivePackRequest(backend, body, options);
     },
   };
 }

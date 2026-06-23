@@ -1,5 +1,5 @@
 /**
- * v2 能力广告生成
+ * upload-pack 能力广告生成
  *
  * 生成 upload-pack 的 v2 能力广告。
  */
@@ -14,11 +14,11 @@ import { SERVER_AGENT } from "./types.ts";
  *
  * @example
  * ```ts
- * const response = serveV2Advertise();
+ * const response = advertiseUploadPack();
  * // "000eversion 2\n000bls-refs\n...0000"
  * ```
  */
-export function serveV2Advertise(): Buffer {
+export function advertiseUploadPack(): Buffer {
   const parts: Buffer[] = [];
 
   parts.push(encodePktLine("version 2\n"));

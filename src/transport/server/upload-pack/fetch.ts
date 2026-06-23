@@ -11,7 +11,12 @@ import { createPackWriter } from "../../../pack/pack-writer.ts";
 import { resolveRefHash } from "../../../refs/resolve.ts";
 import { collectReachable } from "../../protocol/object-graph.ts";
 import { encodePktLine, encodeFlushPkt, encodeDelimiterPkt } from "../../protocol/pkt-line.ts";
-import { CHANNEL_PACKFILE, CHANNEL_FATAL, MAX_PKT_PAYLOAD, V2ServeError } from "./types.ts";
+import {
+  CHANNEL_PACKFILE,
+  CHANNEL_FATAL,
+  MAX_PKT_PAYLOAD,
+  UploadPackServiceError,
+} from "./types.ts";
 
 import type { RepositoryBackend } from "../../../backend/types.ts";
 import type { SHA1 } from "../../../core/types.ts";
@@ -283,7 +288,7 @@ export function generateFetchResponse(
   params: FetchServerParams,
 ): Buffer {
   if (params.wants.length === 0 && params.wantRefs.length === 0) {
-    throw new V2ServeError("fetch: no wants or want-refs specified");
+    throw new UploadPackServiceError("fetch: no wants or want-refs specified");
   }
 
   // 校验 want 对象存在性
@@ -317,7 +322,7 @@ export function generateFetchResponse(
   const effectiveParams: FetchServerParams = { ...params, wants: effectiveWants };
 
   if (effectiveParams.wants.length === 0) {
-    throw new V2ServeError("fetch: no wants resolved");
+    throw new UploadPackServiceError("fetch: no wants resolved");
   }
 
   if (params.done) {

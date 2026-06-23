@@ -1,5 +1,5 @@
 /**
- * v1 receive-pack 主处理函数
+ * receive-pack 主处理函数
  *
  * 整合请求解析、packfile 解包、ref 校验与事务更新，
  * 生成 report-status 响应。
@@ -7,18 +7,18 @@
 
 import { resolveRefHash } from "../../../refs/resolve.ts";
 import { encodeFlushPkt } from "../../protocol/pkt-line.ts";
-import { parseV1ReceivePackRequest } from "./parse.ts";
-import { generateV1ReportStatus } from "./report-status.ts";
-import { V1ReceivePackError, ZERO_HASH } from "./types.ts";
+import { parseReceivePackRequest } from "./parse.ts";
+import { generateReceivePackReport } from "./report-status.ts";
+import { ReceivePackServiceError, ZERO_HASH } from "./types.ts";
 import { unpackPackfile } from "./unpack.ts";
 
 import type { RepositoryBackend } from "../../../backend/types.ts";
 import type { SHA1 } from "../../../core/types.ts";
 import type {
-  ParsedV1ReceivePackRequest,
-  V1ReceivePackCommand,
-  V1ReceivePackOptions,
-  V1RefUpdateResult,
+  ParsedReceivePackRequest,
+  ReceivePackCommand,
+  ReceivePackOptions,
+  ReceivePackUpdateResult,
 } from "./types.ts";
 
 // ============================================================================
@@ -36,9 +36,9 @@ import type {
  */
 function checkRefUpdate(
   backend: RepositoryBackend,
-  cmd: V1ReceivePackCommand,
+  cmd: ReceivePackCommand,
   _capabilities: string[],
-  _options?: V1ReceivePackOptions,
+  _options?: ReceivePackOptions,
 ): { ok: boolean; error?: string } {
   const { oldHash, newHash, refName } = cmd;
   const isDelete = newHash === ZERO_HASH;
@@ -147,22 +147,22 @@ function applyRefUpdates(
  *
  * @example
  * ```ts
- * const response = handleV1ReceivePush(backend, requestBody);
+ * const response = handleReceivePackRequest(backend, requestBody);
  * // Response 的 Content-Type 应为 "application/x-git-receive-pack-result"
  * ```
  */
-export function handleV1ReceivePush(
+export function handleReceivePackRequest(
   backend: RepositoryBackend,
   body: Buffer,
-  options?: V1ReceivePackOptions,
+  options?: ReceivePackOptions,
 ): Buffer {
   // 1. 解析请求
-  let parsed: ParsedV1ReceivePackRequest;
+  let parsed: ParsedReceivePackRequest;
   try {
-    parsed = parseV1ReceivePackRequest(body);
+    parsed = parseReceivePackRequest(body);
   } catch (err) {
-    if (err instanceof V1ReceivePackError) throw err;
-    throw new V1ReceivePackError(
+    if (err instanceof ReceivePackServiceError) throw err;
+    throw new ReceivePackServiceError(
       `Failed to parse receive-pack request: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
@@ -187,7 +187,7 @@ export function handleV1ReceivePush(
 
   // 校验并应用 ref 更新
   const successfulUpdates: Array<{ refName: string; newHash: SHA1 }> = [];
-  const refResults: V1RefUpdateResult[] = [];
+  const refResults: ReceivePackUpdateResult[] = [];
 
   if (unpackOk) {
     for (const cmd of commands) {
@@ -235,5 +235,5 @@ export function handleV1ReceivePush(
     return encodeFlushPkt();
   }
 
-  return generateV1ReportStatus(unpackOk, unpackError, refResults, hasSideBand);
+  return generateReceivePackReport(unpackOk, unpackError, refResults, hasSideBand);
 }

@@ -17,12 +17,12 @@ import {
 } from "@/transport/protocol/pkt-line.ts";
 import { createUploadPackService } from "@/transport/server/upload-pack/index.ts";
 import {
-  parseV2Command,
+  parseCommandRequest,
   parseLsRefsArgs,
   parseFetchArgs,
   generateLsRefsResponse,
   generateFetchResponse,
-  serveV2Advertise,
+  advertiseUploadPack,
 } from "@/transport/server/upload-pack/index.ts";
 
 import type { SHA1 } from "@/core/types.ts";
@@ -92,10 +92,10 @@ function createTestRepo(): TestRepoFixtures {
 }
 
 // ============================================================================
-// parseV2Command
+// parseCommandRequest
 // ============================================================================
 
-describe("parseV2Command", () => {
+describe("parseCommandRequest", () => {
   test("解析 ls-refs 命令请求", () => {
     const body = Buffer.concat([
       encodePktLine("command=ls-refs\n"),
@@ -106,7 +106,7 @@ describe("parseV2Command", () => {
       encodeFlushPkt(),
     ]);
 
-    const cmd = parseV2Command(body);
+    const cmd = parseCommandRequest(body);
     expect(cmd.command).toBe("ls-refs");
     expect(cmd.capabilities).toEqual(["agent=nano-git/0.1"]);
     expect(cmd.args).toEqual(["symrefs", "peel"]);
@@ -123,7 +123,7 @@ describe("parseV2Command", () => {
       encodeFlushPkt(),
     ]);
 
-    const cmd = parseV2Command(body);
+    const cmd = parseCommandRequest(body);
     expect(cmd.command).toBe("fetch");
     expect(cmd.args).toEqual([`want ${hash}`, "done"]);
   });
@@ -139,7 +139,7 @@ describe("parseV2Command", () => {
       encodeFlushPkt(),
     ]);
 
-    const cmd = parseV2Command(body);
+    const cmd = parseCommandRequest(body);
     expect(cmd.command).toBe("fetch");
     expect(cmd.args).toEqual([`want ${wantHash}`, `have ${haveHash}`]);
   });
@@ -153,7 +153,7 @@ describe("parseV2Command", () => {
       encodeFlushPkt(),
     ]);
 
-    const cmd = parseV2Command(body);
+    const cmd = parseCommandRequest(body);
     expect(cmd.command).toBe("fetch");
     expect(cmd.args).toContain("want-ref refs/heads/main");
     expect(cmd.args).toContain("done");
@@ -167,7 +167,7 @@ describe("parseV2Command", () => {
       encodeFlushPkt(),
     ]);
 
-    const cmd = parseV2Command(body);
+    const cmd = parseCommandRequest(body);
     expect(cmd.command).toBe("ls-refs");
     expect(cmd.args).toEqual([]);
     expect(cmd.capabilities).toEqual(["symrefs"]);
@@ -262,12 +262,12 @@ describe("parseFetchArgs", () => {
 });
 
 // ============================================================================
-// serveV2Advertise
+// advertiseUploadPack
 // ============================================================================
 
-describe("serveV2Advertise", () => {
+describe("advertiseUploadPack", () => {
   test("upload-pack 广告包含 version 2、ls-refs、fetch", () => {
-    const buf = serveV2Advertise();
+    const buf = advertiseUploadPack();
     const text = buf.toString("utf-8");
 
     expect(text).toContain("version 2");

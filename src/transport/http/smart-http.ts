@@ -20,7 +20,7 @@
  */
 
 import { createReceivePackService } from "../server/receive-pack/index.ts";
-import { createUploadPackService, UploadPackError } from "../server/upload-pack/index.ts";
+import { createUploadPackService, UploadPackServiceError } from "../server/upload-pack/index.ts";
 
 import type { RepositoryBackend } from "../../backend/types.ts";
 import type { SmartHttpHandler } from "./types.ts";
@@ -85,12 +85,9 @@ function validateServiceRequest(method: string, contentType: string | null): Res
  * - git-receive-pack：始终返回 v1 ref 广告
  *
  * @param service - 服务类型（git-upload-pack 或 git-receive-pack）
- * @param _useV2 - 是否使用 v2 协议（仅 upload-pack 生效）
- * @param backend - 仓库后端（v1 广告需要）
  */
 function handleInfoRefs(
   service: string,
-  useV2: boolean,
   uploadPackService: ReturnType<typeof createUploadPackService>,
   receivePackService: ReturnType<typeof createReceivePackService>,
 ): Response {
@@ -138,7 +135,7 @@ async function handleUploadPack(
   try {
     response = uploadPackService.handleRequest(body);
   } catch (err) {
-    if (err instanceof UploadPackError) {
+    if (err instanceof UploadPackServiceError) {
       return errorResponse(400, err.message);
     }
     throw err;
@@ -223,7 +220,7 @@ export function createSmartHttpHandler(backend: RepositoryBackend): SmartHttpHan
       }
 
       // git-receive-pack 支持 v1 和 v2
-      return handleInfoRefs(service!, isV2, uploadPackService, receivePackService);
+      return handleInfoRefs(service!, uploadPackService, receivePackService);
     }
 
     // 路由：/git-upload-pack（fetch / ls-refs 命令 — v2）

@@ -1,5 +1,5 @@
 /**
- * v2 upload-pack 服务端类型定义与常量
+ * upload-pack 服务端类型定义与常量
  */
 
 // ============================================================================
@@ -21,13 +21,13 @@ export const MAX_PKT_PAYLOAD = 65520;
 // ============================================================================
 
 /**
- * 服务端错误
+ * upload-pack 服务错误
  *
  * 当服务端处理请求时遇到可预见的错误情况抛出。
  */
-export class V2ServeError extends Error {
+export class UploadPackServiceError extends Error {
   constructor(message: string) {
-    super(`v2 serve: ${message}`);
-    this.name = "V2ServeError";
+    super(`upload-pack: ${message}`);
+    this.name = "UploadPackServiceError";
   }
 }

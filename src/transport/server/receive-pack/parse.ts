@@ -1,5 +1,5 @@
 /**
- * v1 receive-pack 请求解析
+ * receive-pack 请求解析
  *
  * 解析客户端 POST 的 ref 命令与 capabilities。
  *
@@ -17,16 +17,16 @@
 
 import { sha1 } from "../../../core/types.ts";
 import { splitPktLinesFromBuffer } from "../../protocol/pkt-line.ts";
-import { V1ReceivePackError } from "./types.ts";
+import { ReceivePackServiceError } from "./types.ts";
 
-import type { V1ReceivePackCommand, ParsedV1ReceivePackRequest } from "./types.ts";
+import type { ReceivePackCommand, ParsedReceivePackRequest } from "./types.ts";
 
 /**
  * 解析单行命令
  *
  * 格式：<old-hash> SP <new-hash> SP <refname>
  */
-function parseCommandLine(text: string): V1ReceivePackCommand | null {
+function parseCommandLine(text: string): ReceivePackCommand | null {
   const parts = text.split(" ");
   if (parts.length < 3) return null;
 
@@ -46,26 +46,26 @@ function parseCommandLine(text: string): V1ReceivePackCommand | null {
 }
 
 /**
- * 解析 v1 receive-pack push 请求 body
+ * 解析 receive-pack 请求 body
  *
  * @param body - 完整的请求 body
  * @returns 解析后的命令、能力与 packfile
  *
  * @example
  * ```ts
- * const { commands, capabilities, packfile } = parseV1ReceivePackRequest(body);
+ * const { commands, capabilities, packfile } = parseReceivePackRequest(body);
  * ```
  */
-export function parseV1ReceivePackRequest(body: Buffer): ParsedV1ReceivePackRequest {
+export function parseReceivePackRequest(body: Buffer): ParsedReceivePackRequest {
   const { lines, trailing } = splitPktLinesFromBuffer(body);
 
   const dataLines = lines.filter((l): l is { type: "data"; payload: Buffer } => l.type === "data");
 
   if (dataLines.length === 0) {
-    throw new V1ReceivePackError("No commands in receive-pack request");
+    throw new ReceivePackServiceError("No commands in receive-pack request");
   }
 
-  const commands: V1ReceivePackCommand[] = [];
+  const commands: ReceivePackCommand[] = [];
   let capabilities: string[] = [];
 
   for (let i = 0; i < dataLines.length; i++) {
@@ -91,7 +91,7 @@ export function parseV1ReceivePackRequest(body: Buffer): ParsedV1ReceivePackRequ
   }
 
   if (commands.length === 0) {
-    throw new V1ReceivePackError("No valid ref update commands");
+    throw new ReceivePackServiceError("No valid ref update commands");
   }
 
   return { capabilities, commands, packfile: trailing };

@@ -1,5 +1,5 @@
 /**
- * Upload-Pack 服务编排器
+ * upload-pack 服务编排器
  *
  * 聚合 Git Wire 协议的服务端 upload-pack 能力：
  * - 能力广告生成
@@ -9,23 +9,13 @@
  * 本文件仅提供协议无关的服务接口和工厂。
  */
 
-import { serveV2Advertise } from "./advertise.ts";
-import { parseV2Command } from "./command.ts";
+import { advertiseUploadPack } from "./advertise.ts";
+import { parseCommandRequest } from "./command.ts";
 import { parseFetchArgs, generateFetchResponse } from "./fetch.ts";
 import { parseLsRefsArgs, generateLsRefsResponse } from "./ls-refs.ts";
-import { V2ServeError } from "./types.ts";
+import { UploadPackServiceError } from "./types.ts";
 
 import type { RepositoryBackend } from "../../../backend/types.ts";
-
-/**
- * Upload-Pack 服务错误
- */
-export class UploadPackError extends Error {
-  constructor(message: string) {
-    super(`upload-pack: ${message}`);
-    this.name = "UploadPackError";
-  }
-}
 
 // ============================================================================
 // 类型定义
@@ -49,7 +39,7 @@ export interface UploadPackService {
    *
    * @param body - 客户端请求体（pkt-line 编码）
    * @returns 服务端响应（pkt-line 编码）
-   * @throws {UploadPackError} 命令不支持或参数不合法
+   * @throws {UploadPackServiceError} 命令不支持或参数不合法
    */
   handleRequest(body: Buffer): Buffer;
 }
@@ -74,11 +64,11 @@ export interface UploadPackService {
 export function createUploadPackService(backend: RepositoryBackend): UploadPackService {
   return {
     advertise(): Buffer {
-      return serveV2Advertise();
+      return advertiseUploadPack();
     },
 
     handleRequest(body: Buffer): Buffer {
-      const parsed = parseV2Command(body);
+      const parsed = parseCommandRequest(body);
 
       try {
         switch (parsed.command) {
@@ -91,13 +81,12 @@ export function createUploadPackService(backend: RepositoryBackend): UploadPackS
             return generateFetchResponse(backend, params);
           }
           default: {
-            throw new UploadPackError(`unknown command: ${parsed.command}`);
+            throw new UploadPackServiceError(`unknown command: ${parsed.command}`);
           }
         }
       } catch (err) {
-        if (err instanceof UploadPackError) throw err;
-        if (err instanceof V2ServeError) {
-          throw new UploadPackError(err.message);
+        if (err instanceof UploadPackServiceError) {
+          throw err;
         }
         throw err;
       }

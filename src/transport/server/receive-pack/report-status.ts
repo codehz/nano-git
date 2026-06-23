@@ -8,7 +8,7 @@
 import { encodePktLine, encodeFlushPkt } from "../../protocol/pkt-line.ts";
 import { CHANNEL_PACKFILE, CHANNEL_PROGRESS } from "./types.ts";
 
-import type { V1RefUpdateResult } from "./types.ts";
+import type { ReceivePackUpdateResult } from "./types.ts";
 
 /**
  * 编码 side-band 帧
@@ -45,10 +45,10 @@ function encodeSideBandFrame(channel: number, data: Buffer): Buffer {
  * @param useSideBand - 是否使用 side-band-64k 编码
  * @returns 完整的响应 Buffer
  */
-export function generateV1ReportStatus(
+export function generateReceivePackReport(
   unpackOk: boolean,
   unpackError: string | undefined,
-  refResults: V1RefUpdateResult[],
+  refResults: ReceivePackUpdateResult[],
   useSideBand: boolean,
 ): Buffer {
   const statusLines: Buffer[] = [];

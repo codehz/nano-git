@@ -2,7 +2,7 @@
  * v1 receive-pack 端到端测试
  *
  * 通过 Bun.serve + createSmartHttpHandler 启动 nano-git 服务端，
- * 使用标准 git CLI 验证 serveV1Advertise 与 handleV1ReceivePush 的
+ * 使用标准 git CLI 验证 advertiseReceivePack 与 handleReceivePackRequest 的
  * 完整 HTTP 协议流程。
  *
  * 与 tests/units/transport/v1/receive-pack.test.ts 的区别：
@@ -10,8 +10,8 @@
  * - 端到端测试：通过真实 HTTP 请求 + git CLI 验证协议兼容性
  *
  * 测试场景：
- * 1. serveV1Advertise: HTTP GET 获取 ref advertisement
- * 2. handleV1ReceivePush: git CLI 推送新分支、快进更新、删除、强制更新
+ * 1. advertiseReceivePack: HTTP GET 获取 ref advertisement
+ * 2. handleReceivePackRequest: git CLI 推送新分支、快进更新、删除、强制更新
  */
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
@@ -43,10 +43,10 @@ const GIT_V1_PUSH_ARGS = ["-c", "protocol.version=1", "push"];
 const GIT_V2_CLONE_ARGS = ["-c", "protocol.version=2", "clone"];
 
 // ============================================================================
-// serveV1Advertise — 通过 HTTP 验证
+// advertiseReceivePack — 通过 HTTP 验证
 // ============================================================================
 
-describe("serveV1Advertise", () => {
+describe("advertiseReceivePack", () => {
   let server: NanoGitServer;
   let tempDir: string;
 
@@ -122,13 +122,13 @@ describe("serveV1Advertise", () => {
 });
 
 // ============================================================================
-// handleV1ReceivePush — 通过 git CLI 推送验证
+// handleReceivePackRequest — 通过 git CLI 推送验证
 //
 // 说明：本地 git 操作（init, add, commit, rev-parse）使用同步的 git() 函数，
 //       涉及 HTTP 协议的远程操作（push, clone）使用异步的 gitWithTimeout()。
 // ============================================================================
 
-describe("handleV1ReceivePush", () => {
+describe("handleReceivePackRequest", () => {
   let server: NanoGitServer;
   let tempDir: string;
 

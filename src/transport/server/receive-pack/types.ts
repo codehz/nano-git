@@ -1,5 +1,5 @@
 /**
- * v1 receive-pack 服务端类型定义与常量
+ * receive-pack 服务端类型定义与常量
  */
 
 import { GitError } from "../../../core/errors.ts";
@@ -32,14 +32,14 @@ export const CAPABILITIES_REF = "capabilities^{}";
 // ============================================================================
 
 /**
- * v1 receive-pack 服务错误
+ * receive-pack 服务错误
  *
  * 当请求解析、处理或响应生成过程中遇到可预见的错误时抛出。
  */
-export class V1ReceivePackError extends GitError {
+export class ReceivePackServiceError extends GitError {
   constructor(message: string) {
-    super(`v1 receive-pack: ${message}`);
-    this.name = "V1ReceivePackError";
+    super(`receive-pack: ${message}`);
+    this.name = "ReceivePackServiceError";
   }
 }
 
@@ -52,7 +52,7 @@ export class V1ReceivePackError extends GitError {
  *
  * 表示客户端请求的一次 ref 变更。
  */
-export interface V1ReceivePackCommand {
+export interface ReceivePackCommand {
   /** 客户端声称的服务端当前哈希（新建时为 000...0） */
   readonly oldHash: SHA1;
   /** 要设置的目标哈希（删除时为 000...0） */
@@ -64,11 +64,11 @@ export interface V1ReceivePackCommand {
 /**
  * 解析后的 receive-pack 请求
  */
-export interface ParsedV1ReceivePackRequest {
+export interface ParsedReceivePackRequest {
   /** 客户端能力列表（首行 NUL 后的内容） */
   readonly capabilities: string[];
   /** ref 更新命令列表 */
-  readonly commands: V1ReceivePackCommand[];
+  readonly commands: ReceivePackCommand[];
   /** packfile 数据（可能为空） */
   readonly packfile: Buffer;
 }
@@ -76,7 +76,7 @@ export interface ParsedV1ReceivePackRequest {
 /**
  * 单个 ref 更新的处理结果
  */
-export interface V1RefUpdateResult {
+export interface ReceivePackUpdateResult {
   readonly refName: string;
   readonly success: boolean;
   readonly error?: string;
@@ -85,7 +85,7 @@ export interface V1RefUpdateResult {
 /**
  * receive-pack 处理选项
  */
-export interface V1ReceivePackOptions {
+export interface ReceivePackOptions {
   /**
    * 是否拒绝非 fast-forward 推送（类似 receive.denyNonFastForwards）
    * 默认 false

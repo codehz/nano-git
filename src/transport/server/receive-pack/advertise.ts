@@ -1,5 +1,5 @@
 /**
- * v1 receive-pack ref 广告生成
+ * receive-pack ref 广告生成
  *
  * 处理 GET /info/refs?service=git-receive-pack 请求，
  * 生成 v1 风格的 ref 广告（含 capabilities）。
@@ -37,7 +37,7 @@ function readAllRefs(backend: RepositoryBackend): Map<string, string> {
 }
 
 /**
- * 生成 v1 receive-pack 的 ref 广告
+ * 生成 receive-pack 的 ref 广告
  *
  * 格式：
  * ```
@@ -54,11 +54,11 @@ function readAllRefs(backend: RepositoryBackend): Map<string, string> {
  *
  * @example
  * ```ts
- * const buf = serveV1Advertise(backend);
+ * const buf = advertiseReceivePack(backend);
  * // Response 的 Content-Type 应为 "application/x-git-receive-pack-advertisement"
  * ```
  */
-export function serveV1Advertise(backend: RepositoryBackend): Buffer {
+export function advertiseReceivePack(backend: RepositoryBackend): Buffer {
   const parts: Buffer[] = [];
 
   // 1. service 声明

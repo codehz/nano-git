@@ -1,7 +1,7 @@
 /**
  * v1 receive-pack 服务端单元测试
  *
- * 测试 serveV1Advertise、parseV1ReceivePackRequest、handleV1ReceivePush。
+ * 测试 advertiseReceivePack、parseReceivePackRequest、handleReceivePackRequest。
  */
 
 import { describe, test, expect } from "bun:test";
@@ -10,11 +10,11 @@ import { createMemoryRepositoryBackend } from "@/backend/index.ts";
 import { sha1, type SHA1 } from "@/core/types.ts";
 import { encodePktLine, encodeFlushPkt } from "@/transport/protocol/pkt-line.ts";
 import {
-  serveV1Advertise,
-  parseV1ReceivePackRequest,
-  handleV1ReceivePush,
+  advertiseReceivePack,
+  parseReceivePackRequest,
+  handleReceivePackRequest,
   createReceivePackService,
-  V1ReceivePackError,
+  ReceivePackServiceError,
 } from "@/transport/server/receive-pack/index.ts";
 
 // ============================================================================
@@ -58,13 +58,13 @@ function createTestBackend(params?: { withCommitHash?: string; extraRefs?: Map<s
 const ZERO_HASH = sha1("0000000000000000000000000000000000000000");
 
 // ============================================================================
-// serveV1Advertise
+// advertiseReceivePack
 // ============================================================================
 
-describe("serveV1Advertise", () => {
+describe("advertiseReceivePack", () => {
   test("返回 ref 广告，首行含 # service=git-receive-pack", () => {
     const { backend } = createTestBackend();
-    const buf = serveV1Advertise(backend);
+    const buf = advertiseReceivePack(backend);
     const text = buf.toString("utf-8");
 
     expect(text).toContain("# service=git-receive-pack");
@@ -72,7 +72,7 @@ describe("serveV1Advertise", () => {
 
   test("首行 ref 带 capabilities（NUL 分隔）", () => {
     const { backend } = createTestBackend();
-    const buf = serveV1Advertise(backend);
+    const buf = advertiseReceivePack(backend);
     const text = buf.toString("utf-8");
 
     // 第一行 ref 后应有 NUL + capabilities
@@ -85,7 +85,7 @@ describe("serveV1Advertise", () => {
 
   test("包含 refs/heads/main 和 HEAD", () => {
     const { backend, commitHash } = createTestBackend();
-    const buf = serveV1Advertise(backend);
+    const buf = advertiseReceivePack(backend);
     const text = buf.toString("utf-8");
 
     expect(text).toContain(commitHash);
@@ -96,7 +96,7 @@ describe("serveV1Advertise", () => {
     const backend = createMemoryRepositoryBackend({
       initialRefs: new Map([["HEAD", "ref: refs/heads/main"]]),
     });
-    const buf = serveV1Advertise(backend);
+    const buf = advertiseReceivePack(backend);
     const text = buf.toString("utf-8");
 
     // 空仓库时应有 capabilities^{} 占位行
@@ -136,7 +136,7 @@ describe("serveV1Advertise", () => {
     backend.refs.write("refs/heads/main", commitHash);
     backend.refs.write("refs/tags/v1.0", tagHash);
 
-    const buf = serveV1Advertise(backend);
+    const buf = advertiseReceivePack(backend);
     const text = buf.toString("utf-8");
     expect(text).toContain(`${tagHash} refs/tags/v1.0`);
     expect(text).toContain(`${commitHash} refs/tags/v1.0^{}`);
@@ -144,10 +144,10 @@ describe("serveV1Advertise", () => {
 });
 
 // ============================================================================
-// parseV1ReceivePackRequest
+// parseReceivePackRequest
 // ============================================================================
 
-describe("parseV1ReceivePackRequest", () => {
+describe("parseReceivePackRequest", () => {
   test("解析单条命令（新建 ref）", () => {
     const body = Buffer.concat([
       encodePktLine(
@@ -156,7 +156,7 @@ describe("parseV1ReceivePackRequest", () => {
       encodeFlushPkt(),
     ]);
 
-    const parsed = parseV1ReceivePackRequest(body);
+    const parsed = parseReceivePackRequest(body);
     expect(parsed.commands).toHaveLength(1);
     expect(parsed.commands[0]!.refName).toBe("refs/heads/new");
     expect(parsed.commands[0]!.oldHash).toBe(ZERO_HASH);
@@ -172,7 +172,7 @@ describe("parseV1ReceivePackRequest", () => {
       encodeFlushPkt(),
     ]);
 
-    const parsed = parseV1ReceivePackRequest(body);
+    const parsed = parseReceivePackRequest(body);
     expect(parsed.commands).toHaveLength(2);
     expect(parsed.commands[0]!.refName).toBe("refs/heads/a");
     expect(parsed.commands[1]!.refName).toBe("refs/heads/b");
@@ -188,25 +188,25 @@ describe("parseV1ReceivePackRequest", () => {
       packfileData,
     ]);
 
-    const parsed = parseV1ReceivePackRequest(body);
+    const parsed = parseReceivePackRequest(body);
     expect(parsed.packfile).toEqual(packfileData);
   });
 
   test("空 body 抛出错误", () => {
-    expect(() => parseV1ReceivePackRequest(Buffer.alloc(0))).toThrow(V1ReceivePackError);
+    expect(() => parseReceivePackRequest(Buffer.alloc(0))).toThrow(ReceivePackServiceError);
   });
 
   test("无效命令格式抛出错误", () => {
     const body = Buffer.concat([encodePktLine("invalid command\n"), encodeFlushPkt()]);
-    expect(() => parseV1ReceivePackRequest(body)).toThrow(V1ReceivePackError);
+    expect(() => parseReceivePackRequest(body)).toThrow(ReceivePackServiceError);
   });
 });
 
 // ============================================================================
-// handleV1ReceivePush （集成测试）
+// handleReceivePackRequest （集成测试）
 // ============================================================================
 
-describe("handleV1ReceivePush", () => {
+describe("handleReceivePackRequest", () => {
   test("新建分支成功", () => {
     const { backend, commitHash } = createTestBackend();
 
@@ -216,7 +216,7 @@ describe("handleV1ReceivePush", () => {
       encodeFlushPkt(),
     ]);
 
-    const response = handleV1ReceivePush(backend, body);
+    const response = handleReceivePackRequest(backend, body);
     const text = response.toString("utf-8");
 
     expect(text).toContain("unpack ok");
@@ -231,7 +231,7 @@ describe("handleV1ReceivePush", () => {
       encodeFlushPkt(),
     ]);
 
-    const response = handleV1ReceivePush(backend, body);
+    const response = handleReceivePackRequest(backend, body);
     const text = response.toString("utf-8");
 
     expect(text).toContain("unpack ok");
@@ -247,7 +247,7 @@ describe("handleV1ReceivePush", () => {
       encodeFlushPkt(),
     ]);
 
-    const response = handleV1ReceivePush(backend, body);
+    const response = handleReceivePackRequest(backend, body);
     const text = response.toString("utf-8");
 
     expect(text).toContain("unpack ok");
@@ -265,7 +265,7 @@ describe("handleV1ReceivePush", () => {
       encodeFlushPkt(),
     ]);
 
-    const response = handleV1ReceivePush(backend, body);
+    const response = handleReceivePackRequest(backend, body);
     const text = response.toString("utf-8");
 
     expect(text).toContain("unpack ok");
@@ -280,7 +280,7 @@ describe("handleV1ReceivePush", () => {
       encodeFlushPkt(),
     ]);
 
-    const response = handleV1ReceivePush(backend, body);
+    const response = handleReceivePackRequest(backend, body);
     const text = response.toString("utf-8");
 
     expect(text).toContain("unpack ok");
@@ -295,7 +295,7 @@ describe("handleV1ReceivePush", () => {
       encodeFlushPkt(),
     ]);
 
-    const response = handleV1ReceivePush(backend, body);
+    const response = handleReceivePackRequest(backend, body);
     const text = response.toString("utf-8");
 
     expect(text).toContain("unpack ok");

@@ -18,9 +18,9 @@
 import { parsePktLines } from "../../protocol/pkt-line.ts";
 
 /**
- * 解析后的 v2 命令请求
+ * 解析后的命令请求
  */
-export interface ParsedV2Command {
+export interface ParsedCommandRequest {
   /** 命令名称（如 "ls-refs"、"fetch"） */
   readonly command: string;
   /** capability-list（command 行后的 pkt-line，至 delimiter 前） */
@@ -37,11 +37,11 @@ export interface ParsedV2Command {
  *
  * @example
  * ```ts
- * const cmd = parseV2Command(body);
+ * const cmd = parseCommandRequest(body);
  * console.log(cmd.command); // "ls-refs"
  * ```
  */
-export function parseV2Command(body: Buffer): ParsedV2Command {
+export function parseCommandRequest(body: Buffer): ParsedCommandRequest {
   const pktLines = parsePktLines(body);
   let command = "";
   const capabilities: string[] = [];
