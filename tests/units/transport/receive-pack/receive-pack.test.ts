@@ -8,13 +8,13 @@ import { describe, test, expect } from "bun:test";
 
 import { sha1, type SHA1 } from "@/core/types.ts";
 import { createMemoryRepositoryBackend } from "@/repository/backend/index.ts";
-import { encodePktLine, encodeFlushPkt } from "@/transport/pkt-line.ts";
 import {
   serveV1Advertise,
   parseV1ReceivePackRequest,
   handleV1ReceivePush,
   V1ReceivePackError,
 } from "@/transport/receive-pack/receive-pack.ts";
+import { encodePktLine, encodeFlushPkt } from "@/transport/shared/pkt-line.ts";
 
 // ============================================================================
 // 测试辅助

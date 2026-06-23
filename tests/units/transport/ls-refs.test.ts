@@ -14,10 +14,10 @@
 import { describe, test, expect } from "bun:test";
 
 import { sha1 } from "@/core/types.ts";
-import { parseLsRefsResponse, lsRefsToRefAdvertisement } from "@/transport/ls-refs.ts";
-import { encodePktLine, encodeFlushPkt } from "@/transport/pkt-line.ts";
+import { parseLsRefsResponse, lsRefsToRefAdvertisement } from "@/transport/client/ls-refs.ts";
+import { encodePktLine, encodeFlushPkt } from "@/transport/shared/pkt-line.ts";
 
-import type { LsRefsEntry } from "@/transport/protocol-types.ts";
+import type { LsRefsEntry } from "@/transport/client/protocol-types.ts";
 
 // ============================================================================
 // 辅助函数

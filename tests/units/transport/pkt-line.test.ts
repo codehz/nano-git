@@ -11,9 +11,9 @@ import {
   encodeResponseEndPkt,
   parsePktLines,
   PktLineError,
-} from "@/transport/pkt-line.ts";
+} from "@/transport/shared/pkt-line.ts";
 
-import type { PktLineData } from "@/transport/pkt-line.ts";
+import type { PktLineData } from "@/transport/shared/pkt-line.ts";
 
 // ============================================================================
 // 编码

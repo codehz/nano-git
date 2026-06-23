@@ -7,10 +7,10 @@
 import { describe, test, expect } from "bun:test";
 
 import { sha1 } from "@/core/types.ts";
-import { matchesRefSpec, mapRefName } from "@/transport/ref-match.ts";
-import { parseRefSpec } from "@/transport/refspec.ts";
+import { matchesRefSpec, mapRefName } from "@/transport/shared/ref-match.ts";
+import { parseRefSpec } from "@/transport/shared/refspec.ts";
 
-import type { RemoteRef } from "@/transport/types.ts";
+import type { RemoteRef } from "@/transport/shared/types.ts";
 
 // ============================================================================
 // 辅助函数

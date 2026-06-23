@@ -12,10 +12,10 @@ import { createMemoryRepositoryBackend } from "@/repository/backend/index.ts";
 import { matchRefGlob } from "@/repository/import-glob.ts";
 import { createImportSession, createRepoImportOperations } from "@/repository/import-session.ts";
 import { createImportView } from "@/repository/import-view.ts";
-import { encodePktLine } from "@/transport/pkt-line.ts";
+import { encodePktLine } from "@/transport/shared/pkt-line.ts";
 
-import type { V2GitServiceTransport } from "@/transport/protocol-types.ts";
-import type { RemoteRef, RefAdvertisement } from "@/transport/types.ts";
+import type { V2GitServiceTransport } from "@/transport/client/protocol-types.ts";
+import type { RemoteRef, RefAdvertisement } from "@/transport/shared/types.ts";
 
 // ============================================================================
 // Mock 数据

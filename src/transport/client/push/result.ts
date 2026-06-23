@@ -15,10 +15,10 @@
  * @see https://git-scm.com/docs/pack-protocol#_report_status
  */
 
-import { GitError } from "../core/errors.ts";
-import { parsePktLines } from "./pkt-line.ts";
+import { GitError } from "../../../core/errors.ts";
+import { parsePktLines } from "../../shared/pkt-line.ts";
 
-import type { PushRefUpdate } from "./types.ts";
+import type { PushRefUpdate } from "../../shared/types.ts";
 
 // ============================================================================
 // 错误类型

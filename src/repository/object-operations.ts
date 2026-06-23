@@ -5,8 +5,8 @@
 import { readFileSync } from "node:fs";
 
 import { hashObject } from "../core/hash.ts";
-import { createV2HttpTransport } from "../transport/git-transport.ts";
-import { objectInfo } from "../transport/object-info.ts";
+import { createV2HttpTransport } from "../transport/client/git-transport.ts";
+import { objectInfo } from "../transport/client/object-info.ts";
 import {
   patchTree as patchTreeImpl,
   type TreePatchOp,
@@ -99,7 +99,7 @@ export function createObjectRepositoryOperations(objects: ObjectStore): Reposito
       url: string,
       oids: string[],
       token?: string,
-    ): Promise<import("../transport/object-info.ts").ObjectInfoQueryResult> {
+    ): Promise<import("../transport/client/object-info.ts").ObjectInfoQueryResult> {
       const transport = createV2HttpTransport(url, { token });
       return objectInfo(transport, oids);
     },

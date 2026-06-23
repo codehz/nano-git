@@ -22,11 +22,11 @@
  * ```
  */
 
-import { isAncestor, peelTagChain } from "./object-graph.ts";
+import { isAncestor, peelTagChain } from "../../shared/object-graph.ts";
 import { PushError } from "./push-error.ts";
 
-import type { SHA1 } from "../core/types.ts";
-import type { ObjectStore } from "../odb/types.ts";
+import type { SHA1 } from "../../../core/types.ts";
+import type { ObjectStore } from "../../../odb/types.ts";
 import type { PushRefItem } from "./push-ref-plan.ts";
 
 /**

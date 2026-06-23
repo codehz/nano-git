@@ -5,14 +5,18 @@
  * 使用 Git Wire 协议 v2 ls-refs + fetch 获取远端数据。
  */
 
-import { createV2HttpTransport } from "../transport/git-transport.ts";
-import { lsRefs, lsRefsToRefAdvertisement } from "../transport/ls-refs.ts";
+import { createV2HttpTransport } from "../transport/client/git-transport.ts";
+import { lsRefs, lsRefsToRefAdvertisement } from "../transport/client/ls-refs.ts";
 import { matchRefGlob } from "./import-glob.ts";
 import { createPlanBuilder } from "./import-plan-builder.ts";
 import { createImportView } from "./import-view.ts";
 
-import type { V2GitServiceTransport } from "../transport/protocol-types.ts";
-import type { RemoteRef, RefAdvertisement, UploadPackTransport } from "../transport/types.ts";
+import type { V2GitServiceTransport } from "../transport/client/protocol-types.ts";
+import type {
+  RemoteRef,
+  RefAdvertisement,
+  UploadPackTransport,
+} from "../transport/shared/types.ts";
 import type { RepositoryBackend } from "./backend/types.ts";
 import type {
   ImportSource,

@@ -9,7 +9,7 @@
  * @example
  * ```ts
  * import { determinePushRefs } from "./push-ref-plan.ts";
- * import { parseRefSpec } from "./refspec.ts";
+ * import { parseRefSpec } from "../../shared/refspec.ts";
  *
  * const localRefs = new Map([["refs/heads/main", "abc123..."]]);
  * const remoteRefs = new Map();
@@ -18,14 +18,14 @@
  * ```
  */
 
-import { resolveSymbolicRef } from "../refs/resolve.ts";
-import { HEADS_PREFIX } from "../refs/types.ts";
-import { HEAD_REF } from "../refs/types.ts";
+import { resolveSymbolicRef } from "../../../refs/resolve.ts";
+import { HEADS_PREFIX } from "../../../refs/types.ts";
+import { HEAD_REF } from "../../../refs/types.ts";
 import { PushError } from "./push-error.ts";
 
-import type { SHA1 } from "../core/types.ts";
-import type { RefStore } from "../refs/types.ts";
-import type { ParsedRefSpec } from "./refspec.ts";
+import type { SHA1 } from "../../../core/types.ts";
+import type { RefStore } from "../../../refs/types.ts";
+import type { ParsedRefSpec } from "../../shared/refspec.ts";
 
 // ============================================================================
 // 类型定义

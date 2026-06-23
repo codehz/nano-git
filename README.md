@@ -327,8 +327,10 @@ bun run examples/demo.ts
 | `nano-git/repository/tree-patch`        | Tree 增量修改                           | 纯 TS                   |
 | `nano-git/repository/tree-walk`         | Tree 递归遍历                           | 纯 TS                   |
 | `nano-git/transport`                    | 传输层全量 barrel                       | 全套协议                |
-| `nano-git/transport/v1`                 | v1 receive-pack 服务端                  | `node:zlib`             |
-| `nano-git/transport/v2/serve`           | v2 协议原语（广告、命令解析、响应生成） | `node:crypto`           |
+| `nano-git/transport/client/push`        | Push 客户端（v1 receive-pack）          | `node:zlib`             |
+| `nano-git/transport/client/ls-refs`     | v2 ls-refs 命令                         | 纯 TS                   |
+| `nano-git/transport/client/fetch`       | v2 fetch 命令                           | `node:crypto`           |
+| `nano-git/transport/server/serve`       | v2 协议原语（广告、命令解析、响应生成） | `node:crypto`           |
 | `nano-git/transport/server/upload-pack` | Upload-Pack 服务编排器（协议无关）      | 纯 TS                   |
 | `nano-git/transport/server/types`       | HTTP 类型定义                           | 纯 TS                   |
 | `nano-git/transport/server/smart-http`  | HTTP 适配器（类 git-http-backend）      | `node:crypto`           |
@@ -358,9 +360,11 @@ nano-git/
 │   │   ├── memory.ts     # 内存 Shallow 存储
 │   │   └── file.ts       # 文件 Shallow 存储
 │   ├── transport/        # Smart HTTP 传输协议
-│   │   ├── v1/           # Git Wire 协议 v1 receive-pack（服务端）
-│   │   ├── v2/           # Git Wire 协议 v2（客户端 + 服务端协议原语）
-│   │   └── server/       # HTTP 适配器 + Upload-Pack 服务编排器（协议无关）
+│   │   ├── shared/       # 协议无关共享工具（pkt-line、refspec、对象图等）
+│   │   ├── client/       # 客户端代码（push 除外默认使用 v2 协议）
+│   │   │   └── push/     # Push 客户端（v1 receive-pack 协议）
+│   │   ├── receive-pack/ # v1 receive-pack 服务端
+│   │   └── server/       # v2 服务端 + HTTP 适配器
 │   └── repository/       # 仓库 API 与后端
 │       ├── create.ts     # createRepository（高阶函数）
 │       ├── memory.ts     # 内存仓库便捷函数

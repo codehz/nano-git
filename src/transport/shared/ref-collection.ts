@@ -13,11 +13,11 @@
  * ```
  */
 
-import { resolveRefHash } from "../refs/resolve.ts";
-import { HEAD_REF } from "../refs/types.ts";
+import { resolveRefHash } from "../../refs/resolve.ts";
+import { HEAD_REF } from "../../refs/types.ts";
 
-import type { SHA1 } from "../core/types.ts";
-import type { RefStore } from "../refs/types.ts";
+import type { SHA1 } from "../../core/types.ts";
+import type { RefStore } from "../../refs/types.ts";
 
 /**
  * 获取本地 refs 的哈希映射

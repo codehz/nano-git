@@ -13,10 +13,10 @@
  * ```
  */
 
-import { ObjectNotFoundError } from "../core/errors.ts";
+import { ObjectNotFoundError } from "../../core/errors.ts";
 
-import type { SHA1 } from "../core/types.ts";
-import type { ObjectStore } from "../odb/types.ts";
+import type { SHA1 } from "../../core/types.ts";
+import type { ObjectStore } from "../../odb/types.ts";
 
 // ============================================================================
 // 可达性遍历

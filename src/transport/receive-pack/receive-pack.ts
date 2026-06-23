@@ -30,7 +30,7 @@ import { applyDelta } from "../../odb/pack/delta.ts";
 import { readCompressedData, parsePackHeader } from "../../odb/pack/pack-reader-utils.ts";
 import { decodeObjectHeader, decodeOfsDeltaOffset } from "../../odb/pack/utils.ts";
 import { resolveRefHash } from "../../refs/resolve.ts";
-import { encodePktLine, encodeFlushPkt, splitPktLinesFromBuffer } from "../pkt-line.ts";
+import { encodePktLine, encodeFlushPkt, splitPktLinesFromBuffer } from "../shared/pkt-line.ts";
 
 import type { SHA1, ObjectType } from "../../core/types.ts";
 import type { ObjectStore } from "../../odb/types.ts";

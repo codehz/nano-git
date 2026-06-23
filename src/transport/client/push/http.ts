@@ -7,10 +7,10 @@
  * @see https://git-scm.com/docs/http-protocol
  */
 
-import { GitError } from "../core/errors.ts";
-import { parseRefAdvertisement, RefAdvertisementError } from "./ref-advertisement.ts";
+import { GitError } from "../../../core/errors.ts";
+import { parseRefAdvertisement, RefAdvertisementError } from "../../shared/ref-advertisement.ts";
 
-import type { RefAdvertisement, GitServiceTransport } from "./types.ts";
+import type { RefAdvertisement, GitServiceTransport } from "../../shared/types.ts";
 
 // ============================================================================
 // 错误类型

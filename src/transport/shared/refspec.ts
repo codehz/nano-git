@@ -12,7 +12,7 @@
  * ```
  */
 
-import { GitError } from "../core/errors.ts";
+import { GitError } from "../../core/errors.ts";
 
 import type { RefMappingRule } from "./types.ts";
 

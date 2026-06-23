@@ -11,12 +11,12 @@ import { createHash } from "node:crypto";
 import { sha1, type SHA1, type GitBlob, type GitTree, type GitCommit } from "@/core/types.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
 import { createMemoryRefStore } from "@/refs/memory.ts";
-import { collectReachable } from "@/transport/object-graph.ts";
-import { encodePktLine, encodeFlushPkt } from "@/transport/pkt-line.ts";
-import { PushError } from "@/transport/push-error.ts";
-import { push } from "@/transport/push.ts";
+import { PushError } from "@/transport/client/push/push-error.ts";
+import { push } from "@/transport/client/push/push.ts";
+import { collectReachable } from "@/transport/shared/object-graph.ts";
+import { encodePktLine, encodeFlushPkt } from "@/transport/shared/pkt-line.ts";
 
-import type { ReceivePackTransport } from "@/transport/types.ts";
+import type { ReceivePackTransport } from "@/transport/shared/types.ts";
 
 // ============================================================================
 // 辅助函数

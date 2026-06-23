@@ -4,11 +4,11 @@
  * 从 transport 返回的原始 HTTP body 中解析 side-band 与 report-status。
  */
 
-import { GitError } from "../core/errors.ts";
-import { parsePktLines } from "./pkt-line.ts";
-import { parseReceivePackResult } from "./receive-pack-result.ts";
+import { GitError } from "../../../core/errors.ts";
+import { parsePktLines } from "../../shared/pkt-line.ts";
+import { parseReceivePackResult } from "./result.ts";
 
-import type { PushRefUpdate } from "./types.ts";
+import type { PushRefUpdate } from "../../shared/types.ts";
 
 /**
  * receive-pack 响应解码错误

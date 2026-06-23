@@ -19,7 +19,7 @@
  * @see https://github.com/git/git/blob/master/Documentation/technical/pkt-line.txt
  */
 
-import { GitError } from "../core/errors.ts";
+import { GitError } from "../../core/errors.ts";
 
 // ============================================================================
 // 类型

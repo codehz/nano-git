@@ -11,13 +11,13 @@ import { describe, test, expect } from "bun:test";
 import { sha1, type SHA1 } from "@/core/types.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
 import { createMemoryRefStore } from "@/refs/memory.ts";
-import { encodePktLine, encodeFlushPkt } from "@/transport/pkt-line.ts";
-import { PushError } from "@/transport/push-error.ts";
-import { determinePushRefs } from "@/transport/push-ref-plan.ts";
-import { push } from "@/transport/push.ts";
-import { parseRefSpec } from "@/transport/refspec.ts";
+import { PushError } from "@/transport/client/push/push-error.ts";
+import { determinePushRefs } from "@/transport/client/push/push-ref-plan.ts";
+import { push } from "@/transport/client/push/push.ts";
+import { encodePktLine, encodeFlushPkt } from "@/transport/shared/pkt-line.ts";
+import { parseRefSpec } from "@/transport/shared/refspec.ts";
 
-import type { ReceivePackTransport, RemoteRef } from "@/transport/types.ts";
+import type { ReceivePackTransport, RemoteRef } from "@/transport/shared/types.ts";
 
 function sideBandFrame(channel: number, data: string | Buffer): Buffer {
   const payload = typeof data === "string" ? Buffer.from(data, "utf-8") : data;

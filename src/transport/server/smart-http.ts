@@ -20,8 +20,8 @@
  */
 
 import { serveV1Advertise, handleV1ReceivePush } from "../receive-pack/receive-pack.ts";
-import { serveV2Advertise } from "../serve.ts";
 import { createUploadPackService, UploadPackError } from "./upload-pack.ts";
+import { serveV2Advertise } from "./upload-pack/serve.ts";
 
 import type { RepositoryBackend } from "../../repository/backend/types.ts";
 import type { SmartHttpHandler } from "./types.ts";

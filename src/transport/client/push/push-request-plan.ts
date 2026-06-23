@@ -4,18 +4,18 @@
  * refspec 归一化、能力校验、receive-pack 命令与请求 body 构造。
  */
 
-import { sha1 } from "../core/types.ts";
+import { sha1 } from "../../../core/types.ts";
+import { parseRefSpec } from "../../shared/refspec.ts";
+import { extractCapabilities, PUSH_CAPABILITIES } from "../../shared/transport-capabilities.ts";
 import { PushError } from "./push-error.ts";
 import { resolveDefaultRefSpec } from "./push-ref-plan.ts";
-import { buildReceivePackRequest } from "./receive-pack-request.ts";
-import { parseRefSpec } from "./refspec.ts";
-import { extractCapabilities, PUSH_CAPABILITIES } from "./transport-capabilities.ts";
+import { buildReceivePackRequest } from "./request.ts";
 
-import type { RefStore } from "../refs/types.ts";
+import type { RefStore } from "../../../refs/types.ts";
+import type { ParsedRefSpec } from "../../shared/refspec.ts";
+import type { RefAdvertisement, PushOptions } from "../../shared/types.ts";
 import type { PushRefItem } from "./push-ref-plan.ts";
-import type { ReceivePackCommand } from "./receive-pack-request.ts";
-import type { ParsedRefSpec } from "./refspec.ts";
-import type { RefAdvertisement, PushOptions } from "./types.ts";
+import type { ReceivePackCommand } from "./request.ts";
 
 /** 零哈希（表示新建引用或删除引用） */
 const ZERO_HASH = sha1("0000000000000000000000000000000000000000");

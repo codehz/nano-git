@@ -114,7 +114,7 @@ describe("createSmartHttpHandler — 路由", () => {
     ]);
     // 使用标准 v2 格式构造有效请求
     const { encodePktLine, encodeDelimiterPkt, encodeFlushPkt } =
-      await import("@/transport/pkt-line.ts");
+      await import("@/transport/shared/pkt-line.ts");
 
     const validBody = Buffer.concat([
       encodePktLine("command=fetch\n"),
@@ -259,7 +259,7 @@ describe("createSmartHttpHandler — 完整请求", () => {
     const handler = createSmartHttpHandler(backend);
 
     const { encodePktLine, encodeDelimiterPkt, encodeFlushPkt } =
-      await import("@/transport/pkt-line.ts");
+      await import("@/transport/shared/pkt-line.ts");
 
     const body = Buffer.concat([
       encodePktLine("command=ls-refs\n"),
@@ -287,7 +287,7 @@ describe("createSmartHttpHandler — 完整请求", () => {
     const handler = createSmartHttpHandler(backend);
 
     const { encodePktLine, encodeDelimiterPkt, encodeFlushPkt } =
-      await import("@/transport/pkt-line.ts");
+      await import("@/transport/shared/pkt-line.ts");
 
     const body = Buffer.concat([
       encodePktLine("command=fetch\n"),

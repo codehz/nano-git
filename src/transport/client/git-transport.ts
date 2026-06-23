@@ -11,8 +11,8 @@
  * @see https://git-scm.com/docs/protocol-v2#_initial_client_request
  */
 
+import { encodeDelimiterPkt, encodeFlushPkt, encodePktLine } from "../shared/pkt-line.ts";
 import { parseV2CapabilityAdvertisement } from "./capability-advert.ts";
-import { encodeDelimiterPkt, encodeFlushPkt, encodePktLine } from "./pkt-line.ts";
 
 import type { V2CapabilityAdvertisement, V2GitServiceTransport } from "./protocol-types.ts";
 

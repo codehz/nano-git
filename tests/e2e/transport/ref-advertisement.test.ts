@@ -12,7 +12,7 @@ import { git, gitInit, createTempDir, cleanupDir, createFile } from "../helpers.
 import { createServerRepo, enableReceivePack } from "./helpers.ts";
 import { startGitHttpBackendServer } from "./http-server.ts";
 import { sha1 } from "@/core/types.ts";
-import { createReceivePackHttpClient } from "@/transport/smart-http.ts";
+import { createReceivePackHttpClient } from "@/transport/client/push/http.ts";
 
 describe("ref advertisement", () => {
   let tempDir: string;

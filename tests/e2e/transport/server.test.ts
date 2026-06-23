@@ -12,7 +12,7 @@ import { createTempDir, cleanupDir, gitWithTimeout } from "../helpers.ts";
 import { startNanoGitServer, createDefaultBackend } from "./nano-git-server.ts";
 import { sha1, type SHA1 } from "@/core/types.ts";
 import { createMemoryRepository, initRepository } from "@/repository/index.ts";
-import { createV2HttpTransport } from "@/transport/git-transport.ts";
+import { createV2HttpTransport } from "@/transport/client/git-transport.ts";
 
 import type { NanoGitServer } from "./nano-git-server.ts";
 import type { RepositoryBackend } from "@/repository/backend/types.ts";

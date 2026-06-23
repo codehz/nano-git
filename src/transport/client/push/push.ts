@@ -22,7 +22,8 @@
  * ```
  */
 
-import { createPackWriter } from "../odb/pack/pack-writer.ts";
+import { createPackWriter } from "../../../odb/pack/pack-writer.ts";
+import { getLocalRefs, remoteRefsToMap } from "../../shared/ref-collection.ts";
 import { PushError } from "./push-error.ts";
 import { mergePushBoundaries, computeObjectsToSend } from "./push-pack-plan.ts";
 import { checkFastForward } from "./push-policy.ts";
@@ -34,14 +35,18 @@ import {
   resolvePushParsedSpecs,
   validatePushCapabilities,
 } from "./push-request-plan.ts";
-import { decodeReceivePackResponse } from "./receive-pack-response.ts";
-import { ReceivePackResultError } from "./receive-pack-result.ts";
-import { getLocalRefs, remoteRefsToMap } from "./ref-collection.ts";
+import { decodeReceivePackResponse } from "./response.ts";
+import { ReceivePackResultError } from "./result.ts";
 
-import type { SHA1 } from "../core/types.ts";
-import type { ObjectStore } from "../odb/types.ts";
-import type { RefStore } from "../refs/types.ts";
-import type { ReceivePackTransport, RefAdvertisement, PushOptions, PushResult } from "./types.ts";
+import type { SHA1 } from "../../../core/types.ts";
+import type { ObjectStore } from "../../../odb/types.ts";
+import type { RefStore } from "../../../refs/types.ts";
+import type {
+  ReceivePackTransport,
+  RefAdvertisement,
+  PushOptions,
+  PushResult,
+} from "../../shared/types.ts";
 
 // ============================================================================
 // Re-export 子模块类型
@@ -131,7 +136,7 @@ export async function push(
 
   // 9. 发送请求并解码响应
   let progress: string[];
-  let refUpdates: import("./types.ts").PushRefUpdate[];
+  let refUpdates: import("../../shared/types.ts").PushRefUpdate[];
   try {
     const raw = await transport.request(body);
     const decoded = decodeReceivePackResponse(raw);

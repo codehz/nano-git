@@ -5,12 +5,12 @@
  * 使用 v1 receive-pack 协议进行推送。
  */
 
-import { push as transportPush } from "../transport/push.ts";
-import { createReceivePackHttpClient } from "../transport/smart-http.ts";
+import { createReceivePackHttpClient } from "../transport/client/push/http.ts";
+import { push as transportPush } from "../transport/client/push/push.ts";
 import { resolveEffectivePushBoundaries } from "./push-resolution.ts";
 
 import type { SHA1 } from "../core/types.ts";
-import type { ReceivePackTransport, RefAdvertisement } from "../transport/types.ts";
+import type { ReceivePackTransport, RefAdvertisement } from "../transport/shared/types.ts";
 import type { RepositoryBackend } from "./backend/types.ts";
 import type { RepositoryPushOptions, RepositoryPushResult } from "./push-types.ts";
 

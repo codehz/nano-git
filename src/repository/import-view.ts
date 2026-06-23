@@ -7,7 +7,7 @@
 
 import { matchRefGlob } from "./import-glob.ts";
 
-import type { RemoteRef } from "../transport/types.ts";
+import type { RemoteRef } from "../transport/shared/types.ts";
 import type { ImportView, NamedImportView } from "./import-session-types.ts";
 
 // ============================================================================

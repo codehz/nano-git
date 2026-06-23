@@ -24,9 +24,9 @@
 
 import { PushError } from "./push-error.ts";
 
+import type { PushRefUpdate } from "../../shared/types.ts";
 import type { PushRefItem } from "./push-ref-plan.ts";
-import type { ReceivePackCommand } from "./receive-pack-request.ts";
-import type { PushRefUpdate } from "./types.ts";
+import type { ReceivePackCommand } from "./request.ts";
 
 /**
  * 校验并富化服务端返回的 report-status 结果

@@ -36,10 +36,10 @@
  * @see https://git-scm.com/docs/protocol-v2#_fetch
  */
 
-import { GitError } from "../core/errors.ts";
-import { splitPktLinesFromBuffer } from "./pkt-line.ts";
+import { GitError } from "../../core/errors.ts";
+import { splitPktLinesFromBuffer } from "../shared/pkt-line.ts";
 
-import type { ObjectStore } from "../odb/types.ts";
+import type { ObjectStore } from "../../odb/types.ts";
 import type { V2GitServiceTransport, V2FetchResponse } from "./protocol-types.ts";
 
 // ============================================================================
@@ -645,14 +645,14 @@ export async function v2FetchObjects(
   }
 
   // 解析 packfile 并写入对象
-  const { createPackReader } = await import("../odb/pack/pack-reader.ts");
-  const { deserializeContent } = await import("../objects/codec.ts");
+  const { createPackReader } = await import("../../odb/pack/pack-reader.ts");
+  const { deserializeContent } = await import("../../objects/codec.ts");
   const reader = createPackReader(result.packfile);
   let count = 0;
 
   for (const packObj of reader.objects()) {
     const gitObj = deserializeContent(packObj.type, packObj.data);
-    store.write(gitObj as import("../core/types.ts").GitObject);
+    store.write(gitObj as import("../../core/types.ts").GitObject);
     count++;
   }
 

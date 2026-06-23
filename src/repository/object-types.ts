@@ -120,5 +120,5 @@ export interface RepositoryObjectOperations {
     url: string,
     oids: string[],
     token?: string,
-  ): Promise<import("../transport/object-info.ts").ObjectInfoQueryResult>;
+  ): Promise<import("../transport/client/object-info.ts").ObjectInfoQueryResult>;
 }

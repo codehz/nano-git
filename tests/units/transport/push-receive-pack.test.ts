@@ -8,14 +8,14 @@
 import { describe, test, expect } from "bun:test";
 
 import { sha1 } from "@/core/types.ts";
-import { parsePktLines, encodePktLine, encodeFlushPkt } from "@/transport/pkt-line.ts";
 import {
   buildReceivePackRequest,
   type ReceivePackCommand,
-} from "@/transport/receive-pack-request.ts";
-import { parseReceivePackResult, ReceivePackResultError } from "@/transport/receive-pack-result.ts";
+} from "@/transport/client/push/request.ts";
+import { parseReceivePackResult, ReceivePackResultError } from "@/transport/client/push/result.ts";
+import { parsePktLines, encodePktLine, encodeFlushPkt } from "@/transport/shared/pkt-line.ts";
 
-import type { PktLineData } from "@/transport/pkt-line.ts";
+import type { PktLineData } from "@/transport/shared/pkt-line.ts";
 
 // ============================================================================
 // 常量
