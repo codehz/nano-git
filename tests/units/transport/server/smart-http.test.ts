@@ -13,6 +13,7 @@
 import { describe, test, expect } from "bun:test";
 
 import { createMemoryRepositoryBackend } from "@/backend/index.ts";
+import { writeObject } from "@/objects/raw.ts";
 import { createSmartHttpHandler } from "@/transport/http/smart-http.ts";
 
 // ============================================================================
@@ -24,15 +25,15 @@ function createTestBackend() {
     initialRefs: new Map<string, string>([["HEAD", "ref: refs/heads/main"]]),
   });
 
-  const blobHash = backend.objects.write({
+  const blobHash = writeObject(backend.objects, {
     type: "blob" as const,
     content: Buffer.from("hello"),
   });
-  const treeHash = backend.objects.write({
+  const treeHash = writeObject(backend.objects, {
     type: "tree" as const,
     entries: [{ mode: "100644", name: "f.txt", hash: blobHash }],
   });
-  const commitHash = backend.objects.write({
+  const commitHash = writeObject(backend.objects, {
     type: "commit" as const,
     tree: treeHash,
     parents: [],

@@ -7,6 +7,7 @@
 import { describe, test, expect } from "bun:test";
 
 import { sha1 } from "@/core/types.ts";
+import { writeObject } from "@/objects/raw.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
 import { createMemoryRefStore } from "@/refs/memory.ts";
 import {
@@ -20,14 +21,14 @@ import type { SHA1 } from "@/core/types.ts";
 import type { RefUpdatePlanItem } from "@/transport/protocol/update-refs.ts";
 
 function makeBlob(store: ReturnType<typeof createMemoryObjectStore>, content: string): SHA1 {
-  return store.write({ type: "blob", content: Buffer.from(content) });
+  return writeObject(store, { type: "blob", content: Buffer.from(content) });
 }
 
 function makeTree(
   store: ReturnType<typeof createMemoryObjectStore>,
   entries: Array<{ mode: string; name: string; hash: SHA1 }>,
 ): SHA1 {
-  return store.write({ type: "tree", entries });
+  return writeObject(store, { type: "tree", entries });
 }
 
 function makeCommit(
@@ -35,7 +36,7 @@ function makeCommit(
   tree: SHA1,
   parents: SHA1[],
 ): SHA1 {
-  return store.write({
+  return writeObject(store, {
     type: "commit",
     tree,
     parents,
@@ -115,7 +116,7 @@ describe("resolveBranchTargetHash()", () => {
   test("tag 对象抛出异常", () => {
     const store = createMemoryObjectStore();
     const blob = makeBlob(store, "x");
-    const tagHash = store.write({
+    const tagHash = writeObject(store, {
       type: "tag",
       object: blob,
       objectType: "blob",

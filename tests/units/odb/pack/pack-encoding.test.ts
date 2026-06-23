@@ -5,12 +5,13 @@
 import { describe, test, expect } from "bun:test";
 
 import { sha1, type GitBlob } from "@/core/types.ts";
+import { encodeObject } from "@/objects/raw.ts";
 import { toEncodedPackObject, buildEncodedPack } from "@/pack/pack-encoding.ts";
 
 describe("toEncodedPackObject()", () => {
   test("将 blob 对象转换为编码条目", () => {
     const blob: GitBlob = { type: "blob", content: Buffer.from("hello world") };
-    const entry = toEncodedPackObject(blob);
+    const entry = toEncodedPackObject(encodeObject(blob));
 
     expect(entry.type).toBe("blob");
     expect(entry.hash).toBe(sha1("95d09f2b10159347eece71399a7e2e907ea3df4f"));
@@ -22,7 +23,7 @@ describe("toEncodedPackObject()", () => {
 describe("buildEncodedPack()", () => {
   test("构建包含单个对象的 packfile", () => {
     const blob: GitBlob = { type: "blob", content: Buffer.from("hello world") };
-    const entry = toEncodedPackObject(blob);
+    const entry = toEncodedPackObject(encodeObject(blob));
     const result = buildEncodedPack([entry]);
 
     // 验证 pack header (12 bytes) + object data
@@ -42,7 +43,7 @@ describe("buildEncodedPack()", () => {
       { type: "blob", content: Buffer.from("second") },
       { type: "blob", content: Buffer.from("third") },
     ];
-    const entries = objects.map(toEncodedPackObject);
+    const entries = objects.map((o) => toEncodedPackObject(encodeObject(o)));
     const result = buildEncodedPack(entries);
 
     expect(result.entries).toHaveLength(3);

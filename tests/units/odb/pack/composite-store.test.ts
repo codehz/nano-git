@@ -7,6 +7,7 @@ import { mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { encodeObject, writeObject } from "@/objects/raw.ts";
 import { createFileObjectStore } from "@/odb/file.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
 import { createCompositeObjectDatabase } from "@/pack/composite-store.ts";
@@ -22,7 +23,7 @@ describe("CompositeObjectDatabase", () => {
     const composite = createCompositeObjectDatabase(primary, secondary);
 
     const blob: GitBlob = { type: "blob", content: Buffer.from("primary") };
-    const hash = primary.write(blob);
+    const hash = writeObject(primary, blob);
 
     const obj = composite.read(hash);
     expect(obj.type).toBe("blob");
@@ -37,7 +38,7 @@ describe("CompositeObjectDatabase", () => {
     const composite = createCompositeObjectDatabase(primary, secondary);
 
     const blob: GitBlob = { type: "blob", content: Buffer.from("secondary") };
-    const hash = secondary.write(blob);
+    const hash = writeObject(secondary, blob);
 
     const obj = composite.read(hash);
     expect(obj.type).toBe("blob");
@@ -52,7 +53,7 @@ describe("CompositeObjectDatabase", () => {
     const composite = createCompositeObjectDatabase(primary, secondary);
 
     const blob: GitBlob = { type: "blob", content: Buffer.from("new") };
-    const hash = composite.write(blob);
+    const hash = writeObject(composite, blob);
 
     expect(primary.exists(hash)).toBe(true);
     expect(secondary.exists(hash)).toBe(false);
@@ -66,8 +67,8 @@ describe("CompositeObjectDatabase", () => {
     const blob1: GitBlob = { type: "blob", content: Buffer.from("primary version") };
     const blob2: GitBlob = { type: "blob", content: Buffer.from("secondary version") };
 
-    const hash = primary.write(blob1);
-    secondary.write(blob2); // 相同内容会产生相同哈希，但这里内容不同
+    const hash = writeObject(primary, blob1);
+    writeObject(secondary, blob2); // 相同内容会产生相同哈希，但这里内容不同
 
     // 写入不同内容到相同哈希是不可能的，所以这个测试验证的是查找顺序
     const obj = composite.read(hash);
@@ -85,14 +86,16 @@ describe("CompositeObjectDatabase", () => {
     mkdirSync(join(gitDir, "objects"), { recursive: true });
 
     const packBuilder = createPackBuilder(gitDir);
-    const packedHash = packBuilder.addObject({
-      type: "blob",
-      content: Buffer.from("packed version"),
-    });
+    const packedHash = packBuilder.addRaw(
+      encodeObject({
+        type: "blob",
+        content: Buffer.from("packed version"),
+      }),
+    );
     packBuilder.build();
 
     const fileStore = createFileObjectStore(gitDir);
-    const looseHash = fileStore.write({
+    const looseHash = writeObject(fileStore, {
       type: "blob",
       content: Buffer.from("loose version"),
     });

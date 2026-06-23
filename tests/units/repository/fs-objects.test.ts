@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { hashToPath } from "@/core/hash.ts";
+import { encodeObject } from "@/objects/raw.ts";
 import { createPackBuilder } from "@/pack/pack-builder.ts";
 import { initRepository } from "@/repository/file.ts";
 import { openRepository } from "@/repository/file.ts";
@@ -252,10 +253,12 @@ describe("文件系统仓库的对象操作", () => {
   test("openRepository() 默认可读取 packfile 中的对象", () => {
     const gitDir = join(tempDir, ".git");
     const builder = createPackBuilder(gitDir);
-    const hash = builder.addObject({
-      type: "blob",
-      content: Buffer.from("packed-only content"),
-    });
+    const hash = builder.addRaw(
+      encodeObject({
+        type: "blob",
+        content: Buffer.from("packed-only content"),
+      }),
+    );
     builder.build();
 
     const packedRepo = openRepository(tempDir);
@@ -272,10 +275,12 @@ describe("文件系统仓库的对象操作", () => {
     const looseHash = repo.writeBlob(Buffer.from("loose"));
 
     const builder = createPackBuilder(gitDir);
-    const packedHash = builder.addObject({
-      type: "blob",
-      content: Buffer.from("packed"),
-    });
+    const packedHash = builder.addRaw(
+      encodeObject({
+        type: "blob",
+        content: Buffer.from("packed"),
+      }),
+    );
     builder.build();
 
     expect(repo.listObjects()).toContain(looseHash);

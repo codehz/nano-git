@@ -5,6 +5,7 @@
 import { describe, test, expect, beforeEach } from "bun:test";
 
 import { sha1 } from "@/core/types.ts";
+import { writeObject, readObject } from "@/objects/raw.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
 
 import type { GitBlob, GitTree, GitCommit, GitAuthor } from "@/core/types.ts";
@@ -28,7 +29,7 @@ describe("createMemoryObjectStore()", () => {
       type: "blob",
       content: Buffer.from("hello world"),
     };
-    const hash = store.write(blob);
+    const hash = writeObject(store, blob);
     expect(hash).toBe(sha1("95d09f2b10159347eece71399a7e2e907ea3df4f"));
 
     const read = store.read(hash);
@@ -39,7 +40,7 @@ describe("createMemoryObjectStore()", () => {
   });
 
   test("写入并读取 tree 对象", () => {
-    const blobHash = store.write({
+    const blobHash = writeObject(store, {
       type: "blob",
       content: Buffer.from("content"),
     });
@@ -48,9 +49,9 @@ describe("createMemoryObjectStore()", () => {
       type: "tree",
       entries: [{ mode: "100644", name: "file.txt", hash: blobHash }],
     };
-    const treeHash = store.write(tree);
+    const treeHash = writeObject(store, tree);
 
-    const read = store.read(treeHash);
+    const read = readObject(store, treeHash);
     expect(read.type).toBe("tree");
     if (read.type === "tree") {
       expect(read.entries).toHaveLength(1);
@@ -60,7 +61,7 @@ describe("createMemoryObjectStore()", () => {
   });
 
   test("写入并读取 commit 对象", () => {
-    const treeHash = store.write({ type: "tree", entries: [] });
+    const treeHash = writeObject(store, { type: "tree", entries: [] });
     const commit: GitCommit = {
       type: "commit",
       tree: treeHash,
@@ -69,9 +70,9 @@ describe("createMemoryObjectStore()", () => {
       committer: testAuthor,
       message: "Initial commit",
     };
-    const commitHash = store.write(commit);
+    const commitHash = writeObject(store, commit);
 
-    const read = store.read(commitHash);
+    const read = readObject(store, commitHash);
     expect(read.type).toBe("commit");
     if (read.type === "commit") {
       expect(read.tree).toBe(treeHash);
@@ -84,8 +85,8 @@ describe("createMemoryObjectStore()", () => {
       type: "blob",
       content: Buffer.from("duplicate"),
     };
-    const hash1 = store.write(blob);
-    const hash2 = store.write(blob);
+    const hash1 = writeObject(store, blob);
+    const hash2 = writeObject(store, blob);
     expect(hash1).toBe(hash2);
     expect(store.list()).toHaveLength(1);
   });
@@ -95,7 +96,7 @@ describe("createMemoryObjectStore()", () => {
       type: "blob",
       content: Buffer.from("test"),
     };
-    const hash = store.write(blob);
+    const hash = writeObject(store, blob);
     expect(store.exists(hash)).toBe(true);
     expect(store.exists(sha1("0000000000000000000000000000000000000000"))).toBe(false);
   });
@@ -108,8 +109,8 @@ describe("createMemoryObjectStore()", () => {
   test("list() 返回所有存储的哈希", () => {
     expect(store.list()).toHaveLength(0);
 
-    const hash1 = store.write({ type: "blob", content: Buffer.from("a") });
-    const hash2 = store.write({ type: "blob", content: Buffer.from("b") });
+    const hash1 = writeObject(store, { type: "blob", content: Buffer.from("a") });
+    const hash2 = writeObject(store, { type: "blob", content: Buffer.from("b") });
 
     const list = store.list();
     expect(list).toHaveLength(2);

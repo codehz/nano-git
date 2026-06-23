@@ -19,6 +19,7 @@ import {
   createFile,
   FIXED_AUTHOR,
 } from "./helpers.ts";
+import { encodeObject, readObject } from "@/objects/raw.ts";
 import { createPackBuilder } from "@/pack/pack-builder.ts";
 import { createPackObjectStore } from "@/pack/pack-store.ts";
 
@@ -52,7 +53,7 @@ describe("Packfile 兼容性: nano-git → git", () => {
     const builder = createPackBuilder(gitDir);
 
     const blob: GitBlob = { type: "blob", content: Buffer.from("hello from nano-git pack") };
-    builder.addObject(blob);
+    builder.addRaw(encodeObject(blob));
 
     const result = builder.build();
     expect(existsSync(result.packPath)).toBe(true);
@@ -68,7 +69,7 @@ describe("Packfile 兼容性: nano-git → git", () => {
 
     const content = "packed blob content";
     const blob: GitBlob = { type: "blob", content: Buffer.from(content) };
-    const hash = builder.addObject(blob);
+    const hash = builder.addRaw(encodeObject(blob));
     builder.build();
 
     const gitContent = git(["cat-file", "-p", hash], tempDir);
@@ -80,13 +81,13 @@ describe("Packfile 兼容性: nano-git → git", () => {
     const builder = createPackBuilder(gitDir);
 
     const blob: GitBlob = { type: "blob", content: Buffer.from("file content") };
-    const blobHash = builder.addObject(blob);
+    const blobHash = builder.addRaw(encodeObject(blob));
 
     const tree: GitTree = {
       type: "tree",
       entries: [{ mode: "100644", name: "test.txt", hash: blobHash }],
     };
-    const treeHash = builder.addObject(tree);
+    const treeHash = builder.addRaw(encodeObject(tree));
     builder.build();
 
     const output = git(["cat-file", "-p", treeHash], tempDir);
@@ -99,7 +100,7 @@ describe("Packfile 兼容性: nano-git → git", () => {
     const builder = createPackBuilder(gitDir);
 
     const tree: GitTree = { type: "tree", entries: [] };
-    const treeHash = builder.addObject(tree);
+    const treeHash = builder.addRaw(encodeObject(tree));
 
     const commit: GitCommit = {
       type: "commit",
@@ -109,7 +110,7 @@ describe("Packfile 兼容性: nano-git → git", () => {
       committer: testAuthor,
       message: "packed commit",
     };
-    const commitHash = builder.addObject(commit);
+    const commitHash = builder.addRaw(encodeObject(commit));
     builder.build();
 
     const output = git(["cat-file", "-p", commitHash], tempDir);
@@ -224,8 +225,8 @@ describe("Packfile 兼容性: git → nano-git", () => {
     git(["gc", "--aggressive"], tempDir);
 
     const store = createPackObjectStore(join(tempDir, ".git"));
-    const commitObj = store.read(commitHash);
-    const tagObj = store.read(tagHash);
+    const commitObj = readObject(store, commitHash);
+    const tagObj = readObject(store, tagHash);
 
     expect(commitObj.type).toBe("commit");
     expect(tagObj.type).toBe("tag");

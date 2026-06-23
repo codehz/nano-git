@@ -5,6 +5,7 @@
 import { describe, test, expect } from "bun:test";
 
 import { sha1 } from "@/core/types.ts";
+import { writeObject } from "@/objects/raw.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
 import { readTree, walkTree } from "@/repository/tree/tree-walk.ts";
 
@@ -13,7 +14,7 @@ const fileHash = sha1("95d09f2b10159347eece71399a7e2e907ea3df4f");
 describe("readTree()", () => {
   test("空 tree 返回空数组", () => {
     const store = createMemoryObjectStore();
-    const treeHash = store.write({ type: "tree", entries: [] });
+    const treeHash = writeObject(store, { type: "tree", entries: [] });
 
     const entries = readTree(store, treeHash);
     expect(entries).toEqual([]);
@@ -21,7 +22,7 @@ describe("readTree()", () => {
 
   test("展平单层 tree", () => {
     const store = createMemoryObjectStore();
-    const treeHash = store.write({
+    const treeHash = writeObject(store, {
       type: "tree",
       entries: [
         { mode: "100644", name: "a.txt", hash: fileHash },
@@ -39,11 +40,11 @@ describe("readTree()", () => {
 
   test("递归展平嵌套 tree（包含目录条目）", () => {
     const store = createMemoryObjectStore();
-    const subTreeHash = store.write({
+    const subTreeHash = writeObject(store, {
       type: "tree",
       entries: [{ mode: "100644", name: "inner.txt", hash: fileHash }],
     });
-    const rootHash = store.write({
+    const rootHash = writeObject(store, {
       type: "tree",
       entries: [
         { mode: "100644", name: "root.txt", hash: fileHash },
@@ -62,15 +63,15 @@ describe("readTree()", () => {
 
   test("深层嵌套", () => {
     const store = createMemoryObjectStore();
-    const level3 = store.write({
+    const level3 = writeObject(store, {
       type: "tree",
       entries: [{ mode: "100644", name: "deep.txt", hash: fileHash }],
     });
-    const level2 = store.write({
+    const level2 = writeObject(store, {
       type: "tree",
       entries: [{ mode: "40000", name: "level3", hash: level3 }],
     });
-    const level1 = store.write({
+    const level1 = writeObject(store, {
       type: "tree",
       entries: [{ mode: "40000", name: "level2", hash: level2 }],
     });
@@ -87,7 +88,7 @@ describe("readTree()", () => {
 describe("walkTree()", () => {
   test("对每个条目调用回调", () => {
     const store = createMemoryObjectStore();
-    const treeHash = store.write({
+    const treeHash = writeObject(store, {
       type: "tree",
       entries: [
         { mode: "100644", name: "a.txt", hash: fileHash },
@@ -105,7 +106,7 @@ describe("walkTree()", () => {
 
   test("空 tree 不调用回调", () => {
     const store = createMemoryObjectStore();
-    const treeHash = store.write({ type: "tree", entries: [] });
+    const treeHash = writeObject(store, { type: "tree", entries: [] });
 
     const fn = () => {};
     walkTree(store, treeHash, fn);
@@ -114,11 +115,11 @@ describe("walkTree()", () => {
 
   test("递归遍历顺序（深度优先）", () => {
     const store = createMemoryObjectStore();
-    const subHash = store.write({
+    const subHash = writeObject(store, {
       type: "tree",
       entries: [{ mode: "100644", name: "inner.txt", hash: fileHash }],
     });
-    const rootHash = store.write({
+    const rootHash = writeObject(store, {
       type: "tree",
       entries: [
         { mode: "100644", name: "a.txt", hash: fileHash },

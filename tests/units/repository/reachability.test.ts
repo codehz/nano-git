@@ -4,6 +4,7 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { writeObject } from "@/objects/raw.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
 import { createMemoryRefStore } from "@/refs/memory.ts";
 import { listReachableObjects } from "@/repository/ops/reachability.ts";
@@ -22,14 +23,14 @@ describe("listReachableObjects", () => {
     const refs = createMemoryRefStore();
 
     // 构造对象图：commit → tree → blob
-    const blobHash = objects.write({ type: "blob", content: Buffer.from("hello") });
+    const blobHash = writeObject(objects, { type: "blob", content: Buffer.from("hello") });
 
-    const treeHash = objects.write({
+    const treeHash = writeObject(objects, {
       type: "tree",
       entries: [{ mode: "100644", name: "hello.txt", hash: blobHash }],
     });
 
-    const commitHash = objects.write({
+    const commitHash = writeObject(objects, {
       type: "commit",
       tree: treeHash,
       parents: [],
@@ -53,7 +54,7 @@ describe("listReachableObjects", () => {
     const refs = createMemoryRefStore();
 
     // 存储一个 blob 但无 refs 指向它
-    const orphanHash = objects.write({ type: "blob", content: Buffer.from("orphan") });
+    const orphanHash = writeObject(objects, { type: "blob", content: Buffer.from("orphan") });
 
     const result = listReachableObjects(objects, refs);
     expect(result).not.toContain(orphanHash);
@@ -65,12 +66,12 @@ describe("listReachableObjects", () => {
     const refs = createMemoryRefStore();
 
     // 分支 A 的对象
-    const blobA = objects.write({ type: "blob", content: Buffer.from("a") });
-    const treeA = objects.write({
+    const blobA = writeObject(objects, { type: "blob", content: Buffer.from("a") });
+    const treeA = writeObject(objects, {
       type: "tree",
       entries: [{ mode: "100644", name: "a", hash: blobA }],
     });
-    const commitA = objects.write({
+    const commitA = writeObject(objects, {
       type: "commit",
       tree: treeA,
       parents: [],
@@ -80,12 +81,12 @@ describe("listReachableObjects", () => {
     });
 
     // 分支 B 的对象
-    const blobB = objects.write({ type: "blob", content: Buffer.from("b") });
-    const treeB = objects.write({
+    const blobB = writeObject(objects, { type: "blob", content: Buffer.from("b") });
+    const treeB = writeObject(objects, {
       type: "tree",
       entries: [{ mode: "100644", name: "b", hash: blobB }],
     });
-    const commitB = objects.write({
+    const commitB = writeObject(objects, {
       type: "commit",
       tree: treeB,
       parents: [],

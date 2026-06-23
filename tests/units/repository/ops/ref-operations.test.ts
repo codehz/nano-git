@@ -6,6 +6,7 @@ import { describe, test, expect } from "bun:test";
 
 import { createMemoryRepositoryBackend } from "@/backend/memory-backend.ts";
 import { sha1, type GitAuthor } from "@/core/types.ts";
+import { writeObject, readObject } from "@/objects/raw.ts";
 import { createRefRepositoryOperations } from "@/repository/ops/ref-operations.ts";
 
 const testAuthor: GitAuthor = {
@@ -50,12 +51,12 @@ describe("createRefRepositoryOperations()", () => {
     const { ops, backend } = createOps();
     // 直接通过 backend 创建一个 commit 让 HEAD 可以解析
     const blob: import("@/core/types.ts").GitBlob = { type: "blob", content: Buffer.from("c") };
-    const blobHash = backend.objects.write(blob);
-    const treeHash = backend.objects.write({
+    const blobHash = writeObject(backend.objects, blob);
+    const treeHash = writeObject(backend.objects, {
       type: "tree",
       entries: [{ mode: "100644", name: "f", hash: blobHash }],
     });
-    const commitHash = backend.objects.write({
+    const commitHash = writeObject(backend.objects, {
       type: "commit",
       tree: treeHash,
       parents: [],
@@ -147,7 +148,7 @@ describe("createRefRepositoryOperations()", () => {
       type: "blob",
       content: Buffer.from("content"),
     };
-    const target = backend.objects.write(blob);
+    const target = writeObject(backend.objects, blob);
 
     const tagHash = ops.createAnnotatedTag("v1.0", target, "release note", testAuthor);
     expect(typeof tagHash).toBe("string");
@@ -158,7 +159,7 @@ describe("createRefRepositoryOperations()", () => {
     expect(refHash).toBe(tagHash);
 
     // 验证 tag 对象内容
-    const tag = backend.objects.read(tagHash);
+    const tag = readObject(backend.objects, tagHash);
     expect(tag.type).toBe("tag");
     if (tag.type === "tag") {
       expect(tag.tag).toBe("v1.0");
@@ -169,7 +170,7 @@ describe("createRefRepositoryOperations()", () => {
 
   test("createAnnotatedTag() 重复标签抛出异常", () => {
     const { ops, backend } = createOps();
-    const target = backend.objects.write({ type: "blob", content: Buffer.from("c") });
+    const target = writeObject(backend.objects, { type: "blob", content: Buffer.from("c") });
     ops.createAnnotatedTag("v1.0", target, "msg", testAuthor);
     expect(() => ops.createAnnotatedTag("v1.0", target, "msg", testAuthor)).toThrow(
       "Tag already exists",

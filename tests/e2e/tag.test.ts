@@ -18,6 +18,7 @@ import {
   FIXED_AUTHOR,
 } from "./helpers.ts";
 import { sha1 } from "@/core/types.ts";
+import { writeObject } from "@/objects/raw.ts";
 import { openRepository } from "@/repository/file.ts";
 
 import type { GitAuthor } from "@/core/types.ts";
@@ -51,7 +52,7 @@ describe("Tag 兼容性", () => {
       const treeHash = repo.createTree([{ mode: "100644", name: "file.txt", hash: fileHash }]);
       const commitHash = repo.createCommit(treeHash, [], "Tagged commit", testAuthor);
 
-      const tagHash = repo.objects.write({
+      const tagHash = writeObject(repo.objects, {
         type: "tag",
         object: commitHash,
         objectType: "commit",

@@ -11,6 +11,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { createTempDir, cleanupDir, gitWithTimeout } from "../helpers.ts";
 import { startNanoGitServer, createDefaultBackend } from "./nano-git-server.ts";
 import { sha1, type SHA1 } from "@/core/types.ts";
+import { writeObject } from "@/objects/raw.ts";
 import { initRepository } from "@/repository/file.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
 import { createV2HttpTransport } from "@/transport/client/upload-pack/http.ts";
@@ -26,15 +27,15 @@ import type { RepositoryBackend } from "@/backend/types.ts";
  * 在内存后端上创建一次额外的提交
  */
 function addCommit(backend: RepositoryBackend, parent: SHA1, msg: string): SHA1 {
-  const blobHash = backend.objects.write({
+  const blobHash = writeObject(backend.objects, {
     type: "blob" as const,
     content: Buffer.from(msg),
   });
-  const treeHash = backend.objects.write({
+  const treeHash = writeObject(backend.objects, {
     type: "tree" as const,
     entries: [{ mode: "100644", name: `${msg}.txt`, hash: blobHash }],
   });
-  const commitHash = backend.objects.write({
+  const commitHash = writeObject(backend.objects, {
     type: "commit" as const,
     tree: treeHash,
     parents: [parent],

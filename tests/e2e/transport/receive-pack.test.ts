@@ -22,6 +22,7 @@ import { git, gitWithTimeout, createTempDir, cleanupDir, FIXED_AUTHOR } from "..
 import { startNanoGitServer, createDefaultBackend } from "./nano-git-server.ts";
 import { createMemoryRepositoryBackend } from "@/backend/index.ts";
 import { sha1, type SHA1 } from "@/core/types.ts";
+import { writeObject } from "@/objects/raw.ts";
 
 import type { NanoGitServer } from "./nano-git-server.ts";
 
@@ -98,7 +99,7 @@ describe("advertiseReceivePack", () => {
   test("带 annotated tag 的仓库返回 peeled 行", async () => {
     const backend = createDefaultBackend();
     const mainHash = backend.refs.read("refs/heads/main")! as SHA1;
-    const tagHash = backend.objects.write({
+    const tagHash = writeObject(backend.objects, {
       type: "tag",
       object: mainHash,
       objectType: "commit",

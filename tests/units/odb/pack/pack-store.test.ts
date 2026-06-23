@@ -7,6 +7,7 @@ import { mkdirSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { encodeObject } from "@/objects/raw.ts";
 import { createPackBuilder } from "@/pack/pack-builder.ts";
 import { createPackObjectStore } from "@/pack/pack-store.ts";
 
@@ -33,7 +34,7 @@ describe("PackObjectStore", () => {
     // 创建 packfile
     const builder = createPackBuilder(gitDir);
     const blob: GitBlob = { type: "blob", content: Buffer.from("test content") };
-    const hash = builder.addObject(blob);
+    const hash = builder.addRaw(encodeObject(blob));
     builder.build();
 
     // 读取
@@ -52,11 +53,11 @@ describe("PackObjectStore", () => {
     mkdirSync(join(gitDir, "objects", "pack"), { recursive: true });
 
     const builder1 = createPackBuilder(gitDir);
-    const hash1 = builder1.addObject({ type: "blob", content: Buffer.from("pack one") });
+    const hash1 = builder1.addRaw(encodeObject({ type: "blob", content: Buffer.from("pack one") }));
     builder1.build();
 
     const builder2 = createPackBuilder(gitDir);
-    const hash2 = builder2.addObject({ type: "blob", content: Buffer.from("pack two") });
+    const hash2 = builder2.addRaw(encodeObject({ type: "blob", content: Buffer.from("pack two") }));
     builder2.build();
 
     const store = createPackObjectStore(gitDir);
@@ -92,7 +93,7 @@ describe("PackObjectStore", () => {
     expect(store.packCount).toBe(0);
 
     const builder = createPackBuilder(gitDir);
-    builder.addObject({ type: "blob", content: Buffer.from("after refresh") });
+    builder.addRaw(encodeObject({ type: "blob", content: Buffer.from("after refresh") }));
     builder.build();
 
     store.refresh();

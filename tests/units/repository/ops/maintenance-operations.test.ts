@@ -4,6 +4,7 @@
 
 import { describe, test, expect, beforeEach } from "bun:test";
 
+import { writeObject } from "@/objects/raw.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
 import { createMemoryRefStore } from "@/refs/memory.ts";
 import { HEAD_REF, HEADS_PREFIX } from "@/refs/types.ts";
@@ -34,15 +35,15 @@ describe("createMaintenanceRepositoryOperations()", () => {
   });
 
   test("listReachableObjects() 返回所有可达对象", () => {
-    const blobHash = objects.write({
+    const blobHash = writeObject(objects, {
       type: "blob",
       content: Buffer.from("content"),
     });
-    const treeHash = objects.write({
+    const treeHash = writeObject(objects, {
       type: "tree",
       entries: [{ mode: "100644", name: "f.txt", hash: blobHash }],
     });
-    const commitHash = objects.write({
+    const commitHash = writeObject(objects, {
       type: "commit",
       tree: treeHash,
       parents: [],
@@ -70,8 +71,8 @@ describe("createMaintenanceRepositoryOperations()", () => {
   });
 
   test("gc() 无 pack 支持时清理不可达对象", () => {
-    const blobHash = objects.write({ type: "blob", content: Buffer.from("reachable") });
-    objects.write({ type: "blob", content: Buffer.from("unreachable") });
+    const blobHash = writeObject(objects, { type: "blob", content: Buffer.from("reachable") });
+    writeObject(objects, { type: "blob", content: Buffer.from("unreachable") });
     refs.write("refs/heads/main", blobHash);
 
     const ops = createMaintenanceRepositoryOperations(objects, refs, null);

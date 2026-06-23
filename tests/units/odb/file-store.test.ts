@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { sha1 } from "@/core/types.ts";
+import { writeObject, readObject } from "@/objects/raw.ts";
 import { createFileObjectStore } from "@/odb/file.ts";
 
 import type { GitBlob, GitTree, GitCommit, GitAuthor } from "@/core/types.ts";
@@ -40,7 +41,7 @@ describe("createFileObjectStore()", () => {
       type: "blob",
       content: Buffer.from("hello world"),
     };
-    const hash = store.write(blob);
+    const hash = writeObject(store, blob);
     expect(hash).toBe(sha1("95d09f2b10159347eece71399a7e2e907ea3df4f"));
 
     const read = store.read(hash);
@@ -55,7 +56,7 @@ describe("createFileObjectStore()", () => {
       type: "blob",
       content: Buffer.from("hello world"),
     };
-    const hash = store.write(blob);
+    const hash = writeObject(store, blob);
     const expectedPath = join(tempDir, "objects", hash.slice(0, 2), hash.slice(2));
     expect(existsSync(expectedPath)).toBe(true);
   });
@@ -65,7 +66,7 @@ describe("createFileObjectStore()", () => {
       type: "blob",
       content: Buffer.from("test"),
     };
-    const hash = store.write(blob);
+    const hash = writeObject(store, blob);
     expect(store.exists(hash)).toBe(true);
     expect(store.exists(sha1("0000000000000000000000000000000000000000"))).toBe(false);
   });
@@ -80,13 +81,13 @@ describe("createFileObjectStore()", () => {
       type: "blob",
       content: Buffer.from("duplicate"),
     };
-    const hash1 = store.write(blob);
-    const hash2 = store.write(blob);
+    const hash1 = writeObject(store, blob);
+    const hash2 = writeObject(store, blob);
     expect(hash1).toBe(hash2);
   });
 
   test("写入并读取 tree 对象", () => {
-    const blobHash = store.write({
+    const blobHash = writeObject(store, {
       type: "blob",
       content: Buffer.from("content"),
     });
@@ -95,9 +96,9 @@ describe("createFileObjectStore()", () => {
       type: "tree",
       entries: [{ mode: "100644", name: "file.txt", hash: blobHash }],
     };
-    const treeHash = store.write(tree);
+    const treeHash = writeObject(store, tree);
 
-    const read = store.read(treeHash);
+    const read = readObject(store, treeHash);
     expect(read.type).toBe("tree");
     if (read.type === "tree") {
       expect(read.entries).toHaveLength(1);
@@ -106,7 +107,7 @@ describe("createFileObjectStore()", () => {
   });
 
   test("写入并读取 commit 对象", () => {
-    const treeHash = store.write({ type: "tree", entries: [] });
+    const treeHash = writeObject(store, { type: "tree", entries: [] });
     const commit: GitCommit = {
       type: "commit",
       tree: treeHash,
@@ -115,9 +116,9 @@ describe("createFileObjectStore()", () => {
       committer: testAuthor,
       message: "Initial commit",
     };
-    const commitHash = store.write(commit);
+    const commitHash = writeObject(store, commit);
 
-    const read = store.read(commitHash);
+    const read = readObject(store, commitHash);
     expect(read.type).toBe("commit");
     if (read.type === "commit") {
       expect(read.message).toBe("Initial commit");
@@ -127,8 +128,8 @@ describe("createFileObjectStore()", () => {
   test("list() 返回 loose object 哈希", () => {
     expect(store.list()).toHaveLength(0);
 
-    const hash1 = store.write({ type: "blob", content: Buffer.from("a") });
-    const hash2 = store.write({ type: "blob", content: Buffer.from("b") });
+    const hash1 = writeObject(store, { type: "blob", content: Buffer.from("a") });
+    const hash2 = writeObject(store, { type: "blob", content: Buffer.from("b") });
 
     expect(store.list()).toEqual([hash1, hash2].sort());
   });

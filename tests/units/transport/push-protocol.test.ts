@@ -9,6 +9,7 @@
 import { describe, test, expect } from "bun:test";
 
 import { sha1, type SHA1 } from "@/core/types.ts";
+import { writeObject } from "@/objects/raw.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
 import { createMemoryRefStore } from "@/refs/memory.ts";
 import { PushError } from "@/transport/client/receive-pack/push-error.ts";
@@ -48,8 +49,8 @@ describe("push() 服务端响应完整性校验", () => {
     const store = createMemoryObjectStore();
     const refStore = createMemoryRefStore(new Map());
     const author = { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" };
-    const emptyTree = store.write({ type: "tree", entries: [] });
-    const commitHash = store.write({
+    const emptyTree = writeObject(store, { type: "tree", entries: [] });
+    const commitHash = writeObject(store, {
       type: "commit" as const,
       tree: emptyTree,
       parents: [],
@@ -85,8 +86,8 @@ describe("push() 服务端响应完整性校验", () => {
     const store = createMemoryObjectStore();
     const refStore = createMemoryRefStore(new Map());
     const author = { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" };
-    const emptyTree = store.write({ type: "tree", entries: [] });
-    const hashA = store.write({
+    const emptyTree = writeObject(store, { type: "tree", entries: [] });
+    const hashA = writeObject(store, {
       type: "commit" as const,
       tree: emptyTree,
       parents: [],
@@ -95,7 +96,7 @@ describe("push() 服务端响应完整性校验", () => {
       message: "a",
     });
     refStore.write("refs/heads/feature-a", hashA);
-    const hashB = store.write({
+    const hashB = writeObject(store, {
       type: "commit" as const,
       tree: emptyTree,
       parents: [],
@@ -130,8 +131,8 @@ describe("push() 服务端响应完整性校验", () => {
     const store = createMemoryObjectStore();
     const refStore = createMemoryRefStore(new Map());
     const author = { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" };
-    const emptyTree = store.write({ type: "tree", entries: [] });
-    const hash = store.write({
+    const emptyTree = writeObject(store, { type: "tree", entries: [] });
+    const hash = writeObject(store, {
       type: "commit" as const,
       tree: emptyTree,
       parents: [],
@@ -183,8 +184,8 @@ describe("push 非 heads/tags 来源 ref 推送", () => {
   test("refs/remotes/origin/main:refs/heads/backup 应正确推送", async () => {
     const store = createMemoryObjectStore();
     const author = { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" };
-    const emptyTree = store.write({ type: "tree", entries: [] });
-    const commitHash = store.write({
+    const emptyTree = writeObject(store, { type: "tree", entries: [] });
+    const commitHash = writeObject(store, {
       type: "commit" as const,
       tree: emptyTree,
       parents: [],
@@ -212,8 +213,8 @@ describe("push 非 heads/tags 来源 ref 推送", () => {
   test("循环 HEAD 不应阻塞其他 ref 的推送", async () => {
     const store = createMemoryObjectStore();
     const author = { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" };
-    const emptyTree = store.write({ type: "tree", entries: [] });
-    const commitHash = store.write({
+    const emptyTree = writeObject(store, { type: "tree", entries: [] });
+    const commitHash = writeObject(store, {
       type: "commit" as const,
       tree: emptyTree,
       parents: [],
@@ -243,9 +244,9 @@ describe("push 非 heads/tags 来源 ref 推送", () => {
     const store = createMemoryObjectStore();
     const refStore = createMemoryRefStore(new Map());
     const author = { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" };
-    const emptyTree = store.write({ type: "tree", entries: [] });
+    const emptyTree = writeObject(store, { type: "tree", entries: [] });
     const remoteTip = sha1("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
-    const localCommit = store.write({
+    const localCommit = writeObject(store, {
       type: "commit" as const,
       tree: emptyTree,
       parents: [remoteTip],
@@ -279,8 +280,8 @@ describe("push() 服务端 ng 响应处理", () => {
     const store = createMemoryObjectStore();
     const refStore = createMemoryRefStore(new Map());
     const author = { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" };
-    const emptyTree = store.write({ type: "tree", entries: [] });
-    const commitHash = store.write({
+    const emptyTree = writeObject(store, { type: "tree", entries: [] });
+    const commitHash = writeObject(store, {
       type: "commit" as const,
       tree: emptyTree,
       parents: [],
@@ -314,8 +315,8 @@ describe("push() 服务端 ng 响应处理", () => {
     const store = createMemoryObjectStore();
     const refStore = createMemoryRefStore(new Map());
     const author = { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" };
-    const emptyTree = store.write({ type: "tree", entries: [] });
-    const commitHash = store.write({
+    const emptyTree = writeObject(store, { type: "tree", entries: [] });
+    const commitHash = writeObject(store, {
       type: "commit" as const,
       tree: emptyTree,
       parents: [],
@@ -344,8 +345,8 @@ describe("push() 服务端 ng 响应处理", () => {
     const store = createMemoryObjectStore();
     const refStore = createMemoryRefStore(new Map());
     const author = { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" };
-    const emptyTree = store.write({ type: "tree", entries: [] });
-    const commitHash = store.write({
+    const emptyTree = writeObject(store, { type: "tree", entries: [] });
+    const commitHash = writeObject(store, {
       type: "commit" as const,
       tree: emptyTree,
       parents: [],
@@ -422,8 +423,8 @@ describe("push() 通配符 refspec 无匹配本地引用", () => {
   test("通配符 refspec 匹配到本地引用时正常通过", async () => {
     const store = createMemoryObjectStore();
     const author = { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" };
-    const emptyTree = store.write({ type: "tree", entries: [] });
-    const commitHash = store.write({
+    const emptyTree = writeObject(store, { type: "tree", entries: [] });
+    const commitHash = writeObject(store, {
       type: "commit" as const,
       tree: emptyTree,
       parents: [],
@@ -489,8 +490,8 @@ describe("push() delete-refs capability 校验", () => {
   test("服务端未广告 delete-refs 但 push 不含删除操作时正常通过", async () => {
     const store = createMemoryObjectStore();
     const author = { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" };
-    const emptyTree = store.write({ type: "tree", entries: [] });
-    const commitHash = store.write({
+    const emptyTree = writeObject(store, { type: "tree", entries: [] });
+    const commitHash = writeObject(store, {
       type: "commit" as const,
       tree: emptyTree,
       parents: [],
@@ -516,8 +517,8 @@ describe("push() 对缺失 unpack 的非法响应处理", () => {
     const store = createMemoryObjectStore();
     const refStore = createMemoryRefStore(new Map());
     const author = { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" };
-    const emptyTree = store.write({ type: "tree", entries: [] });
-    const hash = store.write({
+    const emptyTree = writeObject(store, { type: "tree", entries: [] });
+    const hash = writeObject(store, {
       type: "commit" as const,
       tree: emptyTree,
       parents: [],

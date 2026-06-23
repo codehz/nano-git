@@ -9,6 +9,7 @@ import { describe, test, expect } from "bun:test";
 import { createHash } from "node:crypto";
 
 import { sha1, type SHA1, type GitBlob, type GitTree, type GitCommit } from "@/core/types.ts";
+import { writeObject } from "@/objects/raw.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
 import { createMemoryRefStore } from "@/refs/memory.ts";
 import { PushError } from "@/transport/client/receive-pack/push-error.ts";
@@ -43,13 +44,13 @@ function buildCommitWithTwoBlobs(
   writeBlobB: boolean,
 ): { commitHash: SHA1; blobBHash: SHA1 } {
   const blobA: GitBlob = { type: "blob", content: Buffer.from("content A") };
-  const hashA = store.write(blobA);
+  const hashA = writeObject(store, blobA);
 
   const blobBContent = Buffer.from("content B");
   const hashB = blobBHash();
   if (writeBlobB) {
     const blobB: GitBlob = { type: "blob", content: blobBContent };
-    store.write(blobB);
+    writeObject(store, blobB);
   }
 
   const tree: GitTree = {
@@ -59,7 +60,7 @@ function buildCommitWithTwoBlobs(
       { mode: "100644", name: "b.txt", hash: hashB },
     ],
   };
-  const treeHash = store.write(tree);
+  const treeHash = writeObject(store, tree);
 
   const commit: GitCommit = {
     type: "commit",
@@ -69,7 +70,7 @@ function buildCommitWithTwoBlobs(
     committer: { name: "Test", email: "t@t", timestamp: 1000, timezone: "+0000" },
     message: "init",
   };
-  const commitHash = store.write(commit);
+  const commitHash = writeObject(store, commit);
   return { commitHash, blobBHash: hashB };
 }
 
@@ -187,7 +188,7 @@ describe('collectReachable(missing="skip", 默认)', () => {
 
   test("shallow fetch：上游 parent commit 缺失时静默跳过", () => {
     const store = createMemoryObjectStore();
-    const emptyTree = store.write({ type: "tree", entries: [] });
+    const emptyTree = writeObject(store, { type: "tree", entries: [] });
 
     const root: GitCommit = {
       type: "commit",
@@ -197,7 +198,7 @@ describe('collectReachable(missing="skip", 默认)', () => {
       committer: { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" },
       message: "root",
     };
-    const rootHash = store.write(root);
+    const rootHash = writeObject(store, root);
 
     const a: GitCommit = {
       type: "commit",
@@ -207,7 +208,7 @@ describe('collectReachable(missing="skip", 默认)', () => {
       committer: { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" },
       message: "a",
     };
-    const aHash = store.write(a);
+    const aHash = writeObject(store, a);
 
     // b 不写入 store（shallow boundary）
     const bHash = sha1("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
@@ -221,7 +222,7 @@ describe('collectReachable(missing="skip", 默认)', () => {
       committer: { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" },
       message: "c",
     };
-    const cHash = store.write(c);
+    const cHash = writeObject(store, c);
 
     // skip 模式应静默跳过缺失的 parent b，停止沿该路径回溯；
     // 收集到的是 c + c 的 tree，但不包括 b 上游的对象
@@ -252,7 +253,7 @@ describe('collectReachable(missing="skip-commit-parents")', () => {
 
   test("shallow：已知 shallow 边界的 commit parent 缺失时静默跳过", () => {
     const store = createMemoryObjectStore();
-    const emptyTree = store.write({ type: "tree", entries: [] });
+    const emptyTree = writeObject(store, { type: "tree", entries: [] });
 
     const bHash = sha1("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
     const c: GitCommit = {
@@ -263,7 +264,7 @@ describe('collectReachable(missing="skip-commit-parents")', () => {
       committer: { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" },
       message: "c",
     };
-    const cHash = store.write(c);
+    const cHash = writeObject(store, c);
 
     const shallowSet = new Set<SHA1>([bHash]);
     const result = collectReachable(store, [cHash], "skip-commit-parents", shallowSet);
@@ -274,10 +275,10 @@ describe('collectReachable(missing="skip-commit-parents")', () => {
 
   test("commit parent 缺失且不在 shallowBoundaries 时抛出错误", () => {
     const store = createMemoryObjectStore();
-    const emptyTree = store.write({ type: "tree", entries: [] });
+    const emptyTree = writeObject(store, { type: "tree", entries: [] });
 
     const missingParent = sha1("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
-    const cHash = store.write({
+    const cHash = writeObject(store, {
       type: "commit",
       tree: emptyTree,
       parents: [missingParent],
@@ -293,10 +294,10 @@ describe('collectReachable(missing="skip-commit-parents")', () => {
 
   test("commit parent 缺失且 shallowBoundaries 不含该 hash 时抛出错误", () => {
     const store = createMemoryObjectStore();
-    const emptyTree = store.write({ type: "tree", entries: [] });
+    const emptyTree = writeObject(store, { type: "tree", entries: [] });
 
     const missingParent = sha1("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
-    const cHash = store.write({
+    const cHash = writeObject(store, {
       type: "commit",
       tree: emptyTree,
       parents: [missingParent],
@@ -368,8 +369,8 @@ describe("push() 本地对象缺失预检", () => {
 
   test("shallow 边界：parent commit 缺失时仍可完成 push", async () => {
     const store = createMemoryObjectStore();
-    const emptyTree = store.write({ type: "tree", entries: [] });
-    const rootHash = store.write({
+    const emptyTree = writeObject(store, { type: "tree", entries: [] });
+    const rootHash = writeObject(store, {
       type: "commit",
       tree: emptyTree,
       parents: [],
@@ -379,7 +380,7 @@ describe("push() 本地对象缺失预检", () => {
     });
 
     const bHash = sha1("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
-    const cHash = store.write({
+    const cHash = writeObject(store, {
       type: "commit",
       tree: emptyTree,
       parents: [bHash],

@@ -16,6 +16,7 @@ import { join } from "node:path";
 
 import { createFileRepositoryBackend, createMemoryRepositoryBackend } from "@/backend/index.ts";
 import { sha1, type SHA1, type GitCommit } from "@/core/types.ts";
+import { writeObject } from "@/objects/raw.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
 import { createFileShallowStore } from "@/refs/shallow/file.ts";
 import { createMemoryShallowStore } from "@/refs/shallow/memory.ts";
@@ -294,10 +295,10 @@ describe("collectReachable 与 shallow boundaries", () => {
 
   beforeEach(() => {
     store = createMemoryObjectStore();
-    emptyTree = store.write({ type: "tree", entries: [] });
+    emptyTree = writeObject(store, { type: "tree", entries: [] });
 
     // 构造链：root → a → b (缺失, shallow) → c
-    rootHash = store.write({
+    rootHash = writeObject(store, {
       type: "commit",
       tree: emptyTree,
       parents: [],
@@ -306,7 +307,7 @@ describe("collectReachable 与 shallow boundaries", () => {
       message: "root",
     } as GitCommit);
 
-    aHash = store.write({
+    aHash = writeObject(store, {
       type: "commit",
       tree: emptyTree,
       parents: [rootHash],
@@ -319,7 +320,7 @@ describe("collectReachable 与 shallow boundaries", () => {
     bHash = sha1("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
 
     // c 的 parent 是 b（不存在于 store）
-    cHash = store.write({
+    cHash = writeObject(store, {
       type: "commit",
       tree: emptyTree,
       parents: [bHash],

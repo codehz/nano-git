@@ -7,6 +7,7 @@ import { mkdirSync, writeFileSync, rmSync, existsSync, symlinkSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { readObject } from "@/objects/raw.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
 import { writeTreeRecursive } from "@/repository/tree/tree-writer.ts";
 
@@ -28,7 +29,7 @@ describe("writeTreeRecursive()", () => {
 
   test("空目录写入空 tree", () => {
     const hash = writeTreeRecursive(store, tempDir);
-    const tree = store.read(hash);
+    const tree = readObject(store, hash);
     expect(tree.type).toBe("tree");
     if (tree.type === "tree") {
       expect(tree.entries).toHaveLength(0);
@@ -39,7 +40,7 @@ describe("writeTreeRecursive()", () => {
     writeFileSync(join(tempDir, "hello.txt"), "hello world");
     const hash = writeTreeRecursive(store, tempDir);
 
-    const tree = store.read(hash);
+    const tree = readObject(store, hash);
     expect(tree.type).toBe("tree");
     if (tree.type === "tree") {
       expect(tree.entries).toHaveLength(1);
@@ -54,7 +55,7 @@ describe("writeTreeRecursive()", () => {
     writeFileSync(join(tempDir, "c.txt"), "c");
 
     const hash = writeTreeRecursive(store, tempDir);
-    const tree = store.read(hash);
+    const tree = readObject(store, hash);
     if (tree.type === "tree") {
       expect(tree.entries.map((e) => e.name)).toEqual(["a.txt", "b.txt", "c.txt"]);
     }
@@ -66,7 +67,7 @@ describe("writeTreeRecursive()", () => {
     writeFileSync(join(tempDir, "subdir", "inner.txt"), "inner");
 
     const hash = writeTreeRecursive(store, tempDir);
-    const tree = store.read(hash);
+    const tree = readObject(store, hash);
     if (tree.type === "tree") {
       expect(tree.entries).toHaveLength(2);
       const subdir = tree.entries.find((e) => e.name === "subdir");
@@ -74,7 +75,7 @@ describe("writeTreeRecursive()", () => {
       expect(subdir!.mode).toBe("40000");
 
       // 验证子 tree 内容
-      const subTree = store.read(subdir!.hash);
+      const subTree = readObject(store, subdir!.hash);
       expect(subTree.type).toBe("tree");
       if (subTree.type === "tree") {
         expect(subTree.entries).toHaveLength(1);
@@ -89,7 +90,7 @@ describe("writeTreeRecursive()", () => {
     writeFileSync(join(tempDir, ".git", "config"), "config");
 
     const hash = writeTreeRecursive(store, tempDir);
-    const tree = store.read(hash);
+    const tree = readObject(store, hash);
     if (tree.type === "tree") {
       const names = tree.entries.map((e) => e.name);
       expect(names).not.toContain(".git");
@@ -102,14 +103,14 @@ describe("writeTreeRecursive()", () => {
     symlinkSync("target.txt", join(tempDir, "link.txt"));
 
     const hash = writeTreeRecursive(store, tempDir);
-    const tree = store.read(hash);
+    const tree = readObject(store, hash);
     if (tree.type === "tree") {
       const link = tree.entries.find((e) => e.name === "link.txt");
       expect(link).toBeDefined();
       expect(link!.mode).toBe("120000");
 
       // 验证符号链接指向的内容作为 blob 存储
-      const linkBlob = store.read(link!.hash);
+      const linkBlob = readObject(store, link!.hash);
       expect(linkBlob.type).toBe("blob");
       if (linkBlob.type === "blob") {
         expect(linkBlob.content.toString()).toBe("target.txt");
@@ -121,7 +122,7 @@ describe("writeTreeRecursive()", () => {
     writeFileSync(join(tempDir, "script.sh"), "#!/bin/sh\necho hi", { mode: 0o755 });
 
     const hash = writeTreeRecursive(store, tempDir);
-    const tree = store.read(hash);
+    const tree = readObject(store, hash);
     if (tree.type === "tree") {
       const script = tree.entries.find((e) => e.name === "script.sh");
       expect(script).toBeDefined();

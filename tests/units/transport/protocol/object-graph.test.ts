@@ -8,6 +8,7 @@ import { describe, test, expect } from "bun:test";
 
 import { ObjectNotFoundError } from "@/core/errors.ts";
 import { sha1 } from "@/core/types.ts";
+import { writeObject } from "@/objects/raw.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
 import { collectReachable, isAncestor, peelTagChain } from "@/transport/protocol/object-graph.ts";
 
@@ -18,7 +19,7 @@ function makeCommit(
   tree: SHA1,
   parents: SHA1[],
 ): SHA1 {
-  return store.write({
+  return writeObject(store, {
     type: "commit",
     tree,
     parents,
@@ -29,18 +30,18 @@ function makeCommit(
 }
 
 function makeBlob(store: ReturnType<typeof createMemoryObjectStore>, content: string): SHA1 {
-  return store.write({ type: "blob", content: Buffer.from(content) });
+  return writeObject(store, { type: "blob", content: Buffer.from(content) });
 }
 
 function makeTree(
   store: ReturnType<typeof createMemoryObjectStore>,
   entries: Array<{ mode: string; name: string; hash: SHA1 }>,
 ): SHA1 {
-  return store.write({ type: "tree", entries });
+  return writeObject(store, { type: "tree", entries });
 }
 
 function makeTag(store: ReturnType<typeof createMemoryObjectStore>, target: SHA1): SHA1 {
-  return store.write({
+  return writeObject(store, {
     type: "tag",
     object: target,
     objectType: "commit",

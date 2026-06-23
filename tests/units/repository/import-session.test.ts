@@ -8,6 +8,8 @@ import { describe, test, expect } from "bun:test";
 
 import { createMemoryRepositoryBackend } from "@/backend/index.ts";
 import { sha1 } from "@/core/types.ts";
+import { writeObject } from "@/objects/raw.ts";
+import { encodeObject } from "@/objects/raw.ts";
 import { createPackWriter } from "@/pack/pack-writer.ts";
 import { matchRefGlob } from "@/repository/import/import-glob.ts";
 import {
@@ -25,13 +27,13 @@ import type { RemoteRef, RefAdvertisement } from "@/transport/protocol/types.ts"
 // ============================================================================
 
 function populateMockObjects(backend: ReturnType<typeof createMemoryRepositoryBackend>) {
-  const treeHash = backend.objects.write({
+  const treeHash = writeObject(backend.objects, {
     type: "tree",
     entries: [],
   });
 
   const createCommit = (parents: readonly string[], message: string) =>
-    backend.objects.write({
+    writeObject(backend.objects, {
       type: "commit",
       tree: treeHash,
       parents: parents.map((parent) => sha1(parent)),
@@ -926,13 +928,13 @@ describe("apply 写 ref", () => {
     const { objects } = backend;
 
     // 创建空 tree
-    const treeHash = objects.write({
+    const treeHash = writeObject(objects, {
       type: "tree",
       entries: [],
     });
 
     // 创建 commit
-    const commitHash = objects.write({
+    const commitHash = writeObject(objects, {
       type: "commit",
       tree: treeHash,
       parents: [],
@@ -942,7 +944,7 @@ describe("apply 写 ref", () => {
     });
 
     // 创建第二个 commit（用于分支推进）
-    const commitHash2 = objects.write({
+    const commitHash2 = writeObject(objects, {
       type: "commit",
       tree: treeHash,
       parents: [commitHash],
@@ -953,7 +955,7 @@ describe("apply 写 ref", () => {
 
     // 创建 blob（用于非 commit 命名空间）
     const blobContent = Buffer.from("hello world");
-    const blobHash = objects.write({
+    const blobHash = writeObject(objects, {
       type: "blob",
       content: blobContent,
     });
@@ -1044,11 +1046,11 @@ describe("apply 写 ref", () => {
 
   test("mirror 策略允许 refs/heads/* 执行非 fast-forward 更新", async () => {
     const { backend, commitHash, commitHash2 } = createRepoWithObjects();
-    const treeHash = backend.objects.write({
+    const treeHash = writeObject(backend.objects, {
       type: "tree",
       entries: [],
     });
-    const divergedCommit = backend.objects.write({
+    const divergedCommit = writeObject(backend.objects, {
       type: "commit",
       tree: treeHash,
       parents: [commitHash],
@@ -1263,11 +1265,11 @@ describe("apply 错误处理", () => {
   function createRepoWithObjects() {
     const backend = createMemoryRepositoryBackend();
     const { objects } = backend;
-    const treeHash = objects.write({
+    const treeHash = writeObject(objects, {
       type: "tree",
       entries: [],
     });
-    const commitHash = objects.write({
+    const commitHash = writeObject(objects, {
       type: "commit",
       tree: treeHash,
       parents: [],
@@ -1394,9 +1396,9 @@ describe("apply 错误处理", () => {
     backend.refs.write("refs/heads/current", commitHash);
     backend.refs.write("refs/heads/main", "ref: refs/heads/current");
 
-    const nextCommit = backend.objects.write({
+    const nextCommit = writeObject(backend.objects, {
       type: "commit",
-      tree: backend.objects.write({
+      tree: writeObject(backend.objects, {
         type: "tree",
         entries: [],
       }),
@@ -1484,7 +1486,7 @@ describe("apply 错误处理", () => {
       type: "tree" as const,
       entries: [],
     };
-    const treeHash = sourceRepo.objects.write(tree);
+    const treeHash = writeObject(sourceRepo.objects, tree);
     const commit = {
       type: "commit" as const,
       tree: treeHash,
@@ -1493,11 +1495,11 @@ describe("apply 错误处理", () => {
       committer: { name: "Test", email: "test@test", timestamp: 0, timezone: "+0000" },
       message: "remote commit\n",
     };
-    const commitHash = sourceRepo.objects.write(commit);
+    const commitHash = writeObject(sourceRepo.objects, commit);
 
     const writer = createPackWriter();
-    writer.addObject(tree);
-    writer.addObject(commit);
+    writer.addRaw(encodeObject(tree));
+    writer.addRaw(encodeObject(commit));
     const rawResponse = Buffer.concat([encodePktLine("NAK\n"), writer.build()]);
 
     const mockV2Transport: V2GitServiceTransport = {
@@ -1530,9 +1532,9 @@ describe("apply 错误处理", () => {
     backend.refs.write("refs/heads/current", commitHash);
     backend.refs.write("refs/heads/main", "ref: refs/heads/current");
 
-    const nextCommit = backend.objects.write({
+    const nextCommit = writeObject(backend.objects, {
       type: "commit",
-      tree: backend.objects.write({
+      tree: writeObject(backend.objects, {
         type: "tree",
         entries: [],
       }),

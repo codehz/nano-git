@@ -5,6 +5,7 @@
 import { describe, test, expect } from "bun:test";
 
 import { sha1 } from "@/core/types.ts";
+import { writeObject } from "@/objects/raw.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
 import {
   mergePushBoundaries,
@@ -80,7 +81,7 @@ describe("mergePushBoundaries", () => {
 describe("computeObjectsToSend", () => {
   test("推送本地新增对象应全部包含", () => {
     const store = createMemoryObjectStore();
-    const localHash = store.write({ type: "blob", content: Buffer.from("new content") });
+    const localHash = writeObject(store, { type: "blob", content: Buffer.from("new content") });
 
     const pushRefs: PushRefItem[] = [
       {
@@ -99,8 +100,8 @@ describe("computeObjectsToSend", () => {
 
   test("远程已有的对象应被排除", () => {
     const store = createMemoryObjectStore();
-    const sharedHash = store.write({ type: "blob", content: Buffer.from("shared") });
-    const localOnlyHash = store.write({ type: "blob", content: Buffer.from("local only") });
+    const sharedHash = writeObject(store, { type: "blob", content: Buffer.from("shared") });
+    const localOnlyHash = writeObject(store, { type: "blob", content: Buffer.from("local only") });
 
     const pushRefs: PushRefItem[] = [
       {
@@ -121,7 +122,7 @@ describe("computeObjectsToSend", () => {
   test("删除操作（localHash === null）跳过对象收集", () => {
     const store = createMemoryObjectStore();
     // 创建一个对象但不被 push ref 引用（删除操作）
-    store.write({ type: "blob", content: Buffer.from("deleted content") });
+    writeObject(store, { type: "blob", content: Buffer.from("deleted content") });
 
     const pushRefs: PushRefItem[] = [
       {

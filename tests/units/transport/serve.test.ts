@@ -9,6 +9,7 @@ import { describe, test, expect } from "bun:test";
 
 import { createMemoryRepositoryBackend } from "@/backend/index.ts";
 import { sha1 } from "@/core/types.ts";
+import { writeObject } from "@/objects/raw.ts";
 import {
   encodePktLine,
   encodeDelimiterPkt,
@@ -44,19 +45,19 @@ function createTestRepo(): TestRepoFixtures {
   });
 
   // blob
-  const blobHash = backend.objects.write({
+  const blobHash = writeObject(backend.objects, {
     type: "blob" as const,
     content: Buffer.from("hello world"),
   });
 
   // tree
-  const treeHash = backend.objects.write({
+  const treeHash = writeObject(backend.objects, {
     type: "tree" as const,
     entries: [{ mode: "100644", name: "readme.txt", hash: blobHash }],
   });
 
   // first commit on main
-  const mainCommit = backend.objects.write({
+  const mainCommit = writeObject(backend.objects, {
     type: "commit" as const,
     tree: treeHash,
     parents: [],
@@ -67,7 +68,7 @@ function createTestRepo(): TestRepoFixtures {
   backend.refs.write("refs/heads/main", mainCommit);
 
   // second commit on develop
-  const developCommit = backend.objects.write({
+  const developCommit = writeObject(backend.objects, {
     type: "commit" as const,
     tree: treeHash,
     parents: [mainCommit],
@@ -78,7 +79,7 @@ function createTestRepo(): TestRepoFixtures {
   backend.refs.write("refs/heads/develop", developCommit);
 
   // tag pointing to mainCommit
-  const tagHash = backend.objects.write({
+  const tagHash = writeObject(backend.objects, {
     type: "tag" as const,
     object: mainCommit,
     objectType: "commit" as const,
@@ -335,7 +336,7 @@ describe("generateLsRefsResponse", () => {
     const { backend, mainCommit } = createTestRepo();
 
     // 创建 annotated tag ref
-    const tagHash = backend.objects.write({
+    const tagHash = writeObject(backend.objects, {
       type: "tag" as const,
       object: mainCommit,
       objectType: "commit" as const,

@@ -8,6 +8,7 @@ import { describe, test, expect } from "bun:test";
 
 import { createMemoryRepositoryBackend } from "@/backend/index.ts";
 import { sha1, type SHA1 } from "@/core/types.ts";
+import { writeObject } from "@/objects/raw.ts";
 import { encodePktLine, encodeFlushPkt } from "@/transport/protocol/pkt-line.ts";
 import {
   advertiseReceivePack,
@@ -29,15 +30,15 @@ function createTestBackend(params?: { withCommitHash?: string; extraRefs?: Map<s
     ]),
   });
 
-  const blobHash = backend.objects.write({
+  const blobHash = writeObject(backend.objects, {
     type: "blob" as const,
     content: Buffer.from("hello"),
   });
-  const treeHash = backend.objects.write({
+  const treeHash = writeObject(backend.objects, {
     type: "tree" as const,
     entries: [{ mode: "100644", name: "f.txt", hash: blobHash }],
   });
-  const commitHash = backend.objects.write({
+  const commitHash = writeObject(backend.objects, {
     type: "commit" as const,
     tree: treeHash,
     parents: [],
@@ -109,15 +110,15 @@ describe("advertiseReceivePack", () => {
       initialRefs: new Map([["HEAD", "ref: refs/heads/main"]]),
     });
 
-    const blobHash = backend.objects.write({
+    const blobHash = writeObject(backend.objects, {
       type: "blob" as const,
       content: Buffer.from("hello"),
     });
-    const treeHash = backend.objects.write({
+    const treeHash = writeObject(backend.objects, {
       type: "tree" as const,
       entries: [{ mode: "100644", name: "f.txt", hash: blobHash }],
     });
-    const commitHash = backend.objects.write({
+    const commitHash = writeObject(backend.objects, {
       type: "commit" as const,
       tree: treeHash,
       parents: [],
@@ -125,7 +126,7 @@ describe("advertiseReceivePack", () => {
       committer: { name: "T", email: "t@t", timestamp: 0, timezone: "+0000" },
       message: "init\n",
     });
-    const tagHash = backend.objects.write({
+    const tagHash = writeObject(backend.objects, {
       type: "tag" as const,
       object: commitHash,
       objectType: "commit" as const,

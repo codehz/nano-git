@@ -7,6 +7,7 @@ import { mkdirSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { encodeObject, readObject } from "@/objects/raw.ts";
 import { createPackBuilder } from "@/pack/pack-builder.ts";
 import { createPackObjectStore } from "@/pack/pack-store.ts";
 
@@ -40,8 +41,8 @@ describe("PackBuilder", () => {
     const blob1: GitBlob = { type: "blob", content: Buffer.from("file1") };
     const blob2: GitBlob = { type: "blob", content: Buffer.from("file2") };
 
-    builder.addObject(blob1);
-    builder.addObject(blob2);
+    builder.addRaw(encodeObject(blob1));
+    builder.addRaw(encodeObject(blob2));
 
     const result = builder.build();
 
@@ -56,7 +57,7 @@ describe("PackBuilder", () => {
     const builder = createPackBuilder(gitDir);
 
     const blob: GitBlob = { type: "blob", content: Buffer.from("test") };
-    const hash = builder.addObject(blob);
+    const hash = builder.addRaw(encodeObject(blob));
     builder.build();
 
     const store = createPackObjectStore(gitDir);
@@ -72,8 +73,8 @@ describe("PackBuilder", () => {
     const builder = createPackBuilder(gitDir);
     const blob: GitBlob = { type: "blob", content: Buffer.from("same content") };
 
-    const hash1 = builder.addObject(blob);
-    const hash2 = builder.addObject(blob);
+    const hash1 = builder.addRaw(encodeObject(blob));
+    const hash2 = builder.addRaw(encodeObject(blob));
     const result = builder.build();
 
     expect(hash2).toBe(hash1);
@@ -83,7 +84,9 @@ describe("PackBuilder", () => {
   test("构建和读取 tag 对象", () => {
     const gitDir = tempDir;
     const builder = createPackBuilder(gitDir);
-    const blobHash = builder.addObject({ type: "blob", content: Buffer.from("release artifact") });
+    const blobHash = builder.addRaw(
+      encodeObject({ type: "blob", content: Buffer.from("release artifact") }),
+    );
 
     const tag: GitTag = {
       type: "tag",
@@ -94,11 +97,11 @@ describe("PackBuilder", () => {
       message: "Release v1.0.0",
     };
 
-    const tagHash = builder.addObject(tag);
+    const tagHash = builder.addRaw(encodeObject(tag));
     builder.build();
 
     const store = createPackObjectStore(gitDir);
-    const obj = store.read(tagHash);
+    const obj = readObject(store, tagHash);
     expect(obj.type).toBe("tag");
     if (obj.type === "tag") {
       expect(obj.object).toBe(blobHash);

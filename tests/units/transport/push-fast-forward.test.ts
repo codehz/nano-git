@@ -8,6 +8,7 @@
 import { describe, test, expect, beforeEach } from "bun:test";
 
 import { sha1, type SHA1, type GitCommit } from "@/core/types.ts";
+import { writeObject } from "@/objects/raw.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
 import { PushError } from "@/transport/client/receive-pack/push-error.ts";
 import { checkFastForward } from "@/transport/client/receive-pack/push-policy.ts";
@@ -27,7 +28,7 @@ const AUTHOR = { name: "T", email: "t@t", timestamp: 1000, timezone: "+0000" };
  */
 function buildLinearCommits(store: ReturnType<typeof createMemoryObjectStore>) {
   // 需要先写入一个空 tree
-  const emptyTreeHash = store.write({ type: "tree", entries: [] });
+  const emptyTreeHash = writeObject(store, { type: "tree", entries: [] });
 
   const root: GitCommit = {
     type: "commit",
@@ -37,7 +38,7 @@ function buildLinearCommits(store: ReturnType<typeof createMemoryObjectStore>) {
     committer: AUTHOR,
     message: "root",
   };
-  const rootHash = store.write(root);
+  const rootHash = writeObject(store, root);
 
   const a: GitCommit = {
     type: "commit",
@@ -47,7 +48,7 @@ function buildLinearCommits(store: ReturnType<typeof createMemoryObjectStore>) {
     committer: AUTHOR,
     message: "a",
   };
-  const aHash = store.write(a);
+  const aHash = writeObject(store, a);
 
   const b: GitCommit = {
     type: "commit",
@@ -57,7 +58,7 @@ function buildLinearCommits(store: ReturnType<typeof createMemoryObjectStore>) {
     committer: AUTHOR,
     message: "b",
   };
-  const bHash = store.write(b);
+  const bHash = writeObject(store, b);
 
   const c: GitCommit = {
     type: "commit",
@@ -67,7 +68,7 @@ function buildLinearCommits(store: ReturnType<typeof createMemoryObjectStore>) {
     committer: AUTHOR,
     message: "c",
   };
-  const cHash = store.write(c);
+  const cHash = writeObject(store, c);
 
   return { root: rootHash, a: aHash, b: bHash, c: cHash };
 }
@@ -76,7 +77,7 @@ function buildLinearCommits(store: ReturnType<typeof createMemoryObjectStore>) {
  * 创建一条分叉链：root → a → b (本地), root → a → d (远程)
  */
 function buildDivergentCommits(store: ReturnType<typeof createMemoryObjectStore>) {
-  const emptyTreeHash = store.write({ type: "tree", entries: [] });
+  const emptyTreeHash = writeObject(store, { type: "tree", entries: [] });
 
   const root: GitCommit = {
     type: "commit",
@@ -86,7 +87,7 @@ function buildDivergentCommits(store: ReturnType<typeof createMemoryObjectStore>
     committer: AUTHOR,
     message: "root",
   };
-  const rootHash = store.write(root);
+  const rootHash = writeObject(store, root);
 
   const a: GitCommit = {
     type: "commit",
@@ -96,7 +97,7 @@ function buildDivergentCommits(store: ReturnType<typeof createMemoryObjectStore>
     committer: AUTHOR,
     message: "a",
   };
-  const aHash = store.write(a);
+  const aHash = writeObject(store, a);
 
   // 本地分支：a → b
   const b: GitCommit = {
@@ -107,7 +108,7 @@ function buildDivergentCommits(store: ReturnType<typeof createMemoryObjectStore>
     committer: AUTHOR,
     message: "b",
   };
-  const bHash = store.write(b);
+  const bHash = writeObject(store, b);
 
   // 远程分支：a → d（分叉）
   const d: GitCommit = {
@@ -118,7 +119,7 @@ function buildDivergentCommits(store: ReturnType<typeof createMemoryObjectStore>
     committer: AUTHOR,
     message: "d",
   };
-  const dHash = store.write(d);
+  const dHash = writeObject(store, d);
 
   // 从 a 分出的另一个分支
   const e: GitCommit = {
@@ -129,7 +130,7 @@ function buildDivergentCommits(store: ReturnType<typeof createMemoryObjectStore>
     committer: AUTHOR,
     message: "e",
   };
-  const eHash = store.write(e);
+  const eHash = writeObject(store, e);
 
   return { root: rootHash, a: aHash, b: bHash, d: dHash, e: eHash };
 }
@@ -166,7 +167,7 @@ describe("isAncestor()", () => {
   test("无关的 commit 返回 false", () => {
     expect(isAncestor(store, commits.root, commits.root)).toBe(true);
     const otherStore = createMemoryObjectStore();
-    const otherTree = otherStore.write({ type: "tree", entries: [] });
+    const otherTree = writeObject(otherStore, { type: "tree", entries: [] });
     const other: GitCommit = {
       type: "commit",
       tree: otherTree,
@@ -175,7 +176,7 @@ describe("isAncestor()", () => {
       committer: AUTHOR,
       message: "other",
     };
-    const otherHash = otherStore.write(other);
+    const otherHash = writeObject(otherStore, other);
 
     expect(isAncestor(store, otherHash, commits.c)).toBe(false);
   });
@@ -192,7 +193,7 @@ describe("isAncestor()", () => {
 
   test("tag 对象 fast-forward：old=tag(t1→a), new=tag(t2→c), a 是 c 祖先", () => {
     // 创建 tag t1 → commit a, tag t2 → commit c
-    const t1Hash = store.write({
+    const t1Hash = writeObject(store, {
       type: "tag",
       object: commits.a,
       objectType: "commit",
@@ -200,7 +201,7 @@ describe("isAncestor()", () => {
       tagger: AUTHOR,
       message: "t1\n",
     });
-    const t2Hash = store.write({
+    const t2Hash = writeObject(store, {
       type: "tag",
       object: commits.c,
       objectType: "commit",
@@ -214,7 +215,7 @@ describe("isAncestor()", () => {
   });
 
   test("tag 对象 fast-forward：old=tag(t1→a), new=commit(b), a 是 b 祖先", () => {
-    const t1Hash = store.write({
+    const t1Hash = writeObject(store, {
       type: "tag",
       object: commits.a,
       objectType: "commit",
@@ -228,7 +229,7 @@ describe("isAncestor()", () => {
   });
 
   test("tag 对象 non-fast-forward：old=tag(t1→c), new=tag(t2→a), c 不是 a 祖先", () => {
-    const t1Hash = store.write({
+    const t1Hash = writeObject(store, {
       type: "tag",
       object: commits.c,
       objectType: "commit",
@@ -236,7 +237,7 @@ describe("isAncestor()", () => {
       tagger: AUTHOR,
       message: "t1\n",
     });
-    const t2Hash = store.write({
+    const t2Hash = writeObject(store, {
       type: "tag",
       object: commits.a,
       objectType: "commit",
@@ -250,7 +251,7 @@ describe("isAncestor()", () => {
   });
 
   test("tag 嵌套链：old=tag(t1→a), new=tag(t2→tag(t3→c)), a 是 c 祖先", () => {
-    const t3Hash = store.write({
+    const t3Hash = writeObject(store, {
       type: "tag",
       object: commits.c,
       objectType: "commit",
@@ -258,7 +259,7 @@ describe("isAncestor()", () => {
       tagger: AUTHOR,
       message: "t3\n",
     });
-    const t2Hash = store.write({
+    const t2Hash = writeObject(store, {
       type: "tag",
       object: t3Hash,
       objectType: "tag",
@@ -266,7 +267,7 @@ describe("isAncestor()", () => {
       tagger: AUTHOR,
       message: "t2 → t3\n",
     });
-    const t1Hash = store.write({
+    const t1Hash = writeObject(store, {
       type: "tag",
       object: commits.a,
       objectType: "commit",
@@ -283,7 +284,7 @@ describe("isAncestor()", () => {
     // 模拟 shallow fetch 后本地只有部分 commit 链的场景
     // 链为：root → a，但 a 的后续被截断；实际 remoteHash 在更深的上游
     const shallowStore = createMemoryObjectStore();
-    const emptyTree = shallowStore.write({ type: "tree", entries: [] });
+    const emptyTree = writeObject(shallowStore, { type: "tree", entries: [] });
 
     const root: GitCommit = {
       type: "commit",
@@ -293,7 +294,7 @@ describe("isAncestor()", () => {
       committer: AUTHOR,
       message: "root",
     };
-    const rootHash = shallowStore.write(root);
+    const rootHash = writeObject(shallowStore, root);
 
     const a: GitCommit = {
       type: "commit",
@@ -303,7 +304,7 @@ describe("isAncestor()", () => {
       committer: AUTHOR,
       message: "a",
     };
-    const aHash = shallowStore.write(a);
+    const aHash = writeObject(shallowStore, a);
 
     // b 不写入 store，模拟 shallow boundary
     const bHash = sha1("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
@@ -317,7 +318,7 @@ describe("isAncestor()", () => {
       committer: AUTHOR,
       message: "c",
     };
-    const cHash = shallowStore.write(c);
+    const cHash = writeObject(shallowStore, c);
 
     // 显式传递 shallowBoundaries 告知 bHash 是已知 shallow 边界
     const shallowSet = new Set([bHash]);
@@ -430,18 +431,18 @@ describe("checkFastForward()", () => {
   test("多个更新共享边界集合时，不应把其他 ref 的远端 tip 当作当前 ref 的合法缺失边界", () => {
     const boundaryHash = sha1("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
 
-    const localForMain = store.write({
+    const localForMain = writeObject(store, {
       type: "commit" as const,
-      tree: store.write({ type: "tree", entries: [] }),
+      tree: writeObject(store, { type: "tree", entries: [] }),
       parents: [boundaryHash],
       author: AUTHOR,
       committer: AUTHOR,
       message: "local main child of missing boundary",
     });
 
-    const localForFeature = store.write({
+    const localForFeature = writeObject(store, {
       type: "commit" as const,
-      tree: store.write({ type: "tree", entries: [] }),
+      tree: writeObject(store, { type: "tree", entries: [] }),
       parents: [boundaryHash],
       author: AUTHOR,
       committer: AUTHOR,
@@ -544,7 +545,7 @@ describe("checkFastForward()", () => {
 
   test("自定义命名空间 annotated tag fast-forward 更新应通过", () => {
     // 创建 tag t1 → commit a, tag t2 → commit c（c 是 a 后代）
-    const t1Hash = store.write({
+    const t1Hash = writeObject(store, {
       type: "tag",
       object: commits.a,
       objectType: "commit",
@@ -552,7 +553,7 @@ describe("checkFastForward()", () => {
       tagger: AUTHOR,
       message: "t1\n",
     });
-    const t2Hash = store.write({
+    const t2Hash = writeObject(store, {
       type: "tag",
       object: commits.c,
       objectType: "commit",
@@ -575,7 +576,7 @@ describe("checkFastForward()", () => {
 
   test("自定义命名空间 annotated tag non-fast-forward 应拒绝", () => {
     // t1→c, t2→a（a 不是 c 后代 → non-fast-forward）
-    const t1Hash = store.write({
+    const t1Hash = writeObject(store, {
       type: "tag",
       object: commits.c,
       objectType: "commit",
@@ -583,7 +584,7 @@ describe("checkFastForward()", () => {
       tagger: AUTHOR,
       message: "t1\n",
     });
-    const t2Hash = store.write({
+    const t2Hash = writeObject(store, {
       type: "tag",
       object: commits.a,
       objectType: "commit",
@@ -605,11 +606,11 @@ describe("checkFastForward()", () => {
   });
 
   test("自定义命名空间 non-commit（同 blob, 不同 tag）应拒绝", () => {
-    const blobHash = store.write({
+    const blobHash = writeObject(store, {
       type: "blob",
       content: Buffer.from("same blob"),
     });
-    const t1Hash = store.write({
+    const t1Hash = writeObject(store, {
       type: "tag",
       object: blobHash,
       objectType: "blob",
@@ -617,7 +618,7 @@ describe("checkFastForward()", () => {
       tagger: AUTHOR,
       message: "t1\n",
     });
-    const t2Hash = store.write({
+    const t2Hash = writeObject(store, {
       type: "tag",
       object: blobHash,
       objectType: "blob",
@@ -640,11 +641,11 @@ describe("checkFastForward()", () => {
   });
 
   test("自定义命名空间 non-commit（同 blob, 不同 tag）设 force 可通过", () => {
-    const blobHash = store.write({
+    const blobHash = writeObject(store, {
       type: "blob",
       content: Buffer.from("same blob"),
     });
-    const t1Hash = store.write({
+    const t1Hash = writeObject(store, {
       type: "tag",
       object: blobHash,
       objectType: "blob",
@@ -652,7 +653,7 @@ describe("checkFastForward()", () => {
       tagger: AUTHOR,
       message: "t1\n",
     });
-    const t2Hash = store.write({
+    const t2Hash = writeObject(store, {
       type: "tag",
       object: blobHash,
       objectType: "blob",
@@ -674,7 +675,7 @@ describe("checkFastForward()", () => {
   });
 
   test("自定义命名空间 non-commit（轻量 blob→blob）应拒绝", () => {
-    const blobA = store.write({ type: "blob", content: Buffer.from("blob A") });
+    const blobA = writeObject(store, { type: "blob", content: Buffer.from("blob A") });
 
     const items = [
       {
@@ -690,8 +691,8 @@ describe("checkFastForward()", () => {
   });
 
   test("自定义命名空间 non-commit（不同 blob）应拒绝", () => {
-    const blobA = store.write({ type: "blob", content: Buffer.from("blob A") });
-    const blobB = store.write({ type: "blob", content: Buffer.from("blob B") });
+    const blobA = writeObject(store, { type: "blob", content: Buffer.from("blob A") });
+    const blobB = writeObject(store, { type: "blob", content: Buffer.from("blob B") });
 
     const items = [
       {
@@ -706,8 +707,8 @@ describe("checkFastForward()", () => {
   });
 
   test("自定义命名空间 non-commit（不同 blob）设 force 可通过", () => {
-    const blobA = store.write({ type: "blob", content: Buffer.from("blob A") });
-    const blobB = store.write({ type: "blob", content: Buffer.from("blob B") });
+    const blobA = writeObject(store, { type: "blob", content: Buffer.from("blob A") });
+    const blobB = writeObject(store, { type: "blob", content: Buffer.from("blob B") });
 
     const items = [
       {
@@ -722,7 +723,7 @@ describe("checkFastForward()", () => {
   });
 
   test("自定义命名空间 annotated tag 嵌套链 fast-forward 应通过", () => {
-    const t3Hash = store.write({
+    const t3Hash = writeObject(store, {
       type: "tag",
       object: commits.c,
       objectType: "commit",
@@ -730,7 +731,7 @@ describe("checkFastForward()", () => {
       tagger: AUTHOR,
       message: "t3\n",
     });
-    const t2Hash = store.write({
+    const t2Hash = writeObject(store, {
       type: "tag",
       object: t3Hash,
       objectType: "tag",
@@ -738,7 +739,7 @@ describe("checkFastForward()", () => {
       tagger: AUTHOR,
       message: "t2\n",
     });
-    const t1Hash = store.write({
+    const t1Hash = writeObject(store, {
       type: "tag",
       object: commits.a,
       objectType: "commit",
