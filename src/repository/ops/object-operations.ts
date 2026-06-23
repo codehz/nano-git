@@ -5,6 +5,7 @@
 import { readFileSync } from "node:fs";
 
 import { hashObject } from "../../core/hash.ts";
+import { writeObject, readObject, tryReadObject } from "../../objects/raw.ts";
 import { createV2HttpTransport } from "../../transport/client/upload-pack/http.ts";
 import { objectInfo } from "../../transport/client/upload-pack/object-info.ts";
 import {
@@ -18,8 +19,8 @@ import type {
   GitAuthor,
   GitBlob,
   GitCommit,
-  GitObject,
   GitTree,
+  GitObject,
   SHA1,
   TreeEntry,
 } from "../../core/types.ts";
@@ -35,10 +36,12 @@ import type { RepositoryObjectOperations } from "./object-types.ts";
  * const hash = ops.writeBlob(Buffer.from("hello"));
  * ```
  */
-export function createObjectRepositoryOperations(objects: ObjectDatabase): RepositoryObjectOperations {
+export function createObjectRepositoryOperations(
+  objects: ObjectDatabase,
+): RepositoryObjectOperations {
   function writeBlob(data: Buffer): SHA1 {
     const blob: GitBlob = { type: "blob", content: data };
-    return objects.write(blob);
+    return writeObject(objects, blob);
   }
 
   return {
@@ -53,11 +56,11 @@ export function createObjectRepositoryOperations(objects: ObjectDatabase): Repos
     },
 
     catFile(hash: SHA1): GitObject {
-      return objects.read(hash);
+      return readObject(objects, hash);
     },
 
     catFileType(hash: SHA1): string {
-      return objects.read(hash).type;
+      return readObject(objects, hash).type;
     },
 
     listObjects(): SHA1[] {
@@ -70,7 +73,7 @@ export function createObjectRepositoryOperations(objects: ObjectDatabase): Repos
 
     createTree(entries: TreeEntry[]): SHA1 {
       const tree: GitTree = { type: "tree", entries };
-      return objects.write(tree);
+      return writeObject(objects, tree);
     },
 
     createCommit(
@@ -88,7 +91,7 @@ export function createObjectRepositoryOperations(objects: ObjectDatabase): Repos
         committer: committer ?? author,
         message,
       };
-      return objects.write(commit);
+      return writeObject(objects, commit);
     },
 
     patchTree(rootHash: SHA1, ops: TreePatchOp[]): TreePatchResult {

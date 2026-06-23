@@ -5,6 +5,8 @@
 import { readFileSync, readdirSync, lstatSync, readlinkSync } from "node:fs";
 import { join } from "node:path";
 
+import { writeObject } from "../../objects/raw.ts";
+
 import type { GitBlob, GitTree, TreeEntry, SHA1 } from "../../core/types.ts";
 import type { ObjectDatabase } from "../../odb/types.ts";
 
@@ -47,7 +49,7 @@ export function writeTreeRecursive(store: ObjectDatabase, dirPath: string): SHA1
       const target = readlinkSync(fullPath);
       const content = Buffer.from(target, "utf-8");
       const blob: GitBlob = { type: "blob", content };
-      const blobHash = store.write(blob);
+      const blobHash = writeObject(store, blob);
 
       entries.push({
         mode: "120000",
@@ -57,7 +59,7 @@ export function writeTreeRecursive(store: ObjectDatabase, dirPath: string): SHA1
     } else if (stat.isFile()) {
       const content = readFileSync(fullPath);
       const blob: GitBlob = { type: "blob", content };
-      const blobHash = store.write(blob);
+      const blobHash = writeObject(store, blob);
       const mode = stat.mode & 0o111 ? "100755" : "100644";
 
       entries.push({
@@ -69,5 +71,5 @@ export function writeTreeRecursive(store: ObjectDatabase, dirPath: string): SHA1
   }
 
   const tree: GitTree = { type: "tree", entries };
-  return store.write(tree);
+  return writeObject(store, tree);
 }

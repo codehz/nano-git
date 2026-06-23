@@ -13,6 +13,8 @@
  * - 不存在的路径 delete/rename 会抛出异常
  */
 
+import { writeObject, readObject } from "../../objects/raw.ts";
+
 import type { GitTree, SHA1, TreeEntry } from "../../core/types.ts";
 import type { ObjectDatabase } from "../../odb/types.ts";
 
@@ -169,7 +171,7 @@ function findEntryByPath(objects: ObjectDatabase, treeHash: SHA1, path: string):
   let currentHash = treeHash;
 
   for (let i = 0; i < segments.length; i++) {
-    const obj = objects.read(currentHash);
+    const obj = readObject(objects, currentHash);
     if (obj.type !== "tree") {
       throw new Error(
         `Expected tree at '${segments.slice(0, i).join("/") || "/"}', got '${obj.type}'`,
@@ -387,7 +389,7 @@ function applyPatchRecursive(
 
   // ---- Step 4: 写入新 tree ----
   const newTree: GitTree = { type: "tree", entries: finalEntries };
-  const newHash = objects.write(newTree);
+  const newHash = writeObject(objects, newTree);
   writtenTrees.push(newHash);
 
   return { hash: newHash, written: writtenTrees };
@@ -404,7 +406,7 @@ function readTreeEntries(objects: ObjectDatabase, treeHash: SHA1 | null): TreeEn
   if (treeHash === null) {
     return [];
   }
-  const obj = objects.read(treeHash);
+  const obj = readObject(objects, treeHash);
   if (obj.type !== "tree") {
     throw new Error(`Expected tree object, got '${obj.type}' for hash '${treeHash}'`);
   }

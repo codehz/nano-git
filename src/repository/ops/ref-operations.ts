@@ -3,6 +3,7 @@
  */
 
 import { RepositoryError } from "../../core/errors.ts";
+import { writeObject, readObject } from "../../objects/raw.ts";
 import { branchNameToRef, tagNameToRef } from "../../refs/names.ts";
 import { resolveRefHash, resolveSymbolicRef, resolveTargetHash } from "../../refs/resolve.ts";
 import { HEAD_REF, HEADS_PREFIX, TAGS_PREFIX } from "../../refs/types.ts";
@@ -96,7 +97,7 @@ export function createRefRepositoryOperations(backend: RepositoryBackend): Repos
       const ref = tagNameToRef(name);
       ensureRefDoesNotExist(backend, ref, "Tag", name);
 
-      const resolvedObjectType = objectType ?? objects.read(target).type;
+      const resolvedObjectType = objectType ?? readObject(objects, target).type;
       const tag: GitTag = {
         type: "tag",
         object: target,
@@ -105,7 +106,7 @@ export function createRefRepositoryOperations(backend: RepositoryBackend): Repos
         tagger,
         message,
       };
-      const tagHash = objects.write(tag);
+      const tagHash = writeObject(objects, tag);
       refs.write(ref, tagHash);
       return tagHash;
     },
