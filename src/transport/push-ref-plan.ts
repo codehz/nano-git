@@ -18,7 +18,8 @@
  * ```
  */
 
-import { HEADS_PREFIX, resolveSymbolicRef } from "../refs/index.ts";
+import { resolveSymbolicRef } from "../refs/resolve.ts";
+import { HEADS_PREFIX } from "../refs/types.ts";
 import { HEAD_REF } from "../refs/types.ts";
 import { PushError } from "./push-error.ts";
 

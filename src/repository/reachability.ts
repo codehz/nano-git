@@ -4,11 +4,12 @@
  * 负责从 refs 出发遍历所有可达 Git 对象。
  */
 
-import { HEAD_REF, HEADS_PREFIX, TAGS_PREFIX, resolveRefHash } from "../refs/index.ts";
+import { resolveRefHash } from "../refs/resolve.ts";
+import { HEAD_REF, HEADS_PREFIX, TAGS_PREFIX } from "../refs/types.ts";
 
 import type { SHA1 } from "../core/types.ts";
-import type { ObjectStore } from "../odb/index.ts";
-import type { RefStore } from "../refs/index.ts";
+import type { ObjectStore } from "../odb/types.ts";
+import type { RefStore } from "../refs/types.ts";
 
 function listRootRefs(refs: RefStore): string[] {
   const rootRefs = new Set<string>([HEAD_REF]);

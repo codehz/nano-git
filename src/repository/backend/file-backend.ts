@@ -9,14 +9,14 @@ import { existsSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 
 import { type SHA1 } from "../../core/types.ts";
-import { createFileObjectStore } from "../../odb/index.ts";
+import { createFileObjectStore } from "../../odb/file.ts";
 import { createCompositeObjectStore } from "../../odb/pack/composite-store.ts";
 import { createPackBuilder } from "../../odb/pack/pack-builder.ts";
 import { createPackObjectStore } from "../../odb/pack/pack-store.ts";
-import { createFileRefStore } from "../../refs/index.ts";
+import { createFileRefStore } from "../../refs/file.ts";
 import { createFileShallowStore } from "../../shallow/file.ts";
 
-import type { ObjectSource } from "../../odb/index.ts";
+import type { ObjectSource } from "../../odb/types.ts";
 import type { PackRepackOptions, RepositoryBackend, RepositoryPackSupport } from "./types.ts";
 
 /** 创建文件系统仓库后端的可选参数 */

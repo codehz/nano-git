@@ -4,8 +4,9 @@
  * 适用于测试和临时操作场景。
  */
 
-import { createMemoryObjectStore } from "../../odb/index.ts";
-import { createMemoryRefStore, HEAD_REF, HEADS_PREFIX } from "../../refs/index.ts";
+import { createMemoryObjectStore } from "../../odb/memory.ts";
+import { createMemoryRefStore } from "../../refs/memory.ts";
+import { HEAD_REF, HEADS_PREFIX } from "../../refs/types.ts";
 import { createMemoryShallowStore } from "../../shallow/memory.ts";
 
 import type { SHA1 } from "../../core/types.ts";

@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { sha1 } from "@/core/types.ts";
-import { createFileObjectStore } from "@/odb/index.ts";
+import { createFileObjectStore } from "@/odb/file.ts";
 
 import type { GitBlob, GitTree, GitCommit, GitAuthor } from "@/core/types.ts";
 

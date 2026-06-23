@@ -11,13 +11,10 @@ import { join } from "node:path";
 
 import { CircularReferenceError, RefNotFoundError } from "@/core/errors.ts";
 import { sha1 } from "@/core/types.ts";
-import {
-  createFileRefStore,
-  createMemoryRefStore,
-  resolveRefHash,
-  resolveSymbolicRef,
-  validateRefPrefix,
-} from "@/refs/index.ts";
+import { createFileRefStore } from "@/refs/file.ts";
+import { createMemoryRefStore } from "@/refs/memory.ts";
+import { validateRefPrefix } from "@/refs/names.ts";
+import { resolveRefHash, resolveSymbolicRef } from "@/refs/resolve.ts";
 
 describe("createMemoryRefStore()", () => {
   test("会复制初始 Map，避免外部后续修改污染存储", () => {

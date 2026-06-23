@@ -10,7 +10,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { RefNotFoundError, TransactionError } from "@/core/errors.ts";
-import { createFileRefStore, createMemoryRefStore } from "@/refs/index.ts";
+import { createFileRefStore } from "@/refs/file.ts";
+import { createMemoryRefStore } from "@/refs/memory.ts";
 
 import type { RefStore, RefTransaction, RefTransactionHook } from "@/refs/types.ts";
 

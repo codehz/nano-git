@@ -5,7 +5,7 @@
 import { describe, test, expect, beforeEach } from "bun:test";
 
 import { sha1 } from "@/core/types.ts";
-import { createMemoryObjectStore } from "@/odb/index.ts";
+import { createMemoryObjectStore } from "@/odb/memory.ts";
 
 import type { GitBlob, GitTree, GitCommit, GitAuthor } from "@/core/types.ts";
 

@@ -6,8 +6,8 @@
  * 这些操作对应 git 的 plumbing 命令。
  */
 
-import type { ObjectStore } from "../odb/index.ts";
-import type { RefStore } from "../refs/index.ts";
+import type { ObjectStore } from "../odb/types.ts";
+import type { RefStore } from "../refs/types.ts";
 import type { ShallowStore } from "../shallow/types.ts";
 import type { RepositoryPackSupport } from "./backend/index.ts";
 import type { RepositoryFetchOperations } from "./fetch-types.ts";

@@ -7,7 +7,8 @@ import { mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createMemoryObjectStore, createFileObjectStore } from "@/odb/index.ts";
+import { createFileObjectStore } from "@/odb/file.ts";
+import { createMemoryObjectStore } from "@/odb/memory.ts";
 import { createCompositeObjectStore } from "@/odb/pack/composite-store.ts";
 import { createPackBuilder } from "@/odb/pack/pack-builder.ts";
 import { createPackObjectStore } from "@/odb/pack/pack-store.ts";

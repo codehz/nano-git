@@ -15,7 +15,7 @@ import { join } from "node:path";
 import { git, gitInit, createTempDir, cleanupDir, createFile, FIXED_AUTHOR } from "../helpers.ts";
 import { startGitHttpBackendServer } from "./http-server.ts";
 import { sha1 } from "@/core/types.ts";
-import { HEAD_REF, HEADS_PREFIX } from "@/refs/index.ts";
+import { HEAD_REF, HEADS_PREFIX } from "@/refs/types.ts";
 import { createMemoryRepository } from "@/repository/index.ts";
 import { encodeFlushPkt, encodePktLine, parsePktLines } from "@/transport/pkt-line.ts";
 

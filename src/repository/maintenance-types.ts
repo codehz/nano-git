@@ -3,7 +3,7 @@
  */
 
 import type { SHA1 } from "../core/types.ts";
-import type { PackBuildResult } from "../odb/index.ts";
+import type { PackBuildResult } from "../odb/pack/types.ts";
 import type { RepositoryGCOptions, RepositoryRepackOptions } from "./backend/index.ts";
 
 /**
