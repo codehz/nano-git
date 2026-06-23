@@ -450,7 +450,7 @@ bun test
 
 ### 规划中（聚焦裸仓库/服务端场景）
 
-- [ ] **Git Protocol v2 服务端 push** — 服务端 receive-pack 支持
+- [ ] **Git Protocol v1 服务端 push** — 服务端 receive-pack 支持（v1 协议，暂不实现 v2 receive-pack，当前鲜有服务端和客户端支持）
 - [ ] **Partial Clone / Filter 支持** — 按需对象过滤传输
 
 ### 非目标（明确不实现）
