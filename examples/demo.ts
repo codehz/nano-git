@@ -7,6 +7,7 @@
  * 3. 创建 tree 对象
  * 4. 创建 commit 对象
  * 5. 读取和验证对象
+ * 6. Tree 遍历与增量修改
  */
 
 import {
@@ -14,6 +15,8 @@ import {
   hashObject,
   serialize,
   deserialize,
+  readTree,
+  patchTree,
   type GitBlob,
   type GitAuthor,
 } from "../src/index.ts";
@@ -179,5 +182,32 @@ for (const hash of allObjects) {
   const type = repo.catFileType(hash);
   console.log(`  ${hash} (${type})`);
 }
+
+// ============================================================================
+// 7. Tree 遍历与增量修改
+// ============================================================================
+
+console.log("\n7. Tree 遍历与增量修改");
+console.log("-".repeat(50));
+
+const allFiles = readTree(repo.objects, tree2Hash);
+console.log(`Tree2 包含 ${allFiles.length} 个文件:`);
+for (const entry of allFiles) {
+  console.log(`  ${entry.mode} ${entry.path} ${entry.hash}`);
+}
+
+// 增量修改：删除文件 + 新增文件
+const patchResult = patchTree(repo.objects, tree2Hash, [
+  { op: "delete", path: "script.sh" },
+  {
+    op: "upsert",
+    path: "CHANGELOG.md",
+    mode: "100644",
+    hash: repo.writeBlob(Buffer.from("# Changelog\n")),
+  },
+]);
+
+console.log(`\nPatch 后新的 root tree: ${patchResult.rootHash}`);
+console.log(`新写入的 tree 对象: ${patchResult.writtenTrees.length}`);
 
 console.log("\n=== 演示完成 ===");

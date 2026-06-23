@@ -12,8 +12,9 @@
 - ✅ **Packfile 支持** — 读取、写入、索引生成、delta 编解码
 - ✅ **引用管理** — refs 验证、解析、存储（文件系统 + 内存）
 - ✅ **仓库 API** — 类似 Git plumbing 命令的高层接口（init、hash-object、cat-file、commit-tree、update-ref 等）
+- ✅ **增量 Tree Patch** — 不经暂存区直接修改目录结构（`patchTree`、`readTree`、`walkTree`）
 - ✅ **可达性遍历与 GC** — 基于 refs 的可达对象收集、repack、gc
-- ✅ **Smart HTTP 导入客户端** — 基于 Bun fetch 的 Git 协议客户端，支持 Import Session、对象导入与自定义 ref 物化，支持 Bearer Token 与自定义请求头认证
+- ✅ **Smart HTTP 客户端** — 基于 Bun fetch 的 Git 协议客户端，支持 `fetch()`/`push()` 与自定义 ref 物化
 - ✅ **类型安全** — 完整的 TypeScript 类型定义
 
 ## 安装
@@ -24,21 +25,34 @@ bun install
 
 ## 快速开始
 
-### 基础哈希计算
+### 5 行完成"创建 → 写入 → 提交"
 
 ```typescript
-import { hashObject } from "nano-git";
+import { createMemoryRepository } from "nano-git";
 
-// 计算 "hello world" 的 blob 哈希
-const hash = hashObject("blob", Buffer.from("hello world"));
-console.log(hash); // => "95d09f2b10159347eece71399a7e2e907ea3df4f"
-
-// 与 git hash-object 完全一致
-// $ echo -n "hello world" | git hash-object --stdin
-// 95d09f2b10159347eece71399a7e2e907ea3df4f
+const repo = createMemoryRepository();
+const treeHash = repo.createTree([
+  { mode: "100644", name: "hello.txt", hash: repo.writeBlob(Buffer.from("Hello!")) },
+]);
+const commitHash = repo.createCommit(treeHash, [], "Initial commit", {
+  name: "You",
+  email: "you@example.com",
+  timestamp: Math.floor(Date.now() / 1000),
+  timezone: "+0800",
+});
+console.log(`Created commit: ${commitHash}`);
 ```
 
-### 使用内存仓库
+### 从远端仓库拉取
+
+```typescript
+const repo = initRepository("/tmp/project");
+await repo.fetch("https://github.com/user/repo.git");
+// 所有分支和标签已就绪
+console.log(repo.listBranches());
+```
+
+### 内存仓库完整工作流
 
 ```typescript
 import { createMemoryRepository, type GitAuthor } from "nano-git";
