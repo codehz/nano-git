@@ -1,5 +1,5 @@
 /**
- * 对象图算法（纯 ObjectStore 版本）
+ * 对象图算法（纯 ObjectSource 版本）
  *
  * 提供 commit ancestry / peel / reachability 等图算法基础设施，
  * 供 fetch 和 push 等上层模块共同依赖，避免基础算法挂在场景编排模块中。

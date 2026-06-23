@@ -25,8 +25,8 @@ tests/
 │   │       ├── delta.test.ts        # Delta 编解码
 │   │       ├── packfile.test.ts     # Packfile 读写
 │   │       ├── pack-index.test.ts   # 索引文件读写
-│   │       ├── pack-store.test.ts   # PackObjectStore
-│   │       ├── composite-store.test.ts # CompositeObjectStore
+│   │       ├── pack-store.test.ts   # PackObjectSource
+│   │       ├── composite-store.test.ts # CompositeObjectDatabase
 │   │       └── pack-builder.test.ts # PackBuilder
 │   ├── refs.test.ts    # 引用存储和工具函数
 │   └── repository/     # 仓库高层 API

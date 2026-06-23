@@ -15,9 +15,9 @@
  * | `nano-git/sha1` | SHA-1 哈希工具 | `node:crypto` |
  * | `nano-git/errors` | 所有错误类 | 纯定义 |
  * | `nano-git/hash-file` | 文件 SHA-1 计算 | `node:fs` |
- * | `nano-git/objects` | 对象序列化/反序列化 | 纯 TS |
- * | `nano-git/odb/memory` | 内存对象存储 | 纯 TS |
- * | `nano-git/odb/file` | 文件对象存储 | `node:fs` + `node:zlib` |
+ * | `nano-git/objects` | 对象序列化/反序列化 + raw 转换 helper | 纯 TS |
+ * | `nano-git/odb/memory` | 内存对象数据库（ObjectDatabase） | 纯 TS |
+ * | `nano-git/odb/file` | 文件对象数据库（ObjectDatabase） | `node:fs` + `node:zlib` |
  * | `nano-git/pack` | Packfile 读写 | `node:fs` + `node:zlib` |
  * | `nano-git/refs/memory` | 内存 Refs 存储 | 纯 TS |
  * | `nano-git/refs/file` | 文件 Refs 存储 | `node:fs` |

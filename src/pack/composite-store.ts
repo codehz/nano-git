@@ -179,18 +179,4 @@ export class CompositeObjectDatabase implements ObjectDatabase {
 
     return Array.from(hashes).sort();
   }
-
-  /**
-   * 获取主数据库
-   */
-  getPrimary(): ObjectDatabase {
-    return this.primary;
-  }
-
-  /**
-   * 获取所有辅助源
-   */
-  getSecondary(): ObjectSource[] {
-    return [...this.secondary];
-  }
 }

@@ -3,7 +3,7 @@
  *
  * GC 编排策略：
  * 1. 如果有 pack 支持，先 repack 可达对象（替换旧 pack）
- * 2. 如果后端 ObjectStore 支持 delete，清理不可达的 loose 对象
+ * 2. 如果后端 ObjectDatabase 支持 delete，清理不可达的 loose 对象
  * 3. 刷新 pack 视图
  *
  * 不再依赖 RepositoryPackSupport.gc()——GC 是仓库层的编排职责，
