@@ -16,7 +16,7 @@ import {
   cleanupDir,
   FIXED_AUTHOR,
 } from "./helpers.ts";
-import { openRepository } from "@/repository/index.ts";
+import { openRepository } from "@/repository/file.ts";
 
 import type { GitAuthor } from "@/core/types.ts";
 

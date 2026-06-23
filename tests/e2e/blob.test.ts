@@ -17,7 +17,7 @@ import {
   cleanupDir,
 } from "./helpers.ts";
 import { sha1 } from "@/core/types.ts";
-import { openRepository } from "@/repository/index.ts";
+import { openRepository } from "@/repository/file.ts";
 
 describe("Blob 兼容性", () => {
   let tempDir: string;

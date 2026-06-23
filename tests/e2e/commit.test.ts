@@ -19,7 +19,7 @@ import {
   FIXED_AUTHOR,
 } from "./helpers.ts";
 import { sha1 } from "@/core/types.ts";
-import { openRepository } from "@/repository/index.ts";
+import { openRepository } from "@/repository/file.ts";
 
 import type { GitAuthor } from "@/core/types.ts";
 

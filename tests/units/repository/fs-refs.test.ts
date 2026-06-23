@@ -8,9 +8,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { sha1 } from "@/core/types.ts";
-import { initRepository, type Repository } from "@/repository/index.ts";
+import { initRepository } from "@/repository/file.ts";
 
 import type { GitAuthor } from "@/core/types.ts";
+import type { Repository } from "@/repository/types.ts";
 
 const testAuthor: GitAuthor = {
   name: "Test User",

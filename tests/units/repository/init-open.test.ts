@@ -12,7 +12,9 @@ import {
   createMemoryRepositoryBackend,
   type RepositoryBackend,
 } from "@/backend/index.ts";
-import { createRepository, initRepository, openRepository } from "@/repository/index.ts";
+import { createRepository } from "@/repository/create.ts";
+import { initRepository } from "@/repository/file.ts";
+import { openRepository } from "@/repository/file.ts";
 
 describe("initRepository()", () => {
   let tempDir: string;

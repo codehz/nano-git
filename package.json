@@ -4,11 +4,9 @@
   "module": "src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./core/types": "./src/core/types/index.ts",
     "./objects": "./src/objects/index.ts",
     "./odb/memory": "./src/odb/memory.ts",
     "./odb/file": "./src/odb/file.ts",
-    "./pack": "./src/pack/index.ts",
     "./refs/memory": "./src/refs/memory.ts",
     "./refs/file": "./src/refs/file.ts",
     "./refs/names": "./src/refs/names.ts",

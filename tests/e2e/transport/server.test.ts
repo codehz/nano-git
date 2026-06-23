@@ -11,7 +11,8 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { createTempDir, cleanupDir, gitWithTimeout } from "../helpers.ts";
 import { startNanoGitServer, createDefaultBackend } from "./nano-git-server.ts";
 import { sha1, type SHA1 } from "@/core/types.ts";
-import { createMemoryRepository, initRepository } from "@/repository/index.ts";
+import { initRepository } from "@/repository/file.ts";
+import { createMemoryRepository } from "@/repository/memory.ts";
 import { createV2HttpTransport } from "@/transport/client/git-transport.ts";
 
 import type { NanoGitServer } from "./nano-git-server.ts";

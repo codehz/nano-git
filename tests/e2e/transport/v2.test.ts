@@ -15,7 +15,7 @@ import { cleanupDir, createTempDir, gitRevParse } from "../helpers.ts";
 import { createServerRepo } from "./helpers.ts";
 import { startGitHttpBackendServer } from "./http-server.ts";
 import { sha1 } from "@/core/types.ts";
-import { initRepository } from "@/repository/index.ts";
+import { initRepository } from "@/repository/file.ts";
 import { v2Fetch } from "@/transport/client/fetch.ts";
 import { createV2HttpTransport } from "@/transport/client/git-transport.ts";
 import { lsRefs, lsRefsToRefAdvertisement } from "@/transport/client/ls-refs.ts";
@@ -135,7 +135,7 @@ describe("v2 协议 - object-info 命令", () => {
     const hasObjectInfo = caps.commands.some((c) => c.name === "object-info");
     if (!hasObjectInfo) return;
 
-    const { createMemoryRepository } = await import("@/repository/index.ts");
+    const { createMemoryRepository } = await import("@/repository/memory.ts");
     const repo = createMemoryRepository();
     const info = await repo.fetchObjectInfo(url, [mainCommitHash]);
     expect(info.objects.length).toBeGreaterThan(0);

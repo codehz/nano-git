@@ -5,11 +5,12 @@
 import { describe, test, expect, beforeEach } from "bun:test";
 
 import { sha1, type SHA1 } from "@/core/types.ts";
-import { createMemoryRepository, type Repository } from "@/repository/index.ts";
+import { createMemoryRepository } from "@/repository/memory.ts";
 import { resolveEffectivePushBoundaries } from "@/repository/ops/push-resolution.ts";
 
 import type { GitAuthor } from "@/core/types.ts";
 import type { RepositoryPushOptions } from "@/repository/ops/push-types.ts";
+import type { Repository } from "@/repository/types.ts";
 
 const testAuthor: GitAuthor = {
   name: "Test User",

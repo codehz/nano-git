@@ -19,7 +19,8 @@ import { sha1, type SHA1, type GitCommit } from "@/core/types.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
 import { createFileShallowStore } from "@/refs/shallow/file.ts";
 import { createMemoryShallowStore } from "@/refs/shallow/memory.ts";
-import { createRepository, createMemoryRepository } from "@/repository/index.ts";
+import { createRepository } from "@/repository/create.ts";
+import { createMemoryRepository } from "@/repository/memory.ts";
 import { collectReachable } from "@/transport/shared/object-graph.ts";
 
 import type { ObjectStore } from "@/odb/types.ts";

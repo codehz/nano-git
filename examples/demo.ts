@@ -12,8 +12,9 @@
 
 import { hashObject } from "../src/core/hash.ts";
 import { serialize, deserialize } from "../src/objects/index.ts";
-import { readTree, patchTree } from "../src/repository/index.ts";
 import { createMemoryRepository } from "../src/repository/memory.ts";
+import { patchTree } from "../src/repository/tree/tree-patch.ts";
+import { readTree } from "../src/repository/tree/tree-walk.ts";
 
 import type { GitBlob, GitAuthor } from "../src/core/types.ts";
 

@@ -8,10 +8,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { hashToPath } from "@/core/hash.ts";
-import { createPackBuilder } from "@/pack/index.ts";
-import { initRepository, openRepository, type Repository } from "@/repository/index.ts";
+import { createPackBuilder } from "@/pack/pack-builder.ts";
+import { initRepository } from "@/repository/file.ts";
+import { openRepository } from "@/repository/file.ts";
 
 import type { GitAuthor, TreeEntry } from "@/core/types.ts";
+import type { Repository } from "@/repository/types.ts";
 
 const testAuthor: GitAuthor = {
   name: "Test User",

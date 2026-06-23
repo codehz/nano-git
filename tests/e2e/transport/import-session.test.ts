@@ -12,7 +12,7 @@ import { cleanupDir, createFile, createTempDir, git, gitFsck, gitRevParse } from
 import { createServerRepo } from "./helpers.ts";
 import { startGitHttpBackendServer } from "./http-server.ts";
 import { sha1 } from "@/core/types.ts";
-import { initRepository } from "@/repository/index.ts";
+import { initRepository } from "@/repository/file.ts";
 
 describe("Import Session", () => {
   let tempDir: string;

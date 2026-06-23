@@ -21,7 +21,8 @@ import {
   createFile,
   FIXED_AUTHOR,
 } from "./helpers.ts";
-import { initRepository, openRepository } from "@/repository/index.ts";
+import { initRepository } from "@/repository/file.ts";
+import { openRepository } from "@/repository/file.ts";
 
 import type { GitAuthor } from "@/core/types.ts";
 

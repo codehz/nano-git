@@ -22,7 +22,7 @@ import {
   createFile,
 } from "./helpers.ts";
 import { sha1 } from "@/core/types.ts";
-import { openRepository } from "@/repository/index.ts";
+import { openRepository } from "@/repository/file.ts";
 
 describe("Tree 兼容性", () => {
   let tempDir: string;
