@@ -8,7 +8,6 @@
 import { existsSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 
-import { hashToPath } from "../../core/hash.ts";
 import { type SHA1 } from "../../core/types.ts";
 import { createFileObjectStore } from "../../odb/index.ts";
 import { createCompositeObjectStore } from "../../odb/pack/composite-store.ts";
@@ -18,12 +17,7 @@ import { createFileRefStore } from "../../refs/index.ts";
 import { createFileShallowStore } from "../../shallow/file.ts";
 
 import type { ObjectSource } from "../../odb/index.ts";
-import type {
-  RepositoryBackend,
-  RepositoryGCOptions,
-  RepositoryPackSupport,
-  RepositoryRepackOptions,
-} from "./types.ts";
+import type { PackRepackOptions, RepositoryBackend, RepositoryPackSupport } from "./types.ts";
 
 /** 创建文件系统仓库后端的可选参数 */
 export interface CreateFileRepositoryBackendOptions {
@@ -88,15 +82,6 @@ export function createFileRepositoryBackend(
     }
   }
 
-  function pruneLooseObjects(hashes: Iterable<SHA1>): void {
-    for (const hash of hashes) {
-      const objectPath = join(gitDir, "objects", hashToPath(hash));
-      if (existsSync(objectPath)) {
-        unlinkSync(objectPath);
-      }
-    }
-  }
-
   const packs: RepositoryPackSupport = {
     source: packSource,
     createBuilder() {
@@ -114,7 +99,7 @@ export function createFileRepositoryBackend(
     writeFromSource(source, hashes) {
       return writeFromSource(source, hashes);
     },
-    repack(source, options: RepositoryRepackOptions = {}) {
+    repack(source, options: PackRepackOptions = {}) {
       const hashes = Array.from(options.hashes ?? source.list());
       const existingChecksums = packSource.listPacks().map((pack) => pack.checksum);
       const result = writeFromSource(source, hashes);
@@ -123,23 +108,6 @@ export function createFileRepositoryBackend(
         deletePackFiles(existingChecksums, result.checksum);
       }
 
-      if (options.pruneLoose) {
-        pruneLooseObjects(hashes);
-      }
-
-      refreshPackView();
-      return result;
-    },
-    gc(reachable, options: RepositoryGCOptions = {}) {
-      const reachableHashes = Array.from(reachable);
-      const reachableSet = new Set(reachableHashes);
-      const unreachableLooseHashes = looseObjects.list().filter((hash) => !reachableSet.has(hash));
-      const result = this.repack(objects, {
-        hashes: reachableHashes,
-        replaceExistingPacks: options.replaceExistingPacks,
-        pruneLoose: options.pruneLoose ?? true,
-      });
-      pruneLooseObjects(unreachableLooseHashes);
       refreshPackView();
       return result;
     },

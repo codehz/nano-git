@@ -4,7 +4,15 @@
  * 负责对象路径计算、压缩读写与对象目录枚举。
  */
 
-import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "node:fs";
+import {
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  readdirSync,
+  statSync,
+  unlinkSync,
+} from "node:fs";
 import { join } from "node:path";
 import { deflateSync, inflateSync } from "node:zlib";
 
@@ -39,6 +47,26 @@ export function getLooseObjectPath(objectsDir: string, hash: SHA1): string {
  */
 export function hasLooseObject(objectsDir: string, hash: SHA1): boolean {
   return existsSync(getLooseObjectPath(objectsDir, hash));
+}
+
+/**
+ * 删除 loose object 文件
+ *
+ * 删除不存在的对象时静默成功（no-op）。
+ *
+ * @param objectsDir - .git/objects 目录路径
+ * @param hash - 要删除的对象哈希
+ *
+ * @example
+ * ```ts
+ * deleteLooseObject(objectsDir, hash);
+ * ```
+ */
+export function deleteLooseObject(objectsDir: string, hash: SHA1): void {
+  const objectPath = getLooseObjectPath(objectsDir, hash);
+  if (existsSync(objectPath)) {
+    unlinkSync(objectPath);
+  }
 }
 
 /**

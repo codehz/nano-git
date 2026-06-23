@@ -37,8 +37,10 @@ export interface RepositoryMaintenanceOperations {
    *
    * 默认行为：
    * - 只保留从 HEAD、分支、标签可达的对象
-   * - 删除旧 pack 文件
-   * - 删除已打包的 loose objects
+   * - 如果有 pack 支持：删除旧 pack 文件，创建包含可达对象的新 pack
+   * - 如果没有 pack 支持（如内存仓库）：只删除不可达对象
+   *
+   * @returns 有 pack 支持时返回新 pack 的构建结果，否则返回 undefined
    */
-  gc(options?: RepositoryGCOptions): PackBuildResult;
+  gc(options?: RepositoryGCOptions): PackBuildResult | undefined;
 }

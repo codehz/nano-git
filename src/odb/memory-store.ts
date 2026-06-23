@@ -47,5 +47,9 @@ export function createMemoryObjectStore(): MemoryObjectStore {
     list(): SHA1[] {
       return Array.from(store.keys());
     },
+
+    delete(hash: SHA1): void {
+      store.delete(hash);
+    },
   };
 }

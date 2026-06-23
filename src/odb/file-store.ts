@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { hashObject } from "../core/hash.ts";
 import { serializeContent } from "../objects/index.ts";
 import {
+  deleteLooseObject,
   hasLooseObject,
   listLooseObjects,
   readLooseObject,
@@ -62,6 +63,10 @@ export function createFileObjectStore(gitDir: string): ObjectStore {
 
     list(): SHA1[] {
       return listLooseObjects(objectsDir);
+    },
+
+    delete(hash: SHA1): void {
+      deleteLooseObject(objectsDir, hash);
     },
   };
 }

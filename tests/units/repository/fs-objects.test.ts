@@ -360,7 +360,7 @@ describe("文件系统仓库的对象操作", () => {
 
     expect(existsSync(danglingPath)).toBe(true);
 
-    const result = repo.gc();
+    const result = repo.gc()!;
 
     expect(result.objectCount).toBeGreaterThan(0);
     expect(existsSync(danglingPath)).toBe(false);

@@ -5,6 +5,7 @@
  */
 
 export type {
+  PackRepackOptions,
   RepositoryBackend,
   RepositoryGCOptions,
   RepositoryPackSupport,

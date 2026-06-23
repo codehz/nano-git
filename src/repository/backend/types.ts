@@ -21,16 +21,35 @@ export interface RepositoryRepackOptions {
   /** 是否在成功写入新 pack 后删除旧 pack，默认 true */
   readonly replaceExistingPacks?: boolean;
 
-  /** 是否删除已写入 pack 的 loose object 文件，默认 false */
+  /**
+   * 是否删除已写入 pack 的 loose object 文件，默认 false
+   *
+   * 此选项由仓库层（RepositoryMaintenanceOperations）处理，
+   * RepositoryPackSupport 自身不处理 loose 对象删除。
+   */
   readonly pruneLoose?: boolean;
 }
 
 /** 仓库级 gc 选项 */
 export interface RepositoryGCOptions {
-  /** 是否删除已打包的 loose objects，默认 true */
+  /** 是否删除不可达的 loose objects，默认 true */
   readonly pruneLoose?: boolean;
 
   /** 是否替换旧 pack 文件，默认 true */
+  readonly replaceExistingPacks?: boolean;
+}
+
+/**
+ * Packfile 层 repack 选项
+ *
+ * RepositoryPackSupport.repack() 的内部选项，
+ * 不包含 pruneLoose——那是仓库层的职责。
+ */
+export interface PackRepackOptions {
+  /** 要打包的对象列表，默认使用 source.list() 的全部对象 */
+  readonly hashes?: Iterable<SHA1>;
+
+  /** 是否在成功写入新 pack 后删除旧 pack，默认 true */
   readonly replaceExistingPacks?: boolean;
 }
 
@@ -40,6 +59,9 @@ export interface RepositoryGCOptions {
  * 负责：
  * - 暴露已存在的 pack 对象源
  * - 创建新的 packfile
+ *
+ * GC 的编排逻辑（计算可达对象、删除不可达 loose 对象）不在本接口职责范围内，
+ * 请使用仓库层的 RepositoryMaintenanceOperations.gc()。
  */
 export interface RepositoryPackSupport {
   /** 仅包含 packfile 中对象的只读对象源 */
@@ -55,10 +77,7 @@ export interface RepositoryPackSupport {
   writeFromSource(source: ObjectSource, hashes: Iterable<SHA1>): PackBuildResult;
 
   /** 执行仓库级 repack */
-  repack(source: ObjectSource, options?: RepositoryRepackOptions): PackBuildResult;
-
-  /** 执行基于可达对象集合的 gc */
-  gc(reachable: Iterable<SHA1>, options?: RepositoryGCOptions): PackBuildResult;
+  repack(source: ObjectSource, options?: PackRepackOptions): PackBuildResult;
 }
 
 /**
