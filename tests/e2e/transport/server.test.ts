@@ -69,9 +69,6 @@ describe("Smart HTTP 服务端 — nano-git 客户端", () => {
   });
 
   test("openImportSession 通过 v2 获取 refs", async () => {
-    const backend = createDefaultBackend();
-    const mainCommit = backend.refs.read("refs/heads/main")!;
-
     const repo = createMemoryRepository();
     const session = await repo.openImportSession({ url: server.url });
 
