@@ -598,12 +598,12 @@ export function createPlanBuilder(
     }
 
     if (v2Transport) {
-      // v2 fetch：使用 Git Wire 协议 v2 获取对象
+      // v2 fetch：使用 Git Wire 协议 v2 获取对象并写入 store
       const v2Wants = objectRoots.map((h) => h);
       const v2Haves = localHaveTips.length > 0 ? localHaveTips.map((h) => h) : undefined;
-      await v2FetchObjects(v2Transport, v2Wants, v2Haves);
+      const { objectCount } = await v2FetchObjects(backend.objects, v2Transport, v2Wants, v2Haves);
       validateLocalPreconditions(backend, localPreconditions);
-      return 0;
+      return objectCount;
     }
 
     const createTransport =

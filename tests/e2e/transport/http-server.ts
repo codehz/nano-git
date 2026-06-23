@@ -68,6 +68,30 @@ export interface GitHttpBackendServer {
 /** git http-backend 可执行文件 */
 const DEFAULT_HTTP_BACKEND = "git";
 
+/**
+ * 将 HTTP 请求头转换为 CGI 环境变量
+ *
+ * CGI 规范要求 HTTP 头以 HTTP_ 为前缀、大写、- 替换为 _。
+ * 此外，Git-Protocol 头需要特殊处理为 GIT_PROTOCOL 环境变量
+ * （git http-backend 通过 getenv("GIT_PROTOCOL") 读取）。
+ */
+function headersToCgiEnv(reqHeaders: Record<string, string>): Record<string, string> {
+  const env: Record<string, string> = {};
+
+  for (const [key, value] of Object.entries(reqHeaders)) {
+    // Git-Protocol 头 → GIT_PROTOCOL 环境变量
+    if (key === "git-protocol") {
+      env.GIT_PROTOCOL = value;
+    }
+
+    // 标准 CGI: HTTP_<NAME>
+    const cgiName = `HTTP_${key.replace(/-/g, "_").toUpperCase()}`;
+    env[cgiName] = value;
+  }
+
+  return env;
+}
+
 /** git 命令使用的环境变量 */
 const GIT_ENV: Record<string, string> = {
   GIT_AUTHOR_NAME: "E2E Test",
@@ -181,27 +205,31 @@ export function startGitHttpBackendServer(
   ): Promise<Response> {
     const url = new URL(req.url);
     const body = req.method === "POST" ? Buffer.from(await req.arrayBuffer()) : Buffer.alloc(0);
+    const requestHeaders = toHeaderRecord(req.headers);
     const service = explicitService ?? url.searchParams.get("service");
 
     requests.push({
       method: req.method,
       path: url.pathname,
       query: url.search.slice(1),
-      headers: toHeaderRecord(req.headers),
+      headers: requestHeaders,
       body,
     });
 
+    // 从客户端请求转发 Content-Type（v2 命令请求可能有不同的 Content-Type）
     const contentType =
       req.method !== "POST"
         ? ""
-        : service === "git-receive-pack"
-          ? "application/x-git-receive-pack-request"
-          : "application/x-git-upload-pack-request";
+        : (requestHeaders["content-type"] ??
+          (service === "git-receive-pack"
+            ? "application/x-git-receive-pack-request"
+            : "application/x-git-upload-pack-request"));
 
     const result = spawnSync(httpBackend, ["http-backend"], {
       env: {
         ...process.env,
         ...GIT_ENV,
+        ...headersToCgiEnv(requestHeaders),
         GIT_HTTP_EXPORT_ALL: "1",
         GIT_PROJECT_ROOT: projectRoot,
         REQUEST_METHOD: req.method,

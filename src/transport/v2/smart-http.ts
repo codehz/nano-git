@@ -11,7 +11,7 @@
  * @see https://git-scm.com/docs/protocol-v2#_initial_client_request
  */
 
-import { encodeDelimiterPkt, encodeFlushPkt } from "../shared/pkt-line.ts";
+import { encodeDelimiterPkt, encodeFlushPkt, encodePktLine } from "../shared/pkt-line.ts";
 import { parseV2CapabilityAdvertisement } from "./capability-advert.ts";
 
 import type { V2CapabilityAdvertisement, V2GitServiceTransport } from "./types.ts";
@@ -68,6 +68,7 @@ export function createV2HttpTransport(
     "User-Agent": "nano-git/0.1",
     "Content-Type": "application/x-git-upload-pack-request",
     Accept: "application/x-git-upload-pack-result",
+    "Git-Protocol": "version=2",
     ...options?.headers,
   };
 
@@ -77,12 +78,7 @@ export function createV2HttpTransport(
 
   return {
     async advertise(): Promise<V2CapabilityAdvertisement> {
-      const headers: Record<string, string> = {
-        ...baseHeaders,
-        "Git-Protocol": "version=2",
-      };
-
-      const response = await fetch(`${baseUrl}${ADVERTISE_PATH}`, { headers });
+      const response = await fetch(`${baseUrl}${ADVERTISE_PATH}`, { headers: baseHeaders });
 
       if (!response.ok) {
         throw new V2SmartHttpError(`advertise failed: ${response.status} ${response.statusText}`);
@@ -100,23 +96,23 @@ export function createV2HttpTransport(
     ): Promise<Buffer> {
       const lines: Buffer[] = [];
 
-      // command=<name>\n
-      lines.push(Buffer.from(`command=${command}\n`, "utf-8"));
+      // command=<name>\n (pkt-line 编码)
+      lines.push(encodePktLine(`command=${command}\n`));
 
-      // capability-list
+      // capability-list (pkt-line 编码)
       if (capabilities) {
         for (const cap of capabilities) {
-          lines.push(Buffer.from(`${cap}\n`, "utf-8"));
+          lines.push(encodePktLine(`${cap}\n`));
         }
       }
 
       // delimiter (0001)
       lines.push(encodeDelimiterPkt());
 
-      // command-args
+      // command-args (pkt-line 编码)
       if (args) {
         for (const arg of args) {
-          lines.push(Buffer.from(`${arg}\n`, "utf-8"));
+          lines.push(encodePktLine(`${arg}\n`));
         }
       }
 

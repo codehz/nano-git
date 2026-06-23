@@ -37,8 +37,9 @@
  */
 
 import { GitError } from "../../core/errors.ts";
-import { parsePktLines } from "../shared/pkt-line.ts";
+import { splitPktLinesFromBuffer } from "../shared/pkt-line.ts";
 
+import type { ObjectStore } from "../../odb/types.ts";
 import type { V2GitServiceTransport, V2FetchResponse } from "./types.ts";
 
 // ============================================================================
@@ -118,14 +119,14 @@ export interface V2FetchParams {
  * @param params - fetch 参数
  * @param features - 服务端 fetch 命令支持的附加特性
  * @returns 解析后的 fetch 响应
+ * @throws {V2FetchError} 当 wants 为空时
  *
  * @example
  * ```ts
  * const result = await v2Fetch(transport, {
  *   wants: [hash1, hash2],
- *   haves: [localHash],
  *   ofsDelta: true,
- *   includeTag: true,
+ *   done: true,
  * });
  * console.log(result.packfile?.length); // packfile 数据长度
  * ```
@@ -135,31 +136,37 @@ export async function v2Fetch(
   params: V2FetchParams,
   features?: string[],
 ): Promise<V2FetchResponse> {
-  // 构建 capabilities
-  const capabilities: string[] = [];
-  if (params.thinPack) capabilities.push("thin-pack");
-  if (params.noProgress) capabilities.push("no-progress");
-  if (params.includeTag) capabilities.push("include-tag");
-  if (params.ofsDelta) capabilities.push("ofs-delta");
-  if (params.sidebandAll) capabilities.push("sideband-all");
-  if (params.waitForDone) capabilities.push("wait-for-done");
+  if (params.wants.length === 0) {
+    throw new V2FetchError("No wants specified for fetch");
+  }
 
-  // 检查特性支持
-  const hasFeature = (name: string): boolean => !features || features.includes(name);
+  // 检查特性支持：features === undefined 表示不支持任何附加特性
+  const hasFeature = (name: string): boolean => features !== undefined && features.includes(name);
 
-  // 构建 arguments
+  // 构建 arguments（所有 fetch 参数都在分隔符之后）
   const args: string[] = [];
 
+  // 传输参数（thin-pack、ofs-delta 等是 v2 fetch 的 argument，不是 capability）
+  if (params.thinPack) args.push("thin-pack");
+  if (params.noProgress) args.push("no-progress");
+  if (params.includeTag) args.push("include-tag");
+  if (params.ofsDelta) args.push("ofs-delta");
+  if (params.sidebandAll) args.push("sideband-all");
+  if (params.waitForDone) args.push("wait-for-done");
+
+  // want 列表
   for (const oid of params.wants) {
     args.push(`want ${oid}`);
   }
 
+  // want-ref（需要 ref-in-want 特性支持）
   if (params.wantRefs && hasFeature("ref-in-want")) {
     for (const ref of params.wantRefs) {
       args.push(`want-ref ${ref}`);
     }
   }
 
+  // done 标记
   if (params.done) {
     args.push("done");
   }
@@ -200,7 +207,10 @@ export async function v2Fetch(
     args.push(`filter ${params.filter}`);
   }
 
-  const response = await transport.command("fetch", args, capabilities);
+  // capabilities-list（仅放通用能力，如 agent）
+  // 当前不使用通用能力，留空即可
+
+  const response = await transport.command("fetch", args, []);
 
   return parseV2FetchResponse(response, params.done ?? false, hasFeature("sideband-all"));
 }
@@ -233,40 +243,40 @@ export function parseV2FetchResponse(
   _hasDone: boolean,
   sidebandAll: boolean,
 ): V2FetchResponse {
-  const pktLines = parsePktLines(data);
+  // 使用 splitPktLinesFromBuffer 优雅处理尾部非 pkt-line 数据
+  const { lines: pktLines, trailing } = splitPktLinesFromBuffer(data);
 
-  // 使用可变内部类型构建结果，最后转换为只读 V2FetchResponse
+  // 跳过 sideband-all 的 channel 字节（如果启用了 sideband-all）
+  if (sidebandAll && pktLines.length > 0) {
+    const first = pktLines[0];
+    if (first?.type === "data" && first.payload.length > 1) {
+      const withoutChannel = Buffer.concat(
+        pktLines
+          .filter((p): p is typeof first => p.type === "data")
+          .map((p) => p.payload.subarray(1)),
+      );
+      return parseV2FetchResponse(Buffer.concat([withoutChannel, trailing]), false, false);
+    }
+  }
+
+  // 解析节结构
   interface MutableSection {
     header: string;
     lines: Buffer[];
   }
   const sections: MutableSection[] = [];
   let currentSection: MutableSection | null = null;
+  const packfileFrames: Buffer[] = [];
+  let inPackfile = false;
 
-  // 跳过 sideband-all 的 channel 字节（如果启用了 sideband-all）
-  if (sidebandAll && pktLines.length > 0) {
-    const first = pktLines[0];
-    if (first?.type === "data" && first.payload.length > 1) {
-      // channel 1 的头部数据：截掉第一个 channel 字节
-      const withoutChannel = Buffer.concat(
-        pktLines
-          .filter((p): p is typeof first => p.type === "data")
-          .map((p) => p.payload.subarray(1)),
-      );
-      return parseV2FetchResponse(withoutChannel, false, false);
-    }
-  }
-
-  // 解析节结构
   for (const pkt of pktLines) {
     if (pkt.type === "flush") {
-      // flush 表示响应结束
       break;
     }
 
     if (pkt.type === "delimiter") {
-      // delimiter 表示当前节结束，下一个节开始
       currentSection = null;
+      inPackfile = false;
       continue;
     }
 
@@ -274,16 +284,29 @@ export function parseV2FetchResponse(
 
     const payload = pkt.payload;
     const text = payload.toString("utf-8");
-
-    // 检查是否为节头（节头以 LF 结尾，且不含空格）
     const trimmed = text.replace(/\n$/, "");
-    if (currentSection === null) {
-      // 新节开始
+
+    if (currentSection === null && !inPackfile) {
       currentSection = { header: trimmed, lines: [] };
       sections.push(currentSection);
-    } else {
+      if (trimmed === "packfile") {
+        inPackfile = true;
+        // 将当前 payload 中节头后的剩余数据加入 packfile 帧
+        const headerEndIndex = text.indexOf("\n") + 1;
+        if (headerEndIndex > 0 && headerEndIndex < payload.length) {
+          packfileFrames.push(payload.subarray(headerEndIndex));
+        }
+      }
+    } else if (inPackfile) {
+      packfileFrames.push(payload);
+    } else if (currentSection) {
       currentSection.lines.push(payload);
     }
+  }
+
+  // packfile 尾部数据也加入（splitPktLinesFromBuffer 道出的 trailing 数据）
+  if (trailing.length > 0) {
+    packfileFrames.push(trailing);
   }
 
   // 组装结果
@@ -300,24 +323,20 @@ export function parseV2FetchResponse(
       case "acknowledgments":
         result.acknowledgments = parseAcknowledgments(section.lines);
         break;
-
       case "shallow-info":
         result.shallowInfo = parseShallowInfo(section.lines);
         break;
-
       case "wanted-refs":
         result.wantedRefs = parseWantedRefs(section.lines);
         break;
-
       case "packfile-uris":
         result.packfileUris = parsePackfileUris(section.lines);
         break;
-
-      case "packfile": {
-        const packfileData = concatSectionData(section.lines);
-        result.packfile = extractPackfileFromSection(packfileData);
+      case "packfile":
+        if (packfileFrames.length > 0) {
+          result.packfile = extractPackfileFromFrames(packfileFrames);
+        }
         break;
-      }
     }
   }
 
@@ -439,61 +458,30 @@ function parsePackfileUris(lines: Buffer[]): Array<{ oid: string; uri: string }>
 }
 
 /**
- * 将节的数据行拼接为单个 Buffer
- */
-function concatSectionData(lines: Buffer[]): Buffer {
-  return Buffer.concat(lines.map((line) => line));
-}
-
-/**
- * 从 packfile 节数据中提取 packfile
+ * 从 side-band pkt-line payload 帧中提取 packfile 数据
  *
- * packfile 节的数据使用 side-band (channel 1) 多路复用传输。
- * 每个 pkt-line 帧的第一个字节是 channel 编号。
+ * v2 fetch 响应中 packfile 节的每个 pkt-line payload 格式为：
+ * <1-byte-channel><data>
+ * channel 1 = packfile 数据
+ * channel 2 = 进度消息
+ * channel 3 = 致命错误
  *
- * @param data - packfile 节的原始 side-band 数据
+ * @param frames - pkt-line payload 数组（不含长度前缀，含 channel 字节）
  * @returns 拼接后的完整 packfile buffer
  */
-function extractPackfileFromSection(data: Buffer): Buffer {
+function extractPackfileFromFrames(frames: Buffer[]): Buffer {
   const chunks: Buffer[] = [];
 
-  let offset = 0;
-  const totalLen = data.length;
+  for (const frame of frames) {
+    if (frame.length < 1) continue;
 
-  while (offset < totalLen) {
-    // 读取 4 字节长度前缀
-    if (offset + 4 > totalLen) break;
+    const channel = frame[0]!;
 
-    const hex = data.subarray(offset, offset + 4).toString("utf-8");
-    if (!/^[0-9a-fA-F]{4}$/.test(hex)) break;
-
-    const pktLen = parseInt(hex, 16);
-    if (pktLen === 0) {
-      // flush-pkt
-      offset += 4;
-      break;
+    if (channel === CHANNEL_PACKFILE) {
+      chunks.push(frame.subarray(1));
     }
-
-    if (pktLen < 4) break;
-
-    const end = offset + pktLen;
-    if (end > totalLen) break;
-
-    offset += 4; // 跳过长度前缀
-    const payloadLen = pktLen - 4;
-
-    if (payloadLen >= 1) {
-      const channel = data[offset]!;
-      const payload = data.subarray(offset + 1, end);
-
-      if (channel === CHANNEL_PACKFILE) {
-        chunks.push(payload);
-      }
-      // channel 2 (progress) / channel 3 (fatal) 在此处忽略
-      // 外部可通过 extractProgress / extractSideBandFatal 进一步处理
-    }
-
-    offset = end;
+    // channel 2 为进度消息，忽略
+    // channel 3 为致命错误，由外部函数处理
   }
 
   if (chunks.length === 0) {
@@ -628,31 +616,45 @@ export async function negotiateV2Fetch(
 }
 
 // ============================================================================
-// v1 兼容包装：v2FetchPack
+// v1 兼容包装：v2FetchObjects
 // ============================================================================
 
 /**
- * v2 fetch-pack 的高层包装
+ * 使用 v2 fetch 获取对象并写入对象存储
  *
- * 模拟 v1 fetchPack() 的接口签名，使 import-plan-builder 可无缝切换。
+ * 模拟 v1 fetchPack() 的语义，使 import-plan-builder 可无缝切换。
  *
- * @param transport - v2 传输接口
+ * @param store - 对象存储（用于写入 packfile 中的对象）
+ * @param v2Trans - v2 传输接口
  * @param wants - want 对象哈希列表
  * @param haves - have 对象哈希列表
+ * @param features - 服务端 fetch 命令特性
  * @returns 导入的对象数量
  */
 export async function v2FetchObjects(
-  transport: V2GitServiceTransport,
+  store: ObjectStore,
+  v2Trans: V2GitServiceTransport,
   wants: string[],
   haves?: string[],
+  features?: string[],
 ): Promise<{ objectCount: number }> {
-  const result = await negotiateV2Fetch(transport, wants, haves ?? []);
+  const result = await negotiateV2Fetch(v2Trans, wants, haves ?? [], features);
 
-  if (!result.packfile) {
+  if (!result.packfile || result.packfile.length === 0) {
     return { objectCount: 0 };
   }
 
-  // 此处 packfile 已由外部写入 store 层，objectCount 暂不计算
-  // 调用方可通过 packfile 自行解析
-  return { objectCount: 0 };
+  // 解析 packfile 并写入对象
+  const { createPackReader } = await import("../../odb/pack/pack-reader.ts");
+  const { deserializeContent } = await import("../../objects/codec.ts");
+  const reader = createPackReader(result.packfile);
+  let count = 0;
+
+  for (const packObj of reader.objects()) {
+    const gitObj = deserializeContent(packObj.type, packObj.data);
+    store.write(gitObj as import("../../core/types.ts").GitObject);
+    count++;
+  }
+
+  return { objectCount: count };
 }
