@@ -59,9 +59,13 @@ export {
   RepositoryError,
   CircularReferenceError,
   RefNotFoundError,
+  /** @deprecated 请从 "nano-git/odb" 导入 */
   PackError,
+  /** @deprecated 请从 "nano-git/odb" 导入 */
   InvalidPackError,
+  /** @deprecated 请从 "nano-git/odb" 导入 */
   PackIndexError,
+  /** @deprecated 请从 "nano-git/odb" 导入 */
   DeltaError,
   PreconditionCheckError,
 } from "./core/index.ts";
@@ -110,13 +114,18 @@ export {
   createFileObjectStore,
   createMemoryObjectStore,
   type ObjectStore,
+  /** @deprecated MemoryObjectStore 是空 marker 接口，将在下一大版本中移除 */
   type MemoryObjectStore,
 } from "./odb/index.ts";
 
 // ============================================================================
 // Packfile 支持
+//
+// @deprecated 请从子路径 "nano-git/odb" 导入 packfile 相关工具。
+// 顶级入口将在下一大版本中移除这些 export。
 // ============================================================================
 
+/** @deprecated 请从 "nano-git/odb" 导入 */
 export {
   // 常量和工具
   OBJ_COMMIT,
@@ -129,30 +138,43 @@ export {
   numberToObjectType,
   isDeltaType,
   // Delta 编解码
+  /** @deprecated 请从 "nano-git/odb" 导入 */
   applyDelta,
+  /** @deprecated 请从 "nano-git/odb" 导入 */
   createDelta,
-  // Packfile 读取
+  /** @deprecated 请从 "nano-git/odb" 导入 */
   createPackReader,
+  /** @deprecated 请从 "nano-git/odb" 导入 */
   PackReader,
+  /** @deprecated 请从 "nano-git/odb" 导入 */
   type PackObject,
-  // Packfile 写入
+  /** @deprecated 请从 "nano-git/odb" 导入 */
   createPackWriter,
+  /** @deprecated 请从 "nano-git/odb" 导入 */
   PackWriter,
-  // Packfile 索引
+  /** @deprecated 请从 "nano-git/odb" 导入 */
   createPackIndexReader,
+  /** @deprecated 请从 "nano-git/odb" 导入 */
   createPackIndexWriter,
+  /** @deprecated 请从 "nano-git/odb" 导入 */
   type PackIndexReader,
+  /** @deprecated 请从 "nano-git/odb" 导入 */
   type PackIndexWriter,
+  /** @deprecated 请从 "nano-git/odb" 导入 */
   type PackIndexEntry,
-  // Packfile 存储
+  /** @deprecated 请从 "nano-git/odb" 导入 */
   createPackObjectStore,
+  /** @deprecated 请从 "nano-git/odb" 导入 */
   type PackObjectStore,
-  // 组合存储
+  /** @deprecated 请从 "nano-git/odb" 导入 */
   createCompositeObjectStore,
+  /** @deprecated 请从 "nano-git/odb" 导入 */
   CompositeObjectStore,
-  // Packfile 构建器
+  /** @deprecated 请从 "nano-git/odb" 导入 */
   createPackBuilder,
+  /** @deprecated 请从 "nano-git/odb" 导入 */
   type PackBuilder,
+  /** @deprecated 请从 "nano-git/odb" 导入 */
   type PackBuildResult,
 } from "./odb/index.ts";
 
@@ -189,6 +211,7 @@ export {
   type RepositoryGCOptions,
   type RepositoryPackSupport,
   type RepositoryRepackOptions,
+  /** @deprecated RepositoryBackend 作为构造参数保留，但不应作为运行时属性访问。请使用 repo.objects / repo.refs 等便利属性。 */
   type RepositoryBackend,
 } from "./repository/backend/index.ts";
 
@@ -222,6 +245,7 @@ export {
   type BranchMaterializationOptions,
   type TagMaterializationOptions,
   type HeadMaterializationOptions,
+  /** @deprecated RepoImportOperations 是内部接口，请使用 ImportSession */
   type RepoImportOperations,
   type RepositoryPushOptions,
   type RepositoryPushResult,
@@ -230,12 +254,14 @@ export {
 // ============================================================================
 // Transport / Plumbing 低层 API
 //
-// 注意：如果只需要高层仓库操作，请使用 repository 模块。
-// 以下为底层协议实现，适用于需要直接操作传输协议的场景。
+// @deprecated 请从子路径 "nano-git/transport" 导入传输层 API。
+// 以下 export 将在下一大版本中从顶级入口移除。
+// 如果只需要高层仓库操作，请使用 repository 模块的 fetch/push API。
 // ============================================================================
 
 // --- 传输层类型 ---
 
+/** @deprecated 请从 "nano-git/transport" 导入 */
 export type {
   RemoteRef,
   RefAdvertisement,
@@ -261,6 +287,7 @@ export type {
 
 // --- 传输层函数 ---
 
+/** @deprecated 请从 "nano-git/transport" 导入 */
 export {
   // pkt-line 编解码
   encodePktLine,
