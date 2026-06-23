@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// oxlint-disable typescript/no-unsafe-assignment typescript/no-unsafe-argument typescript/no-unsafe-call typescript/no-unsafe-member-access
 // PreToolUse hook: 拦截 npx/yarn 命令，建议使用 bun/bunx
 import { stdin } from "node:process";
 
