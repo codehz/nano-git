@@ -22,6 +22,7 @@
  * ```
  */
 
+import { readObject } from "../../../objects/raw.ts";
 import { createPackWriter } from "../../../pack/pack-writer.ts";
 import { getLocalRefs, remoteRefsToMap } from "../../protocol/ref-collection.ts";
 import { PushError } from "./push-error.ts";
@@ -124,7 +125,7 @@ export async function push(
   // 7. 构建 packfile
   const packWriter = createPackWriter();
   for (const hash of objectsToSend) {
-    const obj = store.read(hash);
+    const obj = readObject(store, hash);
     packWriter.addObject(obj);
   }
   const packfile = packWriter.build();

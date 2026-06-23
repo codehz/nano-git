@@ -8,6 +8,7 @@
  */
 
 import { sha1 } from "../../../core/types.ts";
+import { tryReadObject } from "../../../objects/raw.ts";
 import { resolveRefHash } from "../../../refs/resolve.ts";
 import { encodePktLine, encodeFlushPkt } from "../../protocol/pkt-line.ts";
 import { ZERO_HASH, SERVER_AGENT, CAPABILITIES_REF } from "./types.ts";
@@ -104,7 +105,7 @@ export function advertiseReceivePack(backend: RepositoryBackend): Buffer {
 
       // annotated tag 的 peeled 信息（refs/tags/ 下的 tag 对象）
       if (refName.startsWith("refs/tags/")) {
-        const obj = backend.objects.tryRead(hash);
+        const obj = tryReadObject(backend.objects, hash);
         if (obj?.type === "tag") {
           parts.push(encodePktLine(`${obj.object} ${refName}^{}\n`));
         }

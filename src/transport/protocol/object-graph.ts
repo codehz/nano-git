@@ -14,9 +14,10 @@
  */
 
 import { ObjectNotFoundError } from "../../core/errors.ts";
+import { tryReadObject } from "../../objects/raw.ts";
 
 import type { SHA1 } from "../../core/types.ts";
-import type { ObjectDatabase } from "../../odb/types.ts";
+import type { ObjectSource } from "../../odb/types.ts";
 
 // ============================================================================
 // 可达性遍历
@@ -26,7 +27,7 @@ import type { ObjectDatabase } from "../../odb/types.ts";
 export type CollectReachableMissing = "throw" | "skip" | "skip-commit-parents";
 
 function throwIfMissingObject(
-  objects: ObjectDatabase,
+  source: ObjectSource,
   hash: SHA1,
   missing: CollectReachableMissing,
   viaCommitParent: boolean,
@@ -52,7 +53,7 @@ function throwIfMissingObject(
 /**
  * 从指定哈希出发，递归收集所有可达对象哈希
  *
- * @param objects - 对象存储
+ * @param source - 对象源
  * @param hash - 起始对象哈希
  * @param reachable - 用于收集结果的可达集合
  * @param missing - 遇到缺失对象时的行为：
@@ -62,7 +63,7 @@ function throwIfMissingObject(
  * @param viaCommitParent - 当前边是否来自 commit 的 parent 引用
  */
 function collectReachableFrom(
-  objects: ObjectDatabase,
+  source: ObjectSource,
   hash: SHA1,
   reachable: Set<SHA1>,
   missing: CollectReachableMissing = "skip",
@@ -73,9 +74,9 @@ function collectReachableFrom(
     return;
   }
 
-  const obj = objects.tryRead(hash);
+  const obj = tryReadObject(source, hash);
   if (obj === undefined) {
-    throwIfMissingObject(objects, hash, missing, viaCommitParent, shallowBoundaries);
+    throwIfMissingObject(source, hash, missing, viaCommitParent, shallowBoundaries);
     return;
   }
 
@@ -86,17 +87,17 @@ function collectReachableFrom(
       return;
     case "tree":
       for (const entry of obj.entries) {
-        collectReachableFrom(objects, entry.hash, reachable, missing, shallowBoundaries, false);
+        collectReachableFrom(source, entry.hash, reachable, missing, shallowBoundaries, false);
       }
       return;
     case "commit":
-      collectReachableFrom(objects, obj.tree, reachable, missing, shallowBoundaries, false);
+      collectReachableFrom(source, obj.tree, reachable, missing, shallowBoundaries, false);
       for (const parent of obj.parents) {
-        collectReachableFrom(objects, parent, reachable, missing, shallowBoundaries, true);
+        collectReachableFrom(source, parent, reachable, missing, shallowBoundaries, true);
       }
       return;
     case "tag":
-      collectReachableFrom(objects, obj.object, reachable, missing, shallowBoundaries, false);
+      collectReachableFrom(source, obj.object, reachable, missing, shallowBoundaries, false);
       return;
   }
 }
@@ -104,7 +105,7 @@ function collectReachableFrom(
 /**
  * 从多个起始点收集所有可达对象哈希
  *
- * @param objects - 对象存储
+ * @param source - 对象源
  * @param roots - 起始哈希列表
  * @param missing - 遇到缺失对象时的行为，透传给 collectReachableFrom
  * @param shallowBoundaries - 已知 shallow 边界集合（可选）
@@ -112,19 +113,19 @@ function collectReachableFrom(
  *
  * @example
  * ```ts
- * const reachable = collectReachable(store, [headHash]);
+ * const reachable = collectReachable(source, [headHash]);
  * console.log(reachable.size);
  * ```
  */
 export function collectReachable(
-  objects: ObjectDatabase,
+  source: ObjectSource,
   roots: SHA1[],
   missing: CollectReachableMissing = "skip",
   shallowBoundaries?: Set<SHA1>,
 ): Set<SHA1> {
   const reachable = new Set<SHA1>();
   for (const hash of roots) {
-    collectReachableFrom(objects, hash, reachable, missing, shallowBoundaries, false);
+    collectReachableFrom(source, hash, reachable, missing, shallowBoundaries, false);
   }
   return reachable;
 }
@@ -140,21 +141,25 @@ export function collectReachable(
  * 用于 fast-forward 预检：refs/{heads,tags} 之外的命名空间
  * （如 refs/custom/*）允许存储 tag 对象，解引用后才能正确比较祖先关系。
  *
- * @param store - 对象存储
+ * @param source - 对象源
  * @param hash - 起点哈希
  * @param shallowBoundaries - 已知 shallow 边界集合（可选）
  * @returns 解引用后的非 tag 对象哈希，若对象缺失返回 hash 本身
  *
  * @example
  * ```ts
- * const peeled = peelTagChain(store, tagHash);
+ * const peeled = peelTagChain(source, tagHash);
  * ```
  */
-export function peelTagChain(store: ObjectDatabase, hash: SHA1, shallowBoundaries?: Set<SHA1>): SHA1 {
+export function peelTagChain(
+  source: ObjectSource,
+  hash: SHA1,
+  shallowBoundaries?: Set<SHA1>,
+): SHA1 {
   let current = hash;
 
   while (true) {
-    const obj = store.tryRead(current);
+    const obj = tryReadObject(source, current);
     if (obj === undefined) {
       // shallow 边界：对象确实可能在本地不存在，返回当前 hash 让调用方处理
       if (shallowBoundaries?.has(current)) {
@@ -181,7 +186,7 @@ export function peelTagChain(store: ObjectDatabase, hash: SHA1, shallowBoundarie
  * 支持 tag 对象解引用：非 refs/{heads,tags} 命名空间允许存储 tag 对象，
  * 比较时将 oldHash 和 newHash 沿 tag 链解引用到最底层对象（应为 commit）。
  *
- * @param store - 对象存储
+ * @param source - 对象源
  * @param oldHash - 旧的（远端）对象哈希
  * @param newHash - 新的（本地）目标对象哈希
  * @param shallowBoundaries - 已知 shallow 边界集合（可选）
@@ -189,13 +194,13 @@ export function peelTagChain(store: ObjectDatabase, hash: SHA1, shallowBoundarie
  *
  * @example
  * ```ts
- * if (isAncestor(store, oldTip, newTip)) {
+ * if (isAncestor(source, oldTip, newTip)) {
  *   console.log("Fast-forward possible");
  * }
  * ```
  */
 export function isAncestor(
-  store: ObjectDatabase,
+  source: ObjectSource,
   oldHash: SHA1,
   newHash: SHA1,
   shallowBoundaries?: Set<SHA1>,
@@ -207,8 +212,8 @@ export function isAncestor(
 
   // 对 tag 对象解引用到最底层对象，使得自定义命名空间（如 refs/custom/*）
   // 中存储的 annotated tag 也能正确进行祖先比较
-  const peeledOld = peelTagChain(store, oldHash, shallowBoundaries);
-  const peeledNew = peelTagChain(store, newHash, shallowBoundaries);
+  const peeledOld = peelTagChain(source, oldHash, shallowBoundaries);
+  const peeledNew = peelTagChain(source, newHash, shallowBoundaries);
 
   // 解引用后相同则是 fast-forward
   if (peeledOld === peeledNew) {
@@ -232,7 +237,7 @@ export function isAncestor(
     visited.add(current);
 
     // 对象缺失的处理：先检查是否为已知边界（shallow 或远端已广告的 tip）
-    const obj = store.tryRead(current);
+    const obj = tryReadObject(source, current);
     if (obj === undefined) {
       // 回溯命中 remote old tip（peeledOld）即 fast-forward
       if (current === peeledOld) {

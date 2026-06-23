@@ -5,6 +5,8 @@
  * 补充 patchTree 只有增量修改能力的不足。
  */
 
+import { readObject } from "../../objects/raw.ts";
+
 import type { SHA1, TreeEntry } from "../../core/types.ts";
 import type { ObjectDatabase } from "../../odb/types.ts";
 
@@ -68,7 +70,7 @@ function walkTreeRecursive(
   result?: TreeEntryWithPath[],
   visit?: (entry: TreeEntryWithPath) => void,
 ): void {
-  const obj = objects.read(treeHash);
+  const obj = readObject(objects, treeHash);
   if (obj.type !== "tree") {
     throw new Error(`Expected tree object, got '${obj.type}' for hash '${treeHash}'`);
   }

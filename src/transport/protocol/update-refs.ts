@@ -12,6 +12,7 @@
  */
 
 import { GitError } from "../../core/errors.ts";
+import { tryReadObject } from "../../objects/raw.ts";
 import { isAncestor } from "./object-graph.ts";
 
 import type { SHA1 } from "../../core/types.ts";
@@ -61,7 +62,7 @@ export class RefUpdateError extends GitError {
  * @throws RefUpdateError 如果目标对象不存在或不是 commit
  */
 export function resolveBranchTargetHash(store: ObjectDatabase, hash: SHA1, refName: string): SHA1 {
-  const obj = store.tryRead(hash);
+  const obj = tryReadObject(store, hash);
   if (obj === undefined) {
     throw new RefUpdateError(
       `Object ${hash} for remote ref "${refName}" is missing from the local store. ` +

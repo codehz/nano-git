@@ -4,11 +4,12 @@
  * 负责从 refs 出发遍历所有可达 Git 对象。
  */
 
+import { readObject } from "../../objects/raw.ts";
 import { resolveRefHash } from "../../refs/resolve.ts";
 import { HEAD_REF, HEADS_PREFIX, TAGS_PREFIX } from "../../refs/types.ts";
 
 import type { SHA1 } from "../../core/types.ts";
-import type { ObjectDatabase } from "../../odb/types.ts";
+import type { ObjectSource } from "../../odb/types.ts";
 import type { RefStore } from "../../refs/types.ts";
 
 function listRootRefs(refs: RefStore): string[] {
@@ -26,7 +27,7 @@ function listRootRefs(refs: RefStore): string[] {
 }
 
 function collectReachableObjectHashesFrom(
-  objects: ObjectDatabase,
+  source: ObjectSource,
   hash: SHA1,
   reachable: Set<SHA1>,
 ): void {
@@ -39,7 +40,7 @@ function collectReachableObjectHashesFrom(
     }
     reachable.add(current);
 
-    const obj = objects.read(current);
+    const obj = readObject(source, current);
 
     switch (obj.type) {
       case "blob":
@@ -73,23 +74,23 @@ function collectReachableObjectHashesFrom(
 /**
  * 列出从 HEAD、所有分支和所有标签可达的对象哈希
  *
- * @param objects - 对象存储
+ * @param source - 对象源
  * @param refs - 引用存储
  * @returns 排序后的可达对象哈希列表
  *
  * @example
  * ```ts
- * const hashes = listReachableObjects(objects, refs);
+ * const hashes = listReachableObjects(source, refs);
  * console.log(hashes.length);
  * ```
  */
-export function listReachableObjects(objects: ObjectDatabase, refs: RefStore): SHA1[] {
+export function listReachableObjects(source: ObjectSource, refs: RefStore): SHA1[] {
   const reachable = new Set<SHA1>();
 
   for (const ref of listRootRefs(refs)) {
     const hash = resolveRefHash(refs, ref);
     if (hash) {
-      collectReachableObjectHashesFrom(objects, hash, reachable);
+      collectReachableObjectHashesFrom(source, hash, reachable);
     }
   }
 

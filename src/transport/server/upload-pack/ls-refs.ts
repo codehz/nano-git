@@ -7,6 +7,7 @@
  */
 
 import { sha1 } from "../../../core/types.ts";
+import { tryReadObject } from "../../../objects/raw.ts";
 import { resolveRefHash } from "../../../refs/resolve.ts";
 import { encodePktLine, encodeFlushPkt } from "../../protocol/pkt-line.ts";
 
@@ -151,7 +152,7 @@ export function generateLsRefsResponse(
 
       // annotated tag 且请求了 peel
       if (options.peel && refName.startsWith("refs/tags/")) {
-        const obj = backend.objects.tryRead(oid);
+        const obj = tryReadObject(backend.objects, oid);
         if (obj?.type === "tag") {
           attrs.push(`peeled:${obj.object}`);
         }
