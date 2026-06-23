@@ -24,7 +24,6 @@
  */
 
 import { InvalidPackError } from "../core/errors.ts";
-import { deserializeContent } from "../objects/index.ts";
 import { PACK_HEADER_SIZE, PACK_CHECKSUM_SIZE, OBJ_OFS_DELTA, OBJ_REF_DELTA } from "./constants.ts";
 import {
   resolveOfsDeltaPackObject,
@@ -34,10 +33,11 @@ import {
 import { parsePackHeader } from "./pack-reader-utils.ts";
 import { decodeObjectHeader, decodeOfsDeltaOffset } from "./utils.ts";
 
-import type { GitObject, SHA1 } from "../core/types.ts";
+import type { SHA1 } from "../core/types.ts";
 import type { PackObject } from "./pack-reader-types.ts";
 
 export type { PackObject } from "./pack-reader-types.ts";
+export { packObjectToRaw } from "./pack-reader-types.ts";
 
 // ============================================================================
 // Packfile 读取器
@@ -207,16 +207,6 @@ export class PackReader {
     if (this.objectsByHash.has(hash)) return true;
     this.parseUntil(() => this.objectsByHash.has(hash));
     return this.objectsByHash.has(hash);
-  }
-
-  /**
-   * 获取 GitObject（惰性查找）
-   */
-  readObject(hash: SHA1): GitObject | undefined {
-    const obj = this.getByHash(hash);
-    if (!obj) return undefined;
-
-    return deserializeContent(obj.type, obj.data);
   }
 
   /**

@@ -1,49 +1,49 @@
 /**
- * 组合对象存储
+ * 组合对象源/数据库
  *
- * 将多个对象存储后端组合在一起，按优先级顺序查找对象。
+ * 将多个对象源/数据库组合在一起，按优先级顺序查找对象。
  * 典型用法：loose objects（文件系统）+ packfile 存储。
  *
  * 查找顺序：
- * 1. 先在 loose objects 中查找（最新写入的对象）
- * 2. 再在 packfile 中查找（已打包的对象）
+ * 1. 先在主数据库中查找（最新写入/摄入的对象）
+ * 2. 再在辅助源中查找（已打包的对象）
  *
- * 写入操作始终写入到主存储（通常是 loose objects）。
+ * 摄入操作始终写入到主数据库。
  *
  * @example
  * ```ts
- * const store = createCompositeObjectStore(fileStore, packStore);
- * const obj = store.read(hash); // 自动在所有存储中查找
+ * const db = createCompositeObjectDatabase(fileDb, packSource);
+ * const raw = db.read(hash); // 自动在所有存储中查找
  * ```
  */
 
 import { ObjectNotFoundError } from "../core/errors.ts";
 
-import type { GitObject, SHA1 } from "../core/types.ts";
+import type { RawGitObject, SHA1 } from "../core/types.ts";
 import type { ObjectSource, ObjectDatabase } from "../odb/types.ts";
 
 // ============================================================================
-// 组合对象存储
+// 组合对象数据库
 // ============================================================================
 
 /**
- * 创建组合对象存储
+ * 创建组合对象数据库
  *
- * @param primary - 主存储（用于写入）
- * @param secondary - 辅助存储列表（只读，按顺序查找）
- * @returns 组合对象存储
+ * @param primary - 主数据库（用于摄入）
+ * @param secondary - 辅助源列表（只读，按顺序查找）
+ * @returns 组合对象数据库
  *
  * @example
  * ```ts
- * const fileStore = createFileObjectStore(gitDir);
- * const packStore = createPackObjectStore(gitDir);
- * const store = createCompositeObjectStore(fileStore, packStore);
+ * const looseDb = createFileObjectStore(gitDir);
+ * const packSource = createPackObjectStore(gitDir);
+ * const db = createCompositeObjectDatabase(looseDb, packSource);
  *
  * // 读取时自动在所有存储中查找
- * const obj = store.read(hash);
+ * const raw = db.read(hash);
  *
- * // 写入时只写入主存储
- * store.write(blob);
+ * // 摄入时只写入主数据库
+ * db.ingest(raw);
  * ```
  */
 export function createCompositeObjectDatabase(
@@ -54,7 +54,7 @@ export function createCompositeObjectDatabase(
 }
 
 /**
- * 组合对象存储类
+ * 组合对象数据库类
  */
 export class CompositeObjectDatabase implements ObjectDatabase {
   private readonly primary: ObjectDatabase;
@@ -66,35 +66,41 @@ export class CompositeObjectDatabase implements ObjectDatabase {
   }
 
   /**
-   * 写入对象到主存储
-   *
-   * @param obj - Git 对象
-   * @returns 对象的 SHA-1 哈希
+   * 摄入原始对象到主数据库
    */
-  write(obj: GitObject): SHA1 {
-    return this.primary.write(obj);
+  ingest(raw: RawGitObject): void {
+    return this.primary.ingest(raw);
+  }
+
+  /**
+   * 批量摄入原始对象到主数据库
+   */
+  ingestMany(objects: Iterable<RawGitObject>): void {
+    for (const raw of objects) {
+      this.ingest(raw);
+    }
   }
 
   /**
    * 删除对象
    *
-   * 委托给主存储的 delete。
+   * 委托给主数据库的 delete。
    */
   delete(hash: SHA1): void {
     this.primary.delete(hash);
   }
 
   /**
-   * 尝试读取对象，不存在时返回 undefined
+   * 尝试读取原始对象，不存在时返回 undefined
    */
-  tryRead(hash: SHA1): GitObject | undefined {
-    const primaryResult = this.tryReadStore(this.primary, hash);
+  tryRead(hash: SHA1): RawGitObject | undefined {
+    const primaryResult = this.tryReadSource(this.primary, hash);
     if (primaryResult !== undefined) {
       return primaryResult;
     }
 
-    for (const store of this.secondary) {
-      const result = this.tryReadStore(store, hash);
+    for (const source of this.secondary) {
+      const result = this.tryReadSource(source, hash);
       if (result !== undefined) {
         return result;
       }
@@ -104,34 +110,34 @@ export class CompositeObjectDatabase implements ObjectDatabase {
   }
 
   /**
-   * 尝试从指定存储中读取对象，不存在时返回 undefined
+   * 尝试从指定源中读取对象，不存在时返回 undefined
    */
-  private tryReadStore(store: ObjectSource, hash: SHA1): GitObject | undefined {
+  private tryReadSource(source: ObjectSource, hash: SHA1): RawGitObject | undefined {
     try {
-      return store.read(hash);
+      return source.read(hash);
     } catch {
       return undefined;
     }
   }
 
   /**
-   * 读取对象
+   * 读取原始对象
    *
    * 按顺序在所有存储中查找，返回第一个找到的对象。
    * （跳过 exists() 前置检查，直接尝试 read() 以消除 N+1 双重调用）
    *
    * @throws ObjectNotFoundError 如果对象在所有存储中都不存在
    */
-  read(hash: SHA1): GitObject {
-    // 先尝试主存储
-    const primaryResult = this.tryReadStore(this.primary, hash);
+  read(hash: SHA1): RawGitObject {
+    // 先尝试主数据库
+    const primaryResult = this.tryReadSource(this.primary, hash);
     if (primaryResult !== undefined) {
       return primaryResult;
     }
 
-    // 再在辅助存储中查找
-    for (const store of this.secondary) {
-      const result = this.tryReadStore(store, hash);
+    // 再在辅助源中查找
+    for (const source of this.secondary) {
+      const result = this.tryReadSource(source, hash);
       if (result !== undefined) {
         return result;
       }
@@ -146,8 +152,8 @@ export class CompositeObjectDatabase implements ObjectDatabase {
   exists(hash: SHA1): boolean {
     if (this.primary.exists(hash)) return true;
 
-    for (const store of this.secondary) {
-      if (store.exists(hash)) return true;
+    for (const source of this.secondary) {
+      if (source.exists(hash)) return true;
     }
 
     return false;
@@ -156,7 +162,7 @@ export class CompositeObjectDatabase implements ObjectDatabase {
   /**
    * 列出所有对象哈希
    *
-   * 主存储排在前面，重复哈希自动去重。
+   * 主数据库排在前面，重复哈希自动去重。
    */
   list(): SHA1[] {
     const hashes = new Set<SHA1>();
@@ -165,8 +171,8 @@ export class CompositeObjectDatabase implements ObjectDatabase {
       hashes.add(hash);
     }
 
-    for (const store of this.secondary) {
-      for (const hash of store.list()) {
+    for (const source of this.secondary) {
+      for (const hash of source.list()) {
         hashes.add(hash);
       }
     }
@@ -175,14 +181,14 @@ export class CompositeObjectDatabase implements ObjectDatabase {
   }
 
   /**
-   * 获取主存储
+   * 获取主数据库
    */
   getPrimary(): ObjectDatabase {
     return this.primary;
   }
 
   /**
-   * 获取所有辅助存储
+   * 获取所有辅助源
    */
   getSecondary(): ObjectSource[] {
     return [...this.secondary];

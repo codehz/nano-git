@@ -1,29 +1,27 @@
 /**
- * 基于 Packfile 的对象存储
+ * 基于 Packfile 的对象源（raw-first）
  *
  * 从 .git/objects/pack/ 目录中读取 packfile 和索引文件，
- * 提供只读的对象读取接口。
+ * 提供只读的原始对象读取接口。
  *
  * Git 的 pack 目录结构：
  * - pack-<checksum>.pack  — 打包的对象数据
  * - pack-<checksum>.idx   — 对应的索引文件
  *
- * 写入操作不支持（packfile 是只读的），
- * 新对象应写入 loose objects 或创建新的 packfile。
- *
  * @example
  * ```ts
  * const store = createPackObjectStore("/path/to/.git");
- * const obj = store.read(hash);
+ * const raw = store.read(hash);
  * ```
  */
 
 import { join } from "node:path";
 
 import { ObjectNotFoundError } from "../core/errors.ts";
+import { packObjectToRaw } from "./pack-reader-types.ts";
 import { getPackReader, loadPackPairs, toPackFileInfo } from "./pack-store-loader.ts";
 
-import type { GitObject, SHA1 } from "../core/types.ts";
+import type { RawGitObject, SHA1 } from "../core/types.ts";
 import type { ObjectSource } from "../odb/types.ts";
 import type { PackFileInfo, PackPair } from "./pack-store-types.ts";
 
@@ -34,7 +32,7 @@ export type { PackFileInfo } from "./pack-store-types.ts";
 // ============================================================================
 
 /**
- * 基于 Packfile 的对象存储接口
+ * 基于 Packfile 的对象源接口
  */
 export interface PackObjectStore extends ObjectSource {
   /**
@@ -68,20 +66,20 @@ export interface PackObjectStore extends ObjectSource {
 // ============================================================================
 
 /**
- * 创建基于 Packfile 的对象存储
+ * 创建基于 Packfile 的对象源
  *
  * 扫描 .git/objects/pack/ 目录，加载所有 .idx 文件。
  * packfile 数据按需加载（首次读取时才加载）。
  *
  * @param gitDir - .git 目录的路径
- * @returns 基于 Packfile 的对象存储
+ * @returns 基于 Packfile 的对象源
  *
  * @example
  * ```ts
  * const store = createPackObjectStore("/path/to/.git");
  *
- * // 读取对象
- * const obj = store.read(hash);
+ * // 读取原始对象
+ * const raw = store.read(hash);
  *
  * // 检查对象是否存在
  * if (store.exists(hash)) {
@@ -103,30 +101,30 @@ export function createPackObjectStore(gitDir: string): PackObjectStore {
     pairs.push(...loadPackPairs(packDir));
   }
 
-  function read(hash: SHA1): GitObject {
+  function read(hash: SHA1): RawGitObject {
     ensureLoaded();
 
     for (const pair of pairs) {
       const entry = pair.index.lookup(hash);
       if (entry) {
         const reader = getPackReader(packDir, pair);
-        const obj = reader.readObject(hash);
-        if (obj) return obj;
+        const obj = reader.getByHash(hash);
+        if (obj) return packObjectToRaw(obj);
       }
     }
 
     throw new ObjectNotFoundError(hash);
   }
 
-  function tryRead(hash: SHA1): GitObject | undefined {
+  function tryRead(hash: SHA1): RawGitObject | undefined {
     ensureLoaded();
 
     for (const pair of pairs) {
       const entry = pair.index.lookup(hash);
       if (entry) {
         const reader = getPackReader(packDir, pair);
-        const obj = reader.readObject(hash);
-        if (obj) return obj;
+        const obj = reader.getByHash(hash);
+        if (obj) return packObjectToRaw(obj);
       }
     }
 
