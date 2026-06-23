@@ -9,10 +9,15 @@
  * - 框架无关（Bun、Deno、Node.js、Cloudflare Workers 等均可直接使用）
  *
  * 当前支持：
- * - Git Wire 协议 v2 upload-pack（ls-refs + fetch）
- * - Git Wire 协议 v1 receive-pack（push）
+ * - upload-pack（ls-refs + fetch）
+ * - receive-pack（push）
+ *
+ * Upload-Pack 服务（createUploadPackService）可从本模块直接导入，
+ * 也可通过子路径 nano-git/transport/server/upload-pack 按需获取。
  */
 
 export { createSmartHttpHandler } from "./smart-http.ts";
+export { createUploadPackService, UploadPackError } from "./upload-pack.ts";
+export type { UploadPackService } from "./upload-pack.ts";
 
 export type { SmartHttpHandler } from "./types.ts";

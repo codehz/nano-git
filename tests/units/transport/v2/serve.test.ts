@@ -15,6 +15,7 @@ import {
   encodeFlushPkt,
   parsePktLines,
 } from "@/transport/pkt-line.ts";
+import { createUploadPackService } from "@/transport/server/upload-pack.ts";
 import {
   parseV2Command,
   parseLsRefsArgs,
@@ -22,7 +23,6 @@ import {
   generateLsRefsResponse,
   generateFetchResponse,
   serveV2Advertise,
-  createV2UploadPackService,
 } from "@/transport/v2/serve.ts";
 
 import type { SHA1 } from "@/core/types.ts";
@@ -559,13 +559,13 @@ describe("generateFetchResponse — incremental fetch", () => {
 });
 
 // ============================================================================
-// createV2UploadPackService（集成测试）
+// createUploadPackService（集成测试）
 // ============================================================================
 
-describe("createV2UploadPackService", () => {
+describe("createUploadPackService", () => {
   test("advertise 返回 v2 能力广告", () => {
     const { backend } = createTestRepo();
-    const service = createV2UploadPackService(backend);
+    const service = createUploadPackService(backend);
 
     const buf = service.advertise("git-upload-pack");
     const text = buf.toString("utf-8");
@@ -576,7 +576,7 @@ describe("createV2UploadPackService", () => {
 
   test("handleCommand ls-refs 返回 refs 列表", () => {
     const { backend, mainCommit } = createTestRepo();
-    const service = createV2UploadPackService(backend);
+    const service = createUploadPackService(backend);
 
     const body = Buffer.concat([
       encodePktLine("command=ls-refs\n"),
@@ -593,7 +593,7 @@ describe("createV2UploadPackService", () => {
 
   test("handleCommand fetch 返回 packfile", () => {
     const { backend, mainCommit } = createTestRepo();
-    const service = createV2UploadPackService(backend);
+    const service = createUploadPackService(backend);
 
     const body = Buffer.concat([
       encodePktLine("command=fetch\n"),
@@ -610,7 +610,7 @@ describe("createV2UploadPackService", () => {
 
   test("handleCommand 未知命令抛出错误", () => {
     const { backend } = createTestRepo();
-    const service = createV2UploadPackService(backend);
+    const service = createUploadPackService(backend);
 
     const body = Buffer.concat([
       encodePktLine("command=unknown\n"),

@@ -162,7 +162,7 @@ export type { ProtocolDetectResult } from "./v2/detect.ts";
 // 服务端模块
 // ============================================================================
 
-// v2 服务端核心逻辑
+// v2 协议原语
 export {
   serveV2Advertise,
   parseV2Command,
@@ -170,15 +170,12 @@ export {
   generateLsRefsResponse,
   parseFetchArgs,
   generateFetchResponse,
-  createV2UploadPackService,
-  V2ServeError,
 } from "./v2/serve.ts";
-export type {
-  ParsedV2Command,
-  LsRefsServerOptions,
-  FetchServerParams,
-  V2UploadPackService,
-} from "./v2/serve.ts";
+export type { ParsedV2Command, LsRefsServerOptions, FetchServerParams } from "./v2/serve.ts";
+
+// Upload-Pack 服务（server 端方案编排器）
+export { createUploadPackService, UploadPackError } from "./server/upload-pack.ts";
+export type { UploadPackService } from "./server/upload-pack.ts";
 
 // HTTP 适配器
 export { createSmartHttpHandler } from "./server/smart-http.ts";

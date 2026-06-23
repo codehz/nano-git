@@ -7,8 +7,8 @@
  * - 无自定义 HTTP 抽象层
  *
  * 当前支持：
- * - Git Wire 协议 v2 的 upload-pack（fetch + ls-refs）
- * - Git Wire 协议 v1 的 receive-pack（push）
+ * - upload-pack（fetch + ls-refs）
+ * - receive-pack（push）
  *
  * 路由：
  * - GET /info/refs?service=git-upload-pack   → v2 能力广告
@@ -20,7 +20,8 @@
  */
 
 import { serveV1Advertise, handleV1ReceivePush } from "../v1/receive-pack.ts";
-import { V2ServeError, createV2UploadPackService, serveV2Advertise } from "../v2/serve.ts";
+import { serveV2Advertise } from "../v2/serve.ts";
+import { createUploadPackService, UploadPackError } from "./upload-pack.ts";
 
 import type { RepositoryBackend } from "../../repository/backend/types.ts";
 import type { SmartHttpHandler } from "./types.ts";
@@ -126,13 +127,13 @@ async function handleUploadPack(body: Buffer, backend: RepositoryBackend): Promi
     return errorResponse(400, "Request body is required");
   }
 
-  const service = createV2UploadPackService(backend);
+  const service = createUploadPackService(backend);
 
   let response: Buffer;
   try {
     response = service.handleCommand(body);
   } catch (err) {
-    if (err instanceof V2ServeError) {
+    if (err instanceof UploadPackError) {
       return errorResponse(400, err.message);
     }
     throw err;
