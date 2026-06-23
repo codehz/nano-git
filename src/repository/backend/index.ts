@@ -12,7 +12,6 @@ export type {
   RepositoryRepackOptions,
 } from "./types.ts";
 
-export type { ShallowStore, ShallowUpdate } from "../../shallow/types.ts";
 export {
   createMemoryRepositoryBackend,
   type CreateMemoryRepositoryBackendOptions,

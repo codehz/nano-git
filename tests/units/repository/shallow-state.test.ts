@@ -21,7 +21,8 @@ import {
   createMemoryRepositoryBackend,
 } from "@/repository/backend/index.ts";
 import { createRepository, createMemoryRepository } from "@/repository/index.ts";
-import { createMemoryShallowStore, createFileShallowStore } from "@/shallow/index.ts";
+import { createFileShallowStore } from "@/shallow/file.ts";
+import { createMemoryShallowStore } from "@/shallow/memory.ts";
 import { collectReachable } from "@/transport/object-graph.ts";
 
 import type { ObjectStore } from "@/odb/types.ts";

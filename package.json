@@ -7,7 +7,6 @@
     "./transport": "./src/transport/index.ts",
     "./odb": "./src/odb/index.ts",
     "./refs": "./src/refs/index.ts",
-    "./core": "./src/core/index.ts",
     "./objects": "./src/objects/index.ts",
     "./repository": "./src/repository/index.ts"
   },

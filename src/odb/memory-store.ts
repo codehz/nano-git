@@ -14,7 +14,7 @@ import type { ObjectStore } from "./types.ts";
 /**
  * 内存对象存储接口（扩展了 list 方法）
  */
-export interface MemoryObjectStore extends ObjectStore {}
+export type MemoryObjectStore = ObjectStore;
 
 /**
  * 创建内存对象存储（用于测试）
