@@ -12,7 +12,7 @@ import { createTempDir, cleanupDir, gitWithTimeout } from "../helpers.ts";
 import { startNanoGitServer, createDefaultBackend } from "./nano-git-server.ts";
 import { sha1, type SHA1 } from "@/core/types.ts";
 import { createMemoryRepository, initRepository } from "@/repository/index.ts";
-import { detectProtocol } from "@/transport/v2/detect.ts";
+import { createV2HttpTransport } from "@/transport/git-transport.ts";
 
 import type { NanoGitServer } from "./nano-git-server.ts";
 import type { RepositoryBackend } from "@/repository/backend/types.ts";
@@ -58,14 +58,12 @@ describe("Smart HTTP 服务端 — nano-git 客户端", () => {
     cleanupDir(tempDir);
   });
 
-  test("detectProtocol 检测到 v2 能力广告", async () => {
-    const result = await detectProtocol(server.url);
-    expect(result.protocol).toBe("v2");
-    if (result.protocol === "v2") {
-      const cmdNames = result.capabilities.commands.map((c) => c.name);
-      expect(cmdNames).toContain("ls-refs");
-      expect(cmdNames).toContain("fetch");
-    }
+  test("能力广告包含 v2 命令", async () => {
+    const transport = createV2HttpTransport(server.url);
+    const caps = await transport.advertise();
+    const cmdNames = caps.commands.map((c) => c.name);
+    expect(cmdNames).toContain("ls-refs");
+    expect(cmdNames).toContain("fetch");
   });
 
   test("openImportSession 通过 v2 获取 refs", async () => {

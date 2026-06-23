@@ -1,12 +1,12 @@
 /**
  * Smart HTTP 传输层
  *
- * 统一入口，按模块分组导出：
+ * 统一入口，按职责分组导出：
  * - 共享模块：pkt-line、refspec、对象图等
- * - v1：Git Smart HTTP 协议 v1 实现
- * - v2：Git Wire 协议 v2 实现（部分功能）
- *
- * 提供自动协商函数 detectProtocol，优先尝试 v2 协议，不支持时回退到 v1。
+ * - Push 客户端：v1 receive-pack 协议
+ * - Push 服务端：receive-pack 接口
+ * - Fetch 客户端（v2 协议）：ls-refs、fetch、object-info
+ * - Fetch 服务端（v2 协议）：serve、capability-advert
  */
 
 // ============================================================================
@@ -73,50 +73,26 @@ export {
 } from "./update-refs.ts";
 
 // ============================================================================
-// v1 模块
+// Push 客户端（v1 协议）
 // ============================================================================
 
-// 核心类型（v1 专用）
 export type {
   GitServiceTransport,
   UploadPackTransport,
   ReceivePackTransport,
   RefAdvertisement,
-  AdvertiseOptions,
-  MatchedRefItem,
-  RefUpdatePlanItem,
-  FetchPlan,
-  FetchPackOptions,
-  FetchPackResult,
   PushOptions,
   PushResult,
   PushRefUpdate,
 } from "./types.ts";
 
-// 能力声明（v1）
-export {
-  extractCapabilities,
-  PUSH_CAPABILITIES,
-  FETCH_CAPABILITIES,
-} from "./transport-capabilities.ts";
+// 能力声明
+export { extractCapabilities, PUSH_CAPABILITIES } from "./transport-capabilities.ts";
 
-// 广告获取（v1）
-export { advertiseRemote } from "./advertise.ts";
-
-// ref 广告解析（v1）
+// ref 广告解析
 export { parseRefAdvertisement, RefAdvertisementError } from "./ref-advertisement.ts";
 
-// fetch 规划（v1）
-export { planRefUpdates, validateExactRules, RefPlanError } from "./fetch-ref-plan.ts";
-
-// fetch-pack（v1）
-export { fetchPack, FetchPackError } from "./fetch-pack.ts";
-export { decodeUploadPackResponse, UploadPackResponseError } from "./upload-pack-response.ts";
-
-// 请求生成（v1）
-export { buildUploadPackRequest } from "./negotiate.ts";
-
-// Push（v1）
+// Push
 export { push, PushError } from "./push.ts";
 export { determinePushRefs, resolveDefaultRefSpec } from "./push-ref-plan.ts";
 export type { PushRefItem } from "./push-ref-plan.ts";
@@ -128,16 +104,29 @@ export type { ReceivePackCommand } from "./receive-pack-request.ts";
 export { parseReceivePackResult, ReceivePackResultError } from "./receive-pack-result.ts";
 export { decodeReceivePackResponse, ReceivePackResponseError } from "./receive-pack-response.ts";
 
-// HTTP 传输（v1）
-export {
-  createUploadPackHttpClient,
-  createReceivePackHttpClient,
-  SmartHttpError,
-} from "./smart-http.ts";
+// HTTP 传输
+export { createReceivePackHttpClient, SmartHttpError } from "./smart-http.ts";
 export type { SmartHttpAuth } from "./smart-http.ts";
 
 // ============================================================================
-// v2 模块
+// Push 服务端（receive-pack）
+// ============================================================================
+
+export {
+  serveV1Advertise,
+  handleV1ReceivePush,
+  parseV1ReceivePackRequest,
+  V1ReceivePackError,
+} from "./receive-pack/index.ts";
+export type {
+  V1ReceivePackCommand,
+  ParsedV1ReceivePackRequest,
+  V1RefUpdateResult,
+  V1ReceivePackOptions,
+} from "./receive-pack/index.ts";
+
+// ============================================================================
+// Fetch 客户端（v2 协议）
 // ============================================================================
 
 export type {
@@ -146,23 +135,37 @@ export type {
   V2GitServiceTransport,
   V2FetchResponse,
   V2FetchRequest,
-} from "./v2/types.ts";
+} from "./protocol-types.ts";
+
+export {
+  v2Fetch,
+  v2FetchObjects,
+  parseV2FetchResponse,
+  negotiateV2Fetch,
+  V2FetchError,
+} from "./fetch.ts";
+export type { V2FetchParams } from "./fetch.ts";
+
+export { lsRefs, parseLsRefsResponse, lsRefsToRefAdvertisement, LsRefsError } from "./ls-refs.ts";
+export type { LsRefsOptions, LsRefsEntry } from "./ls-refs.ts";
+
+export { objectInfo, ObjectInfoError } from "./object-info.ts";
+export type { ObjectInfoResult, ObjectInfoQueryResult } from "./object-info.ts";
+
+// v2 传输适配器
+export { createV2HttpTransport, V2SmartHttpError } from "./git-transport.ts";
+
+// ============================================================================
+// Fetch 服务端（v2 协议）
+// ============================================================================
 
 export {
   parseV2CapabilityAdvertisement,
   hasCommand,
   getCommandFeatures,
   V2CapabilityError,
-} from "./v2/capability-advert.ts";
+} from "./capability-advert.ts";
 
-export { detectProtocol } from "./v2/detect.ts";
-export type { ProtocolDetectResult } from "./v2/detect.ts";
-
-// ============================================================================
-// 服务端模块
-// ============================================================================
-
-// v2 协议原语
 export {
   serveV2Advertise,
   parseV2Command,
@@ -170,8 +173,8 @@ export {
   generateLsRefsResponse,
   parseFetchArgs,
   generateFetchResponse,
-} from "./v2/serve.ts";
-export type { ParsedV2Command, LsRefsServerOptions, FetchServerParams } from "./v2/serve.ts";
+} from "./serve.ts";
+export type { ParsedV2Command, LsRefsServerOptions, FetchServerParams } from "./serve.ts";
 
 // Upload-Pack 服务（server 端方案编排器）
 export { createUploadPackService, UploadPackError } from "./server/upload-pack.ts";

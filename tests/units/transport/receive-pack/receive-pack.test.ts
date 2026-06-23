@@ -14,7 +14,7 @@ import {
   parseV1ReceivePackRequest,
   handleV1ReceivePush,
   V1ReceivePackError,
-} from "@/transport/v1/receive-pack.ts";
+} from "@/transport/receive-pack/receive-pack.ts";
 
 // ============================================================================
 // 测试辅助

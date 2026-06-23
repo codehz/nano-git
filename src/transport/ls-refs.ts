@@ -25,13 +25,15 @@
  * @see https://git-scm.com/docs/protocol-v2#_ls_refs
  */
 
-import { GitError } from "../../core/errors.ts";
-import { sha1 } from "../../core/types.ts";
-import { parsePktLines } from "../pkt-line.ts";
+import { GitError } from "../core/errors.ts";
+import { sha1 } from "../core/types.ts";
+import { parsePktLines } from "./pkt-line.ts";
 
-import type { RemoteRef } from "../types.ts";
-import type { RefAdvertisement } from "../types.ts";
-import type { V2GitServiceTransport, LsRefsEntry } from "./types.ts";
+import type { V2GitServiceTransport } from "./protocol-types.ts";
+import type { LsRefsEntry } from "./protocol-types.ts";
+export type { LsRefsEntry };
+import type { RemoteRef } from "./types.ts";
+import type { RefAdvertisement } from "./types.ts";
 
 // ============================================================================
 // 错误类型

@@ -6,12 +6,10 @@
  */
 
 import { PreconditionCheckError } from "../core/errors.ts";
-import { fetchPack } from "../transport/fetch-pack.ts";
+import { v2FetchObjects } from "../transport/fetch.ts";
 import { isAncestor } from "../transport/object-graph.ts";
 import { getLocalRefs } from "../transport/ref-collection.ts";
-import { createUploadPackHttpClient } from "../transport/smart-http.ts";
 import { resolveBranchTargetHash } from "../transport/update-refs.ts";
-import { v2FetchObjects } from "../transport/v2/fetch.ts";
 import { matchRefGlob, globToRegex } from "./import-glob.ts";
 import {
   resolveNamespaceTargets,
@@ -20,8 +18,8 @@ import {
 } from "./import-view.ts";
 
 import type { SHA1 } from "../core/types.ts";
+import type { V2GitServiceTransport } from "../transport/protocol-types.ts";
 import type { RemoteRef, RefAdvertisement, UploadPackTransport } from "../transport/types.ts";
-import type { V2GitServiceTransport } from "../transport/v2/types.ts";
 import type { RepositoryBackend } from "./backend/types.ts";
 import type {
   ImportSource,
@@ -606,21 +604,8 @@ export function createPlanBuilder(
       return objectCount;
     }
 
-    const createTransport =
-      transportFactory ??
-      ((url: string) =>
-        createUploadPackHttpClient(url, {
-          token: source.token,
-          headers: source.headers,
-        }));
-    const transport = createTransport(source.url);
-    const packResult = await fetchPack(backend.objects, transport, advertisement, {
-      wants: [...objectRoots],
-      haves: localHaveTips.length > 0 ? localHaveTips : undefined,
-    });
-
-    validateLocalPreconditions(backend, localPreconditions);
-    return packResult.objectCount;
+    // v1 fetch fallback 已移除，仅支持 v2 fetch
+    throw new PreconditionCheckError("v1 fetch is not supported. Use v2 Git Wire Protocol.");
   }
 
   function finalizePreview(

@@ -12,14 +12,14 @@
  * @see https://git-scm.com/docs/protocol-v2
  */
 
-import { sha1 } from "../../core/types.ts";
-import { createPackWriter } from "../../odb/pack/pack-writer.ts";
-import { resolveRefHash } from "../../refs/resolve.ts";
-import { collectReachable } from "../object-graph.ts";
-import { encodePktLine, encodeFlushPkt, encodeDelimiterPkt, parsePktLines } from "../pkt-line.ts";
+import { sha1 } from "../core/types.ts";
+import { createPackWriter } from "../odb/pack/pack-writer.ts";
+import { resolveRefHash } from "../refs/resolve.ts";
+import { collectReachable } from "./object-graph.ts";
+import { encodePktLine, encodeFlushPkt, encodeDelimiterPkt, parsePktLines } from "./pkt-line.ts";
 
-import type { SHA1 } from "../../core/types.ts";
-import type { RepositoryBackend } from "../../repository/backend/types.ts";
+import type { SHA1 } from "../core/types.ts";
+import type { RepositoryBackend } from "../repository/backend/types.ts";
 
 // ============================================================================
 // 常量

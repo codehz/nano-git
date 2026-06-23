@@ -17,7 +17,7 @@ import {
   parseFetchArgs,
   generateFetchResponse,
   V2ServeError,
-} from "../v2/serve.ts";
+} from "../serve.ts";
 
 import type { RepositoryBackend } from "../../repository/backend/types.ts";
 

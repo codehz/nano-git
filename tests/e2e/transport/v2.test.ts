@@ -2,11 +2,10 @@
  * v2 协议端到端测试
  *
  * 通过真实 git-http-backend 验证 Git Wire 协议 v2 支持：
- * - 协议检测（v2 可用时正确识别）
+ * - 能力广告
  * - ls-refs 命令
  * - v2 fetch 命令
  * - v2 ImportSession 透明升级
- * - v1 回退（不使用 Git-Protocol 头时）
  */
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
@@ -17,9 +16,9 @@ import { createServerRepo } from "./helpers.ts";
 import { startGitHttpBackendServer } from "./http-server.ts";
 import { sha1 } from "@/core/types.ts";
 import { initRepository } from "@/repository/index.ts";
-import { detectProtocol } from "@/transport/v2/detect.ts";
-import { v2Fetch } from "@/transport/v2/fetch.ts";
-import { lsRefs, lsRefsToRefAdvertisement } from "@/transport/v2/ls-refs.ts";
+import { v2Fetch } from "@/transport/fetch.ts";
+import { createV2HttpTransport } from "@/transport/git-transport.ts";
+import { lsRefs, lsRefsToRefAdvertisement } from "@/transport/ls-refs.ts";
 
 describe("v2 协议 - 服务器能力", () => {
   let tempDir: string;
@@ -40,26 +39,20 @@ describe("v2 协议 - 服务器能力", () => {
     cleanupDir(tempDir);
   });
 
-  test("detectProtocol 检测到 v2 能力广告", async () => {
-    const result = await detectProtocol(url);
+  test("能力广告包含 v2 命令", async () => {
+    const transport = createV2HttpTransport(url);
+    const caps = await transport.advertise();
 
-    expect(result.protocol).toBe("v2");
-    if (result.protocol === "v2") {
-      // 验证能力广告
-      expect(result.capabilities.commands.length).toBeGreaterThan(0);
-      const commandNames = result.capabilities.commands.map((c) => c.name);
-      expect(commandNames).toContain("ls-refs");
-      expect(commandNames).toContain("fetch");
-      expect(result.capabilities.capabilities["version"]).toBeUndefined();
-    }
+    expect(caps.commands.length).toBeGreaterThan(0);
+    const commandNames = caps.commands.map((c) => c.name);
+    expect(commandNames).toContain("ls-refs");
+    expect(commandNames).toContain("fetch");
   });
 
   test("ls-refs 返回远程 ref 列表", async () => {
-    const result = await detectProtocol(url);
-    expect(result.protocol).toBe("v2");
-    if (result.protocol !== "v2") return;
+    const transport = createV2HttpTransport(url);
 
-    const entries = await lsRefs(result.transport, {
+    const entries = await lsRefs(transport, {
       symrefs: true,
       peel: true,
       // 不指定 refPrefixes，获取所有 refs
@@ -73,12 +66,10 @@ describe("v2 协议 - 服务器能力", () => {
   });
 
   test("ls-refs ref-prefix 过滤生效", async () => {
-    const result = await detectProtocol(url);
-    expect(result.protocol).toBe("v2");
-    if (result.protocol !== "v2") return;
+    const transport = createV2HttpTransport(url);
 
     // 只请求 heads 前缀
-    const headsEntries = await lsRefs(result.transport, {
+    const headsEntries = await lsRefs(transport, {
       refPrefixes: ["refs/heads/"],
     });
 
@@ -89,11 +80,9 @@ describe("v2 协议 - 服务器能力", () => {
   });
 
   test("ls-refs 可转换为 v1 RefAdvertisement", async () => {
-    const result = await detectProtocol(url);
-    expect(result.protocol).toBe("v2");
-    if (result.protocol !== "v2") return;
+    const transport = createV2HttpTransport(url);
 
-    const entries = await lsRefs(result.transport, {
+    const entries = await lsRefs(transport, {
       symrefs: true,
       peel: true,
     });
@@ -124,31 +113,30 @@ describe("v2 协议 - object-info 命令", () => {
   });
 
   test("object-info 返回对象 size", async () => {
-    const { detectProtocol } = await import("@/transport/v2/detect.ts");
-    const { objectInfo } = await import("@/transport/v2/object-info.ts");
-    const result = await detectProtocol(url);
-    if (result.protocol !== "v2") return;
+    const transport = createV2HttpTransport(url);
+    const caps = await transport.advertise();
+
+    const { objectInfo } = await import("@/transport/object-info.ts");
 
     // object-info 需要服务端配置 uploadpack.advertiseObjectInfo=true
     // 默认不启用，如果服务端不支持则跳过
-    const hasObjectInfo = result.capabilities.commands.some((c) => c.name === "object-info");
+    const hasObjectInfo = caps.commands.some((c) => c.name === "object-info");
     if (!hasObjectInfo) return;
 
-    const info = await objectInfo(result.transport, [mainCommitHash]);
+    const info = await objectInfo(transport, [mainCommitHash]);
     expect(info.attrs).toContain("size");
     expect(info.objects.length).toBeGreaterThan(0);
     expect(info.objects[0]!.oid).toBe(mainCommitHash);
   });
 
   test("repo.fetchObjectInfo 高层 API 可用", async () => {
-    const { createMemoryRepository } = await import("@/repository/index.ts");
-    const repo = createMemoryRepository();
-    const result = await detectProtocol(url);
-    if (result.protocol !== "v2") return;
-
-    const hasObjectInfo = result.capabilities.commands.some((c) => c.name === "object-info");
+    const transport = createV2HttpTransport(url);
+    const caps = await transport.advertise();
+    const hasObjectInfo = caps.commands.some((c) => c.name === "object-info");
     if (!hasObjectInfo) return;
 
+    const { createMemoryRepository } = await import("@/repository/index.ts");
+    const repo = createMemoryRepository();
     const info = await repo.fetchObjectInfo(url, [mainCommitHash]);
     expect(info.objects.length).toBeGreaterThan(0);
     expect(info.objects[0]!.oid).toBe(mainCommitHash);
@@ -175,16 +163,15 @@ describe("v2 协议 - fetch 命令", () => {
   });
 
   test("v2 fetch 发送 want + done 接收 packfile", async () => {
-    const result = await detectProtocol(url);
-    expect(result.protocol).toBe("v2");
-    if (result.protocol !== "v2") return;
+    const transport = createV2HttpTransport(url);
+    const caps = await transport.advertise();
 
     // 获取服务端 fetch 命令的特性支持
-    const fetchCmd = result.capabilities.commands.find((c) => c.name === "fetch");
+    const fetchCmd = caps.commands.find((c) => c.name === "fetch");
     const features = fetchCmd?.features;
 
     const fetchResult = await v2Fetch(
-      result.transport,
+      transport,
       { wants: [mainCommitHash], ofsDelta: true, done: true },
       features,
     );
@@ -196,11 +183,9 @@ describe("v2 协议 - fetch 命令", () => {
   });
 
   test("v2 fetch 没有 want 时应在 v2Fetch 内部抛出错误", async () => {
-    const result = await detectProtocol(url);
-    expect(result.protocol).toBe("v2");
-    if (result.protocol !== "v2") return;
+    const transport = createV2HttpTransport(url);
 
-    expect(v2Fetch(result.transport, { wants: [], ofsDelta: true })).rejects.toBeInstanceOf(Error);
+    expect(v2Fetch(transport, { wants: [], ofsDelta: true })).rejects.toBeInstanceOf(Error);
   });
 });
 
@@ -336,103 +321,4 @@ describe("v2 协议 - 增量 fetch 多轮协商", () => {
   });
 });
 
-describe("v2 协议 - v1 vs v2 一致性", () => {
-  let tempDir: string;
-  let server: ReturnType<typeof startGitHttpBackendServer>;
-  let url: string;
-
-  beforeEach(async () => {
-    tempDir = createTempDir("e2e-v2-consistency");
-    createServerRepo(tempDir, "server.git");
-    server = startGitHttpBackendServer(tempDir, "/server.git");
-    url = server.url;
-  });
-
-  afterEach(async () => {
-    await server?.stop();
-    cleanupDir(tempDir);
-  });
-
-  test("v1 和 v2 ImportSession 获取到相同的 refs 列表", async () => {
-    // v1 获取
-    const { createUploadPackHttpClient } = await import("@/transport/smart-http.ts");
-    const v1Transport = createUploadPackHttpClient(url);
-    const v1Adv = await v1Transport.advertise();
-
-    // v2 获取
-    const v2Result = await detectProtocol(url);
-    expect(v2Result.protocol).toBe("v2");
-    if (v2Result.protocol !== "v2") return;
-
-    const { lsRefs, lsRefsToRefAdvertisement } = await import("@/transport/v2/ls-refs.ts");
-    const v2Entries = await lsRefs(v2Result.transport, { symrefs: true, peel: true });
-    const v2Adv = lsRefsToRefAdvertisement(v2Entries);
-
-    // 对比 refs 数量
-    expect(v2Adv.refs.length).toBe(v1Adv.refs.length);
-
-    // 对比每个 ref 的 hash 和 name
-    for (const v1Ref of v1Adv.refs) {
-      // v2 可能不包含 HEAD（取决于服务端实现），跳过 HEAD
-      if (v1Ref.name === "HEAD") continue;
-      const v2Ref = v2Adv.refs.find((r) => r.name === v1Ref.name);
-      expect(v2Ref).toBeDefined();
-      expect(v2Ref!.hash).toBe(v1Ref.hash);
-      expect(v2Ref!.symrefTarget).toBe(v1Ref.symrefTarget);
-    }
-  });
-});
-
-describe("v2 协议 - 降级强制回退", () => {
-  let tempDir: string;
-  let server: ReturnType<typeof startGitHttpBackendServer>;
-  let url: string;
-
-  beforeEach(async () => {
-    tempDir = createTempDir("e2e-v2-force-fallback");
-    createServerRepo(tempDir, "server.git");
-    server = startGitHttpBackendServer(tempDir, "/server.git");
-    url = server.url;
-  });
-
-  afterEach(async () => {
-    await server?.stop();
-    cleanupDir(tempDir);
-  });
-
-  test("v2 advertise 失败时 detectProtocol 返回 v1", async () => {
-    // 构造一个返回 v1 格式的服务（不传 Git-Protocol 头即为 v1）
-    const result = await detectProtocol(url);
-    // 默认 server 支持 v2，所以预期是 v2
-    // 此测试主要验证 detectProtocol 的容错机制
-    // 如果服务端返回非标准格式，detectProtocol 不会抛异常
-    expect(result.protocol === "v2" || result.protocol === "v1").toBe(true);
-  });
-
-  test("ImportSession 在不支持 v2 的服务器上自动回退到 v1", async () => {
-    const localDir = join(tempDir, "local-fallback");
-    const repo = initRepository(localDir);
-
-    // 使用一个只支持 v1 的服务——通过不带 Git-Protocol 头的 url 来测试
-    // 实际上 detectProtocol 在连接失败时会返回 v1，回退到 v1 路径
-    // 以畸形 URL 测试降级行为
-    const badResult = await detectProtocol("http://localhost:1/nonexistent");
-    expect(badResult.protocol).toBe("v1");
-
-    // 正常 URL 走 v2 路径应该成功
-    const session = await repo.openImportSession({ url });
-    expect(session.advertisement.refs.length).toBeGreaterThan(0);
-  });
-
-  test("不使用 Git-Protocol 头时使用 v1 协议", async () => {
-    // 直接使用 v1 transport，不调用 detectProtocol
-    const { createUploadPackHttpClient } = await import("@/transport/smart-http.ts");
-    const transport = createUploadPackHttpClient(url);
-    const adv = await transport.advertise();
-
-    // v1 advertisement 应包含 capabilities
-    expect(adv.refs.length).toBeGreaterThan(0);
-    expect(adv.capabilities).toHaveProperty("multi_ack");
-    expect(adv.capabilities).toHaveProperty("side-band-64k");
-  });
-});
+// v1 回退测试已移除 — nano-git 仅支持 v2 fetch

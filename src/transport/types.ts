@@ -87,19 +87,7 @@ export interface RefAdvertisement {
 }
 
 // ============================================================================
-// Advertise 类型
-// ============================================================================
-
-/**
- * 广告获取选项
- */
-export interface AdvertiseOptions {
-  readonly token?: string;
-  readonly headers?: Record<string, string>;
-}
-
-// ============================================================================
-// Ref 规划类型
+// Ref 映射规则
 // ============================================================================
 
 /**
@@ -109,88 +97,6 @@ export interface RefMappingRule {
   readonly source: string;
   readonly target: string;
   readonly force?: boolean;
-}
-
-/**
- * 匹配到的 ref 项（完整匹配结果）
- *
- * 每项保留完整的匹配信息，包含 hashEqual 标志。
- * 用于记录所有匹配到的远端 ref 与本地 ref 的对应关系。
- *
- * 注意：matchedItems ≠ refUpdates。只有 !hashEqual 的才会进入 refUpdates。
- * 即使 hashEqual 且对象缺失，wants 可非空而 refUpdates 为空。
- */
-export interface MatchedRefItem {
-  readonly remoteRef: RemoteRef;
-  readonly localRef: string;
-  readonly currentLocalHash?: SHA1;
-  readonly force: boolean;
-  /** 本地 hash 与远端 hash 是否相等 */
-  readonly hashEqual: boolean;
-}
-
-/**
- * Ref 更新计划项
- *
- * 仅包含实际需要执行本地 ref 写入的项（即 hash 不相等的情况）。
- * 继承自匹配项的结构。
- */
-export interface RefUpdatePlanItem extends MatchedRefItem {}
-
-/**
- * Fetch 规划结果（由 planRefUpdates 直接产出）
- *
- * 同时包含 matchedRefs、matchedItems、refUpdates、wants。
- * - matchedItems：所有匹配结果（含 hashEqual 项）
- * - refUpdates：仅 !hashEqual 的实际需要写 ref 的项
- * - wants：需要传输的对象（!hashEqual 或 hashEqual 但对象缺失）
- *
- * 关键语义：
- * - matchedItems ≠ refUpdates
- * - wants 可以非空而 refUpdates 为空（例如 hashEqual + 对象缺失的补拉场景）
- *
- * 这样 no-op fetch（第二次 fetch 相同内容）可以有 matchedItems 但 refUpdates 为空。
- */
-export interface FetchPlan {
-  /** 所有匹配到的远端 refs */
-  readonly matchedRefs: RemoteRef[];
-  /** 所有匹配项（完整匹配结果，含 hashEqual） */
-  readonly matchedItems: MatchedRefItem[];
-  /** 实际需要写 ref 的结果（仅 !hashEqual） */
-  readonly refUpdates: RefUpdatePlanItem[];
-  /** 需要向服务器请求的 wants（含对象缺失补正） */
-  readonly wants: SHA1[];
-  /** 是否需要执行 fetch-pack 协商 */
-  readonly needsPackNegotiation: boolean;
-}
-
-// ============================================================================
-// FetchPack 类型
-// ============================================================================
-
-/**
- * Fetch-pack 操作选项
- *
- * 只接受 wants、depth、shallow 等协议级参数，不涉及 ref 映射。
- * url/token/headers/transport 不再出现在此处 ——
- * advertisement 和 UploadPackTransport 由调用方显式传入 fetchPack()。
- */
-export interface FetchPackOptions {
-  readonly wants: SHA1[];
-  /** 本地已有 commit tips，用于 negotiate 中作为 have 候选的遍历起点 */
-  readonly haves?: SHA1[];
-  readonly depth?: number;
-  readonly shallow?: SHA1[];
-  readonly maxCandidates?: number;
-}
-
-/**
- * Fetch-pack 操作结果
- */
-export interface FetchPackResult {
-  readonly objectCount: number;
-  readonly shallow?: SHA1[];
-  readonly unshallow?: SHA1[];
 }
 
 // ============================================================================

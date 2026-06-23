@@ -1,8 +1,8 @@
 /**
- * Smart HTTP 传输层
+ * Smart HTTP 传输层 — Receive-Pack 客户端
  *
  * 基于 Bun 内置 fetch() 的 Git Smart HTTP 协议 HTTP 适配器。
- * 只负责 URL、认证、状态码与 content-type 校验，返回解析后的广告或原始 RPC body。
+ * 仅提供 receive-pack（push）客户端，upload-pack（fetch）请使用 v2 协议。
  *
  * @see https://git-scm.com/docs/http-protocol
  */
@@ -45,29 +45,9 @@ export interface SmartHttpAuth {
   readonly headers?: Record<string, string>;
 }
 
-interface GitHttpServiceConfig {
-  readonly advertiseService: "git-upload-pack" | "git-receive-pack";
-  readonly advertiseContentType: string;
-  readonly rpcPath: string;
-  readonly rpcRequestContentType: string;
-  readonly rpcResultContentType: string;
-}
-
-const UPLOAD_PACK_HTTP: GitHttpServiceConfig = {
-  advertiseService: "git-upload-pack",
-  advertiseContentType: "application/x-git-upload-pack-advertisement",
-  rpcPath: "/git-upload-pack",
-  rpcRequestContentType: "application/x-git-upload-pack-request",
-  rpcResultContentType: "application/x-git-upload-pack-result",
-};
-
-const RECEIVE_PACK_HTTP: GitHttpServiceConfig = {
-  advertiseService: "git-receive-pack",
-  advertiseContentType: "application/x-git-receive-pack-advertisement",
-  rpcPath: "/git-receive-pack",
-  rpcRequestContentType: "application/x-git-receive-pack-request",
-  rpcResultContentType: "application/x-git-receive-pack-result",
-};
+// ============================================================================
+// HTTP 辅助函数
+// ============================================================================
 
 function applyAuthHeaders(
   base: Record<string, string>,
@@ -100,91 +80,16 @@ function assertContentType(actual: string, expected: string, context: string): v
   }
 }
 
-function createGitServiceHttpClient(
-  baseUrl: string,
-  auth: SmartHttpAuth | undefined,
-  config: GitHttpServiceConfig,
-): GitServiceTransport {
-  const normalizedUrl = baseUrl.replace(/\/+$/, "");
+// ============================================================================
+// Receive-Pack 客户端
+// ============================================================================
 
-  return {
-    async advertise(): Promise<RefAdvertisement> {
-      const url = `${normalizedUrl}/info/refs?service=${config.advertiseService}`;
-
-      let response: Response;
-      try {
-        response = await fetch(url, { headers: applyAuthHeaders({}, auth) });
-      } catch (err: unknown) {
-        throw new SmartHttpError(
-          `Failed to fetch ref advertisement from ${url}: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-
-      if (!response.ok) {
-        throw new SmartHttpError(`Failed to fetch ref advertisement from ${url}`, response.status);
-      }
-
-      const contentType = response.headers.get("content-type") ?? "";
-      assertContentType(contentType, config.advertiseContentType, url);
-
-      const data = await readResponseBody(response, url);
-
-      try {
-        return parseRefAdvertisement(data, config.advertiseService);
-      } catch (err: unknown) {
-        if (err instanceof RefAdvertisementError) {
-          throw err;
-        }
-        throw new SmartHttpError(
-          `Failed to parse ref advertisement: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-    },
-
-    async request(body: Buffer): Promise<Buffer> {
-      const url = `${normalizedUrl}${config.rpcPath}`;
-
-      let response: Response;
-      try {
-        response = await fetch(url, {
-          method: "POST",
-          headers: applyAuthHeaders({ "Content-Type": config.rpcRequestContentType }, auth),
-          body,
-        });
-      } catch (err: unknown) {
-        throw new SmartHttpError(
-          `Failed to POST RPC request to ${url}: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-
-      if (!response.ok) {
-        throw new SmartHttpError(`RPC request to ${url} failed`, response.status);
-      }
-
-      const contentType = response.headers.get("content-type") ?? "";
-      assertContentType(contentType, config.rpcResultContentType, url);
-
-      return readResponseBody(response, url);
-    },
-  };
-}
-
-/**
- * 创建 upload-pack HTTP 客户端
- *
- * @example
- * ```ts
- * const client = createUploadPackHttpClient("https://github.com/user/repo");
- * const adv = await client.advertise();
- * const raw = await client.request(body);
- * ```
- */
-export function createUploadPackHttpClient(
-  baseUrl: string,
-  auth?: SmartHttpAuth,
-): GitServiceTransport {
-  return createGitServiceHttpClient(baseUrl, auth, UPLOAD_PACK_HTTP);
-}
+/** receive-pack HTTP 端点配置 */
+const RECEIVE_PACK_ADVERTISE_SERVICE = "git-receive-pack";
+const RECEIVE_PACK_ADVERTISE_CONTENT_TYPE = "application/x-git-receive-pack-advertisement";
+const RECEIVE_PACK_RPC_PATH = "/git-receive-pack";
+const RECEIVE_PACK_RPC_CONTENT_TYPE = "application/x-git-receive-pack-request";
+const RECEIVE_PACK_RESULT_CONTENT_TYPE = "application/x-git-receive-pack-result";
 
 /**
  * 创建 receive-pack HTTP 客户端
@@ -200,5 +105,66 @@ export function createReceivePackHttpClient(
   baseUrl: string,
   auth?: SmartHttpAuth,
 ): GitServiceTransport {
-  return createGitServiceHttpClient(baseUrl, auth, RECEIVE_PACK_HTTP);
+  const normalizedUrl = baseUrl.replace(/\/+$/, "");
+
+  return {
+    async advertise(): Promise<RefAdvertisement> {
+      const url = `${normalizedUrl}/info/refs?service=${RECEIVE_PACK_ADVERTISE_SERVICE}`;
+
+      let response: Response;
+      try {
+        response = await fetch(url, { headers: applyAuthHeaders({}, auth) });
+      } catch (err: unknown) {
+        throw new SmartHttpError(
+          `Failed to fetch ref advertisement from ${url}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+
+      if (!response.ok) {
+        throw new SmartHttpError(`Failed to fetch ref advertisement from ${url}`, response.status);
+      }
+
+      const contentType = response.headers.get("content-type") ?? "";
+      assertContentType(contentType, RECEIVE_PACK_ADVERTISE_CONTENT_TYPE, url);
+
+      const data = await readResponseBody(response, url);
+
+      try {
+        return parseRefAdvertisement(data, RECEIVE_PACK_ADVERTISE_SERVICE);
+      } catch (err: unknown) {
+        if (err instanceof RefAdvertisementError) {
+          throw err;
+        }
+        throw new SmartHttpError(
+          `Failed to parse ref advertisement: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    },
+
+    async request(body: Buffer): Promise<Buffer> {
+      const url = `${normalizedUrl}${RECEIVE_PACK_RPC_PATH}`;
+
+      let response: Response;
+      try {
+        response = await fetch(url, {
+          method: "POST",
+          headers: applyAuthHeaders({ "Content-Type": RECEIVE_PACK_RPC_CONTENT_TYPE }, auth),
+          body,
+        });
+      } catch (err: unknown) {
+        throw new SmartHttpError(
+          `Failed to POST RPC request to ${url}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+
+      if (!response.ok) {
+        throw new SmartHttpError(`RPC request to ${url} failed`, response.status);
+      }
+
+      const contentType = response.headers.get("content-type") ?? "";
+      assertContentType(contentType, RECEIVE_PACK_RESULT_CONTENT_TYPE, url);
+
+      return readResponseBody(response, url);
+    },
+  };
 }

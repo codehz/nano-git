@@ -24,16 +24,6 @@ export const PUSH_CAPABILITIES = [
   "delete-refs",
 ] as const;
 
-/** fetch (upload-pack) 默认支持的客户端能力 */
-export const FETCH_CAPABILITIES = [
-  "multi_ack",
-  "side-band-64k",
-  "ofs-delta",
-  "no-progress",
-  "include-tag",
-  "shallow",
-] as const;
-
 // ============================================================================
 // 能力过滤
 // ============================================================================

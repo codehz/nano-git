@@ -14,6 +14,7 @@ import { createImportSession, createRepoImportOperations } from "@/repository/im
 import { createImportView } from "@/repository/import-view.ts";
 import { encodePktLine } from "@/transport/pkt-line.ts";
 
+import type { V2GitServiceTransport } from "@/transport/protocol-types.ts";
 import type { RemoteRef, RefAdvertisement } from "@/transport/types.ts";
 
 // ============================================================================
@@ -729,12 +730,19 @@ describe("PlanBuilder — 前置条件与诊断", () => {
   test("hash 相同但对象缺失时仍会规划对象导入", async () => {
     const isolatedBackend = createMemoryRepositoryBackend();
     isolatedBackend.refs.write("refs/heads/main", MOCK_HASH_A);
-    const isolatedSession = createImportSession(MOCK_SOURCE, isolatedBackend, adv, () => ({
-      advertise: async () => adv,
-      request: async () => {
+    const mockV2Transport: V2GitServiceTransport = {
+      advertise: async () => ({ capabilities: {}, commands: [] }),
+      command: async () => {
         throw new Error("transport requested");
       },
-    }));
+    };
+    const isolatedSession = createImportSession(
+      MOCK_SOURCE,
+      isolatedBackend,
+      adv,
+      undefined,
+      mockV2Transport,
+    );
 
     const mainView = isolatedSession.selectRefs(["refs/heads/main"]);
     const plan = isolatedSession.plan().materialize(mainView).toBranch("main");
@@ -1417,6 +1425,12 @@ describe("apply 错误处理", () => {
   test("对象缺失时 preview 预取失败会向上传递 transport 错误", async () => {
     const { backend } = createRepoWithObjects();
     const missingHash = sha1("c".repeat(40));
+    const mockV2Transport: V2GitServiceTransport = {
+      advertise: async () => ({ capabilities: {}, commands: [] }),
+      command: async () => {
+        throw new Error("transport requested");
+      },
+    };
     const adv: RefAdvertisement = {
       capabilities: {},
       refs: [
@@ -1425,7 +1439,7 @@ describe("apply 错误处理", () => {
       ],
       defaultBranch: undefined,
     };
-    const session = createImportSession(MOCK_SOURCE, backend, adv);
+    const session = createImportSession(MOCK_SOURCE, backend, adv, undefined, mockV2Transport);
     const missingView = session.selectRefs(["refs/heads/missing"]);
     const plan = session.plan().materialize(missingView).toBranch("missing-tip");
 
@@ -1437,6 +1451,13 @@ describe("apply 错误处理", () => {
     const backend = createMemoryRepositoryBackend();
     backend.refs.write("refs/heads/main", MOCK_HASH_A);
 
+    const mockV2Transport: V2GitServiceTransport = {
+      advertise: async () => ({ capabilities: {}, commands: [] }),
+      command: async () => {
+        throw new Error("transport requested");
+      },
+    };
+
     const adv: RefAdvertisement = {
       capabilities: {},
       refs: [
@@ -1446,12 +1467,7 @@ describe("apply 错误处理", () => {
       defaultBranch: "refs/heads/main",
     };
 
-    const session = createImportSession(MOCK_SOURCE, backend, adv, () => ({
-      advertise: async () => adv,
-      request: async () => {
-        throw new Error("transport requested");
-      },
-    }));
+    const session = createImportSession(MOCK_SOURCE, backend, adv, undefined, mockV2Transport);
 
     const plan = session.plan().materialize(session.defaultBranch()).toBranch("main");
     expect(plan.preview()).rejects.toThrow(/transport requested/);
@@ -1481,14 +1497,16 @@ describe("apply 错误处理", () => {
     writer.addObject(commit);
     const rawResponse = Buffer.concat([encodePktLine("NAK\n"), writer.build()]);
 
-    const adv = createAdvForCommit(commitHash);
-    const session = createImportSession(MOCK_SOURCE, backend, adv, () => ({
-      advertise: async () => adv,
-      request: async () => {
+    const mockV2Transport: V2GitServiceTransport = {
+      advertise: async () => ({ capabilities: {}, commands: [] }),
+      command: async () => {
         backend.refs.write("refs/heads/main", sha1("f".repeat(40)));
         return rawResponse;
       },
-    }));
+    };
+
+    const adv = createAdvForCommit(commitHash);
+    const session = createImportSession(MOCK_SOURCE, backend, adv, undefined, mockV2Transport);
 
     const plan = session.plan().materialize(session.defaultBranch()).toBranch("main");
     const preview = await plan.preview();
@@ -1540,11 +1558,11 @@ describe("apply 错误处理", () => {
 describe("openImportSession source 透传", () => {
   test("source.token 会并入 session source 快照", async () => {
     const backend = createMemoryRepositoryBackend();
-    const advertised = createMockAdvertisement();
-    const repo = createRepoImportOperations(backend, () => ({
-      advertise: async () => advertised,
-      request: async () => Buffer.alloc(0),
-    }));
+    const mockV2Transport: V2GitServiceTransport = {
+      advertise: async () => ({ capabilities: {}, commands: [] }),
+      command: async () => Buffer.alloc(0),
+    };
+    const repo = createRepoImportOperations(backend, undefined, mockV2Transport);
     const session = await repo.openImportSession({
       url: "https://example.com/private.git",
       token: "secret-token",

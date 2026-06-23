@@ -9,10 +9,10 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
 import { git, gitInit, createTempDir, cleanupDir, createFile } from "../helpers.ts";
-import { createServerRepo } from "./helpers.ts";
+import { createServerRepo, enableReceivePack } from "./helpers.ts";
 import { startGitHttpBackendServer } from "./http-server.ts";
 import { sha1 } from "@/core/types.ts";
-import { createUploadPackHttpClient } from "@/transport/smart-http.ts";
+import { createReceivePackHttpClient } from "@/transport/smart-http.ts";
 
 describe("ref advertisement", () => {
   let tempDir: string;
@@ -25,6 +25,7 @@ describe("ref advertisement", () => {
     tempDir = createTempDir("e2e-http-refs");
     const created = createServerRepo(tempDir, "test.git");
     repoDir = created.repoDir;
+    enableReceivePack(repoDir);
     commitHash = created.commitHash;
     server = startGitHttpBackendServer(tempDir, "/test.git");
     serverUrl = server.url;
@@ -36,7 +37,7 @@ describe("ref advertisement", () => {
   });
 
   test("解析 ref advertisement 并验证 refs", async () => {
-    const transport = createUploadPackHttpClient(serverUrl);
+    const transport = createReceivePackHttpClient(serverUrl);
     const adv = await transport.advertise();
 
     expect(adv.refs.length).toBeGreaterThanOrEqual(1);
@@ -45,7 +46,8 @@ describe("ref advertisement", () => {
     expect(mainRef).toBeDefined();
     expect(mainRef!.hash).toBe(sha1(commitHash));
 
-    expect(adv.capabilities["multi_ack"]).toBe(true);
+    // receive-pack capabilities（非 upload-pack multi_ack）
+    expect(adv.capabilities["report-status"]).toBe(true);
     expect(adv.capabilities["side-band-64k"]).toBe(true);
     expect(adv.capabilities["ofs-delta"]).toBe(true);
     expect(adv.capabilities["agent"]).toMatch(/^git\//);
@@ -59,7 +61,7 @@ describe("ref advertisement", () => {
     git(["commit", "-m", "Feature commit"], branchDir);
     git(["push", repoDir, "HEAD:refs/heads/feature"], branchDir);
 
-    const transport = createUploadPackHttpClient(serverUrl);
+    const transport = createReceivePackHttpClient(serverUrl);
     const adv = await transport.advertise();
 
     const featureRef = adv.refs.find((r) => r.name === "refs/heads/feature");
@@ -70,9 +72,10 @@ describe("ref advertisement", () => {
     const emptyDir = join(tempDir, "empty.git");
     mkdirSync(emptyDir);
     git(["init", "--bare"], emptyDir);
+    enableReceivePack(emptyDir);
 
     await using emptyServer = startGitHttpBackendServer(tempDir, "/empty.git");
-    const transport = createUploadPackHttpClient(emptyServer.url);
+    const transport = createReceivePackHttpClient(emptyServer.url);
     const adv = await transport.advertise();
 
     expect(adv.refs).toHaveLength(0);

@@ -583,8 +583,8 @@ function generateV1ReportStatus(
       pktParts.push(encodePktLine(line + "\n"));
     }
   }
-  pktParts.push(encodeFlushPkt());
 
+  pktParts.push(encodeFlushPkt());
   const reportPktSequence = Buffer.concat(pktParts);
 
   if (!useSideBand) {
@@ -651,23 +651,25 @@ function applyRefUpdates(
 // ============================================================================
 
 /**
- * 处理 v1 receive-pack push 请求
+ * 处理 receive-pack push 请求
  *
- * 完整处理流程：
- * 1. 解析请求 body（命令 + packfile）
- * 2. 解包 packfile 对象到存储
- * 3. 校验每个 ref 更新的合法性
- * 4. 事务性应用 ref 更新
- * 5. 返回 report-status 响应
+ * 完整流程：
+ * 1. 验证请求体非空
+ * 2. 解析客户端命令
+ * 3. 检查 delete-refs 能力（如需要删除）
+ * 4. 解包 packfile（如有）
+ * 5. 检查组删除 / 更新 / 创建条件
+ * 6. 批量应用 ref 更新
+ * 7. 返回 report-status
  *
  * @param backend - 仓库后端
- * @param body - 请求 body
- * @param options - 可选的策略配置
- * @returns 响应 body（pkt-line 编码）
+ * @param body - 完整的请求体
+ * @param options - 处理选项
+ * @returns report-status 响应（Buffer）
  *
  * @example
  * ```ts
- * const response = handleV1ReceivePush(backend, body);
+ * const response = handleV1ReceivePush(backend, requestBody);
  * // Response 的 Content-Type 应为 "application/x-git-receive-pack-result"
  * ```
  */
@@ -689,37 +691,35 @@ export function handleV1ReceivePush(
 
   const { capabilities, commands, packfile } = parsed;
   const hasReportStatus = capabilities.includes("report-status");
+
   const hasSideBand = capabilities.includes("side-band-64k");
 
-  // 2. 解包 packfile
+  // 解包 packfile（如果有）
   let unpackOk = true;
   let unpackError: string | undefined;
 
   if (packfile.length > 0) {
     try {
       unpackPackfile(backend.objects, packfile);
-    } catch (err) {
+    } catch (err: unknown) {
       unpackOk = false;
       unpackError = err instanceof Error ? err.message : String(err);
     }
   }
 
-  // 3. 校验并应用 ref 更新
+  // 校验并应用 ref 更新
   const successfulUpdates: Array<{ refName: string; newHash: SHA1 }> = [];
   const refResults: V1RefUpdateResult[] = [];
 
   if (unpackOk) {
     for (const cmd of commands) {
       const check = checkRefUpdate(backend, cmd, capabilities, options);
+
       if (check.ok) {
         successfulUpdates.push({ refName: cmd.refName, newHash: cmd.newHash });
         refResults.push({ refName: cmd.refName, success: true });
       } else {
-        refResults.push({
-          refName: cmd.refName,
-          success: false,
-          error: check.error,
-        });
+        refResults.push({ refName: cmd.refName, success: false, error: check.error });
       }
     }
 
@@ -730,7 +730,6 @@ export function handleV1ReceivePush(
       } catch (err) {
         // 事务失败，将所有已成功的标记为失败
         for (const up of successfulUpdates) {
-          // 替换为失败结果（V1RefUpdateResult 是 readonly，只能整体替换）
           const idx = refResults.findIndex((r) => r.refName === up.refName);
           if (idx !== -1) {
             refResults[idx] = {
@@ -748,12 +747,12 @@ export function handleV1ReceivePush(
       refResults.push({
         refName: cmd.refName,
         success: false,
-        error: "unpack failed",
+        error: "unpack error",
       });
     }
   }
 
-  // 4. 生成响应
+  // 如果客户端没有请求 report-status，返回空响应
   if (!hasReportStatus) {
     return encodeFlushPkt();
   }

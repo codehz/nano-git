@@ -24,12 +24,6 @@ export type {
   UploadPackTransport,
   ReceivePackTransport,
   RefAdvertisement,
-  AdvertiseOptions,
-  MatchedRefItem,
-  RefUpdatePlanItem,
-  FetchPlan,
-  FetchPackOptions,
-  FetchPackResult,
   PushOptions,
   PushResult,
   PushRefUpdate,
@@ -40,8 +34,7 @@ export type {
   V2GitServiceTransport,
   V2FetchResponse,
   V2FetchRequest,
-} from "../transport/v2/types.ts";
+} from "../transport/protocol-types.ts";
 export type { SmartHttpAuth } from "../transport/smart-http.ts";
 export type { ReceivePackCommand } from "../transport/receive-pack-request.ts";
-export type { ProtocolDetectResult } from "../transport/v2/detect.ts";
 export type { PushRefItem } from "../transport/push-ref-plan.ts";

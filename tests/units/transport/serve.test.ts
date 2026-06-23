@@ -15,7 +15,6 @@ import {
   encodeFlushPkt,
   parsePktLines,
 } from "@/transport/pkt-line.ts";
-import { createUploadPackService } from "@/transport/server/upload-pack.ts";
 import {
   parseV2Command,
   parseLsRefsArgs,
@@ -23,7 +22,8 @@ import {
   generateLsRefsResponse,
   generateFetchResponse,
   serveV2Advertise,
-} from "@/transport/v2/serve.ts";
+} from "@/transport/serve.ts";
+import { createUploadPackService } from "@/transport/server/upload-pack.ts";
 
 import type { SHA1 } from "@/core/types.ts";
 

@@ -17,7 +17,19 @@ import { isAncestor } from "./object-graph.ts";
 import type { SHA1 } from "../core/types.ts";
 import type { ObjectStore } from "../odb/types.ts";
 import type { RefStore } from "../refs/types.ts";
-import type { RefUpdatePlanItem, ApplyRefUpdatesResult, RefUpdateRejection } from "./types.ts";
+import type { ApplyRefUpdatesResult, RefUpdateRejection } from "./types.ts";
+
+/**
+ * Ref 更新计划项
+ *
+ * 表示一个需要执行的本地 ref 写操作。
+ */
+export interface RefUpdatePlanItem {
+  readonly remoteRef: import("./types.ts").RemoteRef;
+  readonly localRef: string;
+  readonly currentLocalHash?: SHA1;
+  readonly force: boolean;
+}
 
 // ============================================================================
 // 错误类型
