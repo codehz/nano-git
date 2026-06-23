@@ -115,7 +115,7 @@ export function applyRefUpdates(
   refs: RefStore,
   updates: RefUpdatePlanItem[],
 ): ApplyRefUpdatesResult {
-  const updatedRefs = new Map<string, SHA1>();
+  const committedUpdates: Array<{ localRef: string; writeHash: SHA1 }> = [];
   const rejectedRefs: RefUpdateRejection[] = [];
   const rejectedSet = new Set<string>();
 
@@ -131,20 +131,17 @@ export function applyRefUpdates(
     }
   }
 
+  // 校验类型和 fast-forward 约束，收集可提交的更新
   for (const item of updates) {
     const { remoteRef, localRef, currentLocalHash, force } = item;
 
-    // 跳过已因对象缺失被拒绝的项
     if (rejectedSet.has(localRef)) continue;
 
-    // Git 规则：refs/heads/* 只能指向 commit 对象
     const writeHash = localRef.startsWith("refs/heads/")
       ? resolveBranchTargetHash(store, remoteRef.hash, remoteRef.name)
       : remoteRef.hash;
 
-    // 非强制且本地已有值
     if (!force && currentLocalHash !== undefined) {
-      // refs/tags/* 不允许任何替换
       if (localRef.startsWith("refs/tags/")) {
         rejectedRefs.push({
           localRef,
@@ -153,7 +150,6 @@ export function applyRefUpdates(
         continue;
       }
 
-      // 需要 fast-forward 检查的命名空间
       if (
         isRefNamespaceRequiringFastForward(localRef) &&
         !isAncestor(store, currentLocalHash, writeHash)
@@ -166,9 +162,21 @@ export function applyRefUpdates(
       }
     }
 
-    refs.write(localRef, writeHash);
-    updatedRefs.set(localRef, writeHash);
+    committedUpdates.push({ localRef, writeHash });
   }
 
+  // 事务内原子写入所有已校验的 ref 更新
+  const tx = refs.beginTransaction();
+  try {
+    for (const { localRef, writeHash } of committedUpdates) {
+      tx.write(localRef, writeHash);
+    }
+    tx.commit();
+  } catch (e) {
+    tx.rollback();
+    throw e;
+  }
+
+  const updatedRefs = new Map(committedUpdates.map((u) => [u.localRef, u.writeHash]));
   return { updatedRefs, rejectedRefs };
 }

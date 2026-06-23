@@ -16,6 +16,7 @@
 - ✅ **可达性遍历与 GC** — 基于 refs 的可达对象收集、repack、gc
 - ✅ **Smart HTTP 传输** — 基于 Bun fetch 的 Git 协议客户端，支持 `fetch()`/`push()` 与完整的 Import Session 物化流程
 - ✅ **类型安全** — 完整的 TypeScript 类型定义
+- ✅ **Reference Transaction** — 批量 ref 更新的原子性保障，支持 Hooks 回调与自动回滚
 
 ## 安装
 
@@ -373,10 +374,10 @@ bun test
 - [x] 仓库 API（init、open、hash-object、cat-file、write-tree、commit-tree、update-ref、branch、tag）
 - [x] 可达性遍历与 GC（repack、gc）
 - [x] **Smart HTTP 传输** — pkt-line 编解码、ref 广告解析、side-band 解复用、Fetch / Push 协议、Import Session 集成
+- [x] **Reference Transaction** — 批量 ref 更新原子性、lock-then-rename 文件事务、生命周期 Hooks
 
 ### 规划中（聚焦裸仓库/服务端场景）
 
-- [ ] **Reference Transaction** — 引用更新钩子与事务
 - [ ] **多格式哈希支持** — SHA-256 兼容准备
 
 ### 非目标（明确不实现）

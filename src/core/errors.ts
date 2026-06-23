@@ -157,6 +157,18 @@ export class DeltaError extends PackError {
 }
 
 /**
+ * 事务错误
+ *
+ * 当事务操作（commit / rollback / write / delete）被非法调用时抛出。
+ */
+export class TransactionError extends GitError {
+  constructor(message: string) {
+    super(`Transaction error: ${message}`);
+    this.name = "TransactionError";
+  }
+}
+
+/**
  * 前置条件校验错误
  *
  * 当 import session 在 apply() 阶段检测到 preview() 之后

@@ -18,7 +18,12 @@
  * ```
  */
 
-export type { RefStore } from "./types.ts";
+export type {
+  RefStore,
+  RefTransaction,
+  ReadonlyRefTransaction,
+  RefTransactionHook,
+} from "./types.ts";
 export { HEAD_REF, HEADS_PREFIX, TAGS_PREFIX } from "./types.ts";
 
 export { resolveRefHash, resolveSymbolicRef, resolveTargetHash } from "./resolve.ts";

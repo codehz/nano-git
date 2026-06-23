@@ -988,52 +988,62 @@ export function createPlanBuilder(
         });
       }
 
-      const updatedRefs = new Map<string, SHA1>();
-      for (const op of pendingWrites) {
-        backend.refs.write(op.localRef, op.writeHash);
-        updatedRefs.set(op.localRef, op.writeHash);
-      }
-
-      if (p.headOperation) {
-        if (!p.headOperation.targetRef.startsWith("refs/heads/")) {
-          throw new Error(
-            `导入计划校验失败：setHead() 只能指向 refs/heads/*，当前为 "${p.headOperation.targetRef}"。`,
-          );
+      // 事务内执行所有 ref 写入（原子性保障）
+      const hooks = backend.refTransactionHooks;
+      const tx = backend.refs.beginTransaction(hooks);
+      try {
+        const updatedRefs = new Map<string, SHA1>();
+        for (const op of pendingWrites) {
+          tx.write(op.localRef, op.writeHash);
+          updatedRefs.set(op.localRef, op.writeHash);
         }
 
-        if (p.headOperation.detach) {
-          const detachedTarget = updatedRefs.get(p.headOperation.targetRef);
-          const existingTarget = currentLocalRefs.get(p.headOperation.targetRef);
-          const resolvedTarget = detachedTarget ?? existingTarget;
-
-          if (!resolvedTarget) {
+        if (p.headOperation) {
+          if (!p.headOperation.targetRef.startsWith("refs/heads/")) {
             throw new Error(
-              `无法将 HEAD detached 到 "${p.headOperation.targetRef}"：目标 ref 不存在。`,
+              `导入计划校验失败：setHead() 只能指向 refs/heads/*，当前为 "${p.headOperation.targetRef}"。`,
             );
           }
 
-          backend.refs.write("HEAD", resolvedTarget);
-        } else {
-          backend.refs.write("HEAD", `ref: ${p.headOperation.targetRef}`);
-        }
-      }
+          if (p.headOperation.detach) {
+            const detachedTarget = updatedRefs.get(p.headOperation.targetRef);
+            const existingTarget = currentLocalRefs.get(p.headOperation.targetRef);
+            const resolvedTarget = detachedTarget ?? existingTarget;
 
-      const deletedRefs: string[] = [];
-      for (const op of p.pruneOperations) {
-        try {
-          backend.refs.delete(op.refName);
-          deletedRefs.push(op.refName);
-        } catch {
-          // ref 可能已被删除，忽略；可安全忽略 RefNotFoundError 和 ObjectNotFoundError
-        }
-      }
+            if (!resolvedTarget) {
+              throw new Error(
+                `无法将 HEAD detached 到 "${p.headOperation.targetRef}"：目标 ref 不存在。`,
+              );
+            }
 
-      return {
-        importedObjects: p.prefetchedObjects,
-        updatedRefs,
-        deletedRefs,
-        headTarget: p.headOperation?.targetRef,
-      };
+            tx.write("HEAD", resolvedTarget);
+          } else {
+            tx.write("HEAD", `ref: ${p.headOperation.targetRef}`);
+          }
+        }
+
+        const deletedRefs: string[] = [];
+        for (const op of p.pruneOperations) {
+          try {
+            tx.delete(op.refName);
+            deletedRefs.push(op.refName);
+          } catch {
+            // 事务中 delete 可能因 RefNotFoundError 失败，忽略
+          }
+        }
+
+        tx.commit();
+
+        return {
+          importedObjects: p.prefetchedObjects,
+          updatedRefs,
+          deletedRefs,
+          headTarget: p.headOperation?.targetRef,
+        };
+      } catch (e) {
+        tx.rollback();
+        throw e;
+      }
     },
   };
 

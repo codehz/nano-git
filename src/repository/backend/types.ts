@@ -10,7 +10,7 @@ import type { PackBuildResult } from "../../odb/pack/pack-builder.ts";
 import type { PackBuilder } from "../../odb/pack/pack-builder.ts";
 import type { PackObjectStore } from "../../odb/pack/pack-store.ts";
 import type { ObjectSource, ObjectStore } from "../../odb/types.ts";
-import type { RefStore } from "../../refs/types.ts";
+import type { RefStore, RefTransactionHook } from "../../refs/types.ts";
 import type { ShallowStore } from "../../shallow/types.ts";
 
 /** 仓库级 repack 选项 */
@@ -105,4 +105,7 @@ export interface RepositoryBackend {
 
   /** .git 目录路径（内存仓库为 null） */
   readonly gitDir: string | null;
+
+  /** Reference transaction hooks（可选） */
+  readonly refTransactionHooks?: RefTransactionHook[];
 }

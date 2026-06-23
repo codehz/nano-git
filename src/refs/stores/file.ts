@@ -2,14 +2,26 @@
  * 基于文件系统的 Refs 存储
  */
 
-import { mkdirSync, readFileSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
+import {
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  unlinkSync,
+  renameSync,
+} from "node:fs";
 import { join, dirname } from "node:path";
 
-import { RefNotFoundError } from "../../core/errors.ts";
+import { RefNotFoundError, TransactionError } from "../../core/errors.ts";
 import { listLooseRefsRecursive } from "../fs-utils.ts";
 import { validateRefName, validateRefPrefix } from "../names.ts";
 
-import type { RefStore } from "../types.ts";
+import type {
+  RefStore,
+  RefTransaction,
+  RefTransactionHook,
+  ReadonlyRefTransaction,
+} from "../types.ts";
 
 function readPackedRefs(gitDir: string): Map<string, string> {
   const packedRefsPath = join(gitDir, "packed-refs");
@@ -104,7 +116,178 @@ function deletePackedRef(gitDir: string, ref: string): boolean {
  * const store = createFileRefStore("/path/to/repo/.git");
  * ```
  */
+// ============================================================================
+// Lock 文件管理
+// ============================================================================
+
+/**
+ * Lock 文件路径
+ */
+function lockPath(gitDir: string, ref: string): string {
+  return join(gitDir, ref) + ".lock";
+}
+
+/**
+ * 创建 Lock 文件（占位）
+ *
+ * 如果 lock 文件已存在，说明有并发写入或残留 lock，抛出异常。
+ */
+function createLockFile(gitDir: string, ref: string): string {
+  const lock = lockPath(gitDir, ref);
+  const dir = dirname(lock);
+  mkdirSync(dir, { recursive: true });
+
+  if (existsSync(lock)) {
+    throw new TransactionError(
+      `Cannot lock ref "${ref}": lock file already exists. ` +
+        "This may indicate a concurrent write or a stale lock file.",
+    );
+  }
+
+  writeFileSync(lock, "");
+  return lock;
+}
+
+/**
+ * 将 pending Map 冻结为只读快照
+ */
+function freezePending(pending: Map<string, string | null>): ReadonlyRefTransaction {
+  const writes: Array<{ ref: string; content: string }> = [];
+  const deletes: Array<{ ref: string }> = [];
+  for (const [ref, content] of pending) {
+    if (content === null) {
+      deletes.push({ ref });
+    } else {
+      writes.push({ ref, content });
+    }
+  }
+  return Object.freeze({
+    pendingCount: pending.size,
+    writes: Object.freeze(writes),
+    deletes: Object.freeze(deletes),
+  });
+}
+
+// ============================================================================
+// Factory
+// ============================================================================
+
 export function createFileRefStore(gitDir: string): RefStore {
+  function beginTransaction(hooks?: RefTransactionHook[]): RefTransaction {
+    const pending = new Map<string, string | null>(); // null = delete mark
+    let committed = false;
+
+    return {
+      get pendingCount(): number {
+        return pending.size;
+      },
+
+      write(ref: string, content: string): void {
+        if (committed) throw new TransactionError("Transaction already committed");
+        validateRefName(ref);
+        pending.set(ref, content.trimEnd());
+      },
+
+      delete(ref: string): void {
+        if (committed) throw new TransactionError("Transaction already committed");
+        validateRefName(ref);
+        const refPath = join(gitDir, ref);
+        const hasLooseRef = existsSync(refPath);
+        const hasPackedRef = readPackedRefs(gitDir).has(ref);
+        if (!hasLooseRef && !hasPackedRef && !pending.has(ref)) {
+          throw new RefNotFoundError(ref);
+        }
+        pending.set(ref, null);
+      },
+
+      commit(): void {
+        if (committed) throw new TransactionError("Transaction already committed");
+        committed = true;
+
+        const txSnapshot = freezePending(pending);
+
+        // Phase 1: 创建所有 lock 文件
+        const locks: string[] = [];
+        try {
+          for (const refName of pending.keys()) {
+            const lock = createLockFile(gitDir, refName);
+            locks.push(lock);
+          }
+
+          // onPrepare hook
+          for (const hook of hooks ?? []) {
+            hook.onPrepare?.(txSnapshot);
+          }
+
+          // Phase 2: 写入 lock 文件内容
+          let idx = 0;
+          for (const [, content] of pending) {
+            const lock = locks[idx]!;
+            idx++;
+            if (content === null) {
+              // delete: 空 lock 文件即可
+              writeFileSync(lock, "");
+            } else {
+              writeFileSync(lock, `${content}\n`);
+            }
+          }
+
+          // Phase 3: rename lock → ref（原子切换）
+          idx = 0;
+          for (const [ref, content] of pending) {
+            const lock = locks[idx]!;
+            idx++;
+            const target = join(gitDir, ref);
+
+            if (content === null) {
+              // 删除：删 ref 文件和 packed-refs 条目
+              if (existsSync(target)) {
+                unlinkSync(target);
+              }
+              deletePackedRef(gitDir, ref);
+              unlinkSync(lock);
+            } else {
+              mkdirSync(dirname(target), { recursive: true });
+              renameSync(lock, target);
+              // 写入 loose ref 后清理 packed-refs 条目
+              deletePackedRef(gitDir, ref);
+            }
+          }
+
+          // onCommitted hook
+          for (const hook of hooks ?? []) {
+            hook.onCommitted?.(txSnapshot);
+          }
+        } catch (e) {
+          // 清理所有 lock 文件
+          for (const lock of locks) {
+            try {
+              if (existsSync(lock)) unlinkSync(lock);
+            } catch {
+              /* best-effort */
+            }
+          }
+
+          for (const hook of hooks ?? []) {
+            hook.onAborted?.(txSnapshot);
+          }
+
+          throw e;
+        }
+      },
+
+      rollback(): void {
+        if (committed) return;
+        committed = true;
+
+        const txSnapshot = freezePending(pending);
+        for (const hook of hooks ?? []) {
+          hook.onAborted?.(txSnapshot);
+        }
+      },
+    };
+  }
+
   return {
     read(ref: string): string | null {
       validateRefName(ref);
@@ -176,5 +359,7 @@ export function createFileRefStore(gitDir: string): RefStore {
 
       return Array.from(refs).sort();
     },
+
+    beginTransaction,
   };
 }
