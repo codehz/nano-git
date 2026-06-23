@@ -40,10 +40,8 @@ export function startNanoGitServer(backend?: RepositoryBackend): NanoGitServer {
   const b = backend ?? createDefaultBackend();
   const handler = createSmartHttpHandler(b);
 
-  const bunServer = Bun.serve({ port: 0, fetch: handler }) as unknown as {
-    port: number;
-    stop(closeActiveConnections: boolean): void;
-  };
+  const bunServer = Bun.serve({ port: 0, fetch: handler });
+  bunServer.unref();
 
   const { port } = bunServer;
 
@@ -51,7 +49,7 @@ export function startNanoGitServer(backend?: RepositoryBackend): NanoGitServer {
     url: `http://localhost:${port}`,
     backend: b,
     stop() {
-      bunServer.stop(true);
+      bunServer.stop(true).catch(() => {});
     },
   };
 }
