@@ -9,8 +9,8 @@
 import { describe, test, expect } from "bun:test";
 
 import { sha1, type SHA1 } from "@/core/types.ts";
-import { createMemoryObjectStore } from "@/odb/memory-store.ts";
-import { createMemoryRefStore } from "@/refs/stores/memory.ts";
+import { createMemoryObjectStore } from "@/odb/memory.ts";
+import { createMemoryRefStore } from "@/refs/memory.ts";
 import { encodePktLine, encodeFlushPkt } from "@/transport/pkt-line.ts";
 import { PushError } from "@/transport/push-error.ts";
 import { determinePushRefs } from "@/transport/push-ref-plan.ts";

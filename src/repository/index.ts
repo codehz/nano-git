@@ -45,4 +45,5 @@ export type {
   RepoImportOperations,
 } from "./import-session-types.ts";
 export { createRepository } from "./create.ts";
-export { initRepository, openRepository, createMemoryRepository } from "./init.ts";
+export { initRepository, openRepository } from "./file.ts";
+export { createMemoryRepository } from "./memory.ts";

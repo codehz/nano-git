@@ -5,7 +5,7 @@
 import { describe, test, expect } from "bun:test";
 
 import { sha1 } from "@/core/types.ts";
-import { createMemoryObjectStore } from "@/odb/memory-store.ts";
+import { createMemoryObjectStore } from "@/odb/memory.ts";
 import { mergePushBoundaries, computeObjectsToSend } from "@/transport/push-pack-plan.ts";
 
 import type { SHA1 } from "@/core/types.ts";

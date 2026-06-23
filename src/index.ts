@@ -1,30 +1,33 @@
 /**
  * nano-git - 使用 TypeScript 实现的 Git 核心功能
  *
- * 本项目实现了 Git 的基本数据结构和算法，包括：
- * - SHA-1 哈希计算
- * - Git 对象（blob, tree, commit, tag）的序列化/反序列化
- * - 对象存储（文件系统和内存）
- * - 仓库操作 API（init, hash-object, cat-file, write-tree, commit-tree, refs 等）
- * - Packfile 支持（读取、写入、索引、delta 编解码、打包）
+ * ## 设计理念
  *
- * 模块结构：
- * - core/: 核心类型、错误与哈希工具
- * - objects/: Git 对象序列化/反序列化
- * - odb/: 对象数据库（loose objects + pack）
- * - refs/: 引用管理（名称校验、解析、存储）
- * - repository/: 高层仓库 API 与后端
- * - shallow/: Shallow 边界（浅仓库）存储抽象
- * - transport/: 远程传输协议（Smart HTTP）
+ * 本库采用**按需加载**的入口设计：
+ * - 默认入口（`"nano-git"`）仅导出核心类型和纯 TS 工具函数，**不包含任何后端实现**
+ * - 后端实现按使用场景拆分到独立的子路径，让打包器可以 tree-shake 掉未使用的代码
  *
- * @example
- * ```ts
- * import { createMemoryRepository } from "nano-git";
+ * ## 子路径入口
  *
- * const repo = createMemoryRepository();
- * const hash = repo.writeBlob(Buffer.from("hello world"));
- * console.log(hash); // => "95d09f2b10159347eece71399a7e2e907ea3df4f"
- * ```
+ * | 入口 | 内容 | 依赖 |
+ * |------|------|------|
+ * | `"nano-git"` | 核心类型 + SHA-1 + 错误类 | `node:crypto` |
+ * | `nano-git/sha1` | SHA-1 哈希工具 | `node:crypto` |
+ * | `nano-git/errors` | 所有错误类 | 纯定义 |
+ * | `nano-git/hash-file` | 文件 SHA-1 计算 | `node:fs` |
+ * | `nano-git/objects` | 对象序列化/反序列化 | 纯 TS |
+ * | `nano-git/odb/memory` | 内存对象存储 | 纯 TS |
+ * | `nano-git/odb/file` | 文件对象存储 | `node:fs` + `node:zlib` |
+ * | `nano-git/odb/pack` | Packfile 读写 | `node:fs` + `node:zlib` |
+ * | `nano-git/refs/memory` | 内存 Refs 存储 | 纯 TS |
+ * | `nano-git/refs/file` | 文件 Refs 存储 | `node:fs` |
+ * | `nano-git/shallow/memory` | 内存 Shallow 存储 | 纯 TS |
+ * | `nano-git/shallow/file` | 文件 Shallow 存储 | `node:fs` |
+ * | `nano-git/repository/create` | 仓库创建（高阶函数） | 纯 TS |
+ * | `nano-git/repository/memory` | 内存仓库便捷函数 | 仅 memory 后端 |
+ * | `nano-git/repository/file` | 文件仓库便捷函数 | 完整 file 后端 |
+ * | `nano-git/transport` | 传输层全量 barrel | 全套协议 |
+ * | `nano-git/types` | 公共类型入口 | 编译期擦除 |
  */
 
 // ============================================================================
@@ -34,19 +37,23 @@
 export type {
   SHA1,
   ObjectType,
-  GitObject,
   GitBlob,
   GitTree,
   GitCommit,
   GitTag,
-  TreeEntry,
   GitAuthor,
-} from "./core/types.ts";
-
-export { sha1 } from "./core/types.ts";
+  TreeEntry,
+  GitObject,
+} from "./types/index.ts";
 
 // ============================================================================
-// 错误类型
+// SHA-1 哈希工具（仅 node:crypto）
+// ============================================================================
+
+export { sha1, hashData, hashObject, isValidSHA1, assertObjectType } from "./sha1.ts";
+
+// ============================================================================
+// 错误类型（纯定义）
 // ============================================================================
 
 export {
@@ -61,125 +68,6 @@ export {
   InvalidPackError,
   PackIndexError,
   DeltaError,
+  TransactionError,
   PreconditionCheckError,
-} from "./core/errors.ts";
-
-// ============================================================================
-// 哈希工具
-// ============================================================================
-
-export {
-  hashData,
-  hashObject,
-  hashToPath,
-  pathToHash,
-  isValidSHA1,
-  hashFile,
-} from "./core/hash.ts";
-
-// ============================================================================
-// 对象序列化/反序列化
-// ============================================================================
-
-export {
-  serialize,
-  deserialize,
-  serializeContent,
-  deserializeContent,
-  // 各类型序列化函数（高级用法）
-  serializeBlob,
-  deserializeBlob,
-  serializeTree,
-  deserializeTree,
-  serializeCommit,
-  deserializeCommit,
-  serializeTag,
-  deserializeTag,
-  // 作者信息工具
-  formatAuthor,
-  parseAuthor,
-} from "./objects/index.ts";
-
-// ============================================================================
-// 对象数据库
-// ============================================================================
-
-export { createFileObjectStore, createMemoryObjectStore, type ObjectStore } from "./odb/index.ts";
-
-// ============================================================================
-// Refs 支持
-// ============================================================================
-
-export type { RefStore } from "./refs/index.ts";
-export {
-  HEAD_REF,
-  HEADS_PREFIX,
-  TAGS_PREFIX,
-  resolveRefHash,
-  resolveSymbolicRef,
-  resolveTargetHash,
-  validateRefName,
-  validateRefPrefix,
-  branchNameToRef,
-  tagNameToRef,
-  normalizeShortRefName,
-  createFileRefStore,
-  createMemoryRefStore,
-} from "./refs/index.ts";
-
-// ============================================================================
-// 仓库后端
-// ============================================================================
-
-export {
-  createFileRepositoryBackend,
-  createMemoryRepositoryBackend,
-  type CreateFileRepositoryBackendOptions,
-  type CreateMemoryRepositoryBackendOptions,
-  type RepositoryGCOptions,
-  type RepositoryPackSupport,
-  type RepositoryRepackOptions,
-} from "./repository/backend/index.ts";
-
-// ============================================================================
-// 仓库 API
-// ============================================================================
-
-export {
-  createRepository,
-  initRepository,
-  openRepository,
-  createMemoryRepository,
-  type Repository,
-  type ImportSource,
-  type ImportView,
-  type NamedImportView,
-  type ImportSession,
-  type ImportPlanBuilder,
-  type RefMaterializationBuilder,
-  type ImportPreview,
-  type ImportApplyResult,
-  type RefUpdatePolicy,
-  type PlannedRemoteRef,
-  type LocalPrecondition,
-  type PlannedRefOperation,
-  type PlannedRefDeletion,
-  type PlannedHeadOperation,
-  type ImportDiagnostic,
-  type NamespaceMaterializationOptions,
-  type BranchMaterializationOptions,
-  type TagMaterializationOptions,
-  type HeadMaterializationOptions,
-  type RepoImportOperations,
-  type RepositoryPushOptions,
-  type RepositoryPushResult,
-  type RepositoryFetchOptions,
-  type RepositoryFetchResult,
-  // Tree 操作
-  patchTree,
-  readTree,
-  walkTree,
-  type TreePatchOp,
-  type TreePatchResult,
-  type TreeEntryWithPath,
-} from "./repository/index.ts";
+} from "./errors.ts";

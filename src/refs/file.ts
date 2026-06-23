@@ -12,16 +12,16 @@ import {
 } from "node:fs";
 import { join, dirname } from "node:path";
 
-import { RefNotFoundError, TransactionError } from "../../core/errors.ts";
-import { listLooseRefsRecursive } from "../fs-utils.ts";
-import { validateRefName, validateRefPrefix } from "../names.ts";
+import { RefNotFoundError, TransactionError } from "../core/errors.ts";
+import { listLooseRefsRecursive } from "./fs-utils.ts";
+import { validateRefName, validateRefPrefix } from "./names.ts";
 
 import type {
   RefStore,
   RefTransaction,
   RefTransactionHook,
   ReadonlyRefTransaction,
-} from "../types.ts";
+} from "./types.ts";
 
 function readPackedRefs(gitDir: string): Map<string, string> {
   const packedRefsPath = join(gitDir, "packed-refs");

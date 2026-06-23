@@ -8,7 +8,7 @@
 import { describe, test, expect, beforeEach } from "bun:test";
 
 import { sha1, type SHA1, type GitCommit } from "@/core/types.ts";
-import { createMemoryObjectStore } from "@/odb/memory-store.ts";
+import { createMemoryObjectStore } from "@/odb/memory.ts";
 import { isAncestor } from "@/transport/object-graph.ts";
 import { PushError } from "@/transport/push-error.ts";
 import { checkFastForward } from "@/transport/push-policy.ts";

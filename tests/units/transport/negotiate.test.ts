@@ -14,7 +14,7 @@
 import { describe, test, expect } from "bun:test";
 
 import { sha1, type SHA1, type GitCommit } from "@/core/types.ts";
-import { createMemoryObjectStore } from "@/odb/memory-store.ts";
+import { createMemoryObjectStore } from "@/odb/memory.ts";
 import {
   buildUploadPackNegotiationRound,
   buildUploadPackRequest,

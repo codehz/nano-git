@@ -36,5 +36,5 @@ export {
   normalizeShortRefName,
 } from "./names.ts";
 
-export { createFileRefStore } from "./stores/file.ts";
-export { createMemoryRefStore } from "./stores/memory.ts";
+export { createFileRefStore } from "./file.ts";
+export { createMemoryRefStore } from "./memory.ts";

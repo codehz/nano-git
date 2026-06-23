@@ -15,7 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { sha1, type SHA1, type GitCommit } from "@/core/types.ts";
-import { createMemoryObjectStore } from "@/odb/memory-store.ts";
+import { createMemoryObjectStore } from "@/odb/memory.ts";
 import {
   createFileRepositoryBackend,
   createMemoryRepositoryBackend,

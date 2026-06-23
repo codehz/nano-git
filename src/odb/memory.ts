@@ -1,5 +1,5 @@
 /**
- * 基于内存的对象存储（用于测试）
+ * 基于内存的对象存储
  *
  * 所有对象存储在内存 Map 中，程序退出后丢失。
  * 适用于单元测试和临时操作场景。
@@ -11,15 +11,22 @@ import { serialize, deserialize, serializeContent } from "../objects/index.ts";
 import type { GitObject, SHA1 } from "../core/types.ts";
 import type { ObjectStore } from "./types.ts";
 
+export type { ObjectStore } from "./types.ts";
+
 /**
  * 内存对象存储接口（扩展了 list 方法）
  */
 export type MemoryObjectStore = ObjectStore;
 
 /**
- * 创建内存对象存储（用于测试）
+ * 创建内存对象存储
  *
  * 所有对象存储在内存中，程序退出后丢失。
+ *
+ * @example
+ * ```ts
+ * const store = createMemoryObjectStore();
+ * ```
  */
 export function createMemoryObjectStore(): MemoryObjectStore {
   const store = new Map<SHA1, Buffer>();

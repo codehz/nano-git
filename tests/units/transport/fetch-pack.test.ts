@@ -13,7 +13,7 @@
 import { describe, test, expect } from "bun:test";
 
 import { sha1, type SHA1 } from "@/core/types.ts";
-import { createMemoryObjectStore } from "@/odb/memory-store.ts";
+import { createMemoryObjectStore } from "@/odb/memory.ts";
 import { createPackWriter } from "@/odb/pack/pack-writer.ts";
 import { fetchPack, FetchPackError } from "@/transport/fetch-pack.ts";
 import { encodePktLine } from "@/transport/pkt-line.ts";

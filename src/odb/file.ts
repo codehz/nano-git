@@ -17,7 +17,7 @@ import {
   listLooseObjects,
   readLooseObject,
   writeLooseObject,
-} from "./file-store-utils.ts";
+} from "./file-utils.ts";
 
 import type { GitObject, SHA1 } from "../core/types.ts";
 import type { ObjectStore } from "./types.ts";

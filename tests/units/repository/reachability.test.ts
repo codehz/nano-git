@@ -4,8 +4,8 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { createMemoryObjectStore } from "@/odb/memory-store.ts";
-import { createMemoryRefStore } from "@/refs/stores/memory.ts";
+import { createMemoryObjectStore } from "@/odb/memory.ts";
+import { createMemoryRefStore } from "@/refs/memory.ts";
 import { listReachableObjects } from "@/repository/reachability.ts";
 
 describe("listReachableObjects", () => {

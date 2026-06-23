@@ -1,12 +1,22 @@
 /**
- * 仓库初始化与打开入口
+ * 文件仓库便捷创建函数
+ *
+ * 初始化或打开基于文件系统的 Git 仓库。
+ * 拉入 `node:fs` 和完整文件后端。
+ *
+ * @example
+ * ```ts
+ * import { initRepository, openRepository } from "nano-git/repository/file";
+ *
+ * const repo = initRepository("/tmp/my-repo");
+ * ```
  */
 
 import { mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
 import { RepositoryError } from "../core/errors.ts";
-import { createFileRepositoryBackend, createMemoryRepositoryBackend } from "./backend/index.ts";
+import { createFileRepositoryBackend } from "./backend/index.ts";
 import { createRepository } from "./create.ts";
 
 import type { Repository } from "./types.ts";
@@ -56,19 +66,4 @@ export function openRepository(path: string): Repository {
   }
 
   return createRepository(createFileRepositoryBackend(gitDir));
-}
-
-/**
- * 创建内存仓库（用于测试）
- *
- * @returns 仓库实例
- *
- * @example
- * ```ts
- * const repo = createMemoryRepository();
- * repo.createBranch("main", repo.createTree([]));
- * ```
- */
-export function createMemoryRepository(): Repository {
-  return createRepository(createMemoryRepositoryBackend());
 }

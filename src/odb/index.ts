@@ -5,8 +5,8 @@
  */
 
 export type { ObjectSource, ObjectStore } from "./types.ts";
-export { createFileObjectStore } from "./file-store.ts";
-export { createMemoryObjectStore, type MemoryObjectStore } from "./memory-store.ts";
+export { createFileObjectStore } from "./file.ts";
+export { createMemoryObjectStore, type MemoryObjectStore } from "./memory.ts";
 
 export type { PackObject, PackIndexEntry, PackFileInfo, PackBuildResult } from "./pack/types.ts";
 
