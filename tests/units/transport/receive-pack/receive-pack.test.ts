@@ -13,6 +13,7 @@ import {
   serveV1Advertise,
   parseV1ReceivePackRequest,
   handleV1ReceivePush,
+  createReceivePackService,
   V1ReceivePackError,
 } from "@/transport/server/receive-pack/index.ts";
 
@@ -299,5 +300,38 @@ describe("handleV1ReceivePush", () => {
 
     expect(text).toContain("unpack ok");
     expect(text).toContain("ok refs/heads/main");
+  });
+});
+
+// ============================================================================
+// createReceivePackService
+// ============================================================================
+
+describe("createReceivePackService", () => {
+  test("advertise 返回 receive-pack ref 广告", () => {
+    const { backend } = createTestBackend();
+    const service = createReceivePackService(backend);
+
+    const buf = service.advertise();
+    const text = buf.toString("utf-8");
+
+    expect(text).toContain("# service=git-receive-pack");
+    expect(text).toContain("report-status");
+  });
+
+  test("handleRequest 返回 report-status 响应", () => {
+    const { backend, commitHash } = createTestBackend();
+    const service = createReceivePackService(backend);
+
+    const body = Buffer.concat([
+      encodePktLine(`${ZERO_HASH} ${commitHash} refs/heads/new\0report-status\n`),
+      encodeFlushPkt(),
+    ]);
+
+    const response = service.handleRequest(body);
+    const text = response.toString("utf-8");
+
+    expect(text).toContain("unpack ok");
+    expect(text).toContain("ok refs/heads/new");
   });
 });

@@ -1,5 +1,5 @@
 /**
- * Smart HTTP 传输层类型定义
+ * Git 传输协议共享类型定义
  *
  * 定义了远程 Git 仓库交互所需的核心类型。
  * UploadPackTransport 与 ReceivePackTransport 同构：只负责广告与 RPC 原始响应，

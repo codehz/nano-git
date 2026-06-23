@@ -1,7 +1,7 @@
 /**
- * v2 服务端（serve.ts）单元测试
+ * upload-pack 服务端单元测试
  *
- * 测试协议解析、ls-refs 响应生成、fetch 响应生成。
+ * 测试协议解析、能力广告生成、ls-refs 响应生成、fetch 响应生成。
  * 使用内存后端，不依赖 HTTP 或文件系统。
  */
 
@@ -267,21 +267,13 @@ describe("parseFetchArgs", () => {
 
 describe("serveV2Advertise", () => {
   test("upload-pack 广告包含 version 2、ls-refs、fetch", () => {
-    const buf = serveV2Advertise("git-upload-pack");
+    const buf = serveV2Advertise();
     const text = buf.toString("utf-8");
 
     expect(text).toContain("version 2");
     expect(text).toContain("ls-refs");
     expect(text).toContain("fetch=shallow ref-in-want filter");
     expect(text).toContain("agent=nano-git/0.1");
-  });
-
-  test("receive-pack 请求抛出错误（v2 receive-pack 未实现）", () => {
-    expect(() => serveV2Advertise("git-receive-pack")).toThrow("v2 serve");
-  });
-
-  test("未知 service 抛出错误", () => {
-    expect(() => serveV2Advertise("unknown-service")).toThrow("v2 serve");
   });
 });
 
@@ -567,14 +559,14 @@ describe("createUploadPackService", () => {
     const { backend } = createTestRepo();
     const service = createUploadPackService(backend);
 
-    const buf = service.advertise("git-upload-pack");
+    const buf = service.advertise();
     const text = buf.toString("utf-8");
     expect(text).toContain("version 2");
     expect(text).toContain("ls-refs");
     expect(text).toContain("fetch");
   });
 
-  test("handleCommand ls-refs 返回 refs 列表", () => {
+  test("handleRequest ls-refs 返回 refs 列表", () => {
     const { backend, mainCommit } = createTestRepo();
     const service = createUploadPackService(backend);
 
@@ -585,13 +577,13 @@ describe("createUploadPackService", () => {
       encodeFlushPkt(),
     ]);
 
-    const buf = service.handleCommand(body);
+    const buf = service.handleRequest(body);
     const text = buf.toString("utf-8");
     expect(text).toContain(mainCommit);
     expect(text).toContain("refs/heads/main");
   });
 
-  test("handleCommand fetch 返回 packfile", () => {
+  test("handleRequest fetch 返回 packfile", () => {
     const { backend, mainCommit } = createTestRepo();
     const service = createUploadPackService(backend);
 
@@ -603,12 +595,12 @@ describe("createUploadPackService", () => {
       encodeFlushPkt(),
     ]);
 
-    const buf = service.handleCommand(body);
+    const buf = service.handleRequest(body);
     const text = buf.toString("utf-8");
     expect(text).toContain("packfile");
   });
 
-  test("handleCommand 未知命令抛出错误", () => {
+  test("handleRequest 未知命令抛出错误", () => {
     const { backend } = createTestRepo();
     const service = createUploadPackService(backend);
 
@@ -618,6 +610,6 @@ describe("createUploadPackService", () => {
       encodeFlushPkt(),
     ]);
 
-    expect(() => service.handleCommand(body)).toThrow("unknown command");
+    expect(() => service.handleRequest(body)).toThrow("unknown command");
   });
 });

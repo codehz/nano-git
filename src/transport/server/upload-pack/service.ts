@@ -36,24 +36,22 @@ export class UploadPackError extends Error {
  *
  * 提供协议无关的 upload-pack 能力:
  * - advertise(): 生成服务能力广告
- * - handleCommand(): 处理客户端命令请求
+ * - handleRequest(): 处理客户端请求
  */
 export interface UploadPackService {
   /**
    * 生成能力广告
-   *
-   * @param service - 服务类型（如 "git-upload-pack"）
    */
-  advertise(service: string): Buffer;
+  advertise(): Buffer;
 
   /**
-   * 处理命令请求
+   * 处理请求
    *
    * @param body - 客户端请求体（pkt-line 编码）
    * @returns 服务端响应（pkt-line 编码）
    * @throws {UploadPackError} 命令不支持或参数不合法
    */
-  handleCommand(body: Buffer): Buffer;
+  handleRequest(body: Buffer): Buffer;
 }
 
 // ============================================================================
@@ -69,17 +67,17 @@ export interface UploadPackService {
  * @example
  * ```ts
  * const service = createUploadPackService(backend);
- * const advertise = service.advertise("git-upload-pack");
- * const response = service.handleCommand(body);
+ * const advertise = service.advertise();
+ * const response = service.handleRequest(body);
  * ```
  */
 export function createUploadPackService(backend: RepositoryBackend): UploadPackService {
   return {
-    advertise(service: string): Buffer {
-      return serveV2Advertise(service);
+    advertise(): Buffer {
+      return serveV2Advertise();
     },
 
-    handleCommand(body: Buffer): Buffer {
+    handleRequest(body: Buffer): Buffer {
       const parsed = parseV2Command(body);
 
       try {

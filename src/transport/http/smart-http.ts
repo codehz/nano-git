@@ -1,5 +1,5 @@
 /**
- * Smart HTTP 后端适配器
+ * Smart HTTP 服务端适配器
  *
  * 类似 git-http-backend 的职责，但基于标准 Web API 的 Request/Response：
  * - 接收标准 Request，返回标准 Response
@@ -19,8 +19,7 @@
  * @see https://git-scm.com/docs/git-http-backend
  */
 
-import { serveV1Advertise, handleV1ReceivePush } from "../server/receive-pack/index.ts";
-import { serveV2Advertise } from "../server/upload-pack/advertise.ts";
+import { createReceivePackService } from "../server/receive-pack/index.ts";
 import { createUploadPackService, UploadPackError } from "../server/upload-pack/index.ts";
 
 import type { RepositoryBackend } from "../../backend/types.ts";
@@ -89,12 +88,17 @@ function validateServiceRequest(method: string, contentType: string | null): Res
  * @param _useV2 - 是否使用 v2 协议（仅 upload-pack 生效）
  * @param backend - 仓库后端（v1 广告需要）
  */
-function handleInfoRefs(service: string, useV2: boolean, backend: RepositoryBackend): Response {
+function handleInfoRefs(
+  service: string,
+  useV2: boolean,
+  uploadPackService: ReturnType<typeof createUploadPackService>,
+  receivePackService: ReturnType<typeof createReceivePackService>,
+): Response {
   const isReceivePack = service === "git-receive-pack";
 
   // git-receive-pack 始终走 v1 广告（v2 receive-pack 未实现）
   if (isReceivePack) {
-    const advertise = serveV1Advertise(backend);
+    const advertise = receivePackService.advertise();
     return new Response(advertise, {
       status: 200,
       headers: {
@@ -105,7 +109,7 @@ function handleInfoRefs(service: string, useV2: boolean, backend: RepositoryBack
   }
 
   // v2 广告（git-upload-pack）
-  const advertise = serveV2Advertise(service);
+  const advertise = uploadPackService.advertise();
   const contentType = service.startsWith("git-")
     ? `application/x-${service}-advertisement`
     : `application/x-git-${service}-advertisement`;
@@ -122,16 +126,17 @@ function handleInfoRefs(service: string, useV2: boolean, backend: RepositoryBack
 /**
  * 处理 /git-upload-pack POST 请求
  */
-async function handleUploadPack(body: Buffer, backend: RepositoryBackend): Promise<Response> {
+async function handleUploadPack(
+  body: Buffer,
+  uploadPackService: ReturnType<typeof createUploadPackService>,
+): Promise<Response> {
   if (body.length === 0) {
     return errorResponse(400, "Request body is required");
   }
 
-  const service = createUploadPackService(backend);
-
   let response: Buffer;
   try {
-    response = service.handleCommand(body);
+    response = uploadPackService.handleRequest(body);
   } catch (err) {
     if (err instanceof UploadPackError) {
       return errorResponse(400, err.message);
@@ -192,6 +197,9 @@ async function handleUploadPack(body: Buffer, backend: RepositoryBackend): Promi
  * ```
  */
 export function createSmartHttpHandler(backend: RepositoryBackend): SmartHttpHandler {
+  const uploadPackService = createUploadPackService(backend);
+  const receivePackService = createReceivePackService(backend);
+
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
     const { pathname: path } = url;
@@ -215,7 +223,7 @@ export function createSmartHttpHandler(backend: RepositoryBackend): SmartHttpHan
       }
 
       // git-receive-pack 支持 v1 和 v2
-      return handleInfoRefs(service!, isV2, backend);
+      return handleInfoRefs(service!, isV2, uploadPackService, receivePackService);
     }
 
     // 路由：/git-upload-pack（fetch / ls-refs 命令 — v2）
@@ -224,7 +232,7 @@ export function createSmartHttpHandler(backend: RepositoryBackend): SmartHttpHan
       if (validationError) return validationError;
 
       const body = Buffer.from(await request.arrayBuffer());
-      return handleUploadPack(body, backend);
+      return handleUploadPack(body, uploadPackService);
     }
 
     // 路由：/git-receive-pack（push 命令 — v1 receive-pack）
@@ -233,7 +241,7 @@ export function createSmartHttpHandler(backend: RepositoryBackend): SmartHttpHan
       if (validationError) return validationError;
 
       const body = Buffer.from(await request.arrayBuffer());
-      const response = handleV1ReceivePush(backend, body);
+      const response = receivePackService.handleRequest(body);
 
       return new Response(response, {
         status: 200,

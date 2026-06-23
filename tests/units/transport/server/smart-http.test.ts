@@ -1,8 +1,8 @@
 /**
- * Smart HTTP 后端（smart-http.ts）单元测试
+ * Smart HTTP 服务端适配层单元测试
  *
  * 测试 createSmartHttpHandler 的路由、验证、响应生成。
- * 基于 serve.ts 的 parseV2Command/generateLsRefsResponse 等函数已经独立测试，
+ * upload-pack / receive-pack 的协议逻辑已在各自服务测试中覆盖，
  * 此文件聚焦 HTTP 层面的逻辑：
  * - 路由解析（info/refs、git-upload-pack、未知路径）
  * - 请求验证（method、service、content-type）
