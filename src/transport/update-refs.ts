@@ -49,13 +49,13 @@ export class RefUpdateError extends GitError {
  * @throws RefUpdateError 如果目标对象不存在或不是 commit
  */
 export function resolveBranchTargetHash(store: ObjectStore, hash: SHA1, refName: string): SHA1 {
-  if (!store.exists(hash)) {
+  const obj = store.tryRead(hash);
+  if (obj === undefined) {
     throw new RefUpdateError(
       `Object ${hash} for remote ref "${refName}" is missing from the local store. ` +
         `refs/heads/* can only point to commit objects.`,
     );
   }
-  const obj = store.read(hash);
 
   if (obj.type === "tag") {
     throw new RefUpdateError(

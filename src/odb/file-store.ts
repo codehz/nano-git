@@ -57,6 +57,14 @@ export function createFileObjectStore(gitDir: string): ObjectStore {
       return readLooseObject(objectsDir, hash);
     },
 
+    tryRead(hash: SHA1): GitObject | undefined {
+      try {
+        return readLooseObject(objectsDir, hash);
+      } catch {
+        return undefined;
+      }
+    },
+
     exists(hash: SHA1): boolean {
       return hasLooseObject(objectsDir, hash);
     },

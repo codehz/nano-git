@@ -86,6 +86,25 @@ export class CompositeObjectStore implements ObjectStore {
   }
 
   /**
+   * 尝试读取对象，不存在时返回 undefined
+   */
+  tryRead(hash: SHA1): GitObject | undefined {
+    const primaryResult = this.tryReadStore(this.primary, hash);
+    if (primaryResult !== undefined) {
+      return primaryResult;
+    }
+
+    for (const store of this.secondary) {
+      const result = this.tryReadStore(store, hash);
+      if (result !== undefined) {
+        return result;
+      }
+    }
+
+    return undefined;
+  }
+
+  /**
    * 尝试从指定存储中读取对象，不存在时返回 undefined
    */
   private tryReadStore(store: ObjectSource, hash: SHA1): GitObject | undefined {

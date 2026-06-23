@@ -118,6 +118,21 @@ export function createPackObjectStore(gitDir: string): PackObjectStore {
     throw new ObjectNotFoundError(hash);
   }
 
+  function tryRead(hash: SHA1): GitObject | undefined {
+    ensureLoaded();
+
+    for (const pair of pairs) {
+      const entry = pair.index.lookup(hash);
+      if (entry) {
+        const reader = getPackReader(packDir, pair);
+        const obj = reader.readObject(hash);
+        if (obj) return obj;
+      }
+    }
+
+    return undefined;
+  }
+
   function exists(hash: SHA1): boolean {
     ensureLoaded();
 
@@ -155,6 +170,7 @@ export function createPackObjectStore(gitDir: string): PackObjectStore {
   return {
     refresh,
     read,
+    tryRead,
     exists,
     list,
     listHashes,

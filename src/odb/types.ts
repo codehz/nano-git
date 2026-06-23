@@ -25,6 +25,15 @@ export interface ObjectSource {
   read(hash: SHA1): GitObject;
 
   /**
+   * 尝试读取对象，不存在时返回 undefined
+   *
+   * 相比 `read()` + `catch` 或 `exists()` + `read()` 模式，
+   * `tryRead` 避免了双重查找开销（N+1 问题）。
+   * 默认实现通过 `read()` + catch 回退，各后端可提供优化版本。
+   */
+  tryRead(hash: SHA1): GitObject | undefined;
+
+  /**
    * 检查对象是否存在
    */
   exists(hash: SHA1): boolean;

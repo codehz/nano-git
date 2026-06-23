@@ -74,9 +74,9 @@ export function checkFastForward(
     const peeledRemote = peelTagChain(store, item.remoteHash, shallowBoundaries);
     const peeledLocal = peelTagChain(store, item.localHash, shallowBoundaries);
 
-    if (store.exists(peeledRemote)) {
-      const remoteObj = store.read(peeledRemote);
-      if (remoteObj.type !== "commit") {
+    {
+      const remoteObj = store.tryRead(peeledRemote);
+      if (remoteObj !== undefined && remoteObj.type !== "commit") {
         throw new PushError(
           `Update rejected for "${item.remoteRef}": ` +
             `remote object is a ${remoteObj.type}, expected commit. ` +
@@ -85,9 +85,9 @@ export function checkFastForward(
       }
     }
 
-    if (store.exists(peeledLocal)) {
-      const localObj = store.read(peeledLocal);
-      if (localObj.type !== "commit") {
+    {
+      const localObj = store.tryRead(peeledLocal);
+      if (localObj !== undefined && localObj.type !== "commit") {
         throw new PushError(
           `Update rejected for "${item.remoteRef}": ` +
             `local object is a ${localObj.type}, expected commit. ` +

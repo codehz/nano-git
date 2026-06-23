@@ -40,6 +40,11 @@ export function createMemoryObjectStore(): MemoryObjectStore {
       return deserialize(data);
     },
 
+    tryRead(hash: SHA1): GitObject | undefined {
+      const data = store.get(hash);
+      return data ? deserialize(data) : undefined;
+    },
+
     exists(hash: SHA1): boolean {
       return store.has(hash);
     },

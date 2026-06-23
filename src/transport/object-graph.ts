@@ -73,13 +73,13 @@ function collectReachableFrom(
     return;
   }
 
-  if (!objects.exists(hash)) {
+  const obj = objects.tryRead(hash);
+  if (obj === undefined) {
     throwIfMissingObject(objects, hash, missing, viaCommitParent, shallowBoundaries);
     return;
   }
 
   reachable.add(hash);
-  const obj = objects.read(hash);
 
   switch (obj.type) {
     case "blob":
@@ -154,7 +154,8 @@ export function peelTagChain(store: ObjectStore, hash: SHA1, shallowBoundaries?:
   let current = hash;
 
   while (true) {
-    if (!store.exists(current)) {
+    const obj = store.tryRead(current);
+    if (obj === undefined) {
       // shallow 边界：对象确实可能在本地不存在，返回当前 hash 让调用方处理
       if (shallowBoundaries?.has(current)) {
         return current;
@@ -162,7 +163,6 @@ export function peelTagChain(store: ObjectStore, hash: SHA1, shallowBoundaries?:
       return current;
     }
 
-    const obj = store.read(current);
     if (obj.type !== "tag") {
       return current;
     }
@@ -232,7 +232,8 @@ export function isAncestor(
     visited.add(current);
 
     // 对象缺失的处理：先检查是否为已知边界（shallow 或远端已广告的 tip）
-    if (!store.exists(current)) {
+    const obj = store.tryRead(current);
+    if (obj === undefined) {
       // 回溯命中 remote old tip（peeledOld）即 fast-forward
       if (current === peeledOld) {
         return true;
@@ -245,22 +246,15 @@ export function isAncestor(
       return false;
     }
 
-    try {
-      const obj = store.read(current);
-
-      if (obj.type !== "commit") {
-        // 遍历中遇到非 commit 对象（tree/blob/tag），不继续沿此路径回溯
-        continue;
-      }
-
-      for (const parent of obj.parents) {
-        if (!visited.has(parent)) {
-          queue.push(parent);
-        }
-      }
-    } catch {
-      // 读取异常视为此路径不可达，继续遍历其他路径
+    if (obj.type !== "commit") {
+      // 遍历中遇到非 commit 对象（tree/blob/tag），不继续沿此路径回溯
       continue;
+    }
+
+    for (const parent of obj.parents) {
+      if (!visited.has(parent)) {
+        queue.push(parent);
+      }
     }
   }
 
