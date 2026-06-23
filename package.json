@@ -35,7 +35,10 @@
     "./transport/object-graph": "./src/transport/object-graph.ts",
     "./transport/ref-collection": "./src/transport/ref-collection.ts",
     "./transport/ref-match": "./src/transport/ref-match.ts",
-    "./transport/update-refs": "./src/transport/update-refs.ts"
+    "./transport/update-refs": "./src/transport/update-refs.ts",
+    "./transport/v2/serve": "./src/transport/v2/serve.ts",
+    "./transport/server/types": "./src/transport/server/types.ts",
+    "./transport/server/smart-http": "./src/transport/server/smart-http.ts"
   },
   "scripts": {
     "lint": "oxlint .",

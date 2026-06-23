@@ -157,3 +157,29 @@ export {
 
 export { detectProtocol } from "./v2/detect.ts";
 export type { ProtocolDetectResult } from "./v2/detect.ts";
+
+// ============================================================================
+// 服务端模块
+// ============================================================================
+
+// v2 服务端核心逻辑
+export {
+  serveV2Advertise,
+  parseV2Command,
+  parseLsRefsArgs,
+  generateLsRefsResponse,
+  parseFetchArgs,
+  generateFetchResponse,
+  createV2UploadPackService,
+  V2ServeError,
+} from "./v2/serve.ts";
+export type {
+  ParsedV2Command,
+  LsRefsServerOptions,
+  FetchServerParams,
+  V2UploadPackService,
+} from "./v2/serve.ts";
+
+// HTTP 适配器
+export { createSmartHttpHandler } from "./server/smart-http.ts";
+export type { GitHttpRequest, GitHttpResponse, SmartHttpHandler } from "./server/types.ts";
