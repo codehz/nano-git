@@ -5,7 +5,6 @@
  */
 
 export type { Repository } from "./types.ts";
-export type { RepositoryContext } from "./context-types.ts";
 export type { RepositoryObjectOperations } from "./object-types.ts";
 export type { TreePatchOp, TreePatchResult } from "./tree-patch.ts";
 export type { RepositoryRefOperations } from "./ref-types.ts";

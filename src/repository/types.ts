@@ -6,7 +6,10 @@
  * 这些操作对应 git 的 plumbing 命令。
  */
 
-import type { RepositoryContext } from "./context-types.ts";
+import type { ObjectStore } from "../odb/index.ts";
+import type { RefStore } from "../refs/index.ts";
+import type { ShallowStore } from "../shallow/types.ts";
+import type { RepositoryPackSupport } from "./backend/index.ts";
 import type { RepoImportOperations } from "./import-session-types.ts";
 import type { RepositoryMaintenanceOperations } from "./maintenance-types.ts";
 import type { RepositoryObjectOperations } from "./object-types.ts";
@@ -18,9 +21,23 @@ import type { RepositoryRefOperations } from "./ref-types.ts";
  */
 export interface Repository
   extends
-    RepositoryContext,
     RepositoryObjectOperations,
     RepositoryRefOperations,
     RepositoryMaintenanceOperations,
     RepositoryPushOperations,
-    RepoImportOperations {}
+    RepoImportOperations {
+  /** Git 对象存储 */
+  readonly objects: ObjectStore;
+
+  /** Git 引用存储 */
+  readonly refs: RefStore;
+
+  /** Packfile 支持 */
+  readonly packs: RepositoryPackSupport | null;
+
+  /** Git shallow 边界存储 */
+  readonly shallow: ShallowStore;
+
+  /** .git 目录路径（内存仓库为 null） */
+  readonly gitDir: string | null;
+}

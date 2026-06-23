@@ -47,7 +47,6 @@ describe("initRepository()", () => {
     expect(repo.gitDir).toBe(join(tempDir, ".git"));
     expect(repo.objects).toBeDefined();
     expect(repo.refs).toBeDefined();
-    expect(repo.backend.gitDir).toBe(join(tempDir, ".git"));
   });
 });
 
@@ -56,7 +55,6 @@ describe("createRepository()", () => {
     const backend = createMemoryRepositoryBackend();
     const repo = createRepository(backend);
 
-    expect(repo.backend).toBe(backend);
     expect(repo.objects).toBe(backend.objects);
     expect(repo.refs).toBe(backend.refs);
     expect(repo.packs).toBeNull();
@@ -74,7 +72,7 @@ describe("createRepository()", () => {
       const backend: RepositoryBackend = createFileRepositoryBackend(join(tempDir, ".git"));
       const repo = createRepository(backend);
 
-      expect(repo.backend.gitDir).toBe(join(tempDir, ".git"));
+      expect(repo.gitDir).toBe(join(tempDir, ".git"));
       expect(repo.packs).not.toBeNull();
       expect(repo.getCurrentBranch()).toBe("main");
     } finally {

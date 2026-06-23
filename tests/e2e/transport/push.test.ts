@@ -970,7 +970,7 @@ describe("push() 端到端", () => {
     const commitHash = repo.createCommit(treeHash, [missingParent], "boundary test", author);
     repo.updateRef("refs/heads/boundary-test", commitHash);
 
-    repo.backend.shallow.applyUpdate({ shallow: [missingParent], unshallow: [] });
+    repo.shallow.applyUpdate({ shallow: [missingParent], unshallow: [] });
 
     const refSpec = ["refs/heads/boundary-test:refs/heads/boundary-test"];
 

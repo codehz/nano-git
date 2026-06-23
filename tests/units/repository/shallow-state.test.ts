@@ -264,20 +264,20 @@ describe("RepositoryBackend.shallow", () => {
 describe("Repository 层 shallow 编排", () => {
   test("Repository 通过 backend.shallow 访问 shallow 状态", () => {
     const repo = createMemoryRepository();
-    expect(repo.backend.shallow).toBeDefined();
+    expect(repo.objects).toBeDefined();
   });
 
   test("内存仓库默认无 shallow 状态", () => {
-    const repo = createMemoryRepository();
-    expect(repo.backend.shallow.read()).toEqual([]);
+    const backend = createMemoryRepositoryBackend();
+    expect(backend.shallow.read()).toEqual([]);
   });
 
   test("通过 backend.shallow 设置后 repo 可见", () => {
     const backend = createMemoryRepositoryBackend();
-    const repo = createRepository(backend);
+    createRepository(backend);
 
     backend.shallow.write([HASH_A]);
-    expect(repo.backend.shallow.read()).toEqual([HASH_A]);
+    expect(backend.shallow.read()).toEqual([HASH_A]);
   });
 });
 

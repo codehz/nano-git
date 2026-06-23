@@ -136,8 +136,6 @@ export {
   type RepositoryGCOptions,
   type RepositoryPackSupport,
   type RepositoryRepackOptions,
-  /** @deprecated RepositoryBackend 作为构造参数保留，但不应作为运行时属性访问。请使用 repo.objects / repo.refs 等便利属性。 */
-  type RepositoryBackend,
 } from "./repository/backend/index.ts";
 
 // ============================================================================
