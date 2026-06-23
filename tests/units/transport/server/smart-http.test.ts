@@ -12,7 +12,6 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { sha1 } from "@/core/types.ts";
 import { createMemoryRepositoryBackend } from "@/repository/backend/index.ts";
 import { createSmartHttpHandler } from "@/transport/server/smart-http.ts";
 

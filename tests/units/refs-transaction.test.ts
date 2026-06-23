@@ -5,7 +5,7 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -13,7 +13,7 @@ import { RefNotFoundError, TransactionError } from "@/core/errors.ts";
 import { createFileRefStore } from "@/refs/file.ts";
 import { createMemoryRefStore } from "@/refs/memory.ts";
 
-import type { RefStore, RefTransaction, RefTransactionHook } from "@/refs/types.ts";
+import type { RefStore, RefTransactionHook } from "@/refs/types.ts";
 
 // ============================================================================
 // Memory 事务

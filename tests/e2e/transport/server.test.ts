@@ -8,7 +8,7 @@
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 
-import { createTempDir, cleanupDir } from "../helpers.ts";
+import { createTempDir, cleanupDir, gitWithTimeout } from "../helpers.ts";
 import { startNanoGitServer, createDefaultBackend } from "./nano-git-server.ts";
 import { sha1, type SHA1 } from "@/core/types.ts";
 import { createMemoryRepository, initRepository } from "@/repository/index.ts";
@@ -189,5 +189,97 @@ describe("Smart HTTP 服务端 — 文件系统仓库 e2e", () => {
     const result = await plan.apply();
     expect(result.importedObjects).toBeGreaterThan(0);
     expect(result.updatedRefs.has("refs/heads/main")).toBe(true);
+  });
+});
+
+// ============================================================================
+// git CLI 端到端测试
+//
+// 用真实 git 命令行连接 nano-git 服务端，验证 Git Wire 协议 v2 兼容性。
+// 注意：git 命令统一设置超时，避免实现缺陷导致测试进程卡死。
+// ============================================================================
+
+/** git 命令统一超时（毫秒）——服务端响应不完整时及早失败而非挂起 */
+const GIT_TIMEOUT_MS = 15000;
+
+/** 强制 git 使用 v2 协议并禁用交互的额外参数 */
+const GIT_V2_ARGS = ["-c", "protocol.version=2"];
+
+describe("Smart HTTP 服务端 — git CLI e2e", () => {
+  let server: NanoGitServer;
+  let tempDir: string;
+
+  beforeEach(() => {
+    server = startNanoGitServer();
+    tempDir = createTempDir("e2e-server-gitcli");
+  });
+
+  afterEach(() => {
+    server.stop();
+    cleanupDir(tempDir);
+  });
+
+  test("git ls-remote 列出服务端引用", async () => {
+    const out = await gitWithTimeout(
+      [...GIT_V2_ARGS, "ls-remote", server.url],
+      tempDir,
+      GIT_TIMEOUT_MS,
+    );
+
+    expect(out).toContain("refs/heads/main");
+  });
+
+  test("git clone 克隆服务端仓库", async () => {
+    const target = `${tempDir}/cloned`;
+
+    await gitWithTimeout([...GIT_V2_ARGS, "clone", server.url, target], tempDir, GIT_TIMEOUT_MS);
+
+    // 验证克隆得到的 HEAD 指向服务端的提交
+    const head = await gitWithTimeout(
+      [...GIT_V2_ARGS, "rev-parse", "HEAD"],
+      target,
+      GIT_TIMEOUT_MS,
+    );
+    const serverMain = server.backend.refs.read("refs/heads/main")!;
+    expect(head).toBe(serverMain);
+
+    // 验证克隆出来的文件内容
+    const fileContent = await gitWithTimeout(
+      [...GIT_V2_ARGS, "show", "HEAD:README.txt"],
+      target,
+      GIT_TIMEOUT_MS,
+    );
+    expect(fileContent).toContain("nano-git e2e test");
+  });
+
+  test("git clone 后 fsck 校验仓库完整性", async () => {
+    const target = `${tempDir}/cloned-fsck`;
+
+    await gitWithTimeout([...GIT_V2_ARGS, "clone", server.url, target], tempDir, GIT_TIMEOUT_MS);
+
+    // fsck 不应报告任何错误
+    await gitWithTimeout([...GIT_V2_ARGS, "fsck", "--no-dangling"], target, GIT_TIMEOUT_MS);
+  });
+
+  test("git fetch 增量拉取新提交", async () => {
+    const target = `${tempDir}/cloned-fetch`;
+
+    // 首次克隆
+    await gitWithTimeout([...GIT_V2_ARGS, "clone", server.url, target], tempDir, GIT_TIMEOUT_MS);
+    const firstHash = sha1(server.backend.refs.read("refs/heads/main")!);
+
+    // 服务端追加提交
+    const newHash = addCommit(server.backend, firstHash, "second commit");
+    server.backend.refs.write("refs/heads/main", newHash);
+
+    // 客户端增量 fetch
+    await gitWithTimeout([...GIT_V2_ARGS, "fetch", "origin"], target, GIT_TIMEOUT_MS);
+
+    const remoteMain = await gitWithTimeout(
+      [...GIT_V2_ARGS, "rev-parse", "origin/main"],
+      target,
+      GIT_TIMEOUT_MS,
+    );
+    expect(remoteMain).toBe(newHash);
   });
 });

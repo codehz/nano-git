@@ -8,7 +8,6 @@
 import { describe, test, expect } from "bun:test";
 
 import { sha1 } from "@/core/types.ts";
-import { createPackWriter } from "@/odb/pack/index.ts";
 import { createMemoryRepositoryBackend } from "@/repository/backend/index.ts";
 import {
   encodePktLine,
@@ -413,7 +412,7 @@ describe("generateFetchResponse — clone", () => {
   });
 
   test("packfile 包含所有可达对象", () => {
-    const { backend, mainCommit, blobHash } = createTestRepo();
+    const { backend, mainCommit } = createTestRepo();
     const buf = generateFetchResponse(backend, {
       wants: [mainCommit],
       haves: [],
@@ -462,7 +461,7 @@ describe("generateFetchResponse — clone", () => {
   });
 
   test("want-ref 解析并追加到 wants", () => {
-    const { backend, mainCommit } = createTestRepo();
+    const { backend } = createTestRepo();
     const buf = generateFetchResponse(backend, {
       wants: [],
       haves: [],
@@ -501,7 +500,7 @@ describe("generateFetchResponse — incremental fetch", () => {
   });
 
   test("无 done 时返回协商响应（NAK）", () => {
-    const { backend, mainCommit, developCommit } = createTestRepo();
+    const { backend, developCommit } = createTestRepo();
     const buf = generateFetchResponse(backend, {
       wants: [developCommit],
       haves: [],
@@ -517,7 +516,7 @@ describe("generateFetchResponse — incremental fetch", () => {
     expect(text).toContain("NAK");
   });
 
-  test("haves 包含已有对象时返回 ACK + ready", () => {
+  test("haves 包含已有对象时返回 ACK + ready，并在同一响应中紧接 packfile", () => {
     const { backend, mainCommit, developCommit } = createTestRepo();
     const buf = generateFetchResponse(backend, {
       wants: [developCommit],
@@ -533,6 +532,34 @@ describe("generateFetchResponse — incremental fetch", () => {
     expect(text).toContain("acknowledgments");
     expect(text).toContain("ACK");
     expect(text).toContain("ready");
+    // 协议要求：服务端发送 ready 后必须在同一响应中跟随 packfile，
+    // 否则 git CLI 报 "fatal: expected packfile after 'ready'"。
+    expect(text).toContain("packfile");
+    // packfile 节必须出现在 ready 之后
+    expect(text.indexOf("packfile")).toBeGreaterThan(text.indexOf("ready"));
+  });
+
+  test("want-ref + done 时在 packfile 前回送 wanted-refs 节且无前导 delimiter", () => {
+    const { backend, mainCommit } = createTestRepo();
+    const buf = generateFetchResponse(backend, {
+      wants: [],
+      haves: [],
+      wantRefs: ["refs/heads/main"],
+      done: true,
+      thinPack: false,
+      noProgress: false,
+      ofsDelta: true,
+    });
+
+    const text = buf.toString("utf-8");
+    // 必须回送 wanted-refs 映射（git 通过 want-ref 克隆时必需）
+    expect(text).toContain("wanted-refs");
+    expect(text).toContain(`${mainCommit} refs/heads/main`);
+    expect(text).toContain("packfile");
+    // wanted-refs 必须在 packfile 之前
+    expect(text.indexOf("wanted-refs")).toBeLessThan(text.indexOf("packfile"));
+    // 首节不能以 delimiter (0001) 开头——否则 git 报 "fatal: expected 'packfile'"
+    expect(buf.subarray(0, 4).toString("utf-8")).not.toBe("0001");
   });
 });
 

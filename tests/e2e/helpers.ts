@@ -5,7 +5,7 @@
  * 使用 Bun.spawnSync 同步执行 git 命令。
  */
 
-import { spawnSync } from "node:child_process";
+import { spawnSync, spawn } from "node:child_process";
 import { mkdirSync, rmSync, existsSync, writeFileSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -47,7 +47,10 @@ const GIT_ENV: Record<string, string> = {
 // ============================================================================
 
 /**
- * 执行 git 命令并返回 stdout
+ * 执行 git 命令并返回 stdout（同步）
+ *
+ * 仅用于操作本地仓库（不连接同进程内的测试服务端）。如需连接
+ * 同进程 Bun.serve 服务端，请改用异步的 {@link gitWithTimeout}。
  *
  * @param args - git 命令参数
  * @param cwd - 工作目录
@@ -72,6 +75,80 @@ export function git(args: string[], cwd: string): string {
   }
 
   return (result.stdout?.toString() ?? "").trim();
+}
+
+/**
+ * 执行 git 命令并返回 stdout（带超时，异步）
+ *
+ * 必须使用异步 spawn 而非 spawnSync：当 git 连接的是运行在
+ * **同一进程内**的 Bun.serve 测试服务端时，spawnSync 会阻塞事件循环，
+ * 导致服务端无法处理请��、git 永久等待。异步 spawn 让事件循环继续
+ * 运转，服务端得以响应。
+ *
+ * @param args - git 命令参数
+ * @param cwd - 工作目录
+ * @param timeoutMs - 超时时间（毫秒），不设置则无超时
+ * @returns stdout 输出（已 trim）
+ * @throws 如果命令执行失败或超时
+ */
+export function gitWithTimeout(args: string[], cwd: string, timeoutMs?: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = spawn("git", args, {
+      cwd,
+      env: { ...process.env, ...GIT_ENV },
+    });
+
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
+    let timedOut = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    if (timeoutMs !== undefined) {
+      timer = setTimeout(() => {
+        timedOut = true;
+        child.kill("SIGKILL");
+      }, timeoutMs);
+    }
+
+    child.stdout?.on("data", (c: Buffer) => stdoutChunks.push(c));
+    child.stderr?.on("data", (c: Buffer) => stderrChunks.push(c));
+
+    child.on("error", (err) => {
+      if (timer) clearTimeout(timer);
+      reject(err);
+    });
+
+    child.on("close", (code, signal) => {
+      if (timer) clearTimeout(timer);
+      const stdout = Buffer.concat(stdoutChunks).toString("utf-8");
+      const stderr = Buffer.concat(stderrChunks).toString("utf-8");
+
+      if (timedOut) {
+        reject(
+          new Error(
+            `git ${args.join(" ")} timed out after ${timeoutMs}ms:\n` +
+              `stdout: ${stdout.trim()}\n` +
+              `stderr: ${stderr.trim()}`,
+          ),
+        );
+        return;
+      }
+
+      if (code !== 0) {
+        const errorSignal = signal ? ` (signal: ${signal})` : "";
+        reject(
+          new Error(
+            `git ${args.join(" ")} failed (exit ${code}${errorSignal}):\n` +
+              `stdout: ${stdout.trim()}\n` +
+              `stderr: ${stderr.trim()}`,
+          ),
+        );
+        return;
+      }
+
+      resolve(stdout.trim());
+    });
+  });
 }
 
 /**

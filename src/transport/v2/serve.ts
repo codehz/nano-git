@@ -434,16 +434,49 @@ function encodePackfileWithSideBand(packfile: Buffer): Buffer[] {
 /**
  * 生成带 packfile 的 fetch 响应
  *
- * 响应格式（无前导节时）：
+ * 响应结构遵循 protocol-v2（节之间以 delim-pkt 分隔，最后以 flush-pkt 收尾）：
  * ```
- * 0001
+ * [acknowledgments\n ACK...\n ready\n 0001]    ← 仅协商命中 ready 时（无 done）
+ * [wanted-refs\n <oid> <refname>\n ... 0001]   ← 仅当客户端使用 want-ref
  * packfile\n
  * <side-band 编码的 packfile 数据>
  * 0000
  * ```
+ *
+ * 注意：
+ * - 当请求带 `done`（无 acknowledgments 节）时，section 不应以 delim-pkt 开头——
+ *   首节直接是 wanted-refs 或 packfile。早期实现错误地在 packfile 前加了 leading
+ *   delim-pkt，导致 git CLI 报 `fatal: expected 'packfile'`。
+ * - 当协商阶段（无 done）服务端判定 ready 时，必须在 **同一响应** 中
+ *   acknowledgments 节之后紧接 packfile，否则 git 报
+ *   `fatal: expected packfile after 'ready'`。
+ *
+ * @param wantedRefs - want-ref 解析出的 refname→oid 映射（无则不发 wanted-refs 节）
+ * @param ackSection - 可选的 acknowledgments 节内容（不含分隔 delim）；提供时会在其后补一个 delim-pkt
  */
-function generatePackfileResponse(backend: RepositoryBackend, params: FetchServerParams): Buffer {
+function generatePackfileResponse(
+  backend: RepositoryBackend,
+  params: FetchServerParams,
+  wantedRefs: ReadonlyArray<{ refname: string; oid: SHA1 }>,
+  ackSection?: Buffer,
+): Buffer {
   const parts: Buffer[] = [];
+
+  // acknowledgments 节（仅协商命中 ready 时）：与后续节之间以 delim-pkt 分隔。
+  if (ackSection !== undefined) {
+    parts.push(ackSection);
+    parts.push(encodeDelimiterPkt());
+  }
+
+  // wanted-refs 节：当客户端通过 want-ref 请求时必须回送 refname→oid 映射，
+  // 否则 git 无法得知每个 ref 解析到的对象。该节后接 delim-pkt 与 packfile 节分隔。
+  if (wantedRefs.length > 0) {
+    parts.push(encodePktLine("wanted-refs\n"));
+    for (const { refname, oid } of wantedRefs) {
+      parts.push(encodePktLine(`${oid} ${refname}\n`));
+    }
+    parts.push(encodeDelimiterPkt());
+  }
 
   // 计算要发送的对象集合
   const toPack = computeObjectsToPack(backend, params);
@@ -459,8 +492,7 @@ function generatePackfileResponse(backend: RepositoryBackend, params: FetchServe
 
   const packfile = writer.build();
 
-  // 包体节
-  parts.push(encodeDelimiterPkt());
+  // packfile 节
   parts.push(encodePktLine("packfile\n"));
 
   // side-band 编码的 packfile 数据
@@ -499,28 +531,24 @@ function findCommonObjects(
 }
 
 /**
- * 生成协商响应（无 done 时的 ACK/NAK）
+ * 构建 acknowledgments 节内容（不含尾部 flush/delim）
  *
- * 响应格式：
  * ```
  * acknowledgments\n
  * NAK\n
- * 0000
- * ```
- * 或：
- * ```
+ * --- 或 ---
  * acknowledgments\n
  * ACK <oid>\n
  * ready\n
- * 0000
  * ```
+ *
+ * @returns section 内容及是否 ready
  */
-function generateNegotiationResponse(
+function buildAcknowledgmentsSection(
   backend: RepositoryBackend,
   params: FetchServerParams,
-): Buffer {
+): { section: Buffer; ready: boolean } {
   const parts: Buffer[] = [];
-
   parts.push(encodePktLine("acknowledgments\n"));
 
   const { common, ready } = findCommonObjects(backend, params.wants, params.haves);
@@ -536,8 +564,7 @@ function generateNegotiationResponse(
     parts.push(encodePktLine("NAK\n"));
   }
 
-  parts.push(encodeFlushPkt());
-  return Buffer.concat(parts);
+  return { section: Buffer.concat(parts), ready };
 }
 
 /**
@@ -564,9 +591,8 @@ export function generateFetchResponse(
   // 校验 want 对象存在性
   for (const want of params.wants) {
     if (!backend.objects.exists(want)) {
-      // 用 side-band channel 3 返回错误
+      // 用 side-band channel 3 返回错误（packfile 节为响应的最后一节，前面无 delim）
       const parts: Buffer[] = [];
-      parts.push(encodeDelimiterPkt());
       parts.push(encodePktLine("packfile\n"));
       parts.push(
         encodePktLine(
@@ -578,12 +604,15 @@ export function generateFetchResponse(
     }
   }
 
-  // 处理 want-ref：将 ref 名称解析为哈希后追加到 wants
+  // 处理 want-ref：将 ref 名称解析为哈希后追加到 wants，并记录 refname→oid 映射
+  // 以便在 packfile 前回送 wanted-refs 节（git 通过 want-ref 克隆时必需）。
   const effectiveWants = [...params.wants];
+  const wantedRefs: Array<{ refname: string; oid: SHA1 }> = [];
   for (const ref of params.wantRefs) {
     const hash = resolveRefHash(backend.refs, ref);
     if (hash !== null) {
       effectiveWants.push(hash);
+      wantedRefs.push({ refname: ref, oid: hash });
     }
   }
 
@@ -594,11 +623,20 @@ export function generateFetchResponse(
   }
 
   if (params.done) {
-    return generatePackfileResponse(backend, effectiveParams);
+    // 带 done：直接发送 packfile（无 acknowledgments 节）
+    return generatePackfileResponse(backend, effectiveParams, wantedRefs);
   }
 
   // 无 done：协商阶段
-  return generateNegotiationResponse(backend, effectiveParams);
+  const { section: ackSection, ready } = buildAcknowledgmentsSection(backend, effectiveParams);
+
+  if (ready) {
+    // 命中 ready：必须在同一响应中紧接 packfile（git 要求 "expected packfile after 'ready'"）
+    return generatePackfileResponse(backend, effectiveParams, wantedRefs, ackSection);
+  }
+
+  // 未 ready：仅返回 acknowledgments 节（客户端将继续多轮协商）
+  return Buffer.concat([ackSection, encodeFlushPkt()]);
 }
 
 // ============================================================================
