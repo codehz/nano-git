@@ -1,0 +1,12 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "type": "command",
+        "command": "node .github/hooks/scripts/check-npx-yarn.js",
+        "linux": "bun .github/hooks/scripts/check-npx-yarn.js",
+        "timeout": 5
+      }
+    ]
+  }
+}
