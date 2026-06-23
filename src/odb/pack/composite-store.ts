@@ -78,11 +78,10 @@ export class CompositeObjectStore implements ObjectStore {
   /**
    * 删除对象
    *
-   * 委托给主存储的 delete（如存在）。
-   * 如果主存储不支持删除，则不执行任何操作。
+   * 委托给主存储的 delete。
    */
   delete(hash: SHA1): void {
-    this.primary.delete?.(hash);
+    this.primary.delete(hash);
   }
 
   /**

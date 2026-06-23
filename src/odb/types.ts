@@ -48,9 +48,6 @@ export interface ObjectSource {
  * 对象存储接口
  *
  * 在 ObjectSource 的基础上增加写入和删除能力。
- *
- * delete 是可选的（`?`）——只读后端、纯 pack 存储可以不实现。
- * 调用方应始终先检查 `store.delete` 再调用。
  */
 export interface ObjectStore extends ObjectSource {
   /**
@@ -63,10 +60,9 @@ export interface ObjectStore extends ObjectSource {
   /**
    * 删除指定对象
    *
-   * 非所有后端都支持此操作。不支持时此属性为 undefined。
    * 删除不存在的对象应静默成功（no-op）。
    *
    * @param hash - 要删除的对象哈希
    */
-  delete?(hash: SHA1): void;
+  delete(hash: SHA1): void;
 }
