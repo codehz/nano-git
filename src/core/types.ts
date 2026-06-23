@@ -41,7 +41,7 @@ export interface GitBlob {
 
 /** Tree 条目 — 目录中的一个文件或子目录 */
 export interface TreeEntry {
-  /** 文件模式（如 "100644" 普通文件, "100755" 可执行文件, "040000" 目录） */
+  /** 文件模式（如 "100644" 普通文件, "100755" 可执行文件, "40000" 目录） */
   mode: string;
   /** 文件/目录名 */
   name: string;

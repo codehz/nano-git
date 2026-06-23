@@ -14,10 +14,8 @@
  * - odb/: 对象数据库（loose objects + pack）
  * - refs/: 引用管理（名称校验、解析、存储）
  * - repository/: 高层仓库 API 与后端
- *
- * 扩展点：
- * - diff/: 差异计算
- * - transport/: 远程传输协议
+ * - shallow/: Shallow 边界（浅仓库）存储抽象
+ * - transport/: 远程传输协议（Smart HTTP）
  *
  * @example
  * ```ts
@@ -57,7 +55,12 @@ export {
   InvalidObjectError,
   InvalidSHA1Error,
   RepositoryError,
+  CircularReferenceError,
   RefNotFoundError,
+  PackError,
+  InvalidPackError,
+  PackIndexError,
+  DeltaError,
   PreconditionCheckError,
 } from "./core/index.ts";
 
