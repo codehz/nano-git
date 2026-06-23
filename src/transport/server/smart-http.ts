@@ -19,7 +19,7 @@
  * @see https://git-scm.com/docs/git-http-backend
  */
 
-import { serveV1Advertise, handleV1ReceivePush } from "../server/receive-pack/receive-pack.ts";
+import { serveV1Advertise, handleV1ReceivePush } from "../server/receive-pack/index.ts";
 import { createUploadPackService, UploadPackError } from "./upload-pack.ts";
 import { serveV2Advertise } from "./upload-pack/serve.ts";
 

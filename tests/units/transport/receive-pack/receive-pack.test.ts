@@ -13,7 +13,7 @@ import {
   parseV1ReceivePackRequest,
   handleV1ReceivePush,
   V1ReceivePackError,
-} from "@/transport/server/receive-pack/receive-pack.ts";
+} from "@/transport/server/receive-pack/index.ts";
 import { encodePktLine, encodeFlushPkt } from "@/transport/shared/pkt-line.ts";
 
 // ============================================================================
