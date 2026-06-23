@@ -115,6 +115,14 @@ export interface GitTag {
   tag: string;
   /** 标签创建者 */
   tagger: GitAuthor;
+  /** GPG 签名块（不含 continuation 行前导空格） */
+  gpgsig?: string;
+  /**
+   * 自定义 header 列表
+   *
+   * 序列化时会按数组顺序输出在内建 header 之后。
+   */
+  extraHeaders?: GitCommitExtraHeader[];
   /** 标签信息 */
   message: string;
 }
