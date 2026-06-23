@@ -11,3 +11,6 @@ export { serializeCommit, deserializeCommit } from "./commit.ts";
 export { serializeTag, deserializeTag } from "./tag.ts";
 export { formatAuthor, parseAuthor } from "./author.ts";
 export { serialize, deserialize, serializeContent, deserializeContent } from "./codec.ts";
+
+// 语义层 raw 转换 helper
+export { encodeObject, decodeObject, writeObject, readObject, tryReadObject } from "./raw.ts";

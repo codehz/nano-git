@@ -37,6 +37,7 @@
 export type {
   SHA1,
   ObjectType,
+  RawGitObject,
   GitBlob,
   GitTree,
   GitCommit,
