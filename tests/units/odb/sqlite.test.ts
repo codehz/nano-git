@@ -7,7 +7,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 
 import { ObjectNotFoundError } from "@/core/errors.ts";
 import { sha1 } from "@/core/types.ts";
-import { writeObject, readObject } from "@/objects/raw.ts";
+import { writeObject, readObject, encodeObject } from "@/objects/raw.ts";
 import { createSqliteObjectStore } from "@/odb/sqlite.ts";
 
 import type { GitBlob, GitTree, GitCommit, GitAuthor } from "@/core/types.ts";
@@ -198,5 +198,64 @@ describe("createSqliteObjectStore()", () => {
     expect(result.hash).toBe(raw.hash);
     expect(result.type).toBe("blob");
     expect(result.content.toString()).toBe("hello world");
+  });
+
+  test("大数据量：ingest 1000 个对象 + list 完整性", () => {
+    const raws: RawGitObject[] = [];
+    for (let i = 0; i < 1000; i++) {
+      raws.push(encodeObject({ type: "blob", content: Buffer.from(`large-data-${i}`) }));
+    }
+
+    store.ingestMany(raws);
+
+    const list = store.list();
+    expect(list).toHaveLength(1000);
+
+    // 验证所有对象可按 hash 读取
+    for (const raw of raws) {
+      expect(store.exists(raw.hash)).toBe(true);
+      const read = store.read(raw.hash);
+      expect(read.type).toBe("blob");
+      // 验证内容是期望的
+      expect(read.content).toEqual(raw.content);
+    }
+  });
+
+  test("跨后端哈希一致性：用 memory 后端序列化，SQLite 后端读取", () => {
+    // 用 memory backend 模拟"从 file 后端迁移"的场景：不同的后端实现，相同的 hash
+    const memDb = new Database(":memory:");
+    memDb.run(
+      "CREATE TABLE IF NOT EXISTS objects (hash TEXT PRIMARY KEY, type TEXT NOT NULL, content BLOB NOT NULL)",
+    );
+    const memStore = createSqliteObjectStore(memDb);
+
+    // 使用内存后端创建不同内容的对象
+    const blob: GitBlob = { type: "blob", content: Buffer.from("迁移测试内容") };
+    const blobHash = writeObject(memStore, blob);
+
+    const tree: GitTree = {
+      type: "tree",
+      entries: [{ mode: "100644", name: "migrated.txt", hash: blobHash }],
+    };
+    const treeHash = writeObject(memStore, tree);
+
+    // 用 SQLite 后端写入相同数据（模拟从文件后端复制到 SQLite 后端）
+    store.ingest(memStore.read(blobHash));
+    store.ingest(memStore.read(treeHash));
+
+    // 验证哈希一致
+    expect(store.exists(blobHash)).toBe(true);
+    expect(store.exists(treeHash)).toBe(true);
+
+    const readBlob = store.read(blobHash);
+    expect(readBlob.type).toBe("blob");
+    if (readBlob.type === "blob") {
+      expect(readBlob.content.toString("utf-8")).toBe("迁移测试内容");
+    }
+
+    const readTree = store.read(treeHash);
+    expect(readTree.type).toBe("tree");
+
+    memDb.close();
   });
 });
