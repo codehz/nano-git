@@ -10,13 +10,19 @@ import {
   VirtualNotSymlinkError,
   VirtualPathNotFoundError,
   VirtualPathAlreadyExistsError,
+  VirtualRevertNotSupportedError,
 } from "../core/errors.ts";
 import { VIRTUAL_ROOT_NODE_ID, createNodeId } from "./ids.ts";
 import {
   createVirtualWorkdirMemoryState,
   type VirtualWorkdirMemoryState,
 } from "./memory-backend.ts";
-import { cloneSessionNodeForCopy, type SessionNode } from "./nodes.ts";
+import {
+  cloneSessionNodeForCopy,
+  createRootDirectoryNode,
+  revertNodeState,
+  type SessionNode,
+} from "./nodes.ts";
 import { modeToVirtualEntryKind, readRepoBlobContent } from "./origin.ts";
 import { overlayBindEntry, overlayTombstoneEntry, overlayRenameEntry } from "./overlay.ts";
 import {
@@ -480,10 +486,8 @@ function buildSessionApi(
         throw new VirtualPathAlreadyExistsError(to);
       }
 
-      // 创建新节点（共享 origin，目录浅复制）
-      const newNodeId = createNodeId();
-      const newNode = cloneSessionNodeForCopy(sourceNode, newNodeId);
-      state.nodes.set(newNodeId, newNode);
+      // 创建新节点图，避免 copy 后源与目标共享子节点身份
+      const newNodeId = cloneNodeGraphForCopy(source, state, sourceNode, from);
 
       // 绑定到目标父目录
       updateParentOverlay(
@@ -494,13 +498,34 @@ function buildSessionApi(
 
       state.changeLog.append({ op: "copy", from, to });
     },
-    revert: notImplemented,
+
+    revert(path: string): void {
+      assertValidVirtualPath(path);
+      const resolved = resolvePath(source, state, path);
+      if (!resolved.found || resolved.node === null) {
+        throw new VirtualPathNotFoundError(path);
+      }
+
+      const node = resolved.node;
+      const reverted = revertNodeState(node);
+      if (reverted === node) {
+        throw new VirtualRevertNotSupportedError(path);
+      }
+
+      state.nodes.set(node.id, reverted);
+      state.changeLog.append({ op: "revert", path });
+    },
 
     writeTree() {
       return writeTreeFromSession(source, state);
     },
 
-    reset: notImplemented,
+    reset(baseTree) {
+      state.baseTree = baseTree;
+      state.nodes.clear();
+      state.nodes.set(VIRTUAL_ROOT_NODE_ID, createRootDirectoryNode(baseTree));
+      state.changeLog.clear();
+    },
 
     listChanges(): VirtualChange[] {
       return state.changeLog.toVirtualChanges();
@@ -509,11 +534,6 @@ function buildSessionApi(
 
   return api;
 }
-
-function notImplemented(): never {
-  throw new Error("Virtual workdir: operation not implemented in this phase");
-}
-
 // ==================== 辅助 ====================
 
 function getRootNode(state: VirtualWorkdirMemoryState): SessionNode {
@@ -569,4 +589,37 @@ function statNode(source: ObjectDatabase, node: SessionNode, path: string): Virt
 function statDirectoryNode(node: SessionNode): VirtualEntryStat {
   const hash = node.origin.kind === "repo-tree" ? node.origin.hash : null;
   return { kind: "tree", mode: "40000", size: 0, hash };
+}
+
+function cloneNodeGraphForCopy(
+  source: ObjectDatabase,
+  state: VirtualWorkdirMemoryState,
+  node: SessionNode,
+  path: string,
+): import("./ids.ts").NodeId {
+  const newNodeId = createNodeId();
+  const cloned = cloneSessionNodeForCopy(node, newNodeId);
+  state.nodes.set(newNodeId, cloned);
+
+  if (node.state.kind !== "directory" || cloned.state.kind !== "directory") {
+    return newNodeId;
+  }
+
+  let overlay = cloned.state.overlay;
+  const children = listDirectoryChildren(source, state, node, path);
+  for (const child of children) {
+    const childNode = state.nodes.get(child.nodeId);
+    if (childNode === undefined) {
+      continue;
+    }
+    const childPath = path === VIRTUAL_ROOT_PATH ? child.name : `${path}/${child.name}`;
+    const clonedChildId = cloneNodeGraphForCopy(source, state, childNode, childPath);
+    overlay = overlayBindEntry(overlay, child.name, clonedChildId);
+  }
+
+  state.nodes.set(newNodeId, {
+    ...cloned,
+    state: { kind: "directory", overlay },
+  });
+  return newNodeId;
 }

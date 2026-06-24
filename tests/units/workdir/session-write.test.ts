@@ -8,6 +8,7 @@ import {
   VirtualNotFileError,
   VirtualPathAlreadyExistsError,
   VirtualPathNotFoundError,
+  VirtualRevertNotSupportedError,
 } from "@/core/errors.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
 import { createVirtualWorkdirSession } from "@/workdir/session.ts";
@@ -658,5 +659,130 @@ describe("copy", () => {
 
     session.writeFile("f.txt", Buffer.from("data"));
     expect(() => session.copy("f.txt", "f.txt")).toThrow(VirtualPathAlreadyExistsError);
+  });
+});
+
+// ==================== revert / reset ====================
+
+describe("revert", () => {
+  test("恢复 repo-backed 文件内容", () => {
+    const repo = createMemoryRepository();
+    const blobHash = repo.writeBlob(Buffer.from("old"));
+    const baseTree = repo.createTree([{ mode: "100644", name: "f", hash: blobHash }]);
+    const session = createVirtualWorkdirSession(repo.objects, { baseTree });
+
+    session.writeFile("f", Buffer.from("new"));
+    expect(session.readFile("f").toString()).toBe("new");
+
+    session.revert("f");
+    expect(session.readFile("f").toString()).toBe("old");
+  });
+
+  test("恢复 repo-backed 符号链接目标", () => {
+    const repo = createMemoryRepository();
+    const linkHash = repo.writeBlob(Buffer.from("old-target"));
+    const baseTree = repo.createTree([{ mode: "120000", name: "link", hash: linkHash }]);
+    const session = createVirtualWorkdirSession(repo.objects, { baseTree });
+
+    session.writeLink("link", "new-target");
+    session.revert("link");
+
+    expect(session.readLink("link")).toBe("old-target");
+  });
+
+  test("恢复 copy 出来的 repo-backed 文件（未 materialize）为 no-op", () => {
+    const repo = createMemoryRepository();
+    const blobHash = repo.writeBlob(Buffer.from("repo data"));
+    const baseTree = repo.createTree([{ mode: "100644", name: "f", hash: blobHash }]);
+    const session = createVirtualWorkdirSession(repo.objects, { baseTree });
+
+    session.copy("f", "f-copy");
+    session.revert("f-copy");
+
+    expect(session.readFile("f-copy").toString()).toBe("repo data");
+  });
+
+  test("恢复 copy 出来的 repo-backed 文件（已 materialize）", () => {
+    const repo = createMemoryRepository();
+    const blobHash = repo.writeBlob(Buffer.from("repo data"));
+    const baseTree = repo.createTree([{ mode: "100644", name: "f", hash: blobHash }]);
+    const session = createVirtualWorkdirSession(repo.objects, { baseTree });
+
+    session.copy("f", "f-copy");
+    session.writeFile("f-copy", Buffer.from("edited"));
+    session.revert("f-copy");
+
+    expect(session.readFile("f-copy").toString()).toBe("repo data");
+  });
+
+  test("恢复目录 overlay 到 origin", () => {
+    const repo = createMemoryRepository();
+    const childHash = repo.writeBlob(Buffer.from("base"));
+    const dirHash = repo.createTree([{ mode: "100644", name: "base.txt", hash: childHash }]);
+    const baseTree = repo.createTree([{ mode: "40000", name: "dir", hash: dirHash }]);
+    const session = createVirtualWorkdirSession(repo.objects, { baseTree });
+
+    session.writeFile("dir/new.txt", Buffer.from("new"));
+    expect(session.readdir("dir").map((entry) => entry.name)).toEqual(["base.txt", "new.txt"]);
+
+    session.revert("dir");
+    expect(session.readdir("dir").map((entry) => entry.name)).toEqual(["base.txt"]);
+  });
+
+  test("恢复纯新建节点抛 VirtualRevertNotSupportedError", () => {
+    const repo = createMemoryRepository();
+    const session = createVirtualWorkdirSession(repo.objects, {
+      baseTree: repo.createTree([]),
+    });
+
+    session.writeFile("fresh.txt", Buffer.from("data"));
+    expect(() => session.revert("fresh.txt")).toThrow(VirtualRevertNotSupportedError);
+  });
+
+  test("恢复不存在路径抛 VirtualPathNotFoundError", () => {
+    const repo = createMemoryRepository();
+    const session = createVirtualWorkdirSession(repo.objects, {
+      baseTree: repo.createTree([]),
+    });
+
+    expect(() => session.revert("missing.txt")).toThrow(VirtualPathNotFoundError);
+  });
+});
+
+describe("reset", () => {
+  test("丢弃 overlay 与变更历史，并切换到新 baseTree", () => {
+    const repo = createMemoryRepository();
+    const oldBaseTree = repo.createTree([]);
+    const resetBlobHash = repo.writeBlob(Buffer.from("reset"));
+    const newBaseTree = repo.createTree([
+      { mode: "100644", name: "after.txt", hash: resetBlobHash },
+    ]);
+    const session = createVirtualWorkdirSession(repo.objects, { baseTree: oldBaseTree });
+
+    session.writeFile("before.txt", Buffer.from("before"));
+    session.mkdir("dir");
+    expect(session.listChanges().length).toBeGreaterThan(0);
+
+    session.reset(newBaseTree);
+
+    expect(session.baseTree).toBe(newBaseTree);
+    expect(session.exists("before.txt")).toBe(false);
+    expect(session.exists("dir")).toBe(false);
+    expect(session.readFile("after.txt").toString()).toBe("reset");
+    expect(session.listChanges()).toEqual([]);
+  });
+
+  test("reset 后行为等同新 session", () => {
+    const repo = createMemoryRepository();
+    const blobHash = repo.writeBlob(Buffer.from("base"));
+    const baseTree = repo.createTree([{ mode: "100644", name: "f", hash: blobHash }]);
+    const session = createVirtualWorkdirSession(repo.objects, { baseTree: repo.createTree([]) });
+
+    session.writeFile("temp.txt", Buffer.from("temp"));
+    session.reset(baseTree);
+
+    const fresh = createVirtualWorkdirSession(repo.objects, { baseTree });
+    expect(session.readdir()).toEqual(fresh.readdir());
+    expect(session.readFile("f").toString()).toBe(fresh.readFile("f").toString());
   });
 });
