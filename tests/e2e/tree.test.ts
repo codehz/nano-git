@@ -5,18 +5,20 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { symlinkSync } from "node:fs";
+import { mkdirSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 
 import {
   git,
   gitInit,
+  gitInitBare,
+  gitMktree,
   gitHashObjectWrite,
   gitHashObject,
   gitCatFile,
   gitCatFileType,
   gitCatFileRaw,
-  gitWriteTreeFromFiles,
+  gitWriteTreeBare,
   createTempDir,
   cleanupDir,
   createFile,
@@ -29,7 +31,7 @@ describe("Tree 兼容性", () => {
 
   beforeEach(() => {
     tempDir = createTempDir("e2e-tree");
-    gitInit(tempDir);
+    gitInitBare(tempDir);
   });
 
   afterEach(() => {
@@ -92,11 +94,12 @@ describe("Tree 兼容性", () => {
       const workDir = createTempDir("e2e-tree-work");
       try {
         createFile(workDir, "hello.txt", "hello world");
-        createFile(workDir, "sub/nested.txt", "nested content");
+        mkdirSync(join(workDir, "sub"), { recursive: true });
+        createFile(join(workDir, "sub"), "nested.txt", "nested content");
 
         gitInit(workDir);
 
-        const repo = openRepository(workDir);
+        const repo = openRepository(join(workDir, ".git"));
         const treeHash = repo.writeTree(workDir);
 
         expect(gitCatFileType(workDir, treeHash)).toBe("tree");
@@ -115,7 +118,7 @@ describe("Tree 兼容性", () => {
     test("git 创建的 tree 能被 nano-git 正确读取", () => {
       const repo = openRepository(tempDir);
 
-      const treeHash = gitWriteTreeFromFiles(tempDir, {
+      const treeHash = gitWriteTreeBare(tempDir, {
         "file1.txt": "content 1",
         "file2.txt": "content 2",
       });
@@ -141,7 +144,7 @@ describe("Tree 兼容性", () => {
       const gitFileHash = gitHashObjectWrite(tempDir, "same content");
       expect(gitFileHash).toBe(fileHash);
 
-      const gitTreeHash = gitWriteTreeFromFiles(tempDir, {
+      const gitTreeHash = gitWriteTreeBare(tempDir, {
         "same.txt": "same content",
       });
 
@@ -168,7 +171,7 @@ describe("Tree 兼容性", () => {
         symlinkSync("/usr/bin/python3", join(workDir, "python-link"));
         gitInit(workDir);
 
-        const repo = openRepository(workDir);
+        const repo = openRepository(join(workDir, ".git"));
         const treeHash = repo.writeTree(workDir);
 
         const output = git(["ls-tree", treeHash], workDir);
@@ -197,12 +200,11 @@ describe("Tree 兼容性", () => {
   });
 
   describe("git → nano-git 符号链接", () => {
-    test("git update-index 添加的符号链接能被 nano-git 正确解析", () => {
+    test("git 创建的符号链接 tree 能被 nano-git 正确解析", () => {
       const repo = openRepository(tempDir);
 
       const blobHash = gitHashObjectWrite(tempDir, "/usr/bin/node");
-      git(["update-index", "--add", "--cacheinfo", `120000,${blobHash},node-link`], tempDir);
-      const gitTreeHash = git(["write-tree"], tempDir);
+      const gitTreeHash = gitMktree(tempDir, [`120000 blob ${blobHash}\tnode-link`]);
 
       const tree = repo.catFile(sha1(gitTreeHash));
       expect(tree.type).toBe("tree");
@@ -223,8 +225,7 @@ describe("Tree 兼容性", () => {
       const repo = openRepository(tempDir);
 
       const gitBlobHash = gitHashObjectWrite(tempDir, "/target/path");
-      git(["update-index", "--add", "--cacheinfo", `120000,${gitBlobHash},symlink`], tempDir);
-      const gitTreeHash = git(["write-tree"], tempDir);
+      const gitTreeHash = gitMktree(tempDir, [`120000 blob ${gitBlobHash}\tsymlink`]);
 
       const nanoBlobHash = repo.writeBlob(Buffer.from("/target/path"));
       expect(nanoBlobHash).toBe(gitBlobHash);
@@ -243,7 +244,7 @@ describe("Tree 兼容性", () => {
 
         symlinkSync("/usr/local/bin/app", join(workDir, "app-link"));
 
-        const nanoRepo = openRepository(workDir);
+        const nanoRepo = openRepository(join(workDir, ".git"));
         const nanoTreeHash = nanoRepo.writeTree(workDir);
 
         git(["add", "app-link"], workDir);

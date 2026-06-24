@@ -11,6 +11,7 @@ import { join } from "node:path";
 
 import {
   gitInit,
+  gitInitBare,
   git,
   gitCatFileRaw,
   gitRevParse,
@@ -41,7 +42,7 @@ describe("Packfile 兼容性: nano-git → git", () => {
 
   beforeEach(() => {
     tempDir = createTempDir("e2e-pack-n2g");
-    gitInit(tempDir);
+    gitInitBare(tempDir);
   });
 
   afterEach(() => {
@@ -49,8 +50,7 @@ describe("Packfile 兼容性: nano-git → git", () => {
   });
 
   test("nano-git 创建的 packfile 能被 git verify-pack 验证", () => {
-    const gitDir = join(tempDir, ".git");
-    const builder = createPackBuilder(gitDir);
+    const builder = createPackBuilder(tempDir);
 
     const blob: GitBlob = { type: "blob", content: Buffer.from("hello from nano-git pack") };
     builder.addRaw(encodeObject(blob));
@@ -64,8 +64,7 @@ describe("Packfile 兼容性: nano-git → git", () => {
   });
 
   test("nano-git 打包的 blob 能被 git cat-file 读取", () => {
-    const gitDir = join(tempDir, ".git");
-    const builder = createPackBuilder(gitDir);
+    const builder = createPackBuilder(tempDir);
 
     const content = "packed blob content";
     const blob: GitBlob = { type: "blob", content: Buffer.from(content) };
@@ -77,8 +76,7 @@ describe("Packfile 兼容性: nano-git → git", () => {
   });
 
   test("nano-git 打包的 tree 能被 git cat-file 读取", () => {
-    const gitDir = join(tempDir, ".git");
-    const builder = createPackBuilder(gitDir);
+    const builder = createPackBuilder(tempDir);
 
     const blob: GitBlob = { type: "blob", content: Buffer.from("file content") };
     const blobHash = builder.addRaw(encodeObject(blob));
@@ -96,8 +94,7 @@ describe("Packfile 兼容性: nano-git → git", () => {
   });
 
   test("nano-git 打包的 commit 能被 git cat-file 读取", () => {
-    const gitDir = join(tempDir, ".git");
-    const builder = createPackBuilder(gitDir);
+    const builder = createPackBuilder(tempDir);
 
     const tree: GitTree = { type: "tree", entries: [] };
     const treeHash = builder.addRaw(encodeObject(tree));

@@ -7,7 +7,7 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 
 import {
-  gitInit,
+  gitInitBare,
   gitHashObjectWrite,
   gitHashObject,
   gitCatFileType,
@@ -24,7 +24,7 @@ describe("Blob 兼容性", () => {
 
   beforeEach(() => {
     tempDir = createTempDir("e2e-blob");
-    gitInit(tempDir);
+    gitInitBare(tempDir);
   });
 
   afterEach(() => {

@@ -173,11 +173,21 @@ export function gitRaw(args: string[], cwd: string): Buffer {
 // ============================================================================
 
 /**
- * 初始化 git 仓库
+ * 初始化 git 仓库（非 bare，含工作目录）
  */
 export function gitInit(dir: string): void {
   mkdirSync(dir, { recursive: true });
   git(["init", "-b", "main"], dir);
+}
+
+/**
+ * 初始化 bare git 仓库（无工作目录）
+ *
+ * 等价于 `git init --bare`
+ */
+export function gitInitBare(dir: string): void {
+  mkdirSync(dir, { recursive: true });
+  git(["init", "--bare", "-b", "main"], dir);
 }
 
 /**
@@ -273,6 +283,50 @@ export function gitWriteTreeFromFiles(dir: string, files: Record<string, string>
 
   // write-tree
   return sha1(git(["write-tree"], dir));
+}
+
+/**
+ * 使用 git mktree 从原始条目创建 tree 对象
+ *
+ * 每个条目格式: `<mode> <type> <hash>\t<name>`
+ *
+ * @example
+ * ```ts
+ * const hash = gitMktree(dir, ["100644 blob abc123\tfile.txt"]);
+ * ```
+ */
+export function gitMktree(dir: string, entries: string[]): SHA1 {
+  const sorted = [...entries].sort((a, b) => a.localeCompare(b));
+
+  const result = spawnSync("git", ["mktree"], {
+    cwd: dir,
+    env: { ...process.env, ...GIT_ENV },
+    input: sorted.join("\n") + "\n",
+    encoding: "utf-8",
+  });
+
+  if (result.status !== 0) {
+    throw new Error(`git mktree failed: ${result.stderr}`);
+  }
+
+  return sha1(result.stdout.trim());
+}
+
+/**
+ * 在 bare 仓库中创建 tree（使用 mktree，不依赖 index/worktree）
+ *
+ * 等价于 git write-tree，但通过 hash-object + mktree 直接从文件内容构建，
+ * 适用于 bare 仓库场景。
+ */
+export function gitWriteTreeBare(dir: string, files: Record<string, string>): SHA1 {
+  const entries: string[] = [];
+
+  for (const [name, content] of Object.entries(files)) {
+    const hash = gitHashObjectWrite(dir, content);
+    entries.push(`100644 blob ${hash}\t${name}`);
+  }
+
+  return gitMktree(dir, entries);
 }
 
 /**

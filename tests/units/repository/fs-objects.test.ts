@@ -61,10 +61,12 @@ describe("文件系统仓库的对象操作", () => {
   });
 
   test("writeTree() 将目录写入 tree 对象", () => {
-    writeFileSync(join(tempDir, "file1.txt"), "content1");
-    writeFileSync(join(tempDir, "file2.txt"), "content2");
+    const workDir = join(tempDir, "work");
+    mkdirSync(workDir, { recursive: true });
+    writeFileSync(join(workDir, "file1.txt"), "content1");
+    writeFileSync(join(workDir, "file2.txt"), "content2");
 
-    const treeHash = repo.writeTree(tempDir);
+    const treeHash = repo.writeTree(workDir);
     const tree = repo.catFile(treeHash);
 
     expect(tree.type).toBe("tree");
@@ -72,16 +74,17 @@ describe("文件系统仓库的对象操作", () => {
       const names = tree.entries.map((e: TreeEntry) => e.name);
       expect(names).toContain("file1.txt");
       expect(names).toContain("file2.txt");
-      expect(names).not.toContain(".git");
     }
   });
 
   test("writeTree() 递归处理子目录", () => {
-    writeFileSync(join(tempDir, "root.txt"), "root");
-    mkdirSync(join(tempDir, "subdir"));
-    writeFileSync(join(tempDir, "subdir", "nested.txt"), "nested");
+    const workDir = join(tempDir, "work");
+    mkdirSync(workDir, { recursive: true });
+    writeFileSync(join(workDir, "root.txt"), "root");
+    mkdirSync(join(workDir, "subdir"));
+    writeFileSync(join(workDir, "subdir", "nested.txt"), "nested");
 
-    const treeHash = repo.writeTree(tempDir);
+    const treeHash = repo.writeTree(workDir);
     const tree = repo.catFile(treeHash);
 
     expect(tree.type).toBe("tree");
@@ -100,10 +103,12 @@ describe("文件系统仓库的对象操作", () => {
   });
 
   test("writeTree() 处理符号链接，使用 120000 mode", () => {
+    const workDir = join(tempDir, "work");
+    mkdirSync(workDir, { recursive: true });
     const target = "/usr/bin/node";
-    symlinkSync(target, join(tempDir, "node-link"));
+    symlinkSync(target, join(workDir, "node-link"));
 
-    const treeHash = repo.writeTree(tempDir);
+    const treeHash = repo.writeTree(workDir);
     const tree = repo.catFile(treeHash);
 
     expect(tree.type).toBe("tree");
@@ -121,9 +126,11 @@ describe("文件系统仓库的对象操作", () => {
   });
 
   test("writeTree() 处理相对路径符号链接", () => {
-    symlinkSync("./relative-target.txt", join(tempDir, "rel-link"));
+    const workDir = join(tempDir, "work");
+    mkdirSync(workDir, { recursive: true });
+    symlinkSync("./relative-target.txt", join(workDir, "rel-link"));
 
-    const treeHash = repo.writeTree(tempDir);
+    const treeHash = repo.writeTree(workDir);
     const tree = repo.catFile(treeHash);
 
     expect(tree.type).toBe("tree");
@@ -141,11 +148,13 @@ describe("文件系统仓库的对象操作", () => {
   });
 
   test("writeTree() 将符号链接到目录记录为 120000 而非递归遍历", () => {
-    mkdirSync(join(tempDir, "real-dir"));
-    writeFileSync(join(tempDir, "real-dir", "nested.txt"), "nested");
-    symlinkSync("real-dir", join(tempDir, "link-to-dir"));
+    const workDir = join(tempDir, "work");
+    mkdirSync(workDir, { recursive: true });
+    mkdirSync(join(workDir, "real-dir"));
+    writeFileSync(join(workDir, "real-dir", "nested.txt"), "nested");
+    symlinkSync("real-dir", join(workDir, "link-to-dir"));
 
-    const treeHash = repo.writeTree(tempDir);
+    const treeHash = repo.writeTree(workDir);
     const tree = repo.catFile(treeHash);
 
     expect(tree.type).toBe("tree");
@@ -167,9 +176,11 @@ describe("文件系统仓库的对象操作", () => {
   });
 
   test("writeTree() 处理断链符号链接（目标不存在）", () => {
-    symlinkSync("/nonexistent/path", join(tempDir, "broken-link"));
+    const workDir = join(tempDir, "work");
+    mkdirSync(workDir, { recursive: true });
+    symlinkSync("/nonexistent/path", join(workDir, "broken-link"));
 
-    const treeHash = repo.writeTree(tempDir);
+    const treeHash = repo.writeTree(workDir);
     const tree = repo.catFile(treeHash);
 
     expect(tree.type).toBe("tree");
@@ -187,11 +198,13 @@ describe("文件系统仓库的对象操作", () => {
   });
 
   test("writeTree() 处理子目录中的符号链接", () => {
-    mkdirSync(join(tempDir, "sub"));
-    symlinkSync("/any/target", join(tempDir, "sub", "inner-link"));
-    writeFileSync(join(tempDir, "sub", "regular.txt"), "normal");
+    const workDir = join(tempDir, "work");
+    mkdirSync(workDir, { recursive: true });
+    mkdirSync(join(workDir, "sub"));
+    symlinkSync("/any/target", join(workDir, "sub", "inner-link"));
+    writeFileSync(join(workDir, "sub", "regular.txt"), "normal");
 
-    const treeHash = repo.writeTree(tempDir);
+    const treeHash = repo.writeTree(workDir);
     const tree = repo.catFile(treeHash);
 
     expect(tree.type).toBe("tree");
@@ -223,13 +236,15 @@ describe("文件系统仓库的对象操作", () => {
   });
 
   test("writeTree() 混合处理文件、可执行文件和符号链接", () => {
-    writeFileSync(join(tempDir, "readme.md"), "docs");
-    const execPath = join(tempDir, "run.sh");
+    const workDir = join(tempDir, "work");
+    mkdirSync(workDir, { recursive: true });
+    writeFileSync(join(workDir, "readme.md"), "docs");
+    const execPath = join(workDir, "run.sh");
     writeFileSync(execPath, "#!/bin/sh\necho hi");
     chmodSync(execPath, 0o755);
-    symlinkSync("readme.md", join(tempDir, "doc-link"));
+    symlinkSync("readme.md", join(workDir, "doc-link"));
 
-    const treeHash = repo.writeTree(tempDir);
+    const treeHash = repo.writeTree(workDir);
     const tree = repo.catFile(treeHash);
 
     expect(tree.type).toBe("tree");
@@ -251,8 +266,7 @@ describe("文件系统仓库的对象操作", () => {
   });
 
   test("openRepository() 默认可读取 packfile 中的对象", () => {
-    const gitDir = join(tempDir, ".git");
-    const builder = createPackBuilder(gitDir);
+    const builder = createPackBuilder(tempDir);
     const hash = builder.addRaw(
       encodeObject({
         type: "blob",
@@ -271,10 +285,9 @@ describe("文件系统仓库的对象操作", () => {
   });
 
   test("listObjects() 同时返回 loose 和 packed objects", () => {
-    const gitDir = join(tempDir, ".git");
     const looseHash = repo.writeBlob(Buffer.from("loose"));
 
-    const builder = createPackBuilder(gitDir);
+    const builder = createPackBuilder(tempDir);
     const packedHash = builder.addRaw(
       encodeObject({
         type: "blob",
@@ -314,9 +327,8 @@ describe("文件系统仓库的对象操作", () => {
   });
 
   test("repack({ pruneLoose: true }) 会删除已打包的 loose object 文件", () => {
-    const gitDir = join(tempDir, ".git");
     const hash = repo.writeBlob(Buffer.from("packed and pruned"));
-    const objectPath = join(gitDir, "objects", hashToPath(hash));
+    const objectPath = join(tempDir, "objects", hashToPath(hash));
 
     expect(existsSync(objectPath)).toBe(true);
 
@@ -354,7 +366,6 @@ describe("文件系统仓库的对象操作", () => {
   });
 
   test("gc() 只保留可达对象", () => {
-    const gitDir = join(tempDir, ".git");
     const reachableBlob = repo.writeBlob(Buffer.from("reachable after gc"));
     const reachableTree = repo.createTree([
       { mode: "100644", name: "keep.txt", hash: reachableBlob },
@@ -363,7 +374,7 @@ describe("文件系统仓库的对象操作", () => {
     repo.updateRef("refs/heads/main", reachableCommit);
 
     const danglingBlob = repo.writeBlob(Buffer.from("dangling"));
-    const danglingPath = join(gitDir, "objects", hashToPath(danglingBlob));
+    const danglingPath = join(tempDir, "objects", hashToPath(danglingBlob));
 
     expect(existsSync(danglingPath)).toBe(true);
 

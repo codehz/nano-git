@@ -5,6 +5,7 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
+import { join } from "node:path";
 
 import {
   git,
@@ -99,7 +100,7 @@ describe("完整工作流", () => {
     spawnSync("git", ["add", "hello.txt"], { cwd: tempDir, env: gitEnv });
     spawnSync("git", ["commit", "-m", "Add hello.txt"], { cwd: tempDir, env: gitEnv });
 
-    const repo = openRepository(tempDir);
+    const repo = openRepository(join(tempDir, ".git"));
 
     const headHash = repo.readRef("HEAD");
     expect(headHash).not.toBeNull();
@@ -127,7 +128,8 @@ describe("完整工作流", () => {
   });
 
   test("nano-git 和 git 交替操作能保持仓库一致性", () => {
-    const repo = initRepository(tempDir);
+    gitInit(tempDir);
+    const repo = openRepository(join(tempDir, ".git"));
 
     const file1Hash = repo.writeBlob(Buffer.from("version 1\n"));
     const tree1Hash = repo.createTree([{ mode: "100644", name: "data.txt", hash: file1Hash }]);
@@ -191,7 +193,7 @@ describe("完整工作流", () => {
     gitHashObjectWrite(tempDir, "dangling");
     gitGc(tempDir, true);
 
-    const repo = openRepository(tempDir);
+    const repo = openRepository(join(tempDir, ".git"));
     const reachable = repo.listReachableObjects();
     const headHash = gitRevParse(tempDir, "HEAD");
 

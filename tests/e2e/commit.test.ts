@@ -7,10 +7,10 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 
 import {
-  gitInit,
+  gitInitBare,
   gitCatFile,
   gitCatFileType,
-  gitWriteTreeFromFiles,
+  gitWriteTreeBare,
   gitCommitTree,
   gitFsck,
   gitLog,
@@ -35,7 +35,7 @@ describe("Commit 兼容性", () => {
 
   beforeEach(() => {
     tempDir = createTempDir("e2e-commit");
-    gitInit(tempDir);
+    gitInitBare(tempDir);
   });
 
   afterEach(() => {
@@ -176,7 +176,7 @@ describe("Commit 兼容性", () => {
     test("git 创建的 commit 能被 nano-git 正确读取", () => {
       const repo = openRepository(tempDir);
 
-      const treeHash = gitWriteTreeFromFiles(tempDir, {
+      const treeHash = gitWriteTreeBare(tempDir, {
         "test.txt": "test content",
       });
       const commitHash = gitCommitTree(tempDir, treeHash, "Git created commit");
@@ -195,7 +195,7 @@ describe("Commit 兼容性", () => {
     test("git 创建的带父节点 commit 能被 nano-git 正确读取", () => {
       const repo = openRepository(tempDir);
 
-      const treeHash = gitWriteTreeFromFiles(tempDir, {
+      const treeHash = gitWriteTreeBare(tempDir, {
         "test.txt": "content",
       });
       const parentHash = gitCommitTree(tempDir, treeHash, "Parent");

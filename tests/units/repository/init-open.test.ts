@@ -30,23 +30,22 @@ describe("initRepository()", () => {
     }
   });
 
-  test("创建 .git 目录结构", () => {
+  test("创建 bare 仓库目录结构", () => {
     initRepository(tempDir);
-    expect(existsSync(join(tempDir, ".git"))).toBe(true);
-    expect(existsSync(join(tempDir, ".git", "objects"))).toBe(true);
-    expect(existsSync(join(tempDir, ".git", "refs", "heads"))).toBe(true);
-    expect(existsSync(join(tempDir, ".git", "refs", "tags"))).toBe(true);
+    expect(existsSync(join(tempDir, "objects"))).toBe(true);
+    expect(existsSync(join(tempDir, "refs", "heads"))).toBe(true);
+    expect(existsSync(join(tempDir, "refs", "tags"))).toBe(true);
   });
 
   test("HEAD 指向 refs/heads/main", () => {
     initRepository(tempDir);
-    const head = readFileSync(join(tempDir, ".git", "HEAD"), "utf-8");
+    const head = readFileSync(join(tempDir, "HEAD"), "utf-8");
     expect(head.trim()).toBe("ref: refs/heads/main");
   });
 
   test("返回可用的 Repository 实例", () => {
     const repo = initRepository(tempDir);
-    expect(repo.gitDir).toBe(join(tempDir, ".git"));
+    expect(repo.gitDir).toBe(tempDir);
     expect(repo.objects).toBeDefined();
     expect(repo.refs).toBeDefined();
   });
@@ -102,7 +101,7 @@ describe("openRepository()", () => {
   test("打开已初始化的仓库", () => {
     initRepository(tempDir);
     const repo = openRepository(tempDir);
-    expect(repo.gitDir).toBe(join(tempDir, ".git"));
+    expect(repo.gitDir).toBe(tempDir);
   });
 
   test("打开不存在的仓库应抛出异常", () => {

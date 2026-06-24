@@ -7,9 +7,10 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 
 import {
-  gitInit,
+  git,
+  gitInitBare,
   gitRevParse,
-  gitWriteTreeFromFiles,
+  gitWriteTreeBare,
   gitCommitTree,
   gitUpdateRef,
   createTempDir,
@@ -32,7 +33,7 @@ describe("Ref 兼容性", () => {
 
   beforeEach(() => {
     tempDir = createTempDir("e2e-ref");
-    gitInit(tempDir);
+    gitInitBare(tempDir);
   });
 
   afterEach(() => {
@@ -86,15 +87,9 @@ describe("Ref 兼容性", () => {
       repo.updateRef("refs/heads/main", commitHash);
       repo.createBranch("feature/api");
 
-      const { spawnSync } = require("node:child_process") as typeof import("node:child_process");
-      const result = spawnSync("git", ["branch", "--list"], {
-        cwd: tempDir,
-        encoding: "utf-8",
-      });
-
-      expect(result.status).toBe(0);
-      expect(result.stdout).toContain("feature/api");
-      expect(result.stdout).toContain("main");
+      const branches = git(["branch", "--list"], tempDir);
+      expect(branches).toContain("feature/api");
+      expect(branches).toContain("main");
     });
   });
 
@@ -104,7 +99,7 @@ describe("Ref 兼容性", () => {
     test("git 更新的 ref 能被 nano-git 读取", () => {
       const repo = openRepository(tempDir);
 
-      const treeHash = gitWriteTreeFromFiles(tempDir, { "f.txt": "c" });
+      const treeHash = gitWriteTreeBare(tempDir, { "f.txt": "c" });
       const commitHash = gitCommitTree(tempDir, treeHash, "Ref test");
 
       gitUpdateRef(tempDir, "refs/heads/main", commitHash);
@@ -116,7 +111,7 @@ describe("Ref 兼容性", () => {
     test("nano-git 能解析 git 设置的 HEAD 符号引用", () => {
       const repo = openRepository(tempDir);
 
-      const treeHash = gitWriteTreeFromFiles(tempDir, { "f.txt": "c" });
+      const treeHash = gitWriteTreeBare(tempDir, { "f.txt": "c" });
       const commitHash = gitCommitTree(tempDir, treeHash, "HEAD test");
 
       gitUpdateRef(tempDir, "refs/heads/main", commitHash);

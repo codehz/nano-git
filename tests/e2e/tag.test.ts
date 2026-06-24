@@ -7,11 +7,12 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 
 import {
-  gitInit,
+  git,
+  gitInitBare,
   gitCatFile,
   gitCatFileType,
   gitRevParse,
-  gitWriteTreeFromFiles,
+  gitWriteTreeBare,
   gitCommitTree,
   createTempDir,
   cleanupDir,
@@ -35,7 +36,7 @@ describe("Tag 兼容性", () => {
 
   beforeEach(() => {
     tempDir = createTempDir("e2e-tag");
-    gitInit(tempDir);
+    gitInitBare(tempDir);
   });
 
   afterEach(() => {
@@ -100,25 +101,10 @@ describe("Tag 兼容性", () => {
     test("git 创建的 tag 能被 nano-git 正确读取", () => {
       const repo = openRepository(tempDir);
 
-      const treeHash = gitWriteTreeFromFiles(tempDir, { "f.txt": "c" });
+      const treeHash = gitWriteTreeBare(tempDir, { "f.txt": "c" });
       const commitHash = gitCommitTree(tempDir, treeHash, "For tagging");
 
-      const { spawnSync } = require("node:child_process") as typeof import("node:child_process");
-      const result = spawnSync("git", ["tag", "-a", "v2.0.0", "-m", "Version 2.0.0", commitHash], {
-        cwd: tempDir,
-        env: {
-          ...process.env,
-          GIT_AUTHOR_NAME: FIXED_AUTHOR.name,
-          GIT_AUTHOR_EMAIL: FIXED_AUTHOR.email,
-          GIT_AUTHOR_DATE: `${FIXED_AUTHOR.timestamp} ${FIXED_AUTHOR.timezone}`,
-          GIT_COMMITTER_NAME: FIXED_AUTHOR.name,
-          GIT_COMMITTER_EMAIL: FIXED_AUTHOR.email,
-          GIT_COMMITTER_DATE: `${FIXED_AUTHOR.timestamp} ${FIXED_AUTHOR.timezone}`,
-          GIT_CONFIG_NOSYSTEM: "1",
-        },
-        encoding: "utf-8",
-      });
-      expect(result.status).toBe(0);
+      git(["tag", "-a", "v2.0.0", "-m", "Version 2.0.0", commitHash], tempDir);
 
       const tagObjHash = gitRevParse(tempDir, "v2.0.0");
 
