@@ -7,7 +7,6 @@ import { existsSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { sha1 } from "@/core/types.ts";
 import { createSqliteRepository } from "@/repository/sqlite.ts";
 
 describe("createSqliteRepository()", () => {
@@ -67,14 +66,18 @@ describe("createSqliteRepository()", () => {
 
   test("dispose 后数据库文件可被重新打开", () => {
     const path = tmpPath();
-    const hashValue: string = (() => {
+    const blobHash = (() => {
       using repo = createSqliteRepository(path);
       return repo.writeBlob(Buffer.from("persist"));
     })();
 
-    // 重新打开同一文件
+    // 重新打开同一文件，确认先前写入的数据仍可读取
     using repo2 = createSqliteRepository(path);
-    const obj = repo2.catFile(sha1(hashValue));
+    const obj = repo2.catFile(blobHash);
     expect(obj.type).toBe("blob");
+    if (obj.type === "blob") {
+      expect(obj.content.toString("utf-8")).toBe("persist");
+    }
+    expect(repo2.objects.exists(blobHash)).toBe(true);
   });
 });
