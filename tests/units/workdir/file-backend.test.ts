@@ -84,7 +84,6 @@ describe("createFileVirtualWorkdirBackend()", () => {
           if (rootNode === null || rootNode.state.kind !== "directory") {
             throw new Error("missing root node");
           }
-          store.appendChange({ op: "add", path: "broken.txt" });
           store.setNode({
             id: rootNode.id,
             origin: rootNode.origin,
@@ -101,7 +100,6 @@ describe("createFileVirtualWorkdirBackend()", () => {
       }).toThrow(/boom/);
 
       expect(store.readBaseTree()).toBe(baseTree);
-      expect(store.listChangeRecords()).toEqual([]);
       expect(store.getNode(VIRTUAL_ROOT_NODE_ID)).toEqual({
         id: VIRTUAL_ROOT_NODE_ID,
         origin: { kind: "repo-tree", hash: baseTree },
@@ -156,13 +154,11 @@ describe("createFileVirtualWorkdirBackend()", () => {
               },
             },
           });
-          store.appendChange({ op: "add", path: "broken.txt" });
           throw new Error("boom");
         });
       }).toThrow(/boom/);
 
       expect(store.getNode("node-1" as typeof VIRTUAL_ROOT_NODE_ID)).toBeNull();
-      expect(store.listChangeRecords()).toEqual([]);
       expect(readdirSync(contentDir).sort()).toEqual(initialPayloads);
 
       const reopened = backend.openSession(repo.objects, sessionId);
@@ -244,7 +240,7 @@ describe("createFileVirtualWorkdirBackend()", () => {
     session.mkdir("dir");
     session.writeFile("dir/a.txt", Buffer.from("alpha"));
     const stableTree = session.writeTree();
-    const stableChanges = session.listChanges();
+    const stableDiff = session.diff();
 
     const store = createFileVirtualWorkdirStateStore(join(root, "sessions"), sessionId);
 
@@ -278,7 +274,6 @@ describe("createFileVirtualWorkdirBackend()", () => {
               content: Buffer.from("broken"),
             },
           });
-          store.appendChange({ op: "modify", path: "dir/a.txt" });
           throw new Error("boom");
         });
       }).toThrow(/boom/);
@@ -286,7 +281,7 @@ describe("createFileVirtualWorkdirBackend()", () => {
       const reopened = backend.openSession(repo.objects, sessionId);
       expect(reopened.readFile("hello.txt").toString()).toBe("world");
       expect(reopened.readFile("dir/a.txt").toString()).toBe("alpha");
-      expect(reopened.listChanges()).toEqual(stableChanges);
+      expect(reopened.diff()).toEqual(stableDiff);
       expect(reopened.writeTree()).toBe(stableTree);
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -481,34 +476,6 @@ describe("createFileVirtualWorkdirBackend()", () => {
 
       expect(() => backend.openSession(repo.objects, sessionId)).toThrow(
         /Invalid virtual workdir manifest baseTree/,
-      );
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  test("manifest changes 类型非法时拒绝 openSession", () => {
-    resetVirtualWorkdirSessionIdCounterForTests();
-    const repo = createMemoryRepository();
-    const root = createTempRoot();
-
-    try {
-      const backend = createFileVirtualWorkdirBackend(root);
-      const sessionId = backend.createSession({ baseTree: repo.createTree([]) });
-      const manifestPath = getManifestPath(root, sessionId);
-      const manifest = JSON.parse(readFileSync(manifestPath, "utf-8")) as {
-        changes: unknown[];
-      };
-      writeFileSync(
-        manifestPath,
-        JSON.stringify({
-          ...manifest,
-          changes: {},
-        }),
-      );
-
-      expect(() => backend.openSession(repo.objects, sessionId)).toThrow(
-        /Invalid virtual workdir manifest changes/,
       );
     } finally {
       rmSync(root, { recursive: true, force: true });

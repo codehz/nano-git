@@ -11,7 +11,6 @@ import { openVirtualWorkdirSession } from "./session.ts";
 
 import type { SHA1 } from "../core/types.ts";
 import type { ObjectDatabase } from "../core/types/odb.ts";
-import type { InternalChangeRecord } from "./change-log.ts";
 import type {
   CreateVirtualWorkdirSessionOptions,
   VirtualWorkdirBackend,
@@ -36,8 +35,7 @@ export interface SqliteVirtualWorkdirBackend extends VirtualWorkdirBackend {
   [Symbol.dispose](): void;
 }
 
-const WORKDIR_SQLITE_SCHEMA_VERSION = 1;
-const WORKDIR_CHANGES_SESSION_ORDER_INDEX = "workdir_changes_session_id_id_idx";
+const WORKDIR_SQLITE_SCHEMA_VERSION = 2;
 
 interface SessionRow {
   session_id: string;
@@ -54,12 +52,6 @@ interface NodeRow {
   content: Uint8Array | null;
   target: Uint8Array | null;
   directory_overlay: string | null;
-}
-
-interface ChangeRow {
-  op: string;
-  path: string | null;
-  old_path: string | null;
 }
 
 /**
@@ -206,21 +198,11 @@ export function createSqliteVirtualWorkdirStateStore(
   const deleteNodeStmt = db.query<void, [string, string]>(
     "DELETE FROM workdir_nodes WHERE session_id = ? AND node_id = ?",
   );
-  const listChangesStmt = db.query<ChangeRow, [string]>(
-    "SELECT op, path, old_path FROM workdir_changes WHERE session_id = ? ORDER BY id",
-  );
-  const insertChangeStmt = db.query<void, [string, string, string | null, string | null]>(
-    "INSERT INTO workdir_changes (session_id, op, path, old_path) VALUES (?, ?, ?, ?)",
-  );
   const clearNodesStmt = db.query<void, [string]>("DELETE FROM workdir_nodes WHERE session_id = ?");
-  const clearChangesStmt = db.query<void, [string]>(
-    "DELETE FROM workdir_changes WHERE session_id = ?",
-  );
 
   const resetTx = db.transaction((baseTree: SHA1) => {
     upsertSessionStmt.run(sessionId, baseTree);
     clearNodesStmt.run(sessionId);
-    clearChangesStmt.run(sessionId);
     writeNode(setNodeStmt, sessionId, createRootDirectoryNode(baseTree));
   });
 
@@ -259,18 +241,6 @@ export function createSqliteVirtualWorkdirStateStore(
       deleteNodeStmt.run(sessionId, id);
     },
 
-    appendChange(record: InternalChangeRecord): void {
-      insertChangeStmt.run(sessionId, record.op, getRecordPath(record), getRecordOldPath(record));
-    },
-
-    listChangeRecords(): readonly InternalChangeRecord[] {
-      return listChangesStmt.all(sessionId).map(readChangeRecord);
-    },
-
-    clearChanges(): void {
-      clearChangesStmt.run(sessionId);
-    },
-
     reset(baseTree: SHA1): void {
       resetTx(baseTree);
     },
@@ -306,22 +276,6 @@ function ensureSchema(db: Database): void {
       PRIMARY KEY (session_id, node_id)
     )
   `);
-  db.run(`
-    CREATE TABLE IF NOT EXISTS workdir_changes (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      session_id TEXT NOT NULL,
-      op TEXT NOT NULL,
-      path TEXT,
-      old_path TEXT
-    )
-  `);
-  // `workdir_sessions` 与 `workdir_nodes` 的查询模式已被主键或主键前缀覆盖；
-  // `workdir_changes` 仍需要按 session 顺序读取与按 session 清理，
-  // 因此补一个最小组合索引，避免退化为全表扫描。
-  db.run(`
-    CREATE INDEX IF NOT EXISTS ${WORKDIR_CHANGES_SESSION_ORDER_INDEX}
-    ON workdir_changes (session_id, id)
-  `);
   writeSchemaVersion(db, WORKDIR_SQLITE_SCHEMA_VERSION);
 }
 
@@ -334,7 +288,6 @@ function hasSession(db: Database, sessionId: VirtualWorkdirSessionId): boolean {
 
 function deleteSessionRows(db: Database, sessionId: VirtualWorkdirSessionId): void {
   const tx = db.transaction(() => {
-    db.query<void, [string]>("DELETE FROM workdir_changes WHERE session_id = ?").run(sessionId);
     db.query<void, [string]>("DELETE FROM workdir_nodes WHERE session_id = ?").run(sessionId);
     db.query<void, [string]>("DELETE FROM workdir_sessions WHERE session_id = ?").run(sessionId);
   });
@@ -603,43 +556,4 @@ function isDirectoryOverlayPayload(
   );
   const hasValidDeletedNames = maybe.deletedNames.every((name) => typeof name === "string");
   return hasValidAddedEntries && hasValidDeletedNames;
-}
-
-function getRecordPath(record: InternalChangeRecord): string | null {
-  switch (record.op) {
-    case "add":
-    case "modify":
-    case "delete":
-    case "revert":
-      return record.path;
-    case "rename":
-    case "copy":
-      return record.to;
-    default: {
-      const _exhaustive: never = record;
-      return _exhaustive;
-    }
-  }
-}
-
-function getRecordOldPath(record: InternalChangeRecord): string | null {
-  if (record.op === "rename" || record.op === "copy") {
-    return record.from;
-  }
-  return null;
-}
-
-function readChangeRecord(row: ChangeRow): InternalChangeRecord {
-  switch (row.op) {
-    case "add":
-    case "modify":
-    case "delete":
-    case "revert":
-      return { op: row.op, path: row.path! };
-    case "rename":
-    case "copy":
-      return { op: row.op, from: row.old_path!, to: row.path! };
-    default:
-      throw new Error(`Unknown workdir change op: ${row.op}`);
-  }
 }

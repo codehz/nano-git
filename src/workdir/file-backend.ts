@@ -19,7 +19,6 @@ import { openVirtualWorkdirSession } from "./session.ts";
 
 import type { SHA1 } from "../core/types.ts";
 import type { ObjectDatabase } from "../core/types/odb.ts";
-import type { InternalChangeRecord } from "./change-log.ts";
 import type {
   CreateVirtualWorkdirSessionOptions,
   VirtualWorkdirBackend,
@@ -29,13 +28,12 @@ import type {
 import type { NodeId } from "./ids.ts";
 import type { VirtualWorkdirStateStore } from "./state-store.ts";
 
-const FILE_WORKDIR_MANIFEST_VERSION = 1;
+const FILE_WORKDIR_MANIFEST_VERSION = 2;
 const FILE_WORKDIR_TRANSACTION_SNAPSHOT_SUFFIX = ".txn-snapshot";
 
 interface FileSessionManifest {
   readonly formatVersion: number;
   readonly baseTree: string;
-  readonly changes: readonly InternalChangeRecord[];
   readonly nodes: Readonly<Record<string, FileNodeRecord>>;
 }
 
@@ -223,22 +221,6 @@ export function createFileVirtualWorkdirStateStore(
         return { ...manifest, nodes: rest };
       });
     },
-
-    appendChange(record: InternalChangeRecord): void {
-      updateManifest(sessionDir, (manifest) => ({
-        ...manifest,
-        changes: [...manifest.changes, record],
-      }));
-    },
-
-    listChangeRecords(): readonly InternalChangeRecord[] {
-      return readManifest(manifestPath).changes;
-    },
-
-    clearChanges(): void {
-      updateManifest(sessionDir, (manifest) => ({ ...manifest, changes: [] }));
-    },
-
     reset(baseTree: SHA1): void {
       rmSync(sessionDir, { recursive: true, force: true });
       ensureSessionDirs(sessionDir, contentDir);
@@ -319,7 +301,6 @@ function createManifest(
   return {
     formatVersion: FILE_WORKDIR_MANIFEST_VERSION,
     baseTree,
-    changes: [],
     nodes,
   };
 }
@@ -351,9 +332,6 @@ function readManifest(manifestPath: string): FileSessionManifest {
 function validateManifest(manifest: FileSessionManifest): void {
   if (typeof manifest.baseTree !== "string" || manifest.baseTree.length === 0) {
     throw new Error("Invalid virtual workdir manifest baseTree");
-  }
-  if (!Array.isArray(manifest.changes)) {
-    throw new Error("Invalid virtual workdir manifest changes");
   }
   if (
     typeof manifest.nodes !== "object" ||

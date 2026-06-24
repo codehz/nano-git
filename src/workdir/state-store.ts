@@ -6,7 +6,6 @@
  */
 
 import type { SHA1 } from "../core/types.ts";
-import type { InternalChangeRecord } from "./change-log.ts";
 import type { NodeId } from "./ids.ts";
 import type { SessionNode } from "./nodes.ts";
 
@@ -40,19 +39,10 @@ export interface VirtualWorkdirStateStore {
   /** 删除节点 */
   deleteNode(id: NodeId): void;
 
-  /** 追加内部变更记录 */
-  appendChange(record: InternalChangeRecord): void;
-
-  /** 列出内部变更记录快照 */
-  listChangeRecords(): readonly InternalChangeRecord[];
-
-  /** 清空变更记录 */
-  clearChanges(): void;
-
   /**
    * 重置为新的基线 tree
    *
-   * 需要同时清空节点状态与变更记录，并重新建立根节点。
+   * 需要同时清空节点状态，并重新建立根节点。
    */
   reset(baseTree: SHA1): void;
 }

@@ -148,7 +148,7 @@ export function runVirtualWorkdirContract(
 
       expect(session.exists("before.txt")).toBe(false);
       expect(session.readFile("after.txt").toString()).toBe("after");
-      expect(session.listChanges()).toEqual([]);
+      expect(session.diff()).toEqual([]);
     });
 
     test("origin 缺失时报 VirtualOriginUnavailableError", () => {

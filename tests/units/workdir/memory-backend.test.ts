@@ -73,7 +73,6 @@ describe("createMemoryVirtualWorkdirBackend()", () => {
         if (root === null || root.state.kind !== "directory") {
           throw new Error("missing root node");
         }
-        store.appendChange({ op: "add", path: "broken.txt" });
         store.setNode({
           id: root.id,
           origin: root.origin,
@@ -90,7 +89,6 @@ describe("createMemoryVirtualWorkdirBackend()", () => {
     }).toThrow(/boom/);
 
     expect(store.readBaseTree()).toBe(baseTree);
-    expect(store.listChangeRecords()).toEqual([]);
     expect(store.getNode(VIRTUAL_ROOT_NODE_ID)).toEqual({
       id: VIRTUAL_ROOT_NODE_ID,
       origin: { kind: "repo-tree", hash: baseTree },

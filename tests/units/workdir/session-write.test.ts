@@ -157,7 +157,7 @@ describe("writeFile", () => {
     const repo = createMemoryRepository();
     const baseTree = repo.createTree([]);
     const inner = createVirtualWorkdirMemoryStateStore(baseTree);
-    let failOnAppend = true;
+    let failOnSetNode = true;
     const store: VirtualWorkdirStateStore = {
       kind: inner.kind,
       transact<T>(fn: () => T): T {
@@ -174,22 +174,13 @@ describe("writeFile", () => {
       },
       setNode(node): void {
         inner.setNode(node);
+        if (failOnSetNode) {
+          failOnSetNode = false;
+          throw new Error("setNode failed");
+        }
       },
       deleteNode(id): void {
         inner.deleteNode(id);
-      },
-      appendChange(record): void {
-        if (failOnAppend) {
-          failOnAppend = false;
-          throw new Error("append failed");
-        }
-        inner.appendChange(record);
-      },
-      listChangeRecords() {
-        return inner.listChangeRecords();
-      },
-      clearChanges(): void {
-        inner.clearChanges();
       },
       reset(nextBaseTree): void {
         inner.reset(nextBaseTree);
@@ -198,9 +189,9 @@ describe("writeFile", () => {
 
     const session = openVirtualWorkdirSession(repo.objects, store);
 
-    expect(() => session.writeFile("broken.txt", Buffer.from("data"))).toThrow(/append failed/);
+    expect(() => session.writeFile("broken.txt", Buffer.from("data"))).toThrow(/setNode failed/);
     expect(session.exists("broken.txt")).toBe(false);
-    expect(session.listChanges()).toEqual([]);
+    expect(session.diff()).toEqual([]);
     expect(inner.readBaseTree()).toBe(baseTree);
   });
 });
@@ -428,48 +419,83 @@ describe("writeTree", () => {
 
 // ==================== listChanges ====================
 
-describe("listChanges（写入操作）", () => {
-  test("新建文件记录 add", () => {
+describe("diff（写入操作）", () => {
+  test("新建文件产出 add", () => {
     const repo = createMemoryRepository();
     const session = createVirtualWorkdirSession(repo.objects, {
       baseTree: repo.createTree([]),
     });
 
     session.writeFile("f.txt", Buffer.from("data"));
-    const changes = session.listChanges();
-    expect(changes).toEqual([{ path: "f.txt", type: "add" }]);
+    expect(session.diff()).toMatchObject([
+      {
+        path: "f.txt",
+        type: "add",
+        previousMode: null,
+        currentMode: "100644",
+      },
+    ]);
   });
 
-  test("修改文件记录 modify", () => {
+  test("修改文件产出 modify", () => {
     const repo = createMemoryRepository();
     const blobHash = repo.writeBlob(Buffer.from("old"));
     const baseTree = repo.createTree([{ mode: "100644", name: "f", hash: blobHash }]);
     const session = createVirtualWorkdirSession(repo.objects, { baseTree });
 
     session.writeFile("f", Buffer.from("new"));
-    const changes = session.listChanges();
-    expect(changes).toEqual([{ path: "f", type: "modify" }]);
+    expect(session.diff()).toMatchObject([
+      {
+        path: "f",
+        type: "modify",
+        previousMode: "100644",
+        currentMode: "100644",
+      },
+    ]);
   });
 
-  test("删除文件记录 delete", () => {
+  test("删除文件产出 delete", () => {
     const repo = createMemoryRepository();
     const blobHash = repo.writeBlob(Buffer.from("data"));
     const baseTree = repo.createTree([{ mode: "100644", name: "f", hash: blobHash }]);
     const session = createVirtualWorkdirSession(repo.objects, { baseTree });
 
     session.delete("f");
-    const changes = session.listChanges();
-    expect(changes).toEqual([{ path: "f", type: "delete" }]);
+    expect(session.diff()).toMatchObject([
+      {
+        path: "f",
+        type: "delete",
+        previousMode: "100644",
+        currentMode: null,
+      },
+    ]);
   });
 
-  test("新建目录记录 add", () => {
+  test("仅新建目录时不输出目录 diff", () => {
     const repo = createMemoryRepository();
     const session = createVirtualWorkdirSession(repo.objects, {
       baseTree: repo.createTree([]),
     });
 
     session.mkdir("dir");
-    expect(session.listChanges()).toEqual([{ path: "dir", type: "add" }]);
+    expect(session.diff()).toEqual([]);
+  });
+
+  test("文件与符号链接互换产出 typechange", () => {
+    const repo = createMemoryRepository();
+    const blobHash = repo.writeBlob(Buffer.from("data"));
+    const baseTree = repo.createTree([{ mode: "100644", name: "f", hash: blobHash }]);
+    const session = createVirtualWorkdirSession(repo.objects, { baseTree });
+
+    session.writeLink("f", "target");
+    expect(session.diff()).toMatchObject([
+      {
+        path: "f",
+        type: "typechange",
+        previousMode: "100644",
+        currentMode: "120000",
+      },
+    ]);
   });
 });
 
@@ -548,16 +574,23 @@ describe("rename", () => {
     expect(readBlob(repo, treeObj.entries[0]!.hash).toString()).toBe("content");
   });
 
-  test("rename 记录到 listChanges", () => {
+  test("repo-backed rename 产出 rename diff", () => {
     const repo = createMemoryRepository();
+    const blobHash = repo.writeBlob(Buffer.from("data"));
     const session = createVirtualWorkdirSession(repo.objects, {
-      baseTree: repo.createTree([]),
+      baseTree: repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]),
     });
 
-    session.writeFile("a.txt", Buffer.from("data"));
     session.rename("a.txt", "b.txt");
-    const changes = session.listChanges();
-    expect(changes).toContainEqual({ path: "b.txt", type: "rename", oldPath: "a.txt" });
+    expect(session.diff()).toMatchObject([
+      {
+        path: "b.txt",
+        type: "rename",
+        oldPath: "a.txt",
+        previousMode: "100644",
+        currentMode: "100644",
+      },
+    ]);
   });
 
   test("源不存在抛 VirtualPathNotFoundError", () => {
@@ -590,9 +623,12 @@ describe("rename", () => {
     session.rename("f.txt", "f.txt");
     expect(session.exists("f.txt")).toBe(true);
     expect(session.readFile("f.txt").toString()).toBe("data");
-    // 不应产生 rename change
-    const changes = session.listChanges();
-    expect(changes.every((c) => c.type !== "rename")).toBe(true);
+    expect(session.diff()).toMatchObject([
+      {
+        path: "f.txt",
+        type: "add",
+      },
+    ]);
   });
 });
 
@@ -672,16 +708,23 @@ describe("copy", () => {
     expect(names).toEqual(["a.txt", "b.txt"]);
   });
 
-  test("copy 记录到 listChanges", () => {
+  test("repo-backed copy 产出 copy diff", () => {
     const repo = createMemoryRepository();
+    const blobHash = repo.writeBlob(Buffer.from("data"));
     const session = createVirtualWorkdirSession(repo.objects, {
-      baseTree: repo.createTree([]),
+      baseTree: repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]),
     });
 
-    session.writeFile("a.txt", Buffer.from("data"));
     session.copy("a.txt", "b.txt");
-    const changes = session.listChanges();
-    expect(changes).toContainEqual({ path: "b.txt", type: "copy", oldPath: "a.txt" });
+    expect(session.diff()).toMatchObject([
+      {
+        path: "b.txt",
+        type: "copy",
+        oldPath: "a.txt",
+        previousMode: "100644",
+        currentMode: "100644",
+      },
+    ]);
   });
 
   test("源不存在抛 VirtualPathNotFoundError", () => {
@@ -803,7 +846,7 @@ describe("revert", () => {
 });
 
 describe("reset", () => {
-  test("丢弃 overlay 与变更历史，并切换到新 baseTree", () => {
+  test("丢弃 overlay 与 diff，并切换到新 baseTree", () => {
     const repo = createMemoryRepository();
     const oldBaseTree = repo.createTree([]);
     const resetBlobHash = repo.writeBlob(Buffer.from("reset"));
@@ -814,7 +857,7 @@ describe("reset", () => {
 
     session.writeFile("before.txt", Buffer.from("before"));
     session.mkdir("dir");
-    expect(session.listChanges().length).toBeGreaterThan(0);
+    expect(session.diff().length).toBeGreaterThan(0);
 
     session.reset(newBaseTree);
 
@@ -822,7 +865,7 @@ describe("reset", () => {
     expect(session.exists("before.txt")).toBe(false);
     expect(session.exists("dir")).toBe(false);
     expect(session.readFile("after.txt").toString()).toBe("reset");
-    expect(session.listChanges()).toEqual([]);
+    expect(session.diff()).toEqual([]);
   });
 
   test("reset 后行为等同新 session", () => {

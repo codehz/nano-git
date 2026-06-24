@@ -76,7 +76,6 @@ describe("createSqliteVirtualWorkdirBackend()", () => {
             if (root === null || root.state.kind !== "directory") {
               throw new Error("missing root node");
             }
-            store.appendChange({ op: "add", path: "broken.txt" });
             store.setNode({
               id: root.id,
               origin: root.origin,
@@ -93,7 +92,6 @@ describe("createSqliteVirtualWorkdirBackend()", () => {
         }).toThrow(/boom/);
 
         expect(store.readBaseTree()).toBe(baseTree);
-        expect(store.listChangeRecords()).toEqual([]);
         expect(store.getNode(VIRTUAL_ROOT_NODE_ID)).toEqual({
           id: VIRTUAL_ROOT_NODE_ID,
           origin: { kind: "repo-tree", hash: baseTree },
@@ -129,58 +127,21 @@ describe("createSqliteVirtualWorkdirBackend()", () => {
     }
   });
 
-  test("schema 会创建最小 change log 组合索引", () => {
+  test("schema 不再创建 change log 表", () => {
     const { dir, path } = createTempDbPath();
 
     try {
       using _backend = createSqliteVirtualWorkdirBackend(path);
       const db = new Database(path);
       try {
-        const index = db
-          .query<{ name: string; sql: string | null } | null, [string]>(
-            "SELECT name, sql FROM sqlite_master WHERE type = 'index' AND name = ?",
-          )
-          .get("workdir_changes_session_id_id_idx");
-        expect(index).not.toBeNull();
-        expect(index?.sql).toContain("workdir_changes");
-        expect(index?.sql).toContain("(session_id, id)");
-      } finally {
-        db.close();
-      }
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test("同版本数据库缺少 change log 索引时 backend 会回补", () => {
-    const { dir, path } = createTempDbPath();
-
-    try {
-      {
-        using _backend = createSqliteVirtualWorkdirBackend(path);
-      }
-
-      const db = new Database(path);
-      try {
-        db.run("DROP INDEX workdir_changes_session_id_id_idx");
-      } finally {
-        db.close();
-      }
-
-      {
-        using _backend = createSqliteVirtualWorkdirBackend(path);
-      }
-
-      const reopenedDb = new Database(path);
-      try {
-        const index = reopenedDb
+        const table = db
           .query<{ name: string } | null, [string]>(
-            "SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?",
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
           )
-          .get("workdir_changes_session_id_id_idx");
-        expect(index).toEqual({ name: "workdir_changes_session_id_id_idx" });
+          .get("workdir_changes");
+        expect(table).toBeNull();
       } finally {
-        reopenedDb.close();
+        db.close();
       }
     } finally {
       rmSync(dir, { recursive: true, force: true });

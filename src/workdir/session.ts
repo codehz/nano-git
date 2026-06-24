@@ -12,7 +12,7 @@ import {
   VirtualRevertNotSupportedError,
   VirtualNotSymlinkError,
 } from "../core/errors.ts";
-import { mapInternalChangesToVirtualChanges } from "./change-log.ts";
+import { computeVirtualDiff } from "./diff.ts";
 import { VIRTUAL_ROOT_NODE_ID, createNodeId } from "./ids.ts";
 import { createVirtualWorkdirMemoryStateStore } from "./memory-backend.ts";
 import { cloneSessionNodeForCopy, revertNodeState, type SessionNode } from "./nodes.ts";
@@ -31,8 +31,8 @@ import { writeTreeFromSession } from "./write-tree.ts";
 import type { ObjectDatabase } from "../core/types/odb.ts";
 import type {
   CreateVirtualWorkdirSessionOptions,
-  VirtualChange,
   VirtualDirEntry,
+  VirtualDiffEntry,
   VirtualEntryStat,
   VirtualWorkdirSession,
 } from "./core.ts";
@@ -205,8 +205,6 @@ export function openVirtualWorkdirSession(
           parentNode.id,
           overlayBindEntry(parentNode.state.overlay, name, nodeId),
         );
-
-        state.appendChange({ op: "add", path });
       });
     },
 
@@ -241,7 +239,6 @@ export function openVirtualWorkdirSession(
           }
         }
 
-        const isNew = !existing.found || existing.node === null;
         const nodeId = existing.found ? existing.node.id : createNodeId();
 
         const fileNode: SessionNode = {
@@ -255,8 +252,6 @@ export function openVirtualWorkdirSession(
           parentNode.id,
           overlayBindEntry(parentNode.state.overlay, name, nodeId),
         );
-
-        state.appendChange({ op: isNew ? "add" : "modify", path });
       });
     },
 
@@ -285,7 +280,6 @@ export function openVirtualWorkdirSession(
           }
         }
 
-        const isNew = !existing.found || existing.node === null;
         const nodeId = existing.found ? existing.node.id : createNodeId();
 
         const linkNode: SessionNode = {
@@ -299,8 +293,6 @@ export function openVirtualWorkdirSession(
           parentNode.id,
           overlayBindEntry(parentNode.state.overlay, name, nodeId),
         );
-
-        state.appendChange({ op: isNew ? "add" : "modify", path });
       });
     },
 
@@ -333,8 +325,6 @@ export function openVirtualWorkdirSession(
           parentNode.id,
           overlayTombstoneEntry(parentNode.state.overlay, name),
         );
-
-        state.appendChange({ op: "delete", path });
       });
     },
 
@@ -433,8 +423,6 @@ export function openVirtualWorkdirSession(
             overlayBindEntry(toParentNode.state.overlay, toName, sourceNode.id),
           );
         }
-
-        state.appendChange({ op: "rename", from, to });
       });
     },
 
@@ -511,8 +499,6 @@ export function openVirtualWorkdirSession(
           toParentNode.id,
           overlayBindEntry(toParentNode.state.overlay, toName, newNodeId),
         );
-
-        state.appendChange({ op: "copy", from, to });
       });
     },
 
@@ -529,10 +515,12 @@ export function openVirtualWorkdirSession(
         if (reverted === node) {
           throw new VirtualRevertNotSupportedError(path);
         }
-
         state.setNode(reverted);
-        state.appendChange({ op: "revert", path });
       });
+    },
+
+    diff(): VirtualDiffEntry[] {
+      return computeVirtualDiff(source, state);
     },
 
     writeTree() {
@@ -543,10 +531,6 @@ export function openVirtualWorkdirSession(
       runInWriteTransaction(state, () => {
         state.reset(baseTree);
       });
-    },
-
-    listChanges(): VirtualChange[] {
-      return mapInternalChangesToVirtualChanges(state.listChangeRecords());
     },
   };
 

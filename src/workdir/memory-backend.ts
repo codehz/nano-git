@@ -2,11 +2,6 @@
  * Virtual Workdir 内存状态存储
  */
 
-import {
-  createVirtualChangeLog,
-  type InternalChangeRecord,
-  type VirtualChangeLog,
-} from "./change-log.ts";
 import { VIRTUAL_ROOT_NODE_ID, type NodeId } from "./ids.ts";
 import { createRootDirectoryNode, type SessionNode } from "./nodes.ts";
 import { createVirtualWorkdirSessionId } from "./session-id.ts";
@@ -30,8 +25,6 @@ interface VirtualWorkdirMemoryState {
   baseTree: SHA1;
   /** nodeId -> 节点记录 */
   readonly nodes: Map<NodeId, SessionNode>;
-  /** 变更日志 */
-  readonly changeLog: VirtualChangeLog;
 }
 
 /**
@@ -47,7 +40,6 @@ export function createVirtualWorkdirMemoryStateStore(baseTree: SHA1): VirtualWor
   const state: VirtualWorkdirMemoryState = {
     baseTree,
     nodes: new Map<NodeId, SessionNode>(),
-    changeLog: createVirtualChangeLog(),
   };
 
   resetState(state, baseTree);
@@ -83,18 +75,6 @@ export function createVirtualWorkdirMemoryStateStore(baseTree: SHA1): VirtualWor
 
     deleteNode(id: NodeId): void {
       state.nodes.delete(id);
-    },
-
-    appendChange(record: InternalChangeRecord): void {
-      state.changeLog.append(record);
-    },
-
-    listChangeRecords(): readonly InternalChangeRecord[] {
-      return state.changeLog.snapshot();
-    },
-
-    clearChanges(): void {
-      state.changeLog.clear();
     },
 
     reset(nextBaseTree: SHA1): void {
@@ -150,13 +130,11 @@ function resetState(state: VirtualWorkdirMemoryState, baseTree: SHA1): void {
   state.baseTree = baseTree;
   state.nodes.clear();
   state.nodes.set(VIRTUAL_ROOT_NODE_ID, createRootDirectoryNode(baseTree));
-  state.changeLog.clear();
 }
 
 interface VirtualWorkdirMemoryStateSnapshot {
   readonly baseTree: SHA1;
   readonly nodes: ReadonlyMap<NodeId, SessionNode>;
-  readonly changes: readonly InternalChangeRecord[];
 }
 
 function snapshotState(state: VirtualWorkdirMemoryState): VirtualWorkdirMemoryStateSnapshot {
@@ -167,7 +145,6 @@ function snapshotState(state: VirtualWorkdirMemoryState): VirtualWorkdirMemorySt
   return {
     baseTree: state.baseTree,
     nodes,
-    changes: state.changeLog.snapshot(),
   };
 }
 
@@ -179,10 +156,6 @@ function restoreState(
   state.nodes.clear();
   for (const [nodeId, node] of snapshot.nodes) {
     state.nodes.set(nodeId, cloneSessionNode(node));
-  }
-  state.changeLog.clear();
-  for (const record of snapshot.changes) {
-    state.changeLog.append(record);
   }
 }
 

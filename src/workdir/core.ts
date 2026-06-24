@@ -66,28 +66,35 @@ export interface VirtualDirEntry {
   readonly mode: string;
 }
 
-// ==================== 变更记录类型 ====================
+// ==================== Diff 类型 ====================
 
 /**
- * 变更操作类型
+ * Virtual Workdir diff 条目类型
  *
- * 用于 `listChanges()` 返回的变更记录。
+ * 基于 `baseTree -> 当前 session 视图` 的最终状态差异。
  */
-export type VirtualChangeType = "add" | "modify" | "delete" | "rename" | "copy";
+export type VirtualDiffType = "add" | "modify" | "delete" | "rename" | "copy" | "typechange";
 
 /**
- * 单条变更记录
+ * 单条 diff 条目
  *
- * 由 `listChanges()` 返回，描述 session 内的单次操作。
- * 变更记录是会话内调试/测试辅助，不保证是最小 diff。
+ * 仅描述最终状态，不表达会话内操作历史。
  */
-export interface VirtualChange {
-  /** 操作路径 */
+export interface VirtualDiffEntry {
+  /** 当前路径 */
   readonly path: string;
-  /** 变更操作类型 */
-  readonly type: VirtualChangeType;
-  /** rename/copy 操作的源路径（其他操作为 undefined） */
+  /** diff 条目类型 */
+  readonly type: VirtualDiffType;
+  /** rename/copy 的源路径（其他类型为 undefined） */
   readonly oldPath?: string;
+  /** baseTree 中的 mode；新增时为 null */
+  readonly previousMode: string | null;
+  /** 当前 session 视图中的 mode；删除时为 null */
+  readonly currentMode: string | null;
+  /** baseTree 中的 blob/symlink 哈希；新增时为 null */
+  readonly previousHash: SHA1 | null;
+  /** 当前 session 视图中的 blob/symlink 哈希；删除时为 null */
+  readonly currentHash: SHA1 | null;
 }
 
 // ==================== Session 工厂选项 ====================
@@ -194,6 +201,13 @@ export interface VirtualWorkdirSession {
   revert(path: string): void;
 
   /**
+   * 读取最终 diff
+   *
+   * 输出按路径稳定排序，仅包含文件与符号链接条目。
+   */
+  diff(): VirtualDiffEntry[];
+
+  /**
    * 导出当前 overlay 为新 tree
    *
    * 只重新合成受影响目录，复用未修改节点的哈希。
@@ -207,16 +221,6 @@ export interface VirtualWorkdirSession {
    * 丢弃全部 overlay 与变更历史。
    */
   reset(baseTree: SHA1): void;
-
-  // ==================== 变更观察 ====================
-
-  /**
-   * 列出会话内的变更记录
-   *
-   * 是会话内调试/测试辅助，不保证是最小 diff 引擎。
-   * 输出稳定、测试可断言即可。
-   */
-  listChanges(): VirtualChange[];
 }
 
 // ==================== 后端抽象接口 ====================
