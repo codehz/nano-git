@@ -1,0 +1,21 @@
+# Source files
+src/
+tsconfig.json
+tsdown.config.ts
+examples/
+tests/
+scripts/
+.github/
+.husky/
+.claude/
+AGENTS.md
+CLAUDE.md
+
+# Development files
+*.test.ts
+*.spec.ts
+
+# Config files
+.oxfmtrc.json
+.oxlintrc.json
+bun.lock

@@ -1,43 +1,133 @@
 {
   "name": "nano-git",
+  "files": [
+    "dist"
+  ],
   "type": "module",
   "sideEffects": false,
-  "module": "src/index.ts",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
   "exports": {
-    ".": "./src/index.ts",
-    "./sha1": "./src/sha1.ts",
-    "./errors": "./src/errors.ts",
-    "./hash-file": "./src/hash-file.ts",
-    "./objects": "./src/objects/index.ts",
-    "./pack": "./src/pack/index.ts",
-    "./odb/memory": "./src/odb/memory.ts",
-    "./odb/file": "./src/odb/file.ts",
-    "./refs/memory": "./src/refs/memory.ts",
-    "./refs/file": "./src/refs/file.ts",
-    "./refs/names": "./src/refs/names.ts",
-    "./refs/resolve": "./src/refs/resolve.ts",
-    "./refs/shallow/memory": "./src/refs/shallow/memory.ts",
-    "./refs/shallow/file": "./src/refs/shallow/file.ts",
-    "./backend": "./src/backend/index.ts",
-    "./backend/memory": "./src/backend/memory.ts",
-    "./backend/file": "./src/backend/file.ts",
-    "./repository/core": "./src/repository/core.ts",
-    "./repository/memory": "./src/repository/memory.ts",
-    "./repository/file": "./src/repository/file.ts",
-    "./repository/tree/tree-patch": "./src/repository/tree/tree-patch.ts",
-    "./repository/tree/tree-walk": "./src/repository/tree/tree-walk.ts",
-    "./transport": "./src/transport/index.ts",
-    "./transport/upload-pack": "./src/transport/upload-pack.ts",
-    "./transport/receive-pack": "./src/transport/receive-pack.ts",
-    "./transport/http": "./src/transport/http/index.ts",
-    "./transport/server/upload-pack": "./src/transport/server/upload-pack/index.ts",
-    "./transport/server/receive-pack": "./src/transport/server/receive-pack/index.ts"
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    },
+    "./sha1": {
+      "types": "./dist/sha1.d.mts",
+      "import": "./dist/sha1.mjs"
+    },
+    "./errors": {
+      "types": "./dist/core/errors.d.mts",
+      "import": "./dist/core/errors.mjs"
+    },
+    "./hash-file": {
+      "types": "./dist/core/hash-file.d.mts",
+      "import": "./dist/core/hash-file.mjs"
+    },
+    "./objects": {
+      "types": "./dist/objects/index.d.mts",
+      "import": "./dist/objects/index.mjs"
+    },
+    "./pack": {
+      "types": "./dist/pack/index.d.mts",
+      "import": "./dist/pack/index.mjs"
+    },
+    "./odb/memory": {
+      "types": "./dist/odb/memory.d.mts",
+      "import": "./dist/odb/memory.mjs"
+    },
+    "./odb/file": {
+      "types": "./dist/odb/file.d.mts",
+      "import": "./dist/odb/file.mjs"
+    },
+    "./refs/memory": {
+      "types": "./dist/refs/memory.d.mts",
+      "import": "./dist/refs/memory.mjs"
+    },
+    "./refs/file": {
+      "types": "./dist/refs/file.d.mts",
+      "import": "./dist/refs/file.mjs"
+    },
+    "./refs/names": {
+      "types": "./dist/refs/names.d.mts",
+      "import": "./dist/refs/names.mjs"
+    },
+    "./refs/resolve": {
+      "types": "./dist/refs/resolve.d.mts",
+      "import": "./dist/refs/resolve.mjs"
+    },
+    "./refs/shallow/memory": {
+      "types": "./dist/refs/shallow/memory.d.mts",
+      "import": "./dist/refs/shallow/memory.mjs"
+    },
+    "./refs/shallow/file": {
+      "types": "./dist/refs/shallow/file.d.mts",
+      "import": "./dist/refs/shallow/file.mjs"
+    },
+    "./backend": {
+      "types": "./dist/backend/index.d.mts",
+      "import": "./dist/backend/index.mjs"
+    },
+    "./backend/memory": {
+      "types": "./dist/backend/memory.d.mts",
+      "import": "./dist/backend/memory.mjs"
+    },
+    "./backend/file": {
+      "types": "./dist/backend/file.d.mts",
+      "import": "./dist/backend/file.mjs"
+    },
+    "./repository/core": {
+      "types": "./dist/repository/core.d.mts",
+      "import": "./dist/repository/core.mjs"
+    },
+    "./repository/memory": {
+      "types": "./dist/repository/memory.d.mts",
+      "import": "./dist/repository/memory.mjs"
+    },
+    "./repository/file": {
+      "types": "./dist/repository/file.d.mts",
+      "import": "./dist/repository/file.mjs"
+    },
+    "./repository/tree/tree-patch": {
+      "types": "./dist/repository/tree/tree-patch.d.mts",
+      "import": "./dist/repository/tree/tree-patch.mjs"
+    },
+    "./repository/tree/tree-walk": {
+      "types": "./dist/repository/tree/tree-walk.d.mts",
+      "import": "./dist/repository/tree/tree-walk.mjs"
+    },
+    "./transport": {
+      "types": "./dist/transport/index.d.mts",
+      "import": "./dist/transport/index.mjs"
+    },
+    "./transport/upload-pack": {
+      "types": "./dist/transport/upload-pack.d.mts",
+      "import": "./dist/transport/upload-pack.mjs"
+    },
+    "./transport/receive-pack": {
+      "types": "./dist/transport/receive-pack.d.mts",
+      "import": "./dist/transport/receive-pack.mjs"
+    },
+    "./transport/http": {
+      "types": "./dist/transport/http/index.d.mts",
+      "import": "./dist/transport/http/index.mjs"
+    },
+    "./transport/server/upload-pack": {
+      "types": "./dist/transport/server/upload-pack/index.d.mts",
+      "import": "./dist/transport/server/upload-pack/index.mjs"
+    },
+    "./transport/server/receive-pack": {
+      "types": "./dist/transport/server/receive-pack/index.d.mts",
+      "import": "./dist/transport/server/receive-pack/index.mjs"
+    }
   },
   "scripts": {
+    "build": "tsdown",
     "lint": "oxlint .",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "test": "bun test",
+    "prepublishOnly": "bun run build",
     "prepare": "husky"
   },
   "devDependencies": {
@@ -46,7 +136,8 @@
     "lint-staged": "^17.0.7",
     "oxfmt": "^0.55.0",
     "oxlint": "^1.70.0",
-    "oxlint-tsgolint": "^0.23.0"
+    "oxlint-tsgolint": "^0.23.0",
+    "tsdown": "^0.22.3"
   },
   "peerDependencies": {
     "typescript": "^6"
