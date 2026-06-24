@@ -1,11 +1,13 @@
 /**
  * Virtual Workdir 错误类型测试
  *
- * Phase 0 验收：验证错误类型可正确导入和实例化。
+ * Phase 1 验收：验证错误类型可正确导入和实例化。
+ * 所有导入来自 workdir/core，不直接依赖 errors 入口。
  * 覆盖计划中定义的全部 7 个专用错误。
  */
 import { describe, test, expect } from "bun:test";
 
+import { GitError } from "@/errors.ts";
 import {
   VirtualPathNotFoundError,
   VirtualPathAlreadyExistsError,
@@ -14,8 +16,7 @@ import {
   VirtualNotSymlinkError,
   VirtualOriginUnavailableError,
   VirtualRevertNotSupportedError,
-  GitError,
-} from "@/errors.ts";
+} from "@/workdir/core.ts";
 describe("VirtualPathNotFoundError", () => {
   test("继承 GitError", () => {
     const err = new VirtualPathNotFoundError("/foo");
@@ -148,14 +149,5 @@ describe("VirtualRevertNotSupportedError", () => {
   test("name 为类名", () => {
     const err = new VirtualRevertNotSupportedError("/x");
     expect(err.name).toBe("VirtualRevertNotSupportedError");
-  });
-});
-
-describe("从 workdir/core 导入错误类型", () => {
-  test("VirtualPathNotFoundError 可同时从 errors 和 workdir/core 导入", () => {
-    // 验证 workdir/core 正确 re-exports 错误类
-    // 此处使用 type import 验证类型兼容性，实际导入在文件顶部
-    const err = new VirtualPathNotFoundError("/test");
-    expect(err).toBeInstanceOf(GitError);
   });
 });
