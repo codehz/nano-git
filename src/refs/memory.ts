@@ -10,7 +10,7 @@ import type {
   RefTransaction,
   RefTransactionHook,
   ReadonlyRefTransaction,
-} from "./types.ts";
+} from "../core/types/refs.ts";
 
 /**
  * 创建基于内存的 Refs 存储

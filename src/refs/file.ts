@@ -21,7 +21,7 @@ import type {
   RefTransaction,
   RefTransactionHook,
   ReadonlyRefTransaction,
-} from "./types.ts";
+} from "../core/types/refs.ts";
 
 function readPackedRefs(gitDir: string): Map<string, string> {
   const packedRefsPath = join(gitDir, "packed-refs");

@@ -39,8 +39,8 @@ import { decodeReceivePackResponse } from "./response.ts";
 import { ReceivePackResultError } from "./result.ts";
 
 import type { SHA1 } from "../../../core/types.ts";
+import type { RefStore } from "../../../core/types/refs.ts";
 import type { ObjectDatabase } from "../../../odb/types.ts";
-import type { RefStore } from "../../../refs/types.ts";
 import type {
   ReceivePackTransport,
   RefAdvertisement,

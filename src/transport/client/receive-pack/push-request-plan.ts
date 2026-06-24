@@ -11,7 +11,7 @@ import { PushError } from "./push-error.ts";
 import { resolveDefaultRefSpec } from "./push-ref-plan.ts";
 import { buildReceivePackRequest } from "./request.ts";
 
-import type { RefStore } from "../../../refs/types.ts";
+import type { RefStore } from "../../../core/types/refs.ts";
 import type { ParsedRefSpec } from "../../protocol/refspec.ts";
 import type { RefAdvertisement, PushOptions } from "../../protocol/types.ts";
 import type { PushRefItem } from "./push-ref-plan.ts";

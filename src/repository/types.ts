@@ -7,9 +7,9 @@
  */
 
 import type { RepositoryPackSupport } from "../backend/index.ts";
+import type { RefStore } from "../core/types/refs.ts";
+import type { ShallowStore } from "../core/types/shallow.ts";
 import type { ObjectDatabase } from "../odb/types.ts";
-import type { ShallowStore } from "../refs/shallow/types.ts";
-import type { RefStore } from "../refs/types.ts";
 import type { RepoImportOperations } from "./import/import-session-types.ts";
 import type { RepositoryFetchOperations } from "./ops/fetch-types.ts";
 import type { RepositoryMaintenanceOperations } from "./ops/maintenance-types.ts";

@@ -16,7 +16,7 @@ import { join } from "node:path";
 import { sha1 } from "../../core/types.ts";
 
 import type { SHA1 } from "../../core/types.ts";
-import type { ShallowStore, ShallowUpdate } from "./types.ts";
+import type { ShallowStore, ShallowUpdate } from "../../core/types/shallow.ts";
 
 /**
  * 创建基于文件系统的 Shallow 存储

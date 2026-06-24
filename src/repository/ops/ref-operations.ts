@@ -3,10 +3,10 @@
  */
 
 import { RepositoryError } from "../../core/errors.ts";
+import { HEAD_REF, HEADS_PREFIX, TAGS_PREFIX } from "../../core/types/refs.ts";
 import { writeObject, readObject } from "../../objects/raw.ts";
 import { branchNameToRef, tagNameToRef } from "../../refs/names.ts";
 import { resolveRefHash, resolveSymbolicRef, resolveTargetHash } from "../../refs/resolve.ts";
-import { HEAD_REF, HEADS_PREFIX, TAGS_PREFIX } from "../../refs/types.ts";
 
 import type { RepositoryBackend } from "../../backend/index.ts";
 import type { SHA1, GitAuthor, ObjectType, GitTag } from "../../core/types.ts";

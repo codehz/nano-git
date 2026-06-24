@@ -2,7 +2,7 @@
  * Refs 名称校验与名称转换工具
  */
 
-import { HEAD_REF, HEADS_PREFIX, TAGS_PREFIX } from "./types.ts";
+import { HEAD_REF, HEADS_PREFIX, TAGS_PREFIX } from "../core/types/refs.ts";
 
 /**
  * 验证引用前缀是否合法

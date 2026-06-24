@@ -4,10 +4,10 @@
  * 适用于测试和临时操作场景。
  */
 
+import { HEAD_REF, HEADS_PREFIX } from "../core/types/refs.ts";
 import { createMemoryObjectStore } from "../odb/memory.ts";
 import { createMemoryRefStore } from "../refs/memory.ts";
 import { createMemoryShallowStore } from "../refs/shallow/memory.ts";
-import { HEAD_REF, HEADS_PREFIX } from "../refs/types.ts";
 
 import type { SHA1 } from "../core/types.ts";
 import type { RepositoryBackend } from "./types.ts";

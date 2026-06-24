@@ -4,10 +4,10 @@
 
 import { CircularReferenceError } from "../core/errors.ts";
 import { sha1 } from "../core/types.ts";
-import { HEAD_REF } from "./types.ts";
+import { HEAD_REF } from "../core/types/refs.ts";
 
 import type { SHA1 } from "../core/types.ts";
-import type { RefStore } from "./types.ts";
+import type { RefStore } from "../core/types/refs.ts";
 
 /**
  * 解析引用为 SHA-1 哈希

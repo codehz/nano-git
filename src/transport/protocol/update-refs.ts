@@ -16,8 +16,8 @@ import { tryReadObject } from "../../objects/raw.ts";
 import { isAncestor } from "./object-graph.ts";
 
 import type { SHA1 } from "../../core/types.ts";
+import type { RefStore } from "../../core/types/refs.ts";
 import type { ObjectDatabase } from "../../odb/types.ts";
-import type { RefStore } from "../../refs/types.ts";
 import type { ApplyRefUpdatesResult, RefUpdateRejection } from "./types.ts";
 
 /**
