@@ -81,7 +81,7 @@ export default defineConfig({
   unbundle: true,
   exports: {
     packageJson: false,
-    devExports: true,
+    legacy: true,
     customExports(exports) {
       return addTypesExport(exports);
     },

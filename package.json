@@ -6,205 +6,165 @@
   ],
   "type": "module",
   "sideEffects": false,
+  "main": "./dist/index.mjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
   "exports": {
-    ".": "./src/index.ts",
-    "./backend": "./src/backend/index.ts",
-    "./backend/file": "./src/backend/file.ts",
-    "./backend/memory": "./src/backend/memory.ts",
-    "./backend/sqlite": "./src/backend/sqlite.ts",
-    "./errors": "./src/errors.ts",
-    "./hash-file": "./src/hash-file.ts",
-    "./log": "./src/log/index.ts",
-    "./objects": "./src/objects/index.ts",
-    "./odb/file": "./src/odb/file.ts",
-    "./odb/memory": "./src/odb/memory.ts",
-    "./odb/sqlite": "./src/odb/sqlite.ts",
-    "./pack": "./src/pack/index.ts",
-    "./refs/file": "./src/refs/file.ts",
-    "./refs/memory": "./src/refs/memory.ts",
-    "./refs/names": "./src/refs/names.ts",
-    "./refs/resolve": "./src/refs/resolve.ts",
-    "./refs/shallow/file": "./src/refs/shallow/file.ts",
-    "./refs/shallow/memory": "./src/refs/shallow/memory.ts",
-    "./refs/shallow/sqlite": "./src/refs/shallow/sqlite.ts",
-    "./refs/sqlite": "./src/refs/sqlite.ts",
-    "./remote/http": "./src/remote/http.ts",
-    "./repository/core": "./src/repository/core.ts",
-    "./repository/file": "./src/repository/file.ts",
-    "./repository/memory": "./src/repository/memory.ts",
-    "./repository/sqlite": "./src/repository/sqlite.ts",
-    "./repository/tree/tree-patch": "./src/repository/tree/tree-patch.ts",
-    "./repository/tree/tree-walk": "./src/repository/tree/tree-walk.ts",
-    "./sha1": "./src/sha1.ts",
-    "./transport": "./src/transport/index.ts",
-    "./transport/http": "./src/transport/http/index.ts",
-    "./transport/receive-pack": "./src/transport/receive-pack.ts",
-    "./transport/server/receive-pack": "./src/transport/server/receive-pack/index.ts",
-    "./transport/server/upload-pack": "./src/transport/server/upload-pack/index.ts",
-    "./transport/upload-pack": "./src/transport/upload-pack.ts",
-    "./workdir/core": "./src/workdir/core.ts",
-    "./workdir/file": "./src/workdir/file.ts",
-    "./workdir/memory": "./src/workdir/memory.ts",
-    "./workdir/sqlite": "./src/workdir/sqlite.ts"
-  },
-  "publishConfig": {
-    "exports": {
-      ".": {
-        "types": "./dist/index.d.mts",
-        "default": "./dist/index.mjs"
-      },
-      "./backend": {
-        "types": "./dist/backend/index.d.mts",
-        "default": "./dist/backend/index.mjs"
-      },
-      "./backend/file": {
-        "types": "./dist/backend/file.d.mts",
-        "default": "./dist/backend/file.mjs"
-      },
-      "./backend/memory": {
-        "types": "./dist/backend/memory.d.mts",
-        "default": "./dist/backend/memory.mjs"
-      },
-      "./backend/sqlite": {
-        "types": "./dist/backend/sqlite.d.mts",
-        "default": "./dist/backend/sqlite.mjs"
-      },
-      "./errors": {
-        "types": "./dist/errors.d.mts",
-        "default": "./dist/errors.mjs"
-      },
-      "./hash-file": {
-        "types": "./dist/hash-file.d.mts",
-        "default": "./dist/hash-file.mjs"
-      },
-      "./log": {
-        "types": "./dist/log/index.d.mts",
-        "default": "./dist/log/index.mjs"
-      },
-      "./objects": {
-        "types": "./dist/objects/index.d.mts",
-        "default": "./dist/objects/index.mjs"
-      },
-      "./odb/file": {
-        "types": "./dist/odb/file.d.mts",
-        "default": "./dist/odb/file.mjs"
-      },
-      "./odb/memory": {
-        "types": "./dist/odb/memory.d.mts",
-        "default": "./dist/odb/memory.mjs"
-      },
-      "./odb/sqlite": {
-        "types": "./dist/odb/sqlite.d.mts",
-        "default": "./dist/odb/sqlite.mjs"
-      },
-      "./pack": {
-        "types": "./dist/pack/index.d.mts",
-        "default": "./dist/pack/index.mjs"
-      },
-      "./refs/file": {
-        "types": "./dist/refs/file.d.mts",
-        "default": "./dist/refs/file.mjs"
-      },
-      "./refs/memory": {
-        "types": "./dist/refs/memory.d.mts",
-        "default": "./dist/refs/memory.mjs"
-      },
-      "./refs/names": {
-        "types": "./dist/refs/names.d.mts",
-        "default": "./dist/refs/names.mjs"
-      },
-      "./refs/resolve": {
-        "types": "./dist/refs/resolve.d.mts",
-        "default": "./dist/refs/resolve.mjs"
-      },
-      "./refs/shallow/file": {
-        "types": "./dist/refs/shallow/file.d.mts",
-        "default": "./dist/refs/shallow/file.mjs"
-      },
-      "./refs/shallow/memory": {
-        "types": "./dist/refs/shallow/memory.d.mts",
-        "default": "./dist/refs/shallow/memory.mjs"
-      },
-      "./refs/shallow/sqlite": {
-        "types": "./dist/refs/shallow/sqlite.d.mts",
-        "default": "./dist/refs/shallow/sqlite.mjs"
-      },
-      "./refs/sqlite": {
-        "types": "./dist/refs/sqlite.d.mts",
-        "default": "./dist/refs/sqlite.mjs"
-      },
-      "./remote/http": {
-        "types": "./dist/remote/http.d.mts",
-        "default": "./dist/remote/http.mjs"
-      },
-      "./repository/core": {
-        "types": "./dist/repository/core.d.mts",
-        "default": "./dist/repository/core.mjs"
-      },
-      "./repository/file": {
-        "types": "./dist/repository/file.d.mts",
-        "default": "./dist/repository/file.mjs"
-      },
-      "./repository/memory": {
-        "types": "./dist/repository/memory.d.mts",
-        "default": "./dist/repository/memory.mjs"
-      },
-      "./repository/sqlite": {
-        "types": "./dist/repository/sqlite.d.mts",
-        "default": "./dist/repository/sqlite.mjs"
-      },
-      "./repository/tree/tree-patch": {
-        "types": "./dist/repository/tree/tree-patch.d.mts",
-        "default": "./dist/repository/tree/tree-patch.mjs"
-      },
-      "./repository/tree/tree-walk": {
-        "types": "./dist/repository/tree/tree-walk.d.mts",
-        "default": "./dist/repository/tree/tree-walk.mjs"
-      },
-      "./sha1": {
-        "types": "./dist/sha1.d.mts",
-        "default": "./dist/sha1.mjs"
-      },
-      "./transport": {
-        "types": "./dist/transport/index.d.mts",
-        "default": "./dist/transport/index.mjs"
-      },
-      "./transport/http": {
-        "types": "./dist/transport/http/index.d.mts",
-        "default": "./dist/transport/http/index.mjs"
-      },
-      "./transport/receive-pack": {
-        "types": "./dist/transport/receive-pack.d.mts",
-        "default": "./dist/transport/receive-pack.mjs"
-      },
-      "./transport/server/receive-pack": {
-        "types": "./dist/transport/server/receive-pack/index.d.mts",
-        "default": "./dist/transport/server/receive-pack/index.mjs"
-      },
-      "./transport/server/upload-pack": {
-        "types": "./dist/transport/server/upload-pack/index.d.mts",
-        "default": "./dist/transport/server/upload-pack/index.mjs"
-      },
-      "./transport/upload-pack": {
-        "types": "./dist/transport/upload-pack.d.mts",
-        "default": "./dist/transport/upload-pack.mjs"
-      },
-      "./workdir/core": {
-        "types": "./dist/workdir/core.d.mts",
-        "default": "./dist/workdir/core.mjs"
-      },
-      "./workdir/file": {
-        "types": "./dist/workdir/file.d.mts",
-        "default": "./dist/workdir/file.mjs"
-      },
-      "./workdir/memory": {
-        "types": "./dist/workdir/memory.d.mts",
-        "default": "./dist/workdir/memory.mjs"
-      },
-      "./workdir/sqlite": {
-        "types": "./dist/workdir/sqlite.d.mts",
-        "default": "./dist/workdir/sqlite.mjs"
-      }
+    ".": {
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    },
+    "./backend": {
+      "types": "./dist/backend/index.d.mts",
+      "default": "./dist/backend/index.mjs"
+    },
+    "./backend/file": {
+      "types": "./dist/backend/file.d.mts",
+      "default": "./dist/backend/file.mjs"
+    },
+    "./backend/memory": {
+      "types": "./dist/backend/memory.d.mts",
+      "default": "./dist/backend/memory.mjs"
+    },
+    "./backend/sqlite": {
+      "types": "./dist/backend/sqlite.d.mts",
+      "default": "./dist/backend/sqlite.mjs"
+    },
+    "./errors": {
+      "types": "./dist/errors.d.mts",
+      "default": "./dist/errors.mjs"
+    },
+    "./hash-file": {
+      "types": "./dist/hash-file.d.mts",
+      "default": "./dist/hash-file.mjs"
+    },
+    "./log": {
+      "types": "./dist/log/index.d.mts",
+      "default": "./dist/log/index.mjs"
+    },
+    "./objects": {
+      "types": "./dist/objects/index.d.mts",
+      "default": "./dist/objects/index.mjs"
+    },
+    "./odb/file": {
+      "types": "./dist/odb/file.d.mts",
+      "default": "./dist/odb/file.mjs"
+    },
+    "./odb/memory": {
+      "types": "./dist/odb/memory.d.mts",
+      "default": "./dist/odb/memory.mjs"
+    },
+    "./odb/sqlite": {
+      "types": "./dist/odb/sqlite.d.mts",
+      "default": "./dist/odb/sqlite.mjs"
+    },
+    "./pack": {
+      "types": "./dist/pack/index.d.mts",
+      "default": "./dist/pack/index.mjs"
+    },
+    "./refs/file": {
+      "types": "./dist/refs/file.d.mts",
+      "default": "./dist/refs/file.mjs"
+    },
+    "./refs/memory": {
+      "types": "./dist/refs/memory.d.mts",
+      "default": "./dist/refs/memory.mjs"
+    },
+    "./refs/names": {
+      "types": "./dist/refs/names.d.mts",
+      "default": "./dist/refs/names.mjs"
+    },
+    "./refs/resolve": {
+      "types": "./dist/refs/resolve.d.mts",
+      "default": "./dist/refs/resolve.mjs"
+    },
+    "./refs/shallow/file": {
+      "types": "./dist/refs/shallow/file.d.mts",
+      "default": "./dist/refs/shallow/file.mjs"
+    },
+    "./refs/shallow/memory": {
+      "types": "./dist/refs/shallow/memory.d.mts",
+      "default": "./dist/refs/shallow/memory.mjs"
+    },
+    "./refs/shallow/sqlite": {
+      "types": "./dist/refs/shallow/sqlite.d.mts",
+      "default": "./dist/refs/shallow/sqlite.mjs"
+    },
+    "./refs/sqlite": {
+      "types": "./dist/refs/sqlite.d.mts",
+      "default": "./dist/refs/sqlite.mjs"
+    },
+    "./remote/http": {
+      "types": "./dist/remote/http.d.mts",
+      "default": "./dist/remote/http.mjs"
+    },
+    "./repository/core": {
+      "types": "./dist/repository/core.d.mts",
+      "default": "./dist/repository/core.mjs"
+    },
+    "./repository/file": {
+      "types": "./dist/repository/file.d.mts",
+      "default": "./dist/repository/file.mjs"
+    },
+    "./repository/memory": {
+      "types": "./dist/repository/memory.d.mts",
+      "default": "./dist/repository/memory.mjs"
+    },
+    "./repository/sqlite": {
+      "types": "./dist/repository/sqlite.d.mts",
+      "default": "./dist/repository/sqlite.mjs"
+    },
+    "./repository/tree/tree-patch": {
+      "types": "./dist/repository/tree/tree-patch.d.mts",
+      "default": "./dist/repository/tree/tree-patch.mjs"
+    },
+    "./repository/tree/tree-walk": {
+      "types": "./dist/repository/tree/tree-walk.d.mts",
+      "default": "./dist/repository/tree/tree-walk.mjs"
+    },
+    "./sha1": {
+      "types": "./dist/sha1.d.mts",
+      "default": "./dist/sha1.mjs"
+    },
+    "./transport": {
+      "types": "./dist/transport/index.d.mts",
+      "default": "./dist/transport/index.mjs"
+    },
+    "./transport/http": {
+      "types": "./dist/transport/http/index.d.mts",
+      "default": "./dist/transport/http/index.mjs"
+    },
+    "./transport/receive-pack": {
+      "types": "./dist/transport/receive-pack.d.mts",
+      "default": "./dist/transport/receive-pack.mjs"
+    },
+    "./transport/server/receive-pack": {
+      "types": "./dist/transport/server/receive-pack/index.d.mts",
+      "default": "./dist/transport/server/receive-pack/index.mjs"
+    },
+    "./transport/server/upload-pack": {
+      "types": "./dist/transport/server/upload-pack/index.d.mts",
+      "default": "./dist/transport/server/upload-pack/index.mjs"
+    },
+    "./transport/upload-pack": {
+      "types": "./dist/transport/upload-pack.d.mts",
+      "default": "./dist/transport/upload-pack.mjs"
+    },
+    "./workdir/core": {
+      "types": "./dist/workdir/core.d.mts",
+      "default": "./dist/workdir/core.mjs"
+    },
+    "./workdir/file": {
+      "types": "./dist/workdir/file.d.mts",
+      "default": "./dist/workdir/file.mjs"
+    },
+    "./workdir/memory": {
+      "types": "./dist/workdir/memory.d.mts",
+      "default": "./dist/workdir/memory.mjs"
+    },
+    "./workdir/sqlite": {
+      "types": "./dist/workdir/sqlite.d.mts",
+      "default": "./dist/workdir/sqlite.mjs"
     }
   },
   "scripts": {
