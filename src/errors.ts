@@ -16,4 +16,11 @@ export {
   DeltaError,
   TransactionError,
   PreconditionCheckError,
+  VirtualPathNotFoundError,
+  VirtualPathAlreadyExistsError,
+  VirtualNotDirectoryError,
+  VirtualNotFileError,
+  VirtualNotSymlinkError,
+  VirtualOriginUnavailableError,
+  VirtualRevertNotSupportedError,
 } from "./core/errors.ts";

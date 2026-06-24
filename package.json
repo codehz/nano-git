@@ -41,7 +41,8 @@
     "./transport/receive-pack": "./src/transport/receive-pack.ts",
     "./transport/server/receive-pack": "./src/transport/server/receive-pack/index.ts",
     "./transport/server/upload-pack": "./src/transport/server/upload-pack/index.ts",
-    "./transport/upload-pack": "./src/transport/upload-pack.ts"
+    "./transport/upload-pack": "./src/transport/upload-pack.ts",
+    "./workdir/core": "./src/workdir/core.ts"
   },
   "publishConfig": {
     "exports": {
@@ -79,7 +80,8 @@
       "./transport/receive-pack": "./dist/transport/receive-pack.mjs",
       "./transport/server/receive-pack": "./dist/transport/server/receive-pack/index.mjs",
       "./transport/server/upload-pack": "./dist/transport/server/upload-pack/index.mjs",
-      "./transport/upload-pack": "./dist/transport/upload-pack.mjs"
+      "./transport/upload-pack": "./dist/transport/upload-pack.mjs",
+      "./workdir/core": "./dist/workdir/core.mjs"
     }
   },
   "scripts": {

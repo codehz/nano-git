@@ -180,3 +180,117 @@ export class PreconditionCheckError extends GitError {
     this.name = "PreconditionCheckError";
   }
 }
+
+// ==================== Virtual Workdir（虚拟工作目录）错误类型 ====================
+
+/**
+ * 虚拟路径未找到错误
+ *
+ * 当操作的路径在 session 中不存在时抛出。
+ */
+export class VirtualPathNotFoundError extends GitError {
+  /** 不存在的路径 */
+  path: string;
+
+  constructor(path: string, message?: string) {
+    super(message ?? `Virtual path not found: ${path}`);
+    this.name = "VirtualPathNotFoundError";
+    this.path = path;
+  }
+}
+
+/**
+ * 虚拟路径已存在错误
+ *
+ * 当创建的路径已在 session 中存在时抛出。
+ */
+export class VirtualPathAlreadyExistsError extends GitError {
+  /** 已存在的路径 */
+  path: string;
+
+  constructor(path: string, message?: string) {
+    super(message ?? `Virtual path already exists: ${path}`);
+    this.name = "VirtualPathAlreadyExistsError";
+    this.path = path;
+  }
+}
+
+/**
+ * 非目录错误
+ *
+ * 当期望路径为目录但实际不是时抛出。
+ */
+export class VirtualNotDirectoryError extends GitError {
+  /** 路径 */
+  path: string;
+
+  constructor(path: string, message?: string) {
+    super(message ?? `Virtual path is not a directory: ${path}`);
+    this.name = "VirtualNotDirectoryError";
+    this.path = path;
+  }
+}
+
+/**
+ * 非文件错误
+ *
+ * 当期望路径为文件但实际不是时抛出。
+ */
+export class VirtualNotFileError extends GitError {
+  /** 路径 */
+  path: string;
+
+  constructor(path: string, message?: string) {
+    super(message ?? `Virtual path is not a file: ${path}`);
+    this.name = "VirtualNotFileError";
+    this.path = path;
+  }
+}
+
+/**
+ * 非符号链接错误
+ *
+ * 当期望路径为符号链接但实际不是时抛出。
+ */
+export class VirtualNotSymlinkError extends GitError {
+  /** 路径 */
+  path: string;
+
+  constructor(path: string, message?: string) {
+    super(message ?? `Virtual path is not a symlink: ${path}`);
+    this.name = "VirtualNotSymlinkError";
+    this.path = path;
+  }
+}
+
+/**
+ * 虚拟工作目录 origin 不可用错误
+ *
+ * 当操作的路径在 repo 中的 origin 对象缺失时抛出（弱保证场景）。
+ */
+export class VirtualOriginUnavailableError extends GitError {
+  /** 路径 */
+  path: string;
+
+  constructor(path: string, message?: string) {
+    super(message ?? `Virtual origin unavailable for: ${path}`);
+    this.name = "VirtualOriginUnavailableError";
+    this.path = path;
+  }
+}
+
+/**
+ * 虚拟工作目录 revert 不支持错误
+ *
+ * 当对纯新建节点调用 revert 时抛出，因为其没有可恢复的 origin。
+ */
+export class VirtualRevertNotSupportedError extends GitError {
+  /** 路径 */
+  path: string;
+
+  constructor(path: string, message?: string) {
+    super(message ?? `Virtual revert not supported for purely new path: ${path}`);
+    this.name = "VirtualRevertNotSupportedError";
+    this.path = path;
+  }
+}
