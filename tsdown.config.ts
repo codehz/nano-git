@@ -39,6 +39,10 @@ export default defineConfig({
   platform: "node",
   shims: false,
   unbundle: true,
+  exports: {
+    packageJson: false,
+    devExports: true,
+  },
   deps: {
     neverBundle: [],
   },

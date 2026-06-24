@@ -5,120 +5,66 @@
   ],
   "type": "module",
   "sideEffects": false,
-  "module": "./dist/index.mjs",
-  "types": "./dist/index.d.mts",
   "exports": {
-    ".": {
-      "types": "./dist/index.d.mts",
-      "import": "./dist/index.mjs"
-    },
-    "./sha1": {
-      "types": "./dist/sha1.d.mts",
-      "import": "./dist/sha1.mjs"
-    },
-    "./errors": {
-      "types": "./dist/core/errors.d.mts",
-      "import": "./dist/core/errors.mjs"
-    },
-    "./hash-file": {
-      "types": "./dist/core/hash-file.d.mts",
-      "import": "./dist/core/hash-file.mjs"
-    },
-    "./objects": {
-      "types": "./dist/objects/index.d.mts",
-      "import": "./dist/objects/index.mjs"
-    },
-    "./pack": {
-      "types": "./dist/pack/index.d.mts",
-      "import": "./dist/pack/index.mjs"
-    },
-    "./odb/memory": {
-      "types": "./dist/odb/memory.d.mts",
-      "import": "./dist/odb/memory.mjs"
-    },
-    "./odb/file": {
-      "types": "./dist/odb/file.d.mts",
-      "import": "./dist/odb/file.mjs"
-    },
-    "./refs/memory": {
-      "types": "./dist/refs/memory.d.mts",
-      "import": "./dist/refs/memory.mjs"
-    },
-    "./refs/file": {
-      "types": "./dist/refs/file.d.mts",
-      "import": "./dist/refs/file.mjs"
-    },
-    "./refs/names": {
-      "types": "./dist/refs/names.d.mts",
-      "import": "./dist/refs/names.mjs"
-    },
-    "./refs/resolve": {
-      "types": "./dist/refs/resolve.d.mts",
-      "import": "./dist/refs/resolve.mjs"
-    },
-    "./refs/shallow/memory": {
-      "types": "./dist/refs/shallow/memory.d.mts",
-      "import": "./dist/refs/shallow/memory.mjs"
-    },
-    "./refs/shallow/file": {
-      "types": "./dist/refs/shallow/file.d.mts",
-      "import": "./dist/refs/shallow/file.mjs"
-    },
-    "./backend": {
-      "types": "./dist/backend/index.d.mts",
-      "import": "./dist/backend/index.mjs"
-    },
-    "./backend/memory": {
-      "types": "./dist/backend/memory.d.mts",
-      "import": "./dist/backend/memory.mjs"
-    },
-    "./backend/file": {
-      "types": "./dist/backend/file.d.mts",
-      "import": "./dist/backend/file.mjs"
-    },
-    "./repository/core": {
-      "types": "./dist/repository/core.d.mts",
-      "import": "./dist/repository/core.mjs"
-    },
-    "./repository/memory": {
-      "types": "./dist/repository/memory.d.mts",
-      "import": "./dist/repository/memory.mjs"
-    },
-    "./repository/file": {
-      "types": "./dist/repository/file.d.mts",
-      "import": "./dist/repository/file.mjs"
-    },
-    "./repository/tree/tree-patch": {
-      "types": "./dist/repository/tree/tree-patch.d.mts",
-      "import": "./dist/repository/tree/tree-patch.mjs"
-    },
-    "./repository/tree/tree-walk": {
-      "types": "./dist/repository/tree/tree-walk.d.mts",
-      "import": "./dist/repository/tree/tree-walk.mjs"
-    },
-    "./transport": {
-      "types": "./dist/transport/index.d.mts",
-      "import": "./dist/transport/index.mjs"
-    },
-    "./transport/upload-pack": {
-      "types": "./dist/transport/upload-pack.d.mts",
-      "import": "./dist/transport/upload-pack.mjs"
-    },
-    "./transport/receive-pack": {
-      "types": "./dist/transport/receive-pack.d.mts",
-      "import": "./dist/transport/receive-pack.mjs"
-    },
-    "./transport/http": {
-      "types": "./dist/transport/http/index.d.mts",
-      "import": "./dist/transport/http/index.mjs"
-    },
-    "./transport/server/upload-pack": {
-      "types": "./dist/transport/server/upload-pack/index.d.mts",
-      "import": "./dist/transport/server/upload-pack/index.mjs"
-    },
-    "./transport/server/receive-pack": {
-      "types": "./dist/transport/server/receive-pack/index.d.mts",
-      "import": "./dist/transport/server/receive-pack/index.mjs"
+    ".": "./src/index.ts",
+    "./backend": "./src/backend/index.ts",
+    "./backend/file": "./src/backend/file.ts",
+    "./backend/memory": "./src/backend/memory.ts",
+    "./errors": "./src/errors.ts",
+    "./hash-file": "./src/hash-file.ts",
+    "./objects": "./src/objects/index.ts",
+    "./odb/file": "./src/odb/file.ts",
+    "./odb/memory": "./src/odb/memory.ts",
+    "./pack": "./src/pack/index.ts",
+    "./refs/file": "./src/refs/file.ts",
+    "./refs/memory": "./src/refs/memory.ts",
+    "./refs/names": "./src/refs/names.ts",
+    "./refs/resolve": "./src/refs/resolve.ts",
+    "./refs/shallow/file": "./src/refs/shallow/file.ts",
+    "./refs/shallow/memory": "./src/refs/shallow/memory.ts",
+    "./repository/core": "./src/repository/core.ts",
+    "./repository/file": "./src/repository/file.ts",
+    "./repository/memory": "./src/repository/memory.ts",
+    "./repository/tree/tree-patch": "./src/repository/tree/tree-patch.ts",
+    "./repository/tree/tree-walk": "./src/repository/tree/tree-walk.ts",
+    "./sha1": "./src/sha1.ts",
+    "./transport": "./src/transport/index.ts",
+    "./transport/http": "./src/transport/http/index.ts",
+    "./transport/receive-pack": "./src/transport/receive-pack.ts",
+    "./transport/server/receive-pack": "./src/transport/server/receive-pack/index.ts",
+    "./transport/server/upload-pack": "./src/transport/server/upload-pack/index.ts",
+    "./transport/upload-pack": "./src/transport/upload-pack.ts"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": "./dist/index.mjs",
+      "./backend": "./dist/backend/index.mjs",
+      "./backend/file": "./dist/backend/file.mjs",
+      "./backend/memory": "./dist/backend/memory.mjs",
+      "./errors": "./dist/errors.mjs",
+      "./hash-file": "./dist/hash-file.mjs",
+      "./objects": "./dist/objects/index.mjs",
+      "./odb/file": "./dist/odb/file.mjs",
+      "./odb/memory": "./dist/odb/memory.mjs",
+      "./pack": "./dist/pack/index.mjs",
+      "./refs/file": "./dist/refs/file.mjs",
+      "./refs/memory": "./dist/refs/memory.mjs",
+      "./refs/names": "./dist/refs/names.mjs",
+      "./refs/resolve": "./dist/refs/resolve.mjs",
+      "./refs/shallow/file": "./dist/refs/shallow/file.mjs",
+      "./refs/shallow/memory": "./dist/refs/shallow/memory.mjs",
+      "./repository/core": "./dist/repository/core.mjs",
+      "./repository/file": "./dist/repository/file.mjs",
+      "./repository/memory": "./dist/repository/memory.mjs",
+      "./repository/tree/tree-patch": "./dist/repository/tree/tree-patch.mjs",
+      "./repository/tree/tree-walk": "./dist/repository/tree/tree-walk.mjs",
+      "./sha1": "./dist/sha1.mjs",
+      "./transport": "./dist/transport/index.mjs",
+      "./transport/http": "./dist/transport/http/index.mjs",
+      "./transport/receive-pack": "./dist/transport/receive-pack.mjs",
+      "./transport/server/receive-pack": "./dist/transport/server/receive-pack/index.mjs",
+      "./transport/server/upload-pack": "./dist/transport/server/upload-pack/index.mjs",
+      "./transport/upload-pack": "./dist/transport/upload-pack.mjs"
     }
   },
   "scripts": {
