@@ -169,6 +169,7 @@
   },
   "scripts": {
     "build": "tsdown",
+    "bench:workdir-diff": "bun run examples/workdir-diff-benchmark.ts",
     "lint": "oxlint .",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",

@@ -182,6 +182,30 @@ describe("writeFile", () => {
       deleteNode(id): void {
         inner.deleteNode(id);
       },
+      listChangeRecords() {
+        return inner.listChangeRecords();
+      },
+      getChangeRecord(path) {
+        return inner.getChangeRecord(path);
+      },
+      setChangeRecord(record): void {
+        inner.setChangeRecord(record);
+      },
+      deleteChangeRecord(path): void {
+        inner.deleteChangeRecord(path);
+      },
+      listDirtyDirSummaries() {
+        return inner.listDirtyDirSummaries();
+      },
+      getDirtyDirSummary(path) {
+        return inner.getDirtyDirSummary(path);
+      },
+      setDirtyDirSummary(summary): void {
+        inner.setDirtyDirSummary(summary);
+      },
+      deleteDirtyDirSummary(path): void {
+        inner.deleteDirtyDirSummary(path);
+      },
       reset(nextBaseTree): void {
         inner.reset(nextBaseTree);
       },
@@ -429,10 +453,12 @@ describe("diff（写入操作）", () => {
     session.writeFile("f.txt", Buffer.from("data"));
     expect(session.diff()).toMatchObject([
       {
+        kind: "create",
         path: "f.txt",
-        type: "add",
-        previousMode: null,
-        currentMode: "100644",
+        current: {
+          kind: "blob",
+          mode: "100644",
+        },
       },
     ]);
   });
@@ -446,10 +472,44 @@ describe("diff（写入操作）", () => {
     session.writeFile("f", Buffer.from("new"));
     expect(session.diff()).toMatchObject([
       {
+        kind: "update",
         path: "f",
-        type: "modify",
-        previousMode: "100644",
-        currentMode: "100644",
+        previous: {
+          kind: "blob",
+          mode: "100644",
+        },
+        current: {
+          kind: "blob",
+          mode: "100644",
+        },
+        changes: {
+          kindChanged: false,
+          modeChanged: false,
+          contentChanged: true,
+        },
+      },
+    ]);
+  });
+
+  test("重复修改同一路径时变更记录不膨胀", () => {
+    const repo = createMemoryRepository();
+    const baseTree = repo.createTree([]);
+    const store = createVirtualWorkdirMemoryStateStore(baseTree);
+    const session = openVirtualWorkdirSession(repo.objects, store);
+
+    session.writeFile("f.txt", Buffer.from("v1"));
+    session.writeFile("f.txt", Buffer.from("v2"));
+    session.writeFile("f.txt", Buffer.from("v3"));
+
+    expect(store.listChangeRecords()).toHaveLength(1);
+    expect(session.diff()).toMatchObject([
+      {
+        kind: "create",
+        path: "f.txt",
+        current: {
+          kind: "blob",
+          mode: "100644",
+        },
       },
     ]);
   });
@@ -463,12 +523,28 @@ describe("diff（写入操作）", () => {
     session.delete("f");
     expect(session.diff()).toMatchObject([
       {
+        kind: "remove",
         path: "f",
-        type: "delete",
-        previousMode: "100644",
-        currentMode: null,
+        previous: {
+          kind: "blob",
+          mode: "100644",
+        },
       },
     ]);
+  });
+
+  test("删除新增文件时变更记录被清空而不膨胀", () => {
+    const repo = createMemoryRepository();
+    const baseTree = repo.createTree([]);
+    const store = createVirtualWorkdirMemoryStateStore(baseTree);
+    const session = openVirtualWorkdirSession(repo.objects, store);
+
+    session.writeFile("f.txt", Buffer.from("data"));
+    expect(store.listChangeRecords()).toHaveLength(1);
+
+    session.delete("f.txt");
+    expect(store.listChangeRecords()).toEqual([]);
+    expect(session.diff()).toEqual([]);
   });
 
   test("仅新建目录时不输出目录 diff", () => {
@@ -481,7 +557,7 @@ describe("diff（写入操作）", () => {
     expect(session.diff()).toEqual([]);
   });
 
-  test("文件与符号链接互换产出 typechange", () => {
+  test("文件与符号链接互换产出 update 且标记 kindChanged", () => {
     const repo = createMemoryRepository();
     const blobHash = repo.writeBlob(Buffer.from("data"));
     const baseTree = repo.createTree([{ mode: "100644", name: "f", hash: blobHash }]);
@@ -490,10 +566,21 @@ describe("diff（写入操作）", () => {
     session.writeLink("f", "target");
     expect(session.diff()).toMatchObject([
       {
+        kind: "update",
         path: "f",
-        type: "typechange",
-        previousMode: "100644",
-        currentMode: "120000",
+        previous: {
+          kind: "blob",
+          mode: "100644",
+        },
+        current: {
+          kind: "symlink",
+          mode: "120000",
+        },
+        changes: {
+          kindChanged: true,
+          modeChanged: true,
+          contentChanged: true,
+        },
       },
     ]);
   });
@@ -584,11 +671,82 @@ describe("rename", () => {
     session.rename("a.txt", "b.txt");
     expect(session.diff()).toMatchObject([
       {
+        kind: "update",
         path: "b.txt",
-        type: "rename",
-        oldPath: "a.txt",
-        previousMode: "100644",
-        currentMode: "100644",
+        previous: {
+          kind: "blob",
+          mode: "100644",
+        },
+        current: {
+          kind: "blob",
+          mode: "100644",
+        },
+        changes: {
+          kindChanged: false,
+          modeChanged: false,
+          contentChanged: false,
+        },
+        source: {
+          kind: "rename",
+          path: "a.txt",
+        },
+      },
+    ]);
+  });
+
+  test("rename 后修改内容仍保留 rename 来源", () => {
+    const repo = createMemoryRepository();
+    const blobHash = repo.writeBlob(Buffer.from("data"));
+    const session = createVirtualWorkdirSession(repo.objects, {
+      baseTree: repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]),
+    });
+
+    session.rename("a.txt", "b.txt");
+    session.writeFile("b.txt", Buffer.from("changed"));
+
+    expect(session.diff()).toMatchObject([
+      {
+        kind: "update",
+        path: "b.txt",
+        previous: {
+          kind: "blob",
+          mode: "100644",
+        },
+        current: {
+          kind: "blob",
+          mode: "100644",
+        },
+        source: {
+          kind: "rename",
+          path: "a.txt",
+        },
+        changes: {
+          kindChanged: false,
+          modeChanged: false,
+          contentChanged: true,
+        },
+      },
+    ]);
+  });
+
+  test("删除 rename 目标仍保持全量语义正确", () => {
+    const repo = createMemoryRepository();
+    const blobHash = repo.writeBlob(Buffer.from("data"));
+    const session = createVirtualWorkdirSession(repo.objects, {
+      baseTree: repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]),
+    });
+
+    session.rename("a.txt", "b.txt");
+    session.delete("b.txt");
+
+    expect(session.diff()).toMatchObject([
+      {
+        kind: "remove",
+        path: "a.txt",
+        previous: {
+          kind: "blob",
+          mode: "100644",
+        },
       },
     ]);
   });
@@ -625,8 +783,35 @@ describe("rename", () => {
     expect(session.readFile("f.txt").toString()).toBe("data");
     expect(session.diff()).toMatchObject([
       {
+        kind: "create",
         path: "f.txt",
-        type: "add",
+        current: {
+          kind: "blob",
+          mode: "100644",
+        },
+      },
+    ]);
+  });
+
+  test("纯新增文件 rename 后变更记录不膨胀", () => {
+    const repo = createMemoryRepository();
+    const baseTree = repo.createTree([]);
+    const store = createVirtualWorkdirMemoryStateStore(baseTree);
+    const session = openVirtualWorkdirSession(repo.objects, store);
+
+    session.writeFile("a.txt", Buffer.from("data"));
+    session.rename("a.txt", "b.txt");
+    session.rename("b.txt", "c.txt");
+
+    expect(store.listChangeRecords()).toHaveLength(1);
+    expect(session.diff()).toMatchObject([
+      {
+        kind: "create",
+        path: "c.txt",
+        current: {
+          kind: "blob",
+          mode: "100644",
+        },
       },
     ]);
   });
@@ -718,13 +903,45 @@ describe("copy", () => {
     session.copy("a.txt", "b.txt");
     expect(session.diff()).toMatchObject([
       {
+        kind: "create",
         path: "b.txt",
-        type: "copy",
-        oldPath: "a.txt",
-        previousMode: "100644",
-        currentMode: "100644",
+        current: {
+          kind: "blob",
+          mode: "100644",
+        },
+        source: {
+          kind: "copy",
+          path: "a.txt",
+        },
       },
     ]);
+  });
+
+  test("session-only copy 退化为 create 且不膨胀记录", () => {
+    const repo = createMemoryRepository();
+    const baseTree = repo.createTree([]);
+    const store = createVirtualWorkdirMemoryStateStore(baseTree);
+    const session = openVirtualWorkdirSession(repo.objects, store);
+
+    session.writeFile("a.txt", Buffer.from("data"));
+    session.copy("a.txt", "b.txt");
+
+    expect(store.listChangeRecords()).toHaveLength(2);
+    expect(session.diff()).toMatchObject([
+      {
+        kind: "create",
+        path: "a.txt",
+      },
+      {
+        kind: "create",
+        path: "b.txt",
+      },
+    ]);
+    const copyEntry = session.diff()[1];
+    expect(copyEntry?.kind).toBe("create");
+    if (copyEntry?.kind === "create") {
+      expect(copyEntry.source).toBeUndefined();
+    }
   });
 
   test("源不存在抛 VirtualPathNotFoundError", () => {
@@ -771,6 +988,24 @@ describe("revert", () => {
     expect(session.readFile("f").toString()).toBe("new");
 
     session.revert("f");
+    expect(session.readFile("f").toString()).toBe("old");
+    expect(session.diff()).toEqual([]);
+  });
+
+  test("重复修改后 revert 会清空单路径变更记录", () => {
+    const repo = createMemoryRepository();
+    const blobHash = repo.writeBlob(Buffer.from("old"));
+    const baseTree = repo.createTree([{ mode: "100644", name: "f", hash: blobHash }]);
+    const store = createVirtualWorkdirMemoryStateStore(baseTree);
+    const session = openVirtualWorkdirSession(repo.objects, store);
+
+    session.writeFile("f", Buffer.from("v1"));
+    session.writeFile("f", Buffer.from("v2"));
+    expect(store.listChangeRecords()).toHaveLength(1);
+
+    session.revert("f");
+    expect(store.listChangeRecords()).toEqual([]);
+    expect(session.diff()).toEqual([]);
     expect(session.readFile("f").toString()).toBe("old");
   });
 
@@ -880,5 +1115,98 @@ describe("reset", () => {
     const fresh = createVirtualWorkdirSession(repo.objects, { baseTree });
     expect(session.readdir()).toEqual(fresh.readdir());
     expect(session.readFile("f").toString()).toBe(fresh.readFile("f").toString());
+  });
+
+  test("reset 会清空 dirty dir summaries", () => {
+    const repo = createMemoryRepository();
+    const oldBaseTree = repo.createTree([]);
+    const newBaseTree = repo.createTree([]);
+    const store = createVirtualWorkdirMemoryStateStore(oldBaseTree);
+    const session = openVirtualWorkdirSession(repo.objects, store);
+
+    session.mkdir("dir");
+    session.writeFile("dir/file.txt", Buffer.from("data"));
+    expect(store.listDirtyDirSummaries().length).toBeGreaterThan(0);
+
+    session.reset(newBaseTree);
+    expect(store.listDirtyDirSummaries()).toEqual([]);
+  });
+
+  test("新增后再删除会收敛并清空 dirty dir summaries", () => {
+    const repo = createMemoryRepository();
+    const baseTree = repo.createTree([]);
+    const store = createVirtualWorkdirMemoryStateStore(baseTree);
+    const session = openVirtualWorkdirSession(repo.objects, store);
+
+    session.mkdir("src");
+    session.writeFile("src/a.ts", Buffer.from("a1"));
+    expect(store.listDirtyDirSummaries().length).toBeGreaterThan(0);
+
+    session.delete("src/a.ts");
+    expect(store.listDirtyDirSummaries()).toEqual([
+      {
+        path: "",
+        isDirty: true,
+        dirtyEntryCount: 1,
+        dirtyDescendantCount: 0,
+        affectedNames: ["src"],
+        currentTreeHash: null,
+        hashState: "stale",
+      },
+    ]);
+  });
+
+  test("repo-backed 文件 revert 到 clean 后会清空 dirty dir summaries", () => {
+    const repo = createMemoryRepository();
+    const blobHash = repo.writeBlob(Buffer.from("base"));
+    const srcTree = repo.createTree([{ mode: "100644", name: "a.ts", hash: blobHash }]);
+    const baseTree = repo.createTree([{ mode: "40000", name: "src", hash: srcTree }]);
+    const store = createVirtualWorkdirMemoryStateStore(baseTree);
+    const session = openVirtualWorkdirSession(repo.objects, store);
+
+    session.writeFile("src/a.ts", Buffer.from("next"));
+    expect(store.getDirtyDirSummary("")).toEqual({
+      path: "",
+      isDirty: true,
+      dirtyEntryCount: 1,
+      dirtyDescendantCount: 1,
+      affectedNames: ["src"],
+      currentTreeHash: null,
+      hashState: "stale",
+    });
+
+    session.revert("src/a.ts");
+    expect(store.listDirtyDirSummaries()).toEqual([]);
+  });
+
+  test("dirty dir summaries 会累积 affectedNames 并在后续写入时保持去重", () => {
+    const repo = createMemoryRepository();
+    const baseTree = repo.createTree([]);
+    const store = createVirtualWorkdirMemoryStateStore(baseTree);
+    const session = openVirtualWorkdirSession(repo.objects, store);
+
+    session.mkdir("src");
+    session.writeFile("src/a.ts", Buffer.from("a1"));
+    session.writeFile("src/b.ts", Buffer.from("b1"));
+    session.writeFile("src/a.ts", Buffer.from("a2"));
+
+    expect(store.getDirtyDirSummary("")).toEqual({
+      path: "",
+      isDirty: true,
+      dirtyEntryCount: 1,
+      dirtyDescendantCount: 2,
+      affectedNames: ["src"],
+      currentTreeHash: null,
+      hashState: "stale",
+    });
+    expect(store.getDirtyDirSummary("src")).toEqual({
+      path: "src",
+      isDirty: true,
+      dirtyEntryCount: 2,
+      dirtyDescendantCount: 0,
+      affectedNames: ["a.ts", "b.ts"],
+      currentTreeHash: null,
+      hashState: "stale",
+    });
   });
 });

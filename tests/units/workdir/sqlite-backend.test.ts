@@ -127,7 +127,7 @@ describe("createSqliteVirtualWorkdirBackend()", () => {
     }
   });
 
-  test("schema 不再创建 change log 表", () => {
+  test("schema 创建规范化变更表", () => {
     const { dir, path } = createTempDbPath();
 
     try {
@@ -139,7 +139,64 @@ describe("createSqliteVirtualWorkdirBackend()", () => {
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
           )
           .get("workdir_changes");
-        expect(table).toBeNull();
+        expect(table).toEqual({ name: "workdir_changes" });
+      } finally {
+        db.close();
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("dirty dir summary 计数字段会持久化到 SQLite", () => {
+    resetVirtualWorkdirSessionIdCounterForTests();
+    const repo = createMemoryRepository();
+    const { dir, path } = createTempDbPath();
+
+    try {
+      let sessionId: VirtualWorkdirSessionId;
+      {
+        using backend = createSqliteVirtualWorkdirBackend(path);
+        sessionId = backend.createSession({ baseTree: repo.createTree([]) });
+        const session = backend.openSession(repo.objects, sessionId);
+        session.mkdir("src");
+        session.writeFile("src/a.ts", Buffer.from("a1"));
+        session.writeFile("src/b.ts", Buffer.from("b1"));
+      }
+
+      const db = new Database(path);
+      try {
+        const rows = db
+          .query<
+            {
+              path: string;
+              dirty_entry_count: number;
+              dirty_descendant_count: number;
+              affected_names: string;
+            },
+            [string]
+          >(
+            `SELECT path, dirty_entry_count, dirty_descendant_count, affected_names
+             FROM workdir_dirty_dirs
+             WHERE session_id = ?
+             ORDER BY path`,
+          )
+          .all(sessionId);
+
+        expect(rows).toEqual([
+          {
+            path: "",
+            dirty_entry_count: 1,
+            dirty_descendant_count: 2,
+            affected_names: JSON.stringify(["src"]),
+          },
+          {
+            path: "src",
+            dirty_entry_count: 2,
+            dirty_descendant_count: 0,
+            affected_names: JSON.stringify(["a.ts", "b.ts"]),
+          },
+        ]);
       } finally {
         db.close();
       }

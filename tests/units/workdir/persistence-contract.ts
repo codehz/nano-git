@@ -11,6 +11,7 @@ import { resetNodeIdCounterForTests } from "@/workdir/ids.ts";
 import { resetVirtualWorkdirSessionIdCounterForTests } from "@/workdir/session-id.ts";
 
 import type { SHA1 } from "@/core/types.ts";
+import type { ObjectDatabase } from "@/core/types/odb.ts";
 import type {
   VirtualDiffEntry,
   VirtualWorkdirBackend,
@@ -35,6 +36,46 @@ export interface PersistentVirtualWorkdirBackendHarness {
 
 export type PersistentVirtualWorkdirBackendHarnessFactory =
   () => PersistentVirtualWorkdirBackendHarness;
+
+function createCountingObjectDatabase(source: ObjectDatabase): {
+  readonly objects: ObjectDatabase;
+  getIngestCount(): number;
+} {
+  let ingestCount = 0;
+
+  return {
+    objects: {
+      read(hash) {
+        return source.read(hash);
+      },
+      tryRead(hash) {
+        return source.tryRead(hash);
+      },
+      exists(hash) {
+        return source.exists(hash);
+      },
+      list() {
+        return source.list();
+      },
+      ingest(raw) {
+        ingestCount += 1;
+        source.ingest(raw);
+      },
+      ingestMany(objects) {
+        for (const raw of objects) {
+          ingestCount += 1;
+          source.ingest(raw);
+        }
+      },
+      delete(hash) {
+        source.delete(hash);
+      },
+    },
+    getIngestCount() {
+      return ingestCount;
+    },
+  };
+}
 
 /**
  * 运行持久化 backend 合同测试
@@ -209,8 +250,46 @@ export function runPersistentVirtualWorkdirContract(
             expect(modifiedDiff).not.toEqual(stableDiff);
             expect(reopened.diff()).toEqual(modifiedDiff);
             expect(modifiedDiff.map((entry) => entry.path)).toEqual(["a.txt", "b.txt"]);
-            expect(modifiedDiff[0]?.type).toBe("add");
-            expect(modifiedDiff[1]?.type).toBe("add");
+            expect(modifiedDiff[0]?.kind).toBe("create");
+            expect(modifiedDiff[1]?.kind).toBe("create");
+          } finally {
+            instance.dispose();
+          }
+        }
+      } finally {
+        harness.cleanup();
+      }
+    });
+
+    test("reopen 后 writeTree 复用持久化的当前 tree hash 缓存", () => {
+      resetVirtualWorkdirSessionIdCounterForTests();
+      resetNodeIdCounterForTests();
+      const repo = createMemoryRepository();
+      const harness = createHarness();
+
+      try {
+        let sessionId: VirtualWorkdirSessionId;
+        let stableTree: SHA1;
+        {
+          const instance = harness.openBackend();
+          try {
+            sessionId = instance.backend.createSession({ baseTree: repo.createTree([]) });
+            const session = instance.backend.openSession(repo.objects, sessionId);
+            session.mkdir("dir");
+            session.writeFile("dir/a.txt", Buffer.from("alpha"));
+            stableTree = session.writeTree();
+          } finally {
+            instance.dispose();
+          }
+        }
+
+        {
+          const counting = createCountingObjectDatabase(repo.objects);
+          const instance = harness.openBackend();
+          try {
+            const reopened = instance.backend.openSession(counting.objects, sessionId);
+            expect(reopened.writeTree()).toBe(stableTree);
+            expect(counting.getIngestCount()).toBe(0);
           } finally {
             instance.dispose();
           }

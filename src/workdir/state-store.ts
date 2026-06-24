@@ -6,6 +6,8 @@
  */
 
 import type { SHA1 } from "../core/types.ts";
+import type { NormalizedChangeRecord } from "./change-index.ts";
+import type { DirtyDirSummary } from "./dirty-dir.ts";
 import type { NodeId } from "./ids.ts";
 import type { SessionNode } from "./nodes.ts";
 
@@ -38,6 +40,30 @@ export interface VirtualWorkdirStateStore {
 
   /** 删除节点 */
   deleteNode(id: NodeId): void;
+
+  /** 列出全部规范化变更记录 */
+  listChangeRecords(): readonly NormalizedChangeRecord[];
+
+  /** 按路径读取规范化变更记录 */
+  getChangeRecord(path: string): NormalizedChangeRecord | null;
+
+  /** 写入或覆盖规范化变更记录 */
+  setChangeRecord(record: NormalizedChangeRecord): void;
+
+  /** 删除规范化变更记录 */
+  deleteChangeRecord(path: string): void;
+
+  /** 列出全部脏目录摘要 */
+  listDirtyDirSummaries(): readonly DirtyDirSummary[];
+
+  /** 按目录路径读取脏目录摘要 */
+  getDirtyDirSummary(path: string): DirtyDirSummary | null;
+
+  /** 写入或覆盖脏目录摘要 */
+  setDirtyDirSummary(summary: DirtyDirSummary): void;
+
+  /** 删除脏目录摘要 */
+  deleteDirtyDirSummary(path: string): void;
 
   /**
    * 重置为新的基线 tree

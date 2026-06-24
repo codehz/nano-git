@@ -69,33 +69,77 @@ export interface VirtualDirEntry {
 // ==================== Diff 类型 ====================
 
 /**
- * Virtual Workdir diff 条目类型
- *
- * 基于 `baseTree -> 当前 session 视图` 的最终状态差异。
+ * diff 中的对象描述
  */
-export type VirtualDiffType = "add" | "modify" | "delete" | "rename" | "copy" | "typechange";
+export interface VirtualDiffObject {
+  /** 条目种类 */
+  readonly kind: "blob" | "symlink";
+  /** Git 文件模式 */
+  readonly mode: "100644" | "100755" | "120000";
+  /** 对象哈希 */
+  readonly hash: SHA1;
+}
+
+/**
+ * rename/copy 来源描述
+ */
+export interface VirtualDiffSource {
+  /** 来源类型 */
+  readonly kind: "rename" | "copy";
+  /** 来源路径 */
+  readonly path: string;
+}
+
+/**
+ * 同路径更新的变化维度
+ */
+export interface VirtualDiffChanges {
+  /** 条目种类是否变化 */
+  readonly kindChanged: boolean;
+  /** mode 是否变化 */
+  readonly modeChanged: boolean;
+  /** 内容哈希是否变化 */
+  readonly contentChanged: boolean;
+}
 
 /**
  * 单条 diff 条目
  *
- * 仅描述最终状态，不表达会话内操作历史。
+ * 仅描述最终状态，不表达完整会话内操作历史。
  */
-export interface VirtualDiffEntry {
-  /** 当前路径 */
-  readonly path: string;
-  /** diff 条目类型 */
-  readonly type: VirtualDiffType;
-  /** rename/copy 的源路径（其他类型为 undefined） */
-  readonly oldPath?: string;
-  /** baseTree 中的 mode；新增时为 null */
-  readonly previousMode: string | null;
-  /** 当前 session 视图中的 mode；删除时为 null */
-  readonly currentMode: string | null;
-  /** baseTree 中的 blob/symlink 哈希；新增时为 null */
-  readonly previousHash: SHA1 | null;
-  /** 当前 session 视图中的 blob/symlink 哈希；删除时为 null */
-  readonly currentHash: SHA1 | null;
-}
+export type VirtualDiffEntry =
+  | {
+      /** 新建路径 */
+      readonly kind: "create";
+      /** 当前路径 */
+      readonly path: string;
+      /** 当前对象 */
+      readonly current: VirtualDiffObject;
+      /** rename/copy 的来源 */
+      readonly source?: VirtualDiffSource;
+    }
+  | {
+      /** 删除路径 */
+      readonly kind: "remove";
+      /** 当前路径 */
+      readonly path: string;
+      /** 删除前对象 */
+      readonly previous: VirtualDiffObject;
+    }
+  | {
+      /** 同路径更新 */
+      readonly kind: "update";
+      /** 当前路径 */
+      readonly path: string;
+      /** 更新前对象 */
+      readonly previous: VirtualDiffObject;
+      /** 更新后对象 */
+      readonly current: VirtualDiffObject;
+      /** 变化维度 */
+      readonly changes: VirtualDiffChanges;
+      /** rename/copy 的来源 */
+      readonly source?: VirtualDiffSource;
+    };
 
 // ==================== Session 工厂选项 ====================
 

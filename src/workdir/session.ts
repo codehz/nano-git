@@ -7,25 +7,37 @@
 import {
   VirtualNotDirectoryError,
   VirtualNotFileError,
+  VirtualNotSymlinkError,
   VirtualPathAlreadyExistsError,
   VirtualPathNotFoundError,
   VirtualRevertNotSupportedError,
-  VirtualNotSymlinkError,
 } from "../core/errors.ts";
+import { createChangeIndexPlanner } from "./change-index-plan.ts";
+import {
+  refreshChangeRecordForPath,
+  rebuildNormalizedChangeIndex,
+  replaceChangeRecords,
+  rewriteChangeRecordForRename,
+  writeChangeRecordForCopy,
+} from "./change-index.ts";
 import { computeVirtualDiff } from "./diff.ts";
+import { createDirtyDirPlanner } from "./dirty-dir-plan.ts";
 import { VIRTUAL_ROOT_NODE_ID, createNodeId } from "./ids.ts";
 import { createVirtualWorkdirMemoryStateStore } from "./memory-backend.ts";
 import { cloneSessionNodeForCopy, revertNodeState, type SessionNode } from "./nodes.ts";
 import { modeToVirtualEntryKind, readRepoBlobContent } from "./origin.ts";
 import { overlayBindEntry, overlayTombstoneEntry, overlayRenameEntry } from "./overlay.ts";
+import { assertValidVirtualPath, normalizeDirectoryPath, VIRTUAL_ROOT_PATH } from "./path.ts";
 import {
-  assertValidVirtualPath,
-  normalizeDirectoryPath,
-  parentPath,
-  baseName,
-  VIRTUAL_ROOT_PATH,
-} from "./path.ts";
-import { resolvePath, resolveChild, listDirectoryChildren } from "./session-internal.ts";
+  getDirectoryChildrenView,
+  listDirectoryChildren,
+  observeListedDirectoryChild,
+  requireMissingWriteTarget,
+  requireExistingWriteTarget,
+  resolvePath,
+  resolveLeafWriteTarget,
+  resolveWriteTransfer,
+} from "./session-internal.ts";
 import { writeTreeFromSession } from "./write-tree.ts";
 
 import type { SHA1 } from "../core/types.ts";
@@ -81,6 +93,54 @@ export function openVirtualWorkdirSession(
   const invalidateDiffCaches = (): void => {
     currentNodeHashes.clear();
   };
+  const refreshChangeIndex = (): void => {
+    invalidateDiffCaches();
+    replaceChangeRecords(
+      state,
+      rebuildNormalizedChangeIndex(source, state, {
+        currentNodeHashes,
+        setCurrentNodeHash(nodeId, hash): void {
+          currentNodeHashes.set(nodeId, hash);
+        },
+      }),
+    );
+  };
+  const refreshChangeIndexForPath = (path: string): void => {
+    invalidateDiffCaches();
+    refreshChangeRecordForPath(source, state, path, {
+      currentNodeHashes,
+      setCurrentNodeHash(nodeId, hash): void {
+        currentNodeHashes.set(nodeId, hash);
+      },
+    });
+  };
+  const rewriteChangeIndexForRename = (from: string, to: string): void => {
+    invalidateDiffCaches();
+    rewriteChangeRecordForRename(source, state, from, to, {
+      currentNodeHashes,
+      setCurrentNodeHash(nodeId, hash): void {
+        currentNodeHashes.set(nodeId, hash);
+      },
+    });
+  };
+  const writeChangeIndexForCopy = (from: string, to: string): void => {
+    invalidateDiffCaches();
+    writeChangeRecordForCopy(source, state, from, to, {
+      currentNodeHashes,
+      setCurrentNodeHash(nodeId, hash): void {
+        currentNodeHashes.set(nodeId, hash);
+      },
+    });
+  };
+  const changeIndexPlanner = createChangeIndexPlanner(source, state, {
+    rebuildAll: refreshChangeIndex,
+    refreshPath: refreshChangeIndexForPath,
+    rewriteRename: rewriteChangeIndexForRename,
+    writeCopy: writeChangeIndexForCopy,
+  });
+  const dirtyDirPlanner = createDirtyDirPlanner(source, state);
+
+  refreshChangeIndex();
 
   const api: VirtualWorkdirSession = {
     get baseTree() {
@@ -119,12 +179,13 @@ export function openVirtualWorkdirSession(
       if (resolved.node.state.kind !== "directory") {
         throw new VirtualNotDirectoryError(normalized);
       }
-      const children = listDirectoryChildren(source, state, resolved.node, normalized);
-      return children.map((child) => ({
-        name: child.name,
-        kind: modeToVirtualEntryKind(child.mode),
-        mode: child.mode,
-      }));
+      return getDirectoryChildrenView(source, state, resolved.node, normalized).children.map(
+        (child) => ({
+          name: child.name,
+          kind: modeToVirtualEntryKind(child.mode),
+          mode: child.mode,
+        }),
+      );
     },
 
     readFile(path: string): Buffer {
@@ -172,46 +233,31 @@ export function openVirtualWorkdirSession(
     // ========== 写入 ==========
 
     mkdir(path: string): void {
-      runInWriteTransaction(state, invalidateDiffCaches, () => {
-        assertValidVirtualPath(path);
-        const parent = parentPath(path);
-        const name = baseName(path);
+      runInWriteTransaction(
+        state,
+        () => dirtyDirPlanner.rebuild([path]),
+        invalidateDiffCaches,
+        () => {
+          const target = requireMissingWriteTarget(source, state, path);
 
-        const parentResolved =
-          parent !== null
-            ? resolvePath(source, state, parent)
-            : { found: true, node: getRootNode(state) };
-        if (!parentResolved.found || parentResolved.node === null) {
-          throw new VirtualPathNotFoundError(parent ?? path);
-        }
-        const parentNode = parentResolved.node;
-        if (parentNode.state.kind !== "directory") {
-          throw new VirtualNotDirectoryError(parent ?? path);
-        }
-
-        // 检查是否已存在
-        const existing = resolveChild(source, state, parentNode, parent ?? VIRTUAL_ROOT_PATH, name);
-        if (existing.found && existing.node !== null) {
-          throw new VirtualPathAlreadyExistsError(path);
-        }
-
-        // 创建新目录节点 + 绑定到父 overlay
-        const nodeId = createNodeId();
-        const newNode: SessionNode = {
-          id: nodeId,
-          origin: { kind: "none" },
-          state: {
-            kind: "directory",
-            overlay: { addedEntries: new Map(), deletedNames: new Set() },
-          },
-        };
-        state.setNode(newNode);
-        updateParentOverlay(
-          state,
-          parentNode.id,
-          overlayBindEntry(parentNode.state.overlay, name, nodeId),
-        );
-      });
+          // 创建新目录节点 + 绑定到父 overlay
+          const nodeId = createNodeId();
+          const newNode: SessionNode = {
+            id: nodeId,
+            origin: { kind: "none" },
+            state: {
+              kind: "directory",
+              overlay: { addedEntries: new Map(), deletedNames: new Set() },
+            },
+          };
+          state.setNode(newNode);
+          updateParentOverlay(
+            state,
+            target.parentNode.id,
+            overlayBindEntry(target.parentNode.state.overlay, target.name, nodeId),
+          );
+        },
+      );
     },
 
     writeFile(
@@ -219,319 +265,224 @@ export function openVirtualWorkdirSession(
       content: Buffer,
       options?: { readonly mode?: "100644" | "100755" },
     ): void {
-      runInWriteTransaction(state, invalidateDiffCaches, () => {
-        assertValidVirtualPath(path);
-        const mode: "100644" | "100755" = options?.mode ?? "100644";
-        const parent = parentPath(path);
-        const name = baseName(path);
+      runInWriteTransaction(
+        state,
+        () => {
+          changeIndexPlanner.apply(changeIndexPlanner.planRefreshForPath(path));
+          dirtyDirPlanner.rebuild([path]);
+        },
+        invalidateDiffCaches,
+        () => {
+          const mode: "100644" | "100755" = options?.mode ?? "100644";
+          const target = resolveLeafWriteTarget(source, state, path);
 
-        const parentResolved =
-          parent !== null
-            ? resolvePath(source, state, parent)
-            : { found: true, node: getRootNode(state) };
-        if (!parentResolved.found || parentResolved.node === null) {
-          throw new VirtualPathNotFoundError(parent ?? path);
-        }
-        const parentNode = parentResolved.node;
-        if (parentNode.state.kind !== "directory") {
-          throw new VirtualNotDirectoryError(parent ?? path);
-        }
+          const nodeId = target.existing !== null ? target.existing.node.id : createNodeId();
 
-        // 检查是否已存在且为目录
-        const existing = resolveChild(source, state, parentNode, parent ?? VIRTUAL_ROOT_PATH, name);
-        if (existing.found && existing.node !== null) {
-          if (existing.node.state.kind === "directory") {
-            throw new VirtualNotFileError(path);
+          const fileNode: SessionNode = {
+            id: nodeId,
+            origin: target.existing !== null ? target.existing.node.origin : { kind: "none" },
+            state: { kind: "file", mode, content },
+          };
+          state.setNode(fileNode);
+          if (
+            target.existing === null ||
+            target.parentNode.state.overlay.addedEntries.has(target.name)
+          ) {
+            updateParentOverlay(
+              state,
+              target.parentNode.id,
+              overlayBindEntry(target.parentNode.state.overlay, target.name, nodeId),
+            );
           }
-        }
-
-        const nodeId = existing.found ? existing.node.id : createNodeId();
-
-        const fileNode: SessionNode = {
-          id: nodeId,
-          origin: existing.found ? existing.node.origin : { kind: "none" },
-          state: { kind: "file", mode, content },
-        };
-        state.setNode(fileNode);
-        updateParentOverlay(
-          state,
-          parentNode.id,
-          overlayBindEntry(parentNode.state.overlay, name, nodeId),
-        );
-      });
+        },
+      );
     },
 
     writeLink(path: string, target: string): void {
-      runInWriteTransaction(state, invalidateDiffCaches, () => {
-        assertValidVirtualPath(path);
-        const parent = parentPath(path);
-        const name = baseName(path);
+      runInWriteTransaction(
+        state,
+        () => {
+          changeIndexPlanner.apply(changeIndexPlanner.planRefreshForPath(path));
+          dirtyDirPlanner.rebuild([path]);
+        },
+        invalidateDiffCaches,
+        () => {
+          const writeTarget = resolveLeafWriteTarget(source, state, path);
 
-        const parentResolved =
-          parent !== null
-            ? resolvePath(source, state, parent)
-            : { found: true, node: getRootNode(state) };
-        if (!parentResolved.found || parentResolved.node === null) {
-          throw new VirtualPathNotFoundError(parent ?? path);
-        }
-        const parentNode = parentResolved.node;
-        if (parentNode.state.kind !== "directory") {
-          throw new VirtualNotDirectoryError(parent ?? path);
-        }
+          const nodeId =
+            writeTarget.existing !== null ? writeTarget.existing.node.id : createNodeId();
 
-        const existing = resolveChild(source, state, parentNode, parent ?? VIRTUAL_ROOT_PATH, name);
-        if (existing.found && existing.node !== null) {
-          if (existing.node.state.kind === "directory") {
-            throw new VirtualNotFileError(path);
+          const linkNode: SessionNode = {
+            id: nodeId,
+            origin:
+              writeTarget.existing !== null ? writeTarget.existing.node.origin : { kind: "none" },
+            state: { kind: "symlink", mode: "120000", target: Buffer.from(target) },
+          };
+          state.setNode(linkNode);
+          if (
+            writeTarget.existing === null ||
+            writeTarget.parentNode.state.overlay.addedEntries.has(writeTarget.name)
+          ) {
+            updateParentOverlay(
+              state,
+              writeTarget.parentNode.id,
+              overlayBindEntry(writeTarget.parentNode.state.overlay, writeTarget.name, nodeId),
+            );
           }
-        }
-
-        const nodeId = existing.found ? existing.node.id : createNodeId();
-
-        const linkNode: SessionNode = {
-          id: nodeId,
-          origin: existing.found ? existing.node.origin : { kind: "none" },
-          state: { kind: "symlink", mode: "120000", target: Buffer.from(target) },
-        };
-        state.setNode(linkNode);
-        updateParentOverlay(
-          state,
-          parentNode.id,
-          overlayBindEntry(parentNode.state.overlay, name, nodeId),
-        );
-      });
+        },
+      );
     },
 
     delete(path: string): void {
-      runInWriteTransaction(state, invalidateDiffCaches, () => {
-        assertValidVirtualPath(path);
-        const parent = parentPath(path);
-        const name = baseName(path);
+      runInWriteTransaction(
+        state,
+        () => {
+          changeIndexPlanner.apply(
+            changeIndexPlanner.planRefreshForPath(path, { treatMissingAsIncremental: true }),
+          );
+          dirtyDirPlanner.rebuild([path]);
+        },
+        invalidateDiffCaches,
+        () => {
+          const target = requireExistingWriteTarget(source, state, path);
 
-        const parentResolved =
-          parent !== null
-            ? resolvePath(source, state, parent)
-            : { found: true, node: getRootNode(state) };
-        if (!parentResolved.found || parentResolved.node === null) {
-          throw new VirtualPathNotFoundError(parent ?? path);
-        }
-        const parentNode = parentResolved.node;
-        if (parentNode.state.kind !== "directory") {
-          throw new VirtualNotDirectoryError(parent ?? path);
-        }
-
-        // 确认目标存在
-        const existing = resolveChild(source, state, parentNode, parent ?? VIRTUAL_ROOT_PATH, name);
-        if (!existing.found || existing.node === null) {
-          throw new VirtualPathNotFoundError(path);
-        }
-
-        updateParentOverlay(
-          state,
-          parentNode.id,
-          overlayTombstoneEntry(parentNode.state.overlay, name),
-        );
-      });
+          updateParentOverlay(
+            state,
+            target.parentNode.id,
+            overlayTombstoneEntry(target.parentNode.state.overlay, target.name),
+          );
+        },
+      );
     },
 
     rename(from: string, to: string): void {
-      runInWriteTransaction(state, invalidateDiffCaches, () => {
-        assertValidVirtualPath(from);
-        assertValidVirtualPath(to);
+      runInWriteTransaction(
+        state,
+        () => {
+          changeIndexPlanner.apply(changeIndexPlanner.planRewriteForRename(from, to));
+          dirtyDirPlanner.rebuild([from, to]);
+        },
+        invalidateDiffCaches,
+        () => {
+          assertValidVirtualPath(from);
+          assertValidVirtualPath(to);
 
-        if (from === to) {
-          return;
-        }
+          if (from === to) {
+            return;
+          }
 
-        // 解析源路径
-        const fromParent = parentPath(from);
-        const fromName = baseName(from);
-        const fromParentResolved =
-          fromParent !== null
-            ? resolvePath(source, state, fromParent)
-            : { found: true, node: getRootNode(state) };
-        if (!fromParentResolved.found || fromParentResolved.node === null) {
-          throw new VirtualPathNotFoundError(from);
-        }
-        const fromParentNode = fromParentResolved.node;
-        if (fromParentNode.state.kind !== "directory") {
-          throw new VirtualNotDirectoryError(from);
-        }
+          const { from: fromTarget, to: toTarget } = resolveWriteTransfer(source, state, from, to);
+          const sourceNode = fromTarget.existing.node;
 
-        // 确认源存在
-        const fromChild = resolveChild(
-          source,
-          state,
-          fromParentNode,
-          fromParent ?? VIRTUAL_ROOT_PATH,
-          fromName,
-        );
-        if (!fromChild.found || fromChild.node === null) {
-          throw new VirtualPathNotFoundError(from);
-        }
-        const sourceNode = fromChild.node;
+          // 检查目标是否已存在
+          if (toTarget.existing !== null) {
+            throw new VirtualPathAlreadyExistsError(to);
+          }
 
-        // 解析目标父目录
-        const toParent = parentPath(to);
-        const toName = baseName(to);
-        const toParentResolved =
-          toParent !== null
-            ? resolvePath(source, state, toParent)
-            : { found: true, node: getRootNode(state) };
-        if (!toParentResolved.found || toParentResolved.node === null) {
-          throw new VirtualPathNotFoundError(to);
-        }
-        const toParentNode = toParentResolved.node;
-        if (toParentNode.state.kind !== "directory") {
-          throw new VirtualNotDirectoryError(to);
-        }
+          // 检查 rename 是否将目录移入自身子目录
+          if (sourceNode.state.kind === "directory") {
+            const toPath = to;
+            const fromPath = from;
+            if (toPath.startsWith(fromPath + "/") || toPath === fromPath) {
+              throw new Error(
+                `Cannot rename '${from}' to '${to}': destination is a subdirectory of source`,
+              );
+            }
+          }
 
-        // 检查目标是否已存在
-        const toExisting = resolveChild(
-          source,
-          state,
-          toParentNode,
-          toParent ?? VIRTUAL_ROOT_PATH,
-          toName,
-        );
-        if (toExisting.found && toExisting.node !== null) {
-          throw new VirtualPathAlreadyExistsError(to);
-        }
-
-        // 检查 rename 是否将目录移入自身子目录
-        if (sourceNode.state.kind === "directory") {
-          const toPath = to;
-          const fromPath = from;
-          if (toPath.startsWith(fromPath + "/") || toPath === fromPath) {
-            throw new Error(
-              `Cannot rename '${from}' to '${to}': destination is a subdirectory of source`,
+          if (fromTarget.parentNode.id === toTarget.parentNode.id) {
+            // 同目录 rename：单次 overlayRenameEntry 操作
+            updateParentOverlay(
+              state,
+              fromTarget.parentNode.id,
+              overlayRenameEntry(
+                fromTarget.parentNode.state.overlay,
+                fromTarget.name,
+                toTarget.name,
+                sourceNode.id,
+              ),
+            );
+          } else {
+            // 跨目录 rename：先解绑源，再绑定目标
+            updateParentOverlay(
+              state,
+              fromTarget.parentNode.id,
+              overlayTombstoneEntry(fromTarget.parentNode.state.overlay, fromTarget.name),
+            );
+            updateParentOverlay(
+              state,
+              toTarget.parentNode.id,
+              overlayBindEntry(toTarget.parentNode.state.overlay, toTarget.name, sourceNode.id),
             );
           }
-        }
-
-        if (fromParentNode.id === toParentNode.id) {
-          // 同目录 rename：单次 overlayRenameEntry 操作
-          updateParentOverlay(
-            state,
-            fromParentNode.id,
-            overlayRenameEntry(fromParentNode.state.overlay, fromName, toName, sourceNode.id),
-          );
-        } else {
-          // 跨目录 rename：先解绑源，再绑定目标
-          updateParentOverlay(
-            state,
-            fromParentNode.id,
-            overlayTombstoneEntry(fromParentNode.state.overlay, fromName),
-          );
-          updateParentOverlay(
-            state,
-            toParentNode.id,
-            overlayBindEntry(toParentNode.state.overlay, toName, sourceNode.id),
-          );
-        }
-      });
+        },
+      );
     },
 
     copy(from: string, to: string): void {
-      runInWriteTransaction(state, invalidateDiffCaches, () => {
-        assertValidVirtualPath(from);
-        assertValidVirtualPath(to);
+      runInWriteTransaction(
+        state,
+        () => {
+          changeIndexPlanner.apply(changeIndexPlanner.planWriteForCopy(from, to));
+          dirtyDirPlanner.rebuild([from, to]);
+        },
+        invalidateDiffCaches,
+        () => {
+          assertValidVirtualPath(from);
+          assertValidVirtualPath(to);
 
-        if (from === to) {
-          throw new VirtualPathAlreadyExistsError(to);
-        }
+          if (from === to) {
+            throw new VirtualPathAlreadyExistsError(to);
+          }
 
-        // 解析源路径
-        const fromParent = parentPath(from);
-        const fromName = baseName(from);
-        const fromParentResolved =
-          fromParent !== null
-            ? resolvePath(source, state, fromParent)
-            : { found: true, node: getRootNode(state) };
-        if (!fromParentResolved.found || fromParentResolved.node === null) {
-          throw new VirtualPathNotFoundError(from);
-        }
-        const fromParentNode = fromParentResolved.node;
-        if (fromParentNode.state.kind !== "directory") {
-          throw new VirtualNotDirectoryError(from);
-        }
+          const { from: fromTarget, to: toTarget } = resolveWriteTransfer(source, state, from, to);
+          const sourceNode = fromTarget.existing.node;
 
-        // 确认源存在
-        const fromChild = resolveChild(
-          source,
-          state,
-          fromParentNode,
-          fromParent ?? VIRTUAL_ROOT_PATH,
-          fromName,
-        );
-        if (!fromChild.found || fromChild.node === null) {
-          throw new VirtualPathNotFoundError(from);
-        }
-        const sourceNode = fromChild.node;
+          // 检查目标是否已存在
+          if (toTarget.existing !== null) {
+            throw new VirtualPathAlreadyExistsError(to);
+          }
 
-        // 解析目标父目录
-        const toParent = parentPath(to);
-        const toName = baseName(to);
-        const toParentResolved =
-          toParent !== null
-            ? resolvePath(source, state, toParent)
-            : { found: true, node: getRootNode(state) };
-        if (!toParentResolved.found || toParentResolved.node === null) {
-          throw new VirtualPathNotFoundError(to);
-        }
-        const toParentNode = toParentResolved.node;
-        if (toParentNode.state.kind !== "directory") {
-          throw new VirtualNotDirectoryError(to);
-        }
+          // 创建新节点图，避免 copy 后源与目标共享子节点身份
+          const newNodeId = cloneNodeGraphForCopy(source, state, sourceNode, from);
 
-        // 检查目标是否已存在
-        const toExisting = resolveChild(
-          source,
-          state,
-          toParentNode,
-          toParent ?? VIRTUAL_ROOT_PATH,
-          toName,
-        );
-        if (toExisting.found && toExisting.node !== null) {
-          throw new VirtualPathAlreadyExistsError(to);
-        }
-
-        // 创建新节点图，避免 copy 后源与目标共享子节点身份
-        const newNodeId = cloneNodeGraphForCopy(source, state, sourceNode, from);
-
-        // 绑定到目标父目录
-        updateParentOverlay(
-          state,
-          toParentNode.id,
-          overlayBindEntry(toParentNode.state.overlay, toName, newNodeId),
-        );
-      });
+          // 绑定到目标父目录
+          updateParentOverlay(
+            state,
+            toTarget.parentNode.id,
+            overlayBindEntry(toTarget.parentNode.state.overlay, toTarget.name, newNodeId),
+          );
+        },
+      );
     },
 
     revert(path: string): void {
-      runInWriteTransaction(state, invalidateDiffCaches, () => {
-        assertValidVirtualPath(path);
-        const resolved = resolvePath(source, state, path);
-        if (!resolved.found || resolved.node === null) {
-          throw new VirtualPathNotFoundError(path);
-        }
+      runInWriteTransaction(
+        state,
+        () => {
+          changeIndexPlanner.apply(changeIndexPlanner.planRefreshForPath(path));
+          dirtyDirPlanner.rebuild([path]);
+        },
+        invalidateDiffCaches,
+        () => {
+          assertValidVirtualPath(path);
+          const resolved = resolvePath(source, state, path);
+          if (!resolved.found || resolved.node === null) {
+            throw new VirtualPathNotFoundError(path);
+          }
 
-        const node = resolved.node;
-        const reverted = revertNodeState(node);
-        if (reverted === node) {
-          throw new VirtualRevertNotSupportedError(path);
-        }
-        state.setNode(reverted);
-      });
+          const node = resolved.node;
+          const reverted = revertNodeState(node);
+          if (reverted === node) {
+            throw new VirtualRevertNotSupportedError(path);
+          }
+          state.setNode(reverted);
+        },
+      );
     },
 
     diff(): VirtualDiffEntry[] {
-      return computeVirtualDiff(source, state, {
-        currentNodeHashes,
-        setCurrentNodeHash(nodeId, hash): void {
-          currentNodeHashes.set(nodeId, hash);
-        },
-      });
+      return computeVirtualDiff(state);
     },
 
     writeTree() {
@@ -539,8 +490,9 @@ export function openVirtualWorkdirSession(
     },
 
     reset(baseTree) {
-      runInWriteTransaction(state, invalidateDiffCaches, () => {
+      runInWriteTransaction(state, null, invalidateDiffCaches, () => {
         state.reset(baseTree);
+        dirtyDirPlanner.clear();
       });
     },
   };
@@ -559,10 +511,18 @@ function getRootNode(state: VirtualWorkdirStateStore): SessionNode {
 
 function runInWriteTransaction<T>(
   state: VirtualWorkdirStateStore,
+  onBeforeCommit: (() => void) | null,
   onCommitted: () => void,
   fn: () => T,
 ): T {
-  const result = state.transact(fn);
+  const result =
+    onBeforeCommit === null
+      ? state.transact(fn)
+      : state.transact(() => {
+          const innerResult = fn();
+          onBeforeCommit();
+          return innerResult;
+        });
   onCommitted();
   return result;
 }
@@ -631,13 +591,17 @@ function cloneNodeGraphForCopy(
   let overlay = cloned.state.overlay;
   const children = listDirectoryChildren(source, state, node, path);
   for (const child of children) {
-    const childNode = state.getNode(child.nodeId);
-    if (childNode === null) {
+    const observedChild = observeListedDirectoryChild(state, path, child);
+    if (observedChild === null) {
       continue;
     }
-    const childPath = path === VIRTUAL_ROOT_PATH ? child.name : `${path}/${child.name}`;
-    const clonedChildId = cloneNodeGraphForCopy(source, state, childNode, childPath);
-    overlay = overlayBindEntry(overlay, child.name, clonedChildId);
+    const clonedChildId = cloneNodeGraphForCopy(
+      source,
+      state,
+      observedChild.node,
+      observedChild.path,
+    );
+    overlay = overlayBindEntry(overlay, observedChild.name, clonedChildId);
   }
 
   state.setNode({

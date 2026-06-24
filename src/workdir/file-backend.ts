@@ -13,28 +13,61 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 
+import { sha1 } from "../core/types.ts";
 import { createRootDirectoryNode, type SessionNode } from "./nodes.ts";
 import { createVirtualWorkdirSessionId } from "./session-id.ts";
 import { openVirtualWorkdirSession } from "./session.ts";
 
 import type { SHA1 } from "../core/types.ts";
 import type { ObjectDatabase } from "../core/types/odb.ts";
+import type { NormalizedChangeRecord } from "./change-index.ts";
 import type {
   CreateVirtualWorkdirSessionOptions,
   VirtualWorkdirBackend,
   VirtualWorkdirSession,
   VirtualWorkdirSessionId,
 } from "./core.ts";
+import type { DirtyDirHashState, DirtyDirSummary } from "./dirty-dir.ts";
 import type { NodeId } from "./ids.ts";
 import type { VirtualWorkdirStateStore } from "./state-store.ts";
 
-const FILE_WORKDIR_MANIFEST_VERSION = 2;
+const FILE_WORKDIR_MANIFEST_VERSION = 5;
 const FILE_WORKDIR_TRANSACTION_SNAPSHOT_SUFFIX = ".txn-snapshot";
 
 interface FileSessionManifest {
   readonly formatVersion: number;
   readonly baseTree: string;
   readonly nodes: Readonly<Record<string, FileNodeRecord>>;
+  readonly changeRecords: readonly FileChangeRecord[];
+  readonly dirtyDirSummaries: readonly FileDirtyDirSummary[];
+}
+
+interface FileChangeRecord {
+  readonly path: string;
+  readonly previous: {
+    readonly kind: "blob" | "symlink";
+    readonly mode: "100644" | "100755" | "120000";
+    readonly hash: string;
+  } | null;
+  readonly current: {
+    readonly kind: "blob" | "symlink";
+    readonly mode: "100644" | "100755" | "120000";
+    readonly hash: string;
+  } | null;
+  readonly source: {
+    readonly kind: "rename" | "copy";
+    readonly path: string;
+  } | null;
+}
+
+interface FileDirtyDirSummary {
+  readonly path: string;
+  readonly isDirty: boolean;
+  readonly dirtyEntryCount: number;
+  readonly dirtyDescendantCount: number;
+  readonly affectedNames: readonly string[];
+  readonly currentTreeHash: string | null;
+  readonly hashState: DirtyDirHashState;
 }
 
 interface FileNodeRecord {
@@ -221,6 +254,69 @@ export function createFileVirtualWorkdirStateStore(
         return { ...manifest, nodes: rest };
       });
     },
+
+    listChangeRecords(): readonly NormalizedChangeRecord[] {
+      return readManifest(manifestPath).changeRecords.map(restoreChangeRecord);
+    },
+
+    getChangeRecord(path: string): NormalizedChangeRecord | null {
+      return (
+        readManifest(manifestPath)
+          .changeRecords.map(restoreChangeRecord)
+          .find((record) => record.path === path) ?? null
+      );
+    },
+
+    setChangeRecord(record: NormalizedChangeRecord): void {
+      updateManifest(sessionDir, (manifest) => {
+        const others = manifest.changeRecords.filter((item) => item.path !== record.path);
+        return {
+          ...manifest,
+          changeRecords: [...others, serializeChangeRecord(record)].sort((left, right) =>
+            left.path.localeCompare(right.path),
+          ),
+        };
+      });
+    },
+
+    deleteChangeRecord(path: string): void {
+      updateManifest(sessionDir, (manifest) => ({
+        ...manifest,
+        changeRecords: manifest.changeRecords.filter((item) => item.path !== path),
+      }));
+    },
+
+    listDirtyDirSummaries(): readonly DirtyDirSummary[] {
+      return readManifest(manifestPath).dirtyDirSummaries.map(restoreDirtyDirSummary);
+    },
+
+    getDirtyDirSummary(path: string): DirtyDirSummary | null {
+      return (
+        readManifest(manifestPath)
+          .dirtyDirSummaries.map(restoreDirtyDirSummary)
+          .find((summary) => summary.path === path) ?? null
+      );
+    },
+
+    setDirtyDirSummary(summary: DirtyDirSummary): void {
+      updateManifest(sessionDir, (manifest) => {
+        const others = manifest.dirtyDirSummaries.filter((item) => item.path !== summary.path);
+        return {
+          ...manifest,
+          dirtyDirSummaries: [...others, serializeDirtyDirSummary(summary)].sort((left, right) =>
+            left.path.localeCompare(right.path),
+          ),
+        };
+      });
+    },
+
+    deleteDirtyDirSummary(path: string): void {
+      updateManifest(sessionDir, (manifest) => ({
+        ...manifest,
+        dirtyDirSummaries: manifest.dirtyDirSummaries.filter((item) => item.path !== path),
+      }));
+    },
+
     reset(baseTree: SHA1): void {
       rmSync(sessionDir, { recursive: true, force: true });
       ensureSessionDirs(sessionDir, contentDir);
@@ -302,6 +398,8 @@ function createManifest(
     formatVersion: FILE_WORKDIR_MANIFEST_VERSION,
     baseTree,
     nodes,
+    changeRecords: [],
+    dirtyDirSummaries: [],
   };
 }
 
@@ -339,6 +437,12 @@ function validateManifest(manifest: FileSessionManifest): void {
     Array.isArray(manifest.nodes)
   ) {
     throw new Error("Invalid virtual workdir manifest nodes");
+  }
+  if (!Array.isArray(manifest.changeRecords)) {
+    throw new Error("Invalid virtual workdir manifest changeRecords");
+  }
+  if (!Array.isArray(manifest.dirtyDirSummaries)) {
+    throw new Error("Invalid virtual workdir manifest dirtyDirSummaries");
   }
   if (manifest.formatVersion !== FILE_WORKDIR_MANIFEST_VERSION) {
     throw new Error(
@@ -543,6 +647,72 @@ function restoreOrigin(record: FileNodeRecord["origin"]): SessionNode["origin"] 
     mode: origin.mode,
     hash: origin.hash as SHA1,
   };
+}
+
+function serializeChangeRecord(record: NormalizedChangeRecord): FileChangeRecord {
+  return {
+    path: record.path,
+    previous: record.previous,
+    current: record.current,
+    source: record.source,
+  };
+}
+
+function restoreChangeRecord(record: FileChangeRecord): NormalizedChangeRecord {
+  return {
+    path: record.path,
+    previous:
+      record.previous === null ? null : { ...record.previous, hash: record.previous.hash as SHA1 },
+    current:
+      record.current === null ? null : { ...record.current, hash: record.current.hash as SHA1 },
+    source: record.source,
+  };
+}
+
+function serializeDirtyDirSummary(summary: DirtyDirSummary): FileDirtyDirSummary {
+  return {
+    path: summary.path,
+    isDirty: summary.isDirty,
+    dirtyEntryCount: summary.dirtyEntryCount,
+    dirtyDescendantCount: summary.dirtyDescendantCount,
+    affectedNames: [...summary.affectedNames],
+    currentTreeHash: summary.currentTreeHash,
+    hashState: summary.hashState,
+  };
+}
+
+function restoreDirtyDirSummary(summary: FileDirtyDirSummary): DirtyDirSummary {
+  return {
+    path: summary.path,
+    isDirty: summary.isDirty,
+    dirtyEntryCount: readDirtyDirCount(summary.dirtyEntryCount, "dirtyEntryCount"),
+    dirtyDescendantCount: readDirtyDirCount(summary.dirtyDescendantCount, "dirtyDescendantCount"),
+    affectedNames: readDirtyDirAffectedNames(summary.affectedNames),
+    currentTreeHash: summary.currentTreeHash === null ? null : sha1(summary.currentTreeHash),
+    hashState: readDirtyDirHashState(summary.hashState),
+  };
+}
+
+function readDirtyDirCount(raw: unknown, field: string): number {
+  if (typeof raw !== "number" || !Number.isInteger(raw) || raw < 0) {
+    throw new Error(`Invalid file workdir dirty dir summary ${field}`);
+  }
+  return raw;
+}
+
+function readDirtyDirAffectedNames(raw: unknown): readonly string[] {
+  if (!Array.isArray(raw) || raw.some((item) => typeof item !== "string")) {
+    throw new Error("Invalid file workdir dirty dir summary affectedNames");
+  }
+  const names = raw as string[];
+  return [...names].sort((left, right) => left.localeCompare(right));
+}
+
+function readDirtyDirHashState(raw: unknown): DirtyDirHashState {
+  if (raw === "stale" || raw === "materialized") {
+    return raw;
+  }
+  throw new Error(`Invalid file workdir dirty dir summary hashState: ${String(raw)}`);
 }
 
 function readPayload(contentDir: string, payloadRef: string): Buffer {

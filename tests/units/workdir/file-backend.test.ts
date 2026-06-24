@@ -288,6 +288,57 @@ describe("createFileVirtualWorkdirBackend()", () => {
     }
   });
 
+  test("dirty dir summary 计数字段会持久化到 manifest", () => {
+    resetVirtualWorkdirSessionIdCounterForTests();
+    const repo = createMemoryRepository();
+    const root = createTempRoot();
+
+    try {
+      const backend = createFileVirtualWorkdirBackend(root);
+      const sessionId = backend.createSession({ baseTree: repo.createTree([]) });
+      const session = backend.openSession(repo.objects, sessionId);
+
+      session.mkdir("src");
+      session.writeFile("src/a.ts", Buffer.from("a1"));
+      session.writeFile("src/b.ts", Buffer.from("b1"));
+
+      const manifest = JSON.parse(readFileSync(getManifestPath(root, sessionId), "utf-8")) as {
+        dirtyDirSummaries: Array<{
+          path: string;
+          isDirty: boolean;
+          dirtyEntryCount: number;
+          dirtyDescendantCount: number;
+          affectedNames: string[];
+          currentTreeHash: string | null;
+          hashState: string;
+        }>;
+      };
+
+      expect(manifest.dirtyDirSummaries).toEqual([
+        {
+          path: "",
+          isDirty: true,
+          dirtyEntryCount: 1,
+          dirtyDescendantCount: 2,
+          affectedNames: ["src"],
+          currentTreeHash: null,
+          hashState: "stale",
+        },
+        {
+          path: "src",
+          isDirty: true,
+          dirtyEntryCount: 2,
+          dirtyDescendantCount: 0,
+          affectedNames: ["a.ts", "b.ts"],
+          currentTreeHash: null,
+          hashState: "stale",
+        },
+      ]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("listSessions 只返回包含 manifest 的 session 目录", () => {
     resetVirtualWorkdirSessionIdCounterForTests();
     const repo = createMemoryRepository();

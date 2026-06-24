@@ -347,6 +347,12 @@ console.log(obj.type); // => "blob"
 bun run examples/demo.ts
 ```
 
+运行 Virtual Workdir diff 基准：
+
+```bash
+bun run bench:workdir-diff
+```
+
 演示脚本展示了：
 
 - SHA-1 哈希计算

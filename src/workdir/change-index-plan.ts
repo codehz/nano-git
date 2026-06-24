@@ -1,0 +1,131 @@
+/**
+ * Virtual Workdir change-index 刷新策略
+ *
+ * 把 session 写路径里的“是否允许增量刷新”判断与
+ * “应该执行哪种 change-index 更新动作”集中到单独模块。
+ */
+
+import { resolvePath } from "./session-internal.ts";
+
+import type { ObjectSource } from "../core/types/odb.ts";
+import type { VirtualWorkdirStateStore } from "./state-store.ts";
+
+/**
+ * change-index 更新计划
+ */
+export type ChangeIndexUpdatePlan =
+  | { readonly kind: "rebuild-all" }
+  | { readonly kind: "refresh-path"; readonly path: string }
+  | { readonly kind: "rewrite-rename"; readonly from: string; readonly to: string }
+  | { readonly kind: "write-copy"; readonly from: string; readonly to: string };
+
+/**
+ * path 增量刷新判定选项
+ */
+export interface ChangeIndexPathRefreshOptions {
+  /** 路径当前缺失时，是否仍允许按“单路径增量”处理 */
+  readonly treatMissingAsIncremental?: boolean;
+}
+
+/**
+ * change-index 刷新动作集合
+ */
+export interface ChangeIndexUpdateActions {
+  rebuildAll(): void;
+  refreshPath(path: string): void;
+  rewriteRename(from: string, to: string): void;
+  writeCopy(from: string, to: string): void;
+}
+
+/**
+ * change-index 刷新策略器
+ */
+export interface ChangeIndexPlanner {
+  apply(plan: ChangeIndexUpdatePlan): void;
+  planRefreshForPath(path: string, options?: ChangeIndexPathRefreshOptions): ChangeIndexUpdatePlan;
+  planRewriteForRename(from: string, to: string): ChangeIndexUpdatePlan;
+  planWriteForCopy(from: string, to: string): ChangeIndexUpdatePlan;
+}
+
+/**
+ * 创建 change-index 刷新策略器。
+ *
+ * @example
+ * ```ts
+ * const planner = createChangeIndexPlanner(source, state, {
+ *   rebuildAll() {},
+ *   refreshPath() {},
+ *   rewriteRename() {},
+ *   writeCopy() {},
+ * });
+ * expect(planner.planRefreshForPath("a.txt").kind).toBe("refresh-path");
+ * ```
+ */
+export function createChangeIndexPlanner(
+  source: ObjectSource,
+  state: VirtualWorkdirStateStore,
+  actions: ChangeIndexUpdateActions,
+): ChangeIndexPlanner {
+  const canIncrementallyRefreshPath = (
+    path: string,
+    options?: ChangeIndexPathRefreshOptions,
+  ): boolean => {
+    const record = state.getChangeRecord(path);
+    if (record !== null && record.source !== null) {
+      return false;
+    }
+
+    const resolved = resolvePath(source, state, path);
+    if (!resolved.found || resolved.node === null) {
+      return options?.treatMissingAsIncremental === true;
+    }
+    return resolved.node.state.kind !== "directory";
+  };
+
+  const canIncrementallyWriteCopy = (from: string): boolean => {
+    const resolved = resolvePath(source, state, from);
+    if (!resolved.found || resolved.node === null) {
+      return false;
+    }
+    return resolved.node.state.kind !== "directory";
+  };
+
+  return {
+    apply(plan): void {
+      switch (plan.kind) {
+        case "rebuild-all":
+          actions.rebuildAll();
+          return;
+        case "refresh-path":
+          actions.refreshPath(plan.path);
+          return;
+        case "rewrite-rename":
+          actions.rewriteRename(plan.from, plan.to);
+          return;
+        case "write-copy":
+          actions.writeCopy(plan.from, plan.to);
+          return;
+      }
+    },
+
+    planRefreshForPath(path, options): ChangeIndexUpdatePlan {
+      return canIncrementallyRefreshPath(path, options)
+        ? { kind: "refresh-path", path }
+        : { kind: "rebuild-all" };
+    },
+
+    planRewriteForRename(from, to): ChangeIndexUpdatePlan {
+      return canIncrementallyRefreshPath(from) &&
+        canIncrementallyRefreshPath(to, { treatMissingAsIncremental: true })
+        ? { kind: "rewrite-rename", from, to }
+        : { kind: "rebuild-all" };
+    },
+
+    planWriteForCopy(from, to): ChangeIndexUpdatePlan {
+      return canIncrementallyWriteCopy(from) &&
+        canIncrementallyRefreshPath(to, { treatMissingAsIncremental: true })
+        ? { kind: "write-copy", from, to }
+        : { kind: "rebuild-all" };
+    },
+  };
+}
