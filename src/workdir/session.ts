@@ -1,7 +1,7 @@
 /**
  * VirtualWorkdirSession 行为编排
  *
- * Phase 3：repo-backed 只读视图；写操作在后续 Phase 补齐。
+ * Phase 4：完整读写视图，含 mkdir/writeFile/writeLink/delete/writeTree。
  */
 
 import {
@@ -9,33 +9,26 @@ import {
   VirtualNotFileError,
   VirtualNotSymlinkError,
   VirtualPathNotFoundError,
+  VirtualPathAlreadyExistsError,
 } from "../core/errors.ts";
-import { originBackedNodeId, VIRTUAL_ROOT_NODE_ID } from "./ids.ts";
+import { VIRTUAL_ROOT_NODE_ID, createNodeId } from "./ids.ts";
 import {
   createVirtualWorkdirMemoryState,
   type VirtualWorkdirMemoryState,
 } from "./memory-backend.ts";
-import {
-  modeToVirtualEntryKind,
-  readRepoBlobContent,
-  readRepoTree,
-  treeEntryToNodeOrigin,
-} from "./origin.ts";
-import {
-  mergeDirectoryChildren,
-  type MergedDirectoryChild,
-  type OriginDirectoryChild,
-} from "./overlay.ts";
+import { modeToVirtualEntryKind, readRepoBlobContent } from "./origin.ts";
+import { overlayBindEntry, overlayTombstoneEntry } from "./overlay.ts";
 import {
   assertValidVirtualPath,
-  joinPath,
   normalizeDirectoryPath,
-  splitPathSegments,
+  parentPath,
+  baseName,
   VIRTUAL_ROOT_PATH,
 } from "./path.ts";
+import { resolvePath, resolveChild, listDirectoryChildren } from "./session-internal.ts";
+import { writeTreeFromSession } from "./write-tree.ts";
 
-import type { TreeEntry } from "../core/types.ts";
-import type { ObjectSource } from "../core/types/odb.ts";
+import type { ObjectDatabase } from "../core/types/odb.ts";
 import type {
   CreateVirtualWorkdirSessionOptions,
   VirtualChange,
@@ -43,15 +36,12 @@ import type {
   VirtualEntryStat,
   VirtualWorkdirSession,
 } from "./core.ts";
-import type { NodeId } from "./ids.ts";
 import type { SessionNode } from "./nodes.ts";
 
 // ==================== 工厂 ====================
 
 /**
- * 基于 ObjectSource 创建 VirtualWorkdirSession
- *
- * memory / file 公开工厂在后续 Phase 复用此函数。
+ * 基于 ObjectDatabase 创建 VirtualWorkdirSession
  *
  * @example
  * ```ts
@@ -62,21 +52,25 @@ import type { SessionNode } from "./nodes.ts";
  * ```
  */
 export function createVirtualWorkdirSession(
-  source: ObjectSource,
+  source: ObjectDatabase,
   options: CreateVirtualWorkdirSessionOptions,
 ): VirtualWorkdirSession {
   const state = createVirtualWorkdirMemoryState(options.baseTree);
   return buildSessionApi(source, state);
 }
 
+// ==================== API 组装 ====================
+
 function buildSessionApi(
-  source: ObjectSource,
+  source: ObjectDatabase,
   state: VirtualWorkdirMemoryState,
 ): VirtualWorkdirSession {
   const api: VirtualWorkdirSession = {
     get baseTree() {
       return state.baseTree;
     },
+
+    // ========== 只读 ==========
 
     exists(path: string): boolean {
       if (path === VIRTUAL_ROOT_PATH) {
@@ -87,13 +81,13 @@ function buildSessionApi(
 
     stat(path: string): VirtualEntryStat | null {
       if (path === VIRTUAL_ROOT_PATH) {
-        return statDirectoryNode(source, state, getRootNode(state), VIRTUAL_ROOT_PATH);
+        return statDirectoryNode(getRootNode(state));
       }
       const resolved = resolvePath(source, state, path);
       if (!resolved.found || resolved.node === null) {
         return null;
       }
-      return statNode(source, state, resolved.node, path);
+      return statNode(source, resolved.node, path);
     },
 
     readdir(dirPath?: string): VirtualDirEntry[] {
@@ -158,15 +152,183 @@ function buildSessionApi(
       throw new VirtualPathNotFoundError(path);
     },
 
-    writeFile: notImplemented,
-    writeLink: notImplemented,
-    mkdir: notImplemented,
-    delete: notImplemented,
+    // ========== 写入 ==========
+
+    mkdir(path: string): void {
+      assertValidVirtualPath(path);
+      const parent = parentPath(path);
+      const name = baseName(path);
+
+      const parentResolved =
+        parent !== null
+          ? resolvePath(source, state, parent)
+          : { found: true, node: getRootNode(state) };
+      if (!parentResolved.found || parentResolved.node === null) {
+        throw new VirtualPathNotFoundError(parent ?? path);
+      }
+      const parentNode = parentResolved.node;
+      if (parentNode.state.kind !== "directory") {
+        throw new VirtualNotDirectoryError(parent ?? path);
+      }
+
+      // 检查是否已存在
+      const existing = resolveChild(source, state, parentNode, parent ?? VIRTUAL_ROOT_PATH, name);
+      if (existing.found && existing.node !== null) {
+        throw new VirtualPathAlreadyExistsError(path);
+      }
+
+      // 创建新目录节点 + 绑定到父 overlay
+      const nodeId = createNodeId();
+      const newNode: SessionNode = {
+        id: nodeId,
+        origin: { kind: "none" },
+        state: {
+          kind: "directory",
+          overlay: { addedEntries: new Map(), deletedNames: new Set() },
+        },
+      };
+      state.nodes.set(nodeId, newNode);
+      updateParentOverlay(
+        state,
+        parentNode.id,
+        overlayBindEntry(parentNode.state.overlay, name, nodeId),
+      );
+
+      state.changeLog.append({ op: "add", path });
+    },
+
+    writeFile(
+      path: string,
+      content: Buffer,
+      options?: { readonly mode?: "100644" | "100755" },
+    ): void {
+      assertValidVirtualPath(path);
+      const mode: "100644" | "100755" = options?.mode ?? "100644";
+      const parent = parentPath(path);
+      const name = baseName(path);
+
+      const parentResolved =
+        parent !== null
+          ? resolvePath(source, state, parent)
+          : { found: true, node: getRootNode(state) };
+      if (!parentResolved.found || parentResolved.node === null) {
+        throw new VirtualPathNotFoundError(parent ?? path);
+      }
+      const parentNode = parentResolved.node;
+      if (parentNode.state.kind !== "directory") {
+        throw new VirtualNotDirectoryError(parent ?? path);
+      }
+
+      // 检查是否已存在且为目录
+      const existing = resolveChild(source, state, parentNode, parent ?? VIRTUAL_ROOT_PATH, name);
+      if (existing.found && existing.node !== null) {
+        if (existing.node.state.kind === "directory") {
+          throw new VirtualNotFileError(path);
+        }
+      }
+
+      const isNew = !existing.found || existing.node === null;
+      const nodeId = existing.found ? existing.node.id : createNodeId();
+
+      const fileNode: SessionNode = {
+        id: nodeId,
+        origin: existing.found ? existing.node.origin : { kind: "none" },
+        state: { kind: "file", mode, content },
+      };
+      state.nodes.set(nodeId, fileNode);
+      updateParentOverlay(
+        state,
+        parentNode.id,
+        overlayBindEntry(parentNode.state.overlay, name, nodeId),
+      );
+
+      state.changeLog.append({ op: isNew ? "add" : "modify", path });
+    },
+
+    writeLink(path: string, target: string): void {
+      assertValidVirtualPath(path);
+      const parent = parentPath(path);
+      const name = baseName(path);
+
+      const parentResolved =
+        parent !== null
+          ? resolvePath(source, state, parent)
+          : { found: true, node: getRootNode(state) };
+      if (!parentResolved.found || parentResolved.node === null) {
+        throw new VirtualPathNotFoundError(parent ?? path);
+      }
+      const parentNode = parentResolved.node;
+      if (parentNode.state.kind !== "directory") {
+        throw new VirtualNotDirectoryError(parent ?? path);
+      }
+
+      const existing = resolveChild(source, state, parentNode, parent ?? VIRTUAL_ROOT_PATH, name);
+      if (existing.found && existing.node !== null) {
+        if (existing.node.state.kind === "directory") {
+          throw new VirtualNotFileError(path);
+        }
+      }
+
+      const isNew = !existing.found || existing.node === null;
+      const nodeId = existing.found ? existing.node.id : createNodeId();
+
+      const linkNode: SessionNode = {
+        id: nodeId,
+        origin: existing.found ? existing.node.origin : { kind: "none" },
+        state: { kind: "symlink", mode: "120000", target: Buffer.from(target) },
+      };
+      state.nodes.set(nodeId, linkNode);
+      updateParentOverlay(
+        state,
+        parentNode.id,
+        overlayBindEntry(parentNode.state.overlay, name, nodeId),
+      );
+
+      state.changeLog.append({ op: isNew ? "add" : "modify", path });
+    },
+
+    delete(path: string): void {
+      assertValidVirtualPath(path);
+      const parent = parentPath(path);
+      const name = baseName(path);
+
+      const parentResolved =
+        parent !== null
+          ? resolvePath(source, state, parent)
+          : { found: true, node: getRootNode(state) };
+      if (!parentResolved.found || parentResolved.node === null) {
+        throw new VirtualPathNotFoundError(parent ?? path);
+      }
+      const parentNode = parentResolved.node;
+      if (parentNode.state.kind !== "directory") {
+        throw new VirtualNotDirectoryError(parent ?? path);
+      }
+
+      // 确认目标存在
+      const existing = resolveChild(source, state, parentNode, parent ?? VIRTUAL_ROOT_PATH, name);
+      if (!existing.found || existing.node === null) {
+        throw new VirtualPathNotFoundError(path);
+      }
+
+      updateParentOverlay(
+        state,
+        parentNode.id,
+        overlayTombstoneEntry(parentNode.state.overlay, name),
+      );
+
+      state.changeLog.append({ op: "delete", path });
+    },
+
     rename: notImplemented,
     copy: notImplemented,
     revert: notImplemented,
-    writeTree: notImplemented,
+
+    writeTree() {
+      return writeTreeFromSession(source, state);
+    },
+
     reset: notImplemented,
+
     listChanges(): VirtualChange[] {
       return state.changeLog.toVirtualChanges();
     },
@@ -179,11 +341,7 @@ function notImplemented(): never {
   throw new Error("Virtual workdir: operation not implemented in this phase");
 }
 
-// ==================== 路径解析 ====================
-
-type ResolveResult =
-  | { readonly found: false; readonly node: null }
-  | { readonly found: true; readonly node: SessionNode };
+// ==================== 辅助 ====================
 
 function getRootNode(state: VirtualWorkdirMemoryState): SessionNode {
   const root = state.nodes.get(VIRTUAL_ROOT_NODE_ID);
@@ -193,106 +351,27 @@ function getRootNode(state: VirtualWorkdirMemoryState): SessionNode {
   return root;
 }
 
-function resolvePath(
-  source: ObjectSource,
+/**
+ * 更新父节点的 overlay（创建新节点对象替代 Map 中的旧引用）
+ */
+function updateParentOverlay(
   state: VirtualWorkdirMemoryState,
-  path: string,
-): ResolveResult {
-  assertValidVirtualPath(path);
-  const segments = splitPathSegments(path);
-  let current = getRootNode(state);
-  let currentPath = VIRTUAL_ROOT_PATH;
-
-  for (const segment of segments) {
-    if (current.state.kind !== "directory") {
-      return { found: false, node: null };
-    }
-    const children = listDirectoryChildren(source, state, current, currentPath);
-    const child = children.find((c) => c.name === segment);
-    if (child === undefined) {
-      return { found: false, node: null };
-    }
-    currentPath = joinPath(currentPath === VIRTUAL_ROOT_PATH ? null : currentPath, segment);
-    const childNode = state.nodes.get(child.nodeId);
-    if (childNode === undefined) {
-      return { found: false, node: null };
-    }
-    current = childNode;
+  parentId: import("./ids.ts").NodeId,
+  newOverlay: import("./overlay.ts").DirectoryOverlay,
+): void {
+  const parentNode = state.nodes.get(parentId);
+  if (!parentNode || parentNode.state.kind !== "directory") {
+    throw new Error("updateParentOverlay: parent is not a directory");
   }
-
-  return { found: true, node: current };
+  state.nodes.set(parentId, {
+    ...parentNode,
+    state: { ...parentNode.state, overlay: newOverlay },
+  });
 }
 
-function ensureNodeFromTreeEntry(state: VirtualWorkdirMemoryState, entry: TreeEntry): NodeId {
-  const id = originBackedNodeId(entry.hash);
-  if (!state.nodes.has(id)) {
-    const origin = treeEntryToNodeOrigin(entry);
-    let nodeState: SessionNode["state"];
-    if (entry.mode === "40000") {
-      nodeState = {
-        kind: "directory",
-        overlay: { addedEntries: new Map(), deletedNames: new Set() },
-      };
-    } else if (entry.mode === "120000") {
-      nodeState = { kind: "symlink", mode: "120000" };
-    } else {
-      const mode = entry.mode === "100755" ? "100755" : "100644";
-      nodeState = { kind: "file", mode };
-    }
-    state.nodes.set(id, { id, origin, state: nodeState });
-  }
-  return id;
-}
-
-function listDirectoryChildren(
-  source: ObjectSource,
-  state: VirtualWorkdirMemoryState,
-  dirNode: SessionNode,
-  dirPath: string,
-): MergedDirectoryChild[] {
-  if (dirNode.state.kind !== "directory") {
-    throw new VirtualNotDirectoryError(dirPath);
-  }
-
-  let originChildren: OriginDirectoryChild[] = [];
-  if (dirNode.origin.kind === "repo-tree") {
-    const tree = readRepoTree(source, dirNode.origin.hash, dirPath);
-    originChildren = tree.entries.map((entry) => {
-      const nodeId = ensureNodeFromTreeEntry(state, entry);
-      return { name: entry.name, mode: entry.mode, nodeId };
-    });
-  }
-
-  const addedModes = new Map<string, string>();
-  for (const name of dirNode.state.overlay.addedEntries.keys()) {
-    const nodeId = dirNode.state.overlay.addedEntries.get(name)!;
-    const node = state.nodes.get(nodeId);
-    if (node !== undefined) {
-      addedModes.set(name, sessionNodeMode(node));
-    }
-  }
-
-  return mergeDirectoryChildren(originChildren, dirNode.state.overlay, addedModes);
-}
-
-function sessionNodeMode(node: SessionNode): string {
+function statNode(source: ObjectDatabase, node: SessionNode, path: string): VirtualEntryStat {
   if (node.state.kind === "directory") {
-    return "40000";
-  }
-  if (node.state.kind === "symlink") {
-    return "120000";
-  }
-  return node.state.mode;
-}
-
-function statNode(
-  source: ObjectSource,
-  state: VirtualWorkdirMemoryState,
-  node: SessionNode,
-  path: string,
-): VirtualEntryStat {
-  if (node.state.kind === "directory") {
-    return statDirectoryNode(source, state, node, path);
+    return statDirectoryNode(node);
   }
   if (node.state.kind === "symlink") {
     const hash = node.origin.kind === "repo-blob" ? node.origin.hash : null;
@@ -314,12 +393,7 @@ function statNode(
   return { kind: "blob", mode: node.state.mode, size, hash };
 }
 
-function statDirectoryNode(
-  source: ObjectSource,
-  _state: VirtualWorkdirMemoryState,
-  node: SessionNode,
-  _path: string,
-): VirtualEntryStat {
+function statDirectoryNode(node: SessionNode): VirtualEntryStat {
   const hash = node.origin.kind === "repo-tree" ? node.origin.hash : null;
   return { kind: "tree", mode: "40000", size: 0, hash };
 }

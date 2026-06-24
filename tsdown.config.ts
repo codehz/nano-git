@@ -37,6 +37,7 @@ export default defineConfig({
     "src/transport/http/index.ts",
     "src/transport/server/upload-pack/index.ts",
     "src/transport/server/receive-pack/index.ts",
+    "src/workdir/memory.ts",
     "src/workdir/core.ts",
   ],
   format: ["esm"],
