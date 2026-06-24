@@ -43,7 +43,9 @@
     "./transport/server/upload-pack": "./src/transport/server/upload-pack/index.ts",
     "./transport/upload-pack": "./src/transport/upload-pack.ts",
     "./workdir/core": "./src/workdir/core.ts",
-    "./workdir/memory": "./src/workdir/memory.ts"
+    "./workdir/file": "./src/workdir/file.ts",
+    "./workdir/memory": "./src/workdir/memory.ts",
+    "./workdir/sqlite": "./src/workdir/sqlite.ts"
   },
   "publishConfig": {
     "exports": {
@@ -83,7 +85,9 @@
       "./transport/server/upload-pack": "./dist/transport/server/upload-pack/index.mjs",
       "./transport/upload-pack": "./dist/transport/upload-pack.mjs",
       "./workdir/core": "./dist/workdir/core.mjs",
-      "./workdir/memory": "./dist/workdir/memory.mjs"
+      "./workdir/file": "./dist/workdir/file.mjs",
+      "./workdir/memory": "./dist/workdir/memory.mjs",
+      "./workdir/sqlite": "./dist/workdir/sqlite.mjs"
     }
   },
   "scripts": {

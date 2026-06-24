@@ -55,16 +55,25 @@ export function createVirtualChangeLog(): VirtualChangeLog {
       return records.slice();
     },
     toVirtualChanges(): VirtualChange[] {
-      const out: VirtualChange[] = [];
-      for (const record of records) {
-        const mapped = mapInternalToVirtual(record);
-        if (mapped !== null) {
-          out.push(mapped);
-        }
-      }
-      return out;
+      return mapInternalChangesToVirtualChanges(records);
     },
   };
+}
+
+/**
+ * 将内部变更记录映射为公开 VirtualChange 列表
+ */
+export function mapInternalChangesToVirtualChanges(
+  records: readonly InternalChangeRecord[],
+): VirtualChange[] {
+  const out: VirtualChange[] = [];
+  for (const record of records) {
+    const mapped = mapInternalToVirtual(record);
+    if (mapped !== null) {
+      out.push(mapped);
+    }
+  }
+  return out;
 }
 
 function mapInternalToVirtual(record: InternalChangeRecord): VirtualChange | null {

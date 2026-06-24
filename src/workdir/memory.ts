@@ -1,20 +1,9 @@
 /**
- * 内存 VirtualWorkdir Session 便捷创建函数
+ * 内存 Virtual Workdir 入口
  *
  * 对应 `nano-git/workdir/memory` 子路径。
- * 基于内存仓库的 objects（ObjectDatabase）创建可变 tree 视图。
- *
- * @example
- * ```ts
- * import { createMemoryRepository } from "nano-git/repository/memory";
- * import { createVirtualWorkdirSession } from "nano-git/workdir/memory";
- *
- * const repo = createMemoryRepository();
- * const tree = repo.createTree([]);
- * const session = createVirtualWorkdirSession(repo.objects, { baseTree: tree });
- * session.writeFile("a.txt", Buffer.from("hello"));
- * const newTree = session.writeTree();
- * ```
+ * 该入口不提供跨进程持久化与恢复能力。
  */
 
-export { createVirtualWorkdirSession } from "./session.ts";
+export { createMemoryVirtualWorkdirBackend } from "./memory-backend.ts";
+export { createVirtualWorkdirSession, openVirtualWorkdirSession } from "./session.ts";

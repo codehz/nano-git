@@ -11,10 +11,12 @@ import {
   VirtualRevertNotSupportedError,
 } from "@/core/errors.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
-import { createVirtualWorkdirSession } from "@/workdir/session.ts";
+import { createVirtualWorkdirMemoryStateStore } from "@/workdir/memory-backend.ts";
+import { createVirtualWorkdirSession, openVirtualWorkdirSession } from "@/workdir/session.ts";
 
 import type { GitTree } from "@/core/types.ts";
 import type { Repository } from "@/repository/types.ts";
+import type { VirtualWorkdirStateStore } from "@/workdir/state-store.ts";
 
 /** 读取 tree 对象（类型断言辅助） */
 function readTree(repo: Repository, hash: string): GitTree {
@@ -149,6 +151,57 @@ describe("writeFile", () => {
     session.mkdir("a/b");
     session.writeFile("a/b/f.txt", Buffer.from("deep"));
     expect(session.readFile("a/b/f.txt").toString()).toBe("deep");
+  });
+
+  test("写入中途失败时回滚到调用前状态", () => {
+    const repo = createMemoryRepository();
+    const baseTree = repo.createTree([]);
+    const inner = createVirtualWorkdirMemoryStateStore(baseTree);
+    let failOnAppend = true;
+    const store: VirtualWorkdirStateStore = {
+      kind: inner.kind,
+      transact<T>(fn: () => T): T {
+        return inner.transact(fn);
+      },
+      readBaseTree(): import("@/core/types.ts").SHA1 {
+        return inner.readBaseTree();
+      },
+      writeBaseTree(nextBaseTree): void {
+        inner.writeBaseTree(nextBaseTree);
+      },
+      getNode(id) {
+        return inner.getNode(id);
+      },
+      setNode(node): void {
+        inner.setNode(node);
+      },
+      deleteNode(id): void {
+        inner.deleteNode(id);
+      },
+      appendChange(record): void {
+        if (failOnAppend) {
+          failOnAppend = false;
+          throw new Error("append failed");
+        }
+        inner.appendChange(record);
+      },
+      listChangeRecords() {
+        return inner.listChangeRecords();
+      },
+      clearChanges(): void {
+        inner.clearChanges();
+      },
+      reset(nextBaseTree): void {
+        inner.reset(nextBaseTree);
+      },
+    };
+
+    const session = openVirtualWorkdirSession(repo.objects, store);
+
+    expect(() => session.writeFile("broken.txt", Buffer.from("data"))).toThrow(/append failed/);
+    expect(session.exists("broken.txt")).toBe(false);
+    expect(session.listChanges()).toEqual([]);
+    expect(inner.readBaseTree()).toBe(baseTree);
   });
 });
 

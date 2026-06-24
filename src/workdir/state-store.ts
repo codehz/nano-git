@@ -1,0 +1,58 @@
+/**
+ * Virtual Workdir 内部状态存储抽象
+ *
+ * 供 session 编排层、路径解析层、write-tree 共享使用。
+ * 目标是让 memory / file / sqlite backend 复用同一套行为逻辑。
+ */
+
+import type { SHA1 } from "../core/types.ts";
+import type { InternalChangeRecord } from "./change-log.ts";
+import type { NodeId } from "./ids.ts";
+import type { SessionNode } from "./nodes.ts";
+
+/**
+ * Virtual Workdir 内部状态存储接口
+ */
+export interface VirtualWorkdirStateStore {
+  /** 后端类型 */
+  readonly kind: "memory" | "file" | "sqlite";
+
+  /**
+   * 在单次提交边界内执行状态变更
+   *
+   * 用于把一次 session 写操作封装为单个内部事务。
+   * 若回调抛错，store 应尽力恢复到调用前状态。
+   */
+  transact<T>(fn: () => T): T;
+
+  /** 读取当前基线 tree */
+  readBaseTree(): SHA1;
+
+  /** 覆盖当前基线 tree */
+  writeBaseTree(baseTree: SHA1): void;
+
+  /** 读取节点，不存在时返回 null */
+  getNode(id: NodeId): SessionNode | null;
+
+  /** 写入或覆盖节点 */
+  setNode(node: SessionNode): void;
+
+  /** 删除节点 */
+  deleteNode(id: NodeId): void;
+
+  /** 追加内部变更记录 */
+  appendChange(record: InternalChangeRecord): void;
+
+  /** 列出内部变更记录快照 */
+  listChangeRecords(): readonly InternalChangeRecord[];
+
+  /** 清空变更记录 */
+  clearChanges(): void;
+
+  /**
+   * 重置为新的基线 tree
+   *
+   * 需要同时清空节点状态与变更记录，并重新建立根节点。
+   */
+  reset(baseTree: SHA1): void;
+}

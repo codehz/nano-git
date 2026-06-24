@@ -13,8 +13,8 @@ import { listDirectoryChildren } from "./session-internal.ts";
 
 import type { SHA1, TreeEntry } from "../core/types.ts";
 import type { ObjectDatabase, ObjectSource } from "../core/types/odb.ts";
-import type { VirtualWorkdirMemoryState } from "./memory-backend.ts";
 import type { SessionNode } from "./nodes.ts";
+import type { VirtualWorkdirStateStore } from "./state-store.ts";
 
 // ==================== 公开 API ====================
 
@@ -35,10 +35,10 @@ import type { SessionNode } from "./nodes.ts";
  */
 export function writeTreeFromSession(
   source: ObjectDatabase,
-  state: VirtualWorkdirMemoryState,
+  state: VirtualWorkdirStateStore,
 ): SHA1 {
-  const root = state.nodes.get("root" as import("./ids.ts").NodeId);
-  if (!root || root.state.kind !== "directory") {
+  const root = state.getNode("root" as import("./ids.ts").NodeId);
+  if (root === null || root.state.kind !== "directory") {
     throw new Error("Virtual workdir: root node is missing or not a directory");
   }
   return compileDirectory(source, source, state, root);
@@ -54,7 +54,7 @@ export function writeTreeFromSession(
 function compileDirectory(
   writeSource: ObjectDatabase,
   readSource: ObjectSource,
-  state: VirtualWorkdirMemoryState,
+  state: VirtualWorkdirStateStore,
   dirNode: SessionNode,
 ): SHA1 {
   if (dirNode.state.kind !== "directory") {
@@ -66,8 +66,8 @@ function compileDirectory(
   const newEntries: TreeEntry[] = [];
 
   for (const child of children) {
-    const node = state.nodes.get(child.nodeId);
-    if (!node) {
+    const node = state.getNode(child.nodeId);
+    if (node === null) {
       continue;
     }
 

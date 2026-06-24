@@ -39,6 +39,8 @@ export default defineConfig({
     "src/transport/server/receive-pack/index.ts",
     "src/workdir/memory.ts",
     "src/workdir/core.ts",
+    "src/workdir/sqlite.ts",
+    "src/workdir/file.ts",
   ],
   format: ["esm"],
   dts: true,

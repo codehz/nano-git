@@ -16,9 +16,9 @@ import { assertValidVirtualPath, joinPath, splitPathSegments, VIRTUAL_ROOT_PATH 
 import type { TreeEntry } from "../core/types.ts";
 import type { ObjectSource } from "../core/types/odb.ts";
 import type { NodeId } from "./ids.ts";
-import type { VirtualWorkdirMemoryState } from "./memory-backend.ts";
 import type { SessionNode } from "./nodes.ts";
 import type { MergedDirectoryChild, OriginDirectoryChild } from "./overlay.ts";
+import type { VirtualWorkdirStateStore } from "./state-store.ts";
 
 // ==================== 路径解析 ====================
 
@@ -26,9 +26,9 @@ export type ResolveResult =
   | { readonly found: false; readonly node: null }
   | { readonly found: true; readonly node: SessionNode };
 
-function getRootNode(state: VirtualWorkdirMemoryState): SessionNode {
-  const root = state.nodes.get(VIRTUAL_ROOT_NODE_ID);
-  if (root === undefined) {
+function getRootNode(state: VirtualWorkdirStateStore): SessionNode {
+  const root = state.getNode(VIRTUAL_ROOT_NODE_ID);
+  if (root === null) {
     throw new Error("Virtual workdir session is missing root node");
   }
   return root;
@@ -39,7 +39,7 @@ function getRootNode(state: VirtualWorkdirMemoryState): SessionNode {
  */
 export function resolvePath(
   source: ObjectSource,
-  state: VirtualWorkdirMemoryState,
+  state: VirtualWorkdirStateStore,
   path: string,
 ): ResolveResult {
   assertValidVirtualPath(path);
@@ -57,8 +57,8 @@ export function resolvePath(
       return { found: false, node: null };
     }
     currentPath = joinPath(currentPath === VIRTUAL_ROOT_PATH ? null : currentPath, segment);
-    const childNode = state.nodes.get(child.nodeId);
-    if (childNode === undefined) {
+    const childNode = state.getNode(child.nodeId);
+    if (childNode === null) {
       return { found: false, node: null };
     }
     current = childNode;
@@ -72,7 +72,7 @@ export function resolvePath(
  */
 export function resolveChild(
   source: ObjectSource,
-  state: VirtualWorkdirMemoryState,
+  state: VirtualWorkdirStateStore,
   parentNode: SessionNode,
   parentPath: string,
   name: string,
@@ -85,8 +85,8 @@ export function resolveChild(
   if (child === undefined) {
     return { found: false, node: null };
   }
-  const childNode = state.nodes.get(child.nodeId);
-  if (childNode === undefined) {
+  const childNode = state.getNode(child.nodeId);
+  if (childNode === null) {
     return { found: false, node: null };
   }
   return { found: true, node: childNode };
@@ -97,12 +97,9 @@ export function resolveChild(
 /**
  * 确保 origin 条目对应的 session 节点已懒注册
  */
-export function ensureNodeFromTreeEntry(
-  state: VirtualWorkdirMemoryState,
-  entry: TreeEntry,
-): NodeId {
+export function ensureNodeFromTreeEntry(state: VirtualWorkdirStateStore, entry: TreeEntry): NodeId {
   const id = originBackedNodeId(entry.hash);
-  if (!state.nodes.has(id)) {
+  if (state.getNode(id) === null) {
     const origin = treeEntryToNodeOrigin(entry);
     let nodeState: SessionNode["state"];
     if (entry.mode === "40000") {
@@ -116,7 +113,7 @@ export function ensureNodeFromTreeEntry(
       const mode: "100644" | "100755" = entry.mode === "100755" ? "100755" : "100644";
       nodeState = { kind: "file", mode };
     }
-    state.nodes.set(id, { id, origin, state: nodeState });
+    state.setNode({ id, origin, state: nodeState });
   }
   return id;
 }
@@ -126,7 +123,7 @@ export function ensureNodeFromTreeEntry(
  */
 export function listDirectoryChildren(
   source: ObjectSource,
-  state: VirtualWorkdirMemoryState,
+  state: VirtualWorkdirStateStore,
   dirNode: SessionNode,
   dirPath: string,
 ): MergedDirectoryChild[] {
@@ -152,7 +149,7 @@ export function listDirectoryChildren(
  * 构建 overlay addedEntries 对应的 mode map
  */
 export function buildAddedModes(
-  state: VirtualWorkdirMemoryState,
+  state: VirtualWorkdirStateStore,
   dirNode: SessionNode,
 ): ReadonlyMap<string, string> {
   if (dirNode.state.kind !== "directory") {
@@ -161,8 +158,8 @@ export function buildAddedModes(
   const addedModes = new Map<string, string>();
   for (const name of dirNode.state.overlay.addedEntries.keys()) {
     const nodeId = dirNode.state.overlay.addedEntries.get(name)!;
-    const node = state.nodes.get(nodeId);
-    if (node !== undefined) {
+    const node = state.getNode(nodeId);
+    if (node !== null) {
       addedModes.set(name, sessionNodeMode(node));
     }
   }

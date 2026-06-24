@@ -11,6 +11,7 @@
  */
 
 import type { SHA1 } from "../core/types.ts";
+import type { ObjectDatabase } from "../core/types/odb.ts";
 
 export {
   VirtualPathNotFoundError,
@@ -99,6 +100,11 @@ export interface CreateVirtualWorkdirSessionOptions {
   readonly baseTree: SHA1;
 }
 
+/**
+ * Virtual Workdir session 标识
+ */
+export type VirtualWorkdirSessionId = string & { readonly __brand: "VirtualWorkdirSessionId" };
+
 // ==================== Session 公共接口 ====================
 
 /**
@@ -106,6 +112,10 @@ export interface CreateVirtualWorkdirSessionOptions {
  *
  * 提供独立生命周期的可变 tree 视图，基于 `baseTree + CoW overlay` 模型。
  * 不绑定 commit，不涉及 Git index / 真实工作目录。
+ *
+ * 当前 session 对 origin 仓库对象采用弱保证：
+ * 如果 base tree / origin blob 在后续被移除、损坏或不可读取，
+ * 相关读取、`revert()`、`writeTree()` 等操作会抛出 `VirtualOriginUnavailableError`。
  *
  * @example
  * ```ts
@@ -217,10 +227,25 @@ export interface VirtualWorkdirSession {
  * session 内部状态存储的抽象接口。
  * memory / file / sqlite 后端通过实现此接口来提供不同的持久化策略。
  *
+ * `file` / `sqlite` 持久化 backend 当前都按单进程、单写者场景收口；
+ * 不承诺跨进程并发写安全，也不提供多写者协调协议。
+ *
  * 本接口在后续 Phase 中会逐步补充完整方法签名。
  * 当前仅为命名冻结与角色声明。
  */
 export interface VirtualWorkdirBackend {
   /** 后端类型标识 */
   readonly kind: "memory" | "file" | "sqlite";
+
+  /** 创建新 session 并返回其标识 */
+  createSession(options: CreateVirtualWorkdirSessionOptions): VirtualWorkdirSessionId;
+
+  /** 打开已存在的 session */
+  openSession(source: ObjectDatabase, sessionId: VirtualWorkdirSessionId): VirtualWorkdirSession;
+
+  /** 删除 session */
+  deleteSession(sessionId: VirtualWorkdirSessionId): void;
+
+  /** 列出当前后端中可完整恢复的 session */
+  listSessions(): VirtualWorkdirSessionId[];
 }
