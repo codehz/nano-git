@@ -23,6 +23,7 @@ import type {
   ImportView,
   ImportSession,
   ImportPlanBuilder,
+  RepoImportOperations,
 } from "./import-session-types.ts";
 
 // ============================================================================
@@ -142,7 +143,7 @@ export function createRepoImportOperations(
   backend: RepositoryBackend,
   transportFactory?: (url: string) => UploadPackTransport,
   testV2Transport?: V2GitServiceTransport,
-): import("./import-session-types.ts").RepoImportOperations {
+): RepoImportOperations {
   return {
     async openImportSession(source: ImportSource): Promise<ImportSession> {
       const v2Transport =

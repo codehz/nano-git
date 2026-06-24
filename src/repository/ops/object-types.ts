@@ -3,6 +3,7 @@
  */
 
 import type { GitAuthor, GitObject, SHA1, TreeEntry } from "../../core/types.ts";
+import type { ObjectInfoQueryResult } from "../../transport/client/upload-pack/object-info.ts";
 import type { TreePatchOp, TreePatchResult } from "../tree/tree-patch.ts";
 
 /**
@@ -102,11 +103,7 @@ export interface RepositoryObjectOperations {
    * console.log(result.objects[0]?.size); // 文件大小
    * ```
    */
-  fetchObjectInfo(
-    url: string,
-    oids: string[],
-    token?: string,
-  ): Promise<import("../../transport/client/upload-pack/object-info.ts").ObjectInfoQueryResult>;
+  fetchObjectInfo(url: string, oids: string[], token?: string): Promise<ObjectInfoQueryResult>;
 }
 
 /**

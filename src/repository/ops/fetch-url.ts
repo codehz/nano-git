@@ -8,7 +8,11 @@ import { parseRefSpec } from "../../transport/protocol/refspec.ts";
 import { createRepoImportOperations } from "../import/import-session.ts";
 
 import type { RepositoryBackend } from "../../backend/types.ts";
-import type { ImportSession } from "../import/import-session-types.ts";
+import type {
+  ImportSession,
+  ImportSource,
+  ImportApplyResult,
+} from "../import/import-session-types.ts";
 import type {
   RepositoryFetchOptions,
   RepositoryFetchResult,
@@ -25,7 +29,7 @@ export async function runFetchToUrl(
 ): Promise<RepositoryFetchResult> {
   // 创建 ImportSession（内部会拉取 advertisement）
   const ops = createRepoImportOperations(backend);
-  const source: import("../import/import-session-types.ts").ImportSource = {
+  const source: ImportSource = {
     url,
     token: options?.token,
     headers: options?.headers,
@@ -106,9 +110,7 @@ async function applyCustomRefSpecs(
   return convertToFetchResult(result);
 }
 
-function convertToFetchResult(
-  result: import("../import/import-session-types.ts").ImportApplyResult,
-): RepositoryFetchResult {
+function convertToFetchResult(result: ImportApplyResult): RepositoryFetchResult {
   const updatedRefs: FetchRefUpdateResult[] = [];
 
   for (const [refName, newHash] of result.updatedRefs) {

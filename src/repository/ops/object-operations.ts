@@ -22,6 +22,7 @@ import type {
   TreeEntry,
 } from "../../core/types.ts";
 import type { ObjectDatabase } from "../../odb/types.ts";
+import type { ObjectInfoQueryResult } from "../../transport/client/upload-pack/object-info.ts";
 import type { RepositoryObjectOperations } from "./object-types.ts";
 
 /**
@@ -91,7 +92,7 @@ export function createObjectRepositoryOperations(
       url: string,
       oids: string[],
       token?: string,
-    ): Promise<import("../../transport/client/upload-pack/object-info.ts").ObjectInfoQueryResult> {
+    ): Promise<ObjectInfoQueryResult> {
       const transport = createV2HttpTransport(url, { token });
       return objectInfo(transport, oids);
     },

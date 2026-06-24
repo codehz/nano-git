@@ -46,6 +46,7 @@ import type {
   RefAdvertisement,
   PushOptions,
   PushResult,
+  PushRefUpdate,
 } from "../../protocol/types.ts";
 
 // ============================================================================
@@ -136,7 +137,7 @@ export async function push(
 
   // 9. 发送请求并解码响应
   let progress: string[];
-  let refUpdates: import("../../protocol/types.ts").PushRefUpdate[];
+  let refUpdates: PushRefUpdate[];
   try {
     const raw = await transport.request(body);
     const decoded = decodeReceivePackResponse(raw);
