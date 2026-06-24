@@ -20,6 +20,7 @@ export default defineConfig({
     "src/refs/shallow/file.ts",
     "src/refs/shallow/sqlite.ts",
     "src/remote/http.ts",
+    "src/log/index.ts",
     "src/backend/index.ts",
     "src/backend/memory.ts",
     "src/backend/file.ts",
