@@ -1,5 +1,34 @@
 import { defineConfig } from "tsdown";
 
+function addTypesExport(exports: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(exports).map(([key, value]) => {
+      if (typeof value !== "string") {
+        return [key, value];
+      }
+      if (key === "./package.json") {
+        return [key, value];
+      }
+
+      if (value.endsWith(".mjs")) {
+        return [
+          key,
+          {
+            types: value.replace(/\.mjs$/u, ".d.mts"),
+            default: value,
+          },
+        ];
+      }
+
+      if (value.endsWith(".ts")) {
+        return [key, value];
+      }
+
+      return [key, value];
+    }),
+  );
+}
+
 export default defineConfig({
   entry: [
     "src/index.ts",
@@ -53,6 +82,9 @@ export default defineConfig({
   exports: {
     packageJson: false,
     devExports: true,
+    customExports(exports) {
+      return addTypesExport(exports);
+    },
   },
   deps: {
     neverBundle: ["bun:sqlite"],
