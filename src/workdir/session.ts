@@ -1,7 +1,7 @@
 /**
  * VirtualWorkdirSession 行为编排
  *
- * Phase 4：完整读写视图，含 mkdir/writeFile/writeLink/delete/writeTree。
+ * Phase 5：完整文件/目录 rename 与 copy 语义。
  */
 
 import {
@@ -16,8 +16,9 @@ import {
   createVirtualWorkdirMemoryState,
   type VirtualWorkdirMemoryState,
 } from "./memory-backend.ts";
+import { cloneSessionNodeForCopy, type SessionNode } from "./nodes.ts";
 import { modeToVirtualEntryKind, readRepoBlobContent } from "./origin.ts";
-import { overlayBindEntry, overlayTombstoneEntry } from "./overlay.ts";
+import { overlayBindEntry, overlayTombstoneEntry, overlayRenameEntry } from "./overlay.ts";
 import {
   assertValidVirtualPath,
   normalizeDirectoryPath,
@@ -36,7 +37,6 @@ import type {
   VirtualEntryStat,
   VirtualWorkdirSession,
 } from "./core.ts";
-import type { SessionNode } from "./nodes.ts";
 
 // ==================== 工厂 ====================
 
@@ -319,8 +319,181 @@ function buildSessionApi(
       state.changeLog.append({ op: "delete", path });
     },
 
-    rename: notImplemented,
-    copy: notImplemented,
+    rename(from: string, to: string): void {
+      assertValidVirtualPath(from);
+      assertValidVirtualPath(to);
+
+      if (from === to) {
+        return;
+      }
+
+      // 解析源路径
+      const fromParent = parentPath(from);
+      const fromName = baseName(from);
+      const fromParentResolved =
+        fromParent !== null
+          ? resolvePath(source, state, fromParent)
+          : { found: true, node: getRootNode(state) };
+      if (!fromParentResolved.found || fromParentResolved.node === null) {
+        throw new VirtualPathNotFoundError(from);
+      }
+      const fromParentNode = fromParentResolved.node;
+      if (fromParentNode.state.kind !== "directory") {
+        throw new VirtualNotDirectoryError(from);
+      }
+
+      // 确认源存在
+      const fromChild = resolveChild(
+        source,
+        state,
+        fromParentNode,
+        fromParent ?? VIRTUAL_ROOT_PATH,
+        fromName,
+      );
+      if (!fromChild.found || fromChild.node === null) {
+        throw new VirtualPathNotFoundError(from);
+      }
+      const sourceNode = fromChild.node;
+
+      // 解析目标父目录
+      const toParent = parentPath(to);
+      const toName = baseName(to);
+      const toParentResolved =
+        toParent !== null
+          ? resolvePath(source, state, toParent)
+          : { found: true, node: getRootNode(state) };
+      if (!toParentResolved.found || toParentResolved.node === null) {
+        throw new VirtualPathNotFoundError(to);
+      }
+      const toParentNode = toParentResolved.node;
+      if (toParentNode.state.kind !== "directory") {
+        throw new VirtualNotDirectoryError(to);
+      }
+
+      // 检查目标是否已存在
+      const toExisting = resolveChild(
+        source,
+        state,
+        toParentNode,
+        toParent ?? VIRTUAL_ROOT_PATH,
+        toName,
+      );
+      if (toExisting.found && toExisting.node !== null) {
+        throw new VirtualPathAlreadyExistsError(to);
+      }
+
+      // 检查 rename 是否将目录移入自身子目录
+      if (sourceNode.state.kind === "directory") {
+        const toPath = to;
+        const fromPath = from;
+        if (toPath.startsWith(fromPath + "/") || toPath === fromPath) {
+          throw new Error(
+            `Cannot rename '${from}' to '${to}': destination is a subdirectory of source`,
+          );
+        }
+      }
+
+      if (fromParentNode.id === toParentNode.id) {
+        // 同目录 rename：单次 overlayRenameEntry 操作
+        updateParentOverlay(
+          state,
+          fromParentNode.id,
+          overlayRenameEntry(fromParentNode.state.overlay, fromName, toName, sourceNode.id),
+        );
+      } else {
+        // 跨目录 rename：先解绑源，再绑定目标
+        updateParentOverlay(
+          state,
+          fromParentNode.id,
+          overlayTombstoneEntry(fromParentNode.state.overlay, fromName),
+        );
+        updateParentOverlay(
+          state,
+          toParentNode.id,
+          overlayBindEntry(toParentNode.state.overlay, toName, sourceNode.id),
+        );
+      }
+
+      state.changeLog.append({ op: "rename", from, to });
+    },
+
+    copy(from: string, to: string): void {
+      assertValidVirtualPath(from);
+      assertValidVirtualPath(to);
+
+      if (from === to) {
+        throw new VirtualPathAlreadyExistsError(to);
+      }
+
+      // 解析源路径
+      const fromParent = parentPath(from);
+      const fromName = baseName(from);
+      const fromParentResolved =
+        fromParent !== null
+          ? resolvePath(source, state, fromParent)
+          : { found: true, node: getRootNode(state) };
+      if (!fromParentResolved.found || fromParentResolved.node === null) {
+        throw new VirtualPathNotFoundError(from);
+      }
+      const fromParentNode = fromParentResolved.node;
+      if (fromParentNode.state.kind !== "directory") {
+        throw new VirtualNotDirectoryError(from);
+      }
+
+      // 确认源存在
+      const fromChild = resolveChild(
+        source,
+        state,
+        fromParentNode,
+        fromParent ?? VIRTUAL_ROOT_PATH,
+        fromName,
+      );
+      if (!fromChild.found || fromChild.node === null) {
+        throw new VirtualPathNotFoundError(from);
+      }
+      const sourceNode = fromChild.node;
+
+      // 解析目标父目录
+      const toParent = parentPath(to);
+      const toName = baseName(to);
+      const toParentResolved =
+        toParent !== null
+          ? resolvePath(source, state, toParent)
+          : { found: true, node: getRootNode(state) };
+      if (!toParentResolved.found || toParentResolved.node === null) {
+        throw new VirtualPathNotFoundError(to);
+      }
+      const toParentNode = toParentResolved.node;
+      if (toParentNode.state.kind !== "directory") {
+        throw new VirtualNotDirectoryError(to);
+      }
+
+      // 检查目标是否已存在
+      const toExisting = resolveChild(
+        source,
+        state,
+        toParentNode,
+        toParent ?? VIRTUAL_ROOT_PATH,
+        toName,
+      );
+      if (toExisting.found && toExisting.node !== null) {
+        throw new VirtualPathAlreadyExistsError(to);
+      }
+
+      // 创建新节点（共享 origin，目录浅复制）
+      const newNodeId = createNodeId();
+      const newNode = cloneSessionNodeForCopy(sourceNode, newNodeId);
+      state.nodes.set(newNodeId, newNode);
+
+      // 绑定到目标父目录
+      updateParentOverlay(
+        state,
+        toParentNode.id,
+        overlayBindEntry(toParentNode.state.overlay, toName, newNodeId),
+      );
+
+      state.changeLog.append({ op: "copy", from, to });
+    },
     revert: notImplemented,
 
     writeTree() {

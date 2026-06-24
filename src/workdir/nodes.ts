@@ -5,7 +5,11 @@
  */
 
 import { VIRTUAL_ROOT_NODE_ID, type NodeId } from "./ids.ts";
-import { createEmptyDirectoryOverlay, type DirectoryOverlay } from "./overlay.ts";
+import {
+  createEmptyDirectoryOverlay,
+  cloneDirectoryOverlay,
+  type DirectoryOverlay,
+} from "./overlay.ts";
 
 import type { SHA1 } from "../core/types.ts";
 
@@ -160,7 +164,7 @@ export function revertNodeState(node: SessionNode): SessionNode {
 }
 
 /**
- * 为 `copy` 创建新节点：共享 origin，目录为浅复制（空 overlay）
+ * 为 `copy` 创建新节点：共享 origin，目录为浅复制（子项绑定保留，但 nodeId 为新）
  */
 export function cloneSessionNodeForCopy(source: SessionNode, newId: NodeId): SessionNode {
   const origin = source.origin;
@@ -169,7 +173,10 @@ export function cloneSessionNodeForCopy(source: SessionNode, newId: NodeId): Ses
     return {
       id: newId,
       origin,
-      state: { kind: "directory", overlay: createEmptyDirectoryOverlay() },
+      state: {
+        kind: "directory",
+        overlay: cloneDirectoryOverlay(source.state.overlay),
+      },
     };
   }
 
