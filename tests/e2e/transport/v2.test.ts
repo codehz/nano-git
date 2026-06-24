@@ -9,16 +9,19 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
-import { cleanupDir, createTempDir, gitRevParse } from "../helpers.ts";
+import { cleanupDir, createTempDir, gitRevParse, git, gitInit, createFile } from "../helpers.ts";
 import { createServerRepo } from "./helpers.ts";
 import { startGitHttpBackendServer } from "./http-server.ts";
 import { sha1 } from "@/core/types.ts";
+import { createHttpRemote } from "@/remote/http.ts";
 import { initRepository } from "@/repository/file.ts";
 import { v2Fetch } from "@/transport/client/upload-pack/fetch.ts";
 import { createV2HttpTransport } from "@/transport/client/upload-pack/http.ts";
 import { lsRefs, lsRefsToRefAdvertisement } from "@/transport/client/upload-pack/ls-refs.ts";
+import { objectInfo } from "@/transport/client/upload-pack/object-info.ts";
 
 describe("v2 协议 - 服务器能力", () => {
   let tempDir: string;
@@ -116,8 +119,6 @@ describe("v2 协议 - object-info 命令", () => {
     const transport = createV2HttpTransport(url);
     const caps = await transport.advertise();
 
-    const { objectInfo } = await import("@/transport/client/upload-pack/object-info.ts");
-
     // object-info 需要服务端配置 uploadpack.advertiseObjectInfo=true
     // 默认不启用，如果服务端不支持则跳过
     const hasObjectInfo = caps.commands.some((c) => c.name === "object-info");
@@ -135,7 +136,6 @@ describe("v2 协议 - object-info 命令", () => {
     const hasObjectInfo = caps.commands.some((c) => c.name === "object-info");
     if (!hasObjectInfo) return;
 
-    const { createHttpRemote } = await import("@/remote/http.ts");
     const remote = createHttpRemote({ url });
     const snapshot = await remote.readRefAdvertisement();
     const info = await remote.fetchObjectInfo([mainCommitHash]);
@@ -260,9 +260,6 @@ describe("v2 协议 - 增量 fetch 多轮协商", () => {
     serverRepoDir = join(tempDir, "server.git");
     workDir = join(tempDir, "work");
 
-    const { mkdirSync } = await import("node:fs");
-    const { git, gitInit, createFile } = await import("../helpers.ts");
-
     mkdirSync(serverRepoDir);
     git(["init", "--bare"], serverRepoDir);
 
@@ -299,7 +296,6 @@ describe("v2 协议 - 增量 fetch 多轮协商", () => {
     expect(result1.updatedRefs.get("refs/heads/main")).toBe(sha1(initialCommitHash));
 
     // 第二步：在服务器端创建新提交
-    const { git, createFile } = await import("../helpers.ts");
     createFile(workDir, "feature.txt", "v2 feature\n");
     git(["add", "feature.txt"], workDir);
     git(["commit", "-m", "Add feature"], workDir);

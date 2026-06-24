@@ -15,6 +15,11 @@ import { describe, test, expect } from "bun:test";
 import { createMemoryRepositoryBackend } from "@/backend/memory.ts";
 import { writeObject } from "@/objects/raw.ts";
 import { createSmartHttpHandler } from "@/transport/http/smart-http.ts";
+import {
+  encodePktLine,
+  encodeDelimiterPkt,
+  encodeFlushPkt,
+} from "@/transport/protocol/pkt-line.ts";
 
 // ============================================================================
 // 测试辅助
@@ -113,10 +118,6 @@ describe("createSmartHttpHandler — 路由", () => {
       Buffer.from([0x00, 0x01]),
       Buffer.from("0013000a", "utf-8"),
     ]);
-    // 使用标准 v2 格式构造有效请求
-    const { encodePktLine, encodeDelimiterPkt, encodeFlushPkt } =
-      await import("@/transport/protocol/pkt-line.ts");
-
     const validBody = Buffer.concat([
       encodePktLine("command=fetch\n"),
       encodeDelimiterPkt(),
@@ -259,9 +260,6 @@ describe("createSmartHttpHandler — 完整请求", () => {
     const { backend, commitHash } = createTestBackend();
     const handler = createSmartHttpHandler(backend);
 
-    const { encodePktLine, encodeDelimiterPkt, encodeFlushPkt } =
-      await import("@/transport/protocol/pkt-line.ts");
-
     const body = Buffer.concat([
       encodePktLine("command=ls-refs\n"),
       encodeDelimiterPkt(),
@@ -286,9 +284,6 @@ describe("createSmartHttpHandler — 完整请求", () => {
   test("fetch 命令通过 POST /git-upload-pack 返回 packfile", async () => {
     const { backend, commitHash } = createTestBackend();
     const handler = createSmartHttpHandler(backend);
-
-    const { encodePktLine, encodeDelimiterPkt, encodeFlushPkt } =
-      await import("@/transport/protocol/pkt-line.ts");
 
     const body = Buffer.concat([
       encodePktLine("command=fetch\n"),
