@@ -2,6 +2,8 @@
  * Virtual Workdir 节点 ID 分配
  */
 
+import type { SHA1 } from "../core/types.ts";
+
 /** 会话内节点的稳定身份 */
 export type NodeId = string & { readonly __brand: "NodeId" };
 
@@ -24,4 +26,11 @@ export function createNodeId(): NodeId {
  */
 export function resetNodeIdCounterForTests(start = 1): void {
   nextNodeCounter = start;
+}
+
+/**
+ * 为仓库对象哈希派生稳定的 session 节点 ID（懒加载、未 copy 前复用）
+ */
+export function originBackedNodeId(hash: SHA1): NodeId {
+  return `origin:${hash}` as NodeId;
 }
