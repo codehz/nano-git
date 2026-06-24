@@ -15,6 +15,7 @@
 - ✅ **增量 Tree Patch** — 不经暂存区直接修改目录结构（`patchTree`、`readTree`、`walkTree`）
 - ✅ **可达性遍历与 GC** — 基于 refs 的可达对象收集、repack、gc
 - ✅ **Smart HTTP 传输** — 基于 Bun fetch 的 Git 协议客户端，支持 `fetch()`/`push()` 与完整的 Import Session 物化流程
+- ✅ **远端查询 API** — 将 refs 快照、`object-info` 等纯远端能力独立出 `Repository`
 - ✅ **类型安全** — 完整的 TypeScript 类型定义
 - ✅ **Reference Transaction** — 批量 ref 更新的原子性保障，支持 Hooks 回调与自动回滚
 
@@ -53,6 +54,22 @@ const repo = initRepository("/tmp/project");
 await repo.fetch("https://github.com/user/repo.git");
 // 所有分支和标签已就绪
 console.log(repo.listBranches());
+```
+
+### 查询远端 refs / object-info
+
+```typescript
+import { createHttpRemote } from "nano-git/remote/http";
+
+const remote = createHttpRemote({
+  url: "https://github.com/user/repo.git",
+});
+
+const snapshot = await remote.readRefAdvertisement();
+console.log(snapshot.defaultBranch);
+
+const info = await remote.fetchObjectInfo(["95d09f2b10159347eece71399a7e2e907ea3df4f"]);
+console.log(info.objects[0]?.size);
 ```
 
 ### 内存仓库完整工作流
@@ -342,6 +359,7 @@ bun run examples/demo.ts
 
 本库默认入口 `"nano-git"` 直接提供高频的纯计算能力：类型、错误、对象编解码、refs 工具和 SHA-1 工具。
 带 `node:fs` / `node:zlib` 的运行时能力通过子路径显式导入，例如 `nano-git/repository/file`、`nano-git/pack`、`nano-git/transport/http`。
+纯远端查询能力通过 `nano-git/remote/http` 导入。
 基于 `bun:sqlite` 的存储后端通过 `nano-git/odb/sqlite`、`nano-git/refs/sqlite`、`nano-git/backend/sqlite`、`nano-git/repository/sqlite` 等子路径导入。
 tree-shaking 主要依赖模块本身的无副作用结构，而不是把所有 API 都拆成叶子级子路径。完整入口表见 `package.json` 的 `exports` 与 `src/index.ts` 的 JSDoc。
 

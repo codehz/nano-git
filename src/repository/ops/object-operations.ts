@@ -4,8 +4,6 @@
 
 import { hashObject } from "../../core/hash.ts";
 import { writeObject, readObject } from "../../objects/raw.ts";
-import { createV2HttpTransport } from "../../transport/client/upload-pack/http.ts";
-import { objectInfo } from "../../transport/client/upload-pack/object-info.ts";
 import {
   patchTree as patchTreeImpl,
   type TreePatchOp,
@@ -22,7 +20,6 @@ import type {
   TreeEntry,
 } from "../../core/types.ts";
 import type { ObjectDatabase } from "../../odb/types.ts";
-import type { ObjectInfoQueryResult } from "../../transport/client/upload-pack/object-info.ts";
 import type { RepositoryObjectOperations } from "./object-types.ts";
 
 /**
@@ -86,15 +83,6 @@ export function createObjectRepositoryOperations(
 
     patchTree(rootHash: SHA1, ops: TreePatchOp[]): TreePatchResult {
       return patchTreeImpl(objects, rootHash, ops);
-    },
-
-    async fetchObjectInfo(
-      url: string,
-      oids: string[],
-      token?: string,
-    ): Promise<ObjectInfoQueryResult> {
-      const transport = createV2HttpTransport(url, { token });
-      return objectInfo(transport, oids);
     },
   };
 }

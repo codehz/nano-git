@@ -21,6 +21,7 @@
  * | `nano-git/backend` | 仓库后端抽象类型 | 类型 |
  * | `nano-git/backend/memory` | 内存后端实现 | 纯 TS |
  * | `nano-git/backend/file` | 文件后端实现 | `node:fs` + `node:zlib` |
+ * | `nano-git/remote/http` | 纯远端查询 API | `fetch` + `node:crypto` |
  * | `nano-git/repository/core` | 通用仓库拼装 | 纯 TS |
  * | `nano-git/repository/memory` | 内存仓库便捷函数 | 纯 TS |
  * | `nano-git/repository/file` | 文件仓库便捷函数 | `node:fs` + `node:zlib` |
@@ -59,6 +60,7 @@ export type {
   RepositoryRepackOptions,
   PackRepackOptions,
 } from "./backend/types.ts";
+export type { RemoteSource } from "./remote/types.ts";
 export type { Repository, FileRepository } from "./repository/types.ts";
 
 // ============================================================================

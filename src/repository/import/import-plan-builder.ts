@@ -19,6 +19,7 @@ import {
 
 import type { RepositoryBackend } from "../../backend/types.ts";
 import type { SHA1 } from "../../core/types.ts";
+import type { RemoteSource } from "../../remote/types.ts";
 import type { V2GitServiceTransport } from "../../transport/client/upload-pack/types.ts";
 import type {
   RemoteRef,
@@ -26,7 +27,6 @@ import type {
   UploadPackTransport,
 } from "../../transport/protocol/types.ts";
 import type {
-  ImportSource,
   ImportPlanBuilder,
   ImportPreview,
   ImportApplyResult,
@@ -230,7 +230,7 @@ export function validateLocalPreconditions(
 export function createPlanBuilder(
   backend: RepositoryBackend,
   advertisement: Readonly<RefAdvertisement>,
-  source: ImportSource,
+  source: RemoteSource,
   transportFactory?: (url: string) => UploadPackTransport,
   v2Transport?: V2GitServiceTransport,
 ): ImportPlanBuilder {

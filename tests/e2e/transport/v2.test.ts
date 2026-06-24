@@ -129,15 +129,17 @@ describe("v2 协议 - object-info 命令", () => {
     expect(info.objects[0]!.oid).toBe(mainCommitHash);
   });
 
-  test("repo.fetchObjectInfo 高层 API 可用", async () => {
+  test("remote/http 高层 API 可用", async () => {
     const transport = createV2HttpTransport(url);
     const caps = await transport.advertise();
     const hasObjectInfo = caps.commands.some((c) => c.name === "object-info");
     if (!hasObjectInfo) return;
 
-    const { createMemoryRepository } = await import("@/repository/memory.ts");
-    const repo = createMemoryRepository();
-    const info = await repo.fetchObjectInfo(url, [mainCommitHash]);
+    const { createHttpRemote } = await import("@/remote/http.ts");
+    const remote = createHttpRemote({ url });
+    const snapshot = await remote.readRefAdvertisement();
+    const info = await remote.fetchObjectInfo([mainCommitHash]);
+    expect(snapshot.defaultBranch).toBe("refs/heads/main");
     expect(info.objects.length).toBeGreaterThan(0);
     expect(info.objects[0]!.oid).toBe(mainCommitHash);
   });

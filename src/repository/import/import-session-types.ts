@@ -6,28 +6,8 @@
  */
 
 import type { SHA1 } from "../../core/types.ts";
+import type { RemoteSource } from "../../remote/types.ts";
 import type { RemoteRef, RefAdvertisement } from "../../transport/protocol/types.ts";
-
-// ============================================================================
-// ImportSource
-// ============================================================================
-
-/**
- * 远端 Git 数据来源
- *
- * 只描述"从哪里读"，不描述"写到哪里"。
- * ImportSource 不包含命名空间映射规则。
- */
-export interface ImportSource {
-  /** 远端仓库 URL */
-  readonly url: string;
-
-  /** 认证 token（用于 bearer 或 basic auth） */
-  readonly token?: string;
-
-  /** 自定义请求头 */
-  readonly headers?: Record<string, string>;
-}
 
 // ============================================================================
 // ImportView
@@ -295,7 +275,7 @@ export interface ImportApplyResult {
  * 想刷新远端状态时，必须重新创建 session。
  */
 export interface ImportSession {
-  readonly source: ImportSource;
+  readonly source: RemoteSource;
   readonly advertisement: RefAdvertisement;
 
   select(pattern: string): ImportView;
@@ -336,5 +316,5 @@ export interface RepoImportOperations {
    * const branches = session.select("refs/heads/*");
    * ```
    */
-  openImportSession(source: ImportSource): Promise<ImportSession>;
+  openImportSession(source: RemoteSource): Promise<ImportSession>;
 }

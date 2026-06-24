@@ -12,6 +12,7 @@ import { createPlanBuilder } from "./import-plan-builder.ts";
 import { createImportView } from "./import-view.ts";
 
 import type { RepositoryBackend } from "../../backend/types.ts";
+import type { RemoteSource } from "../../remote/types.ts";
 import type { V2GitServiceTransport } from "../../transport/client/upload-pack/types.ts";
 import type {
   RemoteRef,
@@ -19,7 +20,6 @@ import type {
   UploadPackTransport,
 } from "../../transport/protocol/types.ts";
 import type {
-  ImportSource,
   ImportView,
   ImportSession,
   ImportPlanBuilder,
@@ -39,7 +39,7 @@ import type {
  * @returns ImportSession
  */
 function createImportSession(
-  source: ImportSource,
+  source: RemoteSource,
   backend: RepositoryBackend,
   advertisement: RefAdvertisement,
   transportFactory?: (url: string) => UploadPackTransport,
@@ -49,7 +49,7 @@ function createImportSession(
     url: source.url,
     token: source.token,
     headers: source.headers ? Object.freeze({ ...source.headers }) : undefined,
-  }) as Readonly<ImportSource>;
+  }) as Readonly<RemoteSource>;
 
   const frozenRefs = Object.freeze(advertisement.refs.map((ref) => Object.freeze({ ...ref })));
 
@@ -145,7 +145,7 @@ export function createRepoImportOperations(
   testV2Transport?: V2GitServiceTransport,
 ): RepoImportOperations {
   return {
-    async openImportSession(source: ImportSource): Promise<ImportSession> {
+    async openImportSession(source: RemoteSource): Promise<ImportSession> {
       const v2Transport =
         testV2Transport ??
         createV2HttpTransport(source.url, {

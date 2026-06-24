@@ -8,11 +8,8 @@ import { parseRefSpec } from "../../transport/protocol/refspec.ts";
 import { createRepoImportOperations } from "../import/import-session.ts";
 
 import type { RepositoryBackend } from "../../backend/types.ts";
-import type {
-  ImportSession,
-  ImportSource,
-  ImportApplyResult,
-} from "../import/import-session-types.ts";
+import type { RemoteSource } from "../../remote/types.ts";
+import type { ImportSession, ImportApplyResult } from "../import/import-session-types.ts";
 import type {
   RepositoryFetchOptions,
   RepositoryFetchResult,
@@ -29,7 +26,7 @@ export async function runFetchToUrl(
 ): Promise<RepositoryFetchResult> {
   // 创建 ImportSession（内部会拉取 advertisement）
   const ops = createRepoImportOperations(backend);
-  const source: ImportSource = {
+  const source: RemoteSource = {
     url,
     token: options?.token,
     headers: options?.headers,

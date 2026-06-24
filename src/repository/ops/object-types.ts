@@ -3,7 +3,6 @@
  */
 
 import type { GitAuthor, GitObject, SHA1, TreeEntry } from "../../core/types.ts";
-import type { ObjectInfoQueryResult } from "../../transport/client/upload-pack/object-info.ts";
 import type { TreePatchOp, TreePatchResult } from "../tree/tree-patch.ts";
 
 /**
@@ -83,27 +82,6 @@ export interface RepositoryObjectOperations {
    * ```
    */
   patchTree(rootHash: SHA1, ops: TreePatchOp[]): TreePatchResult;
-
-  /**
-   * 查询远端对象信息（协议 v2 object-info）
-   *
-   * 批量查询远端对象的元数据（如 size），无需下载对象内容。
-   * 仅在远端支持 Git Wire 协议 v2 时可用。
-   *
-   * @param url - 远端仓库 URL
-   * @param oids - 要查询的 OID 列表
-   * @param token - 可选认证 token
-   * @returns 对象信息列表（含 size 等元数据）
-   *
-   * @example
-   * ```ts
-   * const result = await repo.fetchObjectInfo("https://github.com/user/repo", [
-   *   "95d09f2b10159347eece71399a7e2e907ea3df4f",
-   * ]);
-   * console.log(result.objects[0]?.size); // 文件大小
-   * ```
-   */
-  fetchObjectInfo(url: string, oids: string[], token?: string): Promise<ObjectInfoQueryResult>;
 }
 
 /**
