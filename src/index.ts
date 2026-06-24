@@ -24,6 +24,11 @@
  * | `nano-git/repository/core` | 通用仓库拼装 | 纯 TS |
  * | `nano-git/repository/memory` | 内存仓库便捷函数 | 纯 TS |
  * | `nano-git/repository/file` | 文件仓库便捷函数 | `node:fs` + `node:zlib` |
+ * | `nano-git/repository/sqlite` | SQLite 仓库便捷函数 | `bun:sqlite` |
+ * | `nano-git/backend/sqlite` | SQLite 仓库后端（组合工厂） | `bun:sqlite` |
+ * | `nano-git/odb/sqlite` | SQLite 对象存储 | `bun:sqlite` |
+ * | `nano-git/refs/sqlite` | SQLite 引用存储 | `bun:sqlite` |
+ * | `nano-git/refs/shallow/sqlite` | SQLite shallow 边界存储 | `bun:sqlite` |
  * | `nano-git/transport` | 传输层协议原语 | `node:crypto` |
  * | `nano-git/transport/upload-pack` | upload-pack 客户端 | `node:crypto` + `node:zlib` |
  * | `nano-git/transport/receive-pack` | receive-pack 客户端 | `node:crypto` + `node:zlib` |

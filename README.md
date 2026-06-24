@@ -8,7 +8,7 @@
 - ✅ **SHA-1 哈希计算** — 与 Git 完全兼容的对象哈希
 - ✅ **Git 对象模型** — 支持 blob、tree、commit、tag 四种对象类型
 - ✅ **对象序列化/反序列化** — 完整的二进制格式支持
-- ✅ **对象存储** — 文件系统存储和内存存储两种模式
+- ✅ **对象存储** — 文件系统存储、内存存储和 SQLite 存储三种模式
 - ✅ **Packfile 支持** — 读取、写入、索引生成、delta 编解码
 - ✅ **引用管理** — refs 验证、解析、存储（文件系统 + 内存）
 - ✅ **仓库 API** — 类似 Git plumbing 命令的高层接口（init、hash-object、cat-file、commit-tree、update-ref 等）
@@ -137,6 +137,43 @@ repo.updateRef("refs/heads/main", commitHash);
 ```
 
 `openRepository()` 默认会同时读取 `.git/objects/` 下的 loose objects 和 `.git/objects/pack/` 下的 packed objects，因此可以直接打开经过 `git gc` 或 `git repack` 的真实仓库（包括裸仓库）。搭配 `initRepository()` 的第二个参数可初始化为裸仓库布局。
+
+### 使用 SQLite 仓库（Bun 运行时）
+
+适用于需要持久化但又不想管理松散文件的场景——
+所有对象和引用存在一个 `.sqlite` 文件中。
+
+```typescript
+import { createSqliteRepository } from "nano-git/repository/sqlite";
+
+// 创建或打开 SQLite 持久化仓库（支持 using 自动释放）
+using repo = createSqliteRepository("/tmp/cache.sqlite");
+
+// 与普通 repo 使用方式完全一致
+const hash = repo.writeBlob(Buffer.from("persistent data"));
+const treeHash = repo.createTree([{ mode: "100644", name: "data.txt", hash }]);
+const commitHash = repo.createCommit(treeHash, [], "SQLite commit", {
+  name: "You",
+  email: "you@example.com",
+  timestamp: Math.floor(Date.now() / 1000),
+  timezone: "+0800",
+});
+console.log(`Committed: ${commitHash}`);
+
+// 作用域结束时自动关闭数据库连接
+```
+
+也可拆分使用底层后端：
+
+```typescript
+import { createSqliteRepositoryBackend } from "nano-git/backend/sqlite";
+import { createRepository } from "nano-git/repository/core";
+
+const backend = createSqliteRepositoryBackend("/tmp/repo.sqlite");
+const repo = createRepository(backend);
+// 用完记得释放
+backend[Symbol.dispose]();
+```
 
 ### 生成 Packfile
 
@@ -305,6 +342,7 @@ bun run examples/demo.ts
 
 本库默认入口 `"nano-git"` 直接提供高频的纯计算能力：类型、错误、对象编解码、refs 工具和 SHA-1 工具。
 带 `node:fs` / `node:zlib` 的运行时能力通过子路径显式导入，例如 `nano-git/repository/file`、`nano-git/pack`、`nano-git/transport/http`。
+基于 `bun:sqlite` 的存储后端通过 `nano-git/odb/sqlite`、`nano-git/refs/sqlite`、`nano-git/backend/sqlite`、`nano-git/repository/sqlite` 等子路径导入。
 tree-shaking 主要依赖模块本身的无副作用结构，而不是把所有 API 都拆成叶子级子路径。完整入口表见 `package.json` 的 `exports` 与 `src/index.ts` 的 JSDoc。
 
 ## Git 对象模型
@@ -381,6 +419,7 @@ bun test
 - [x] 可达性遍历与 GC（repack、gc）
 - [x] **Smart HTTP 传输** — pkt-line 编解码、ref 广告解析、side-band 解复用、Fetch / Push 协议、Import Session 集成
 - [x] **Reference Transaction** — 批量 ref 更新原子性、lock-then-rename 文件事务、生命周期 Hooks
+- [x] **SQLite 存储后端** — 基于 `bun:sqlite` 的单文件持久化，支持对象/refs/shallow 存储、ACID 事务、`Symbol.dispose` 生命周期管理
 
 - [x] **Smart HTTP 服务端（upload-pack）** — 类 git-http-backend、框架无关的 HTTP handler，支持 ls-refs 和 fetch 命令，协议实现与编排器解耦
 - [x] **Smart HTTP 服务端（v1 receive-pack）** — 服务端 push 支持，基于 v1 协议，含 ref 广告、packfile 解包、ref 校验与 report-status
