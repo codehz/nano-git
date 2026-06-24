@@ -37,6 +37,7 @@
  */
 
 import { GitError } from "../../../core/errors.ts";
+import { createPackReader, packObjectToRaw } from "../../../pack/pack-reader.ts";
 import { splitPktLinesFromBuffer } from "../../protocol/pkt-line.ts";
 
 import type { ObjectDatabase } from "../../../odb/types.ts";
@@ -645,7 +646,6 @@ export async function v2FetchObjects(
   }
 
   // 解析 packfile 并直接摄入原始对象（跳过语义反序列化）
-  const { createPackReader, packObjectToRaw } = await import("../../../pack/pack-reader.ts");
   const reader = createPackReader(result.packfile);
   let count = 0;
 

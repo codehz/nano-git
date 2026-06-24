@@ -5,6 +5,7 @@
  */
 
 import { parseRefSpec } from "../../transport/protocol/refspec.ts";
+import { createRepoImportOperations } from "../import/import-session.ts";
 
 import type { RepositoryBackend } from "../../backend/types.ts";
 import type { ImportSession } from "../import/import-session-types.ts";
@@ -23,7 +24,6 @@ export async function runFetchToUrl(
   options?: RepositoryFetchOptions,
 ): Promise<RepositoryFetchResult> {
   // 创建 ImportSession（内部会拉取 advertisement）
-  const { createRepoImportOperations } = await import("../import/import-session.ts");
   const ops = createRepoImportOperations(backend);
   const source: import("../import/import-session-types.ts").ImportSource = {
     url,
