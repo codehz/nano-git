@@ -8,22 +8,22 @@
  */
 
 import { writeObject } from "../objects/raw.ts";
-import { materializeDirtyDirSummary } from "./dirty-dir.ts";
-import { readRepoTree } from "./origin.ts";
 import {
   createNamedOriginChildLookup,
-  listDirectoryChildren,
   observeListedDirectoryChild,
   observeNamedDirectoryChild,
   planAffectedDirectoryChildren,
-} from "./session-internal.ts";
+} from "./directory-view.ts";
+import { materializeDirtyDirSummary } from "./dirty-dir.ts";
+import { readRepoTree } from "./origin.ts";
+import { listDirectoryChildren } from "./session-internal.ts";
 
 import type { SHA1, TreeEntry } from "../core/types.ts";
 import type { ObjectDatabase, ObjectSource } from "../core/types/odb.ts";
+import type { NamedOriginChildLookup, ObservedDirectoryChildNode } from "./directory-view.ts";
 import type { DirtyDirSummary } from "./dirty-dir.ts";
 import type { NodeId } from "./ids.ts";
 import type { SessionNode } from "./nodes.ts";
-import type { NamedOriginChildLookup, ObservedDirectoryChildNode } from "./session-internal.ts";
 import type { VirtualWorkdirStateStore } from "./state-store.ts";
 
 // ==================== 公开 API ====================

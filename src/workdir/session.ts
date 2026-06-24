@@ -20,7 +20,7 @@ import {
   rewriteChangeRecordForRename,
   writeChangeRecordForCopy,
 } from "./change-index.ts";
-import { computeVirtualDiff } from "./diff.ts";
+import { computeVirtualDiff } from "./change-index.ts";
 import { createDirtyDirPlanner } from "./dirty-dir-plan.ts";
 import { createNodeId } from "./ids.ts";
 import { createVirtualWorkdirMemoryStateStore } from "./memory-backend.ts";

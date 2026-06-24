@@ -8,11 +8,12 @@
  * - 递归节点图克隆（copy）
  */
 
+import { observeListedDirectoryChild } from "./directory-view.ts";
 import { createNodeId } from "./ids.ts";
 import { cloneSessionNodeForCopy, type SessionNode } from "./nodes.ts";
 import { readRepoBlobContent } from "./origin.ts";
 import { overlayBindEntry, type DirectoryOverlay } from "./overlay.ts";
-import { listDirectoryChildren, observeListedDirectoryChild } from "./session-internal.ts";
+import { listDirectoryChildren } from "./session-internal.ts";
 
 import type { ObjectDatabase } from "../core/types/odb.ts";
 import type { VirtualEntryStat } from "./core.ts";

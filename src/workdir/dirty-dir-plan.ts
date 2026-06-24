@@ -5,9 +5,10 @@
  * 让 session.ts 更接近纯编排层。
  */
 
+import { observeDirectoryChildren } from "./directory-view.ts";
 import { createDirtyDirSummary, type DirtyDirSummary } from "./dirty-dir.ts";
 import { VIRTUAL_ROOT_PATH } from "./path.ts";
-import { getRootNode, observeDirectoryChildren } from "./session-internal.ts";
+import { getRootNode } from "./session-internal.ts";
 
 import type { ObjectSource } from "../core/types/odb.ts";
 import type { SessionNode } from "./nodes.ts";

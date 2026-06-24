@@ -10,12 +10,12 @@
  */
 
 import { hashObject } from "../core/hash.ts";
+import { observeListedDirectoryChild } from "./directory-view.ts";
 import { readRepoBlobContent, readRepoTree } from "./origin.ts";
 import { VIRTUAL_ROOT_PATH } from "./path.ts";
 import {
   getDirectoryChildrenView,
   joinChildPath,
-  observeListedDirectoryChild,
   resolveCurrentLeafAtPath,
 } from "./session-internal.ts";
 
@@ -739,4 +739,17 @@ function findCopySource(
 
 function modeKind(mode: TreeEntry["mode"]): "blob" | "symlink" {
   return mode === "120000" ? "symlink" : "blob";
+}
+
+/**
+ * 从规范化变更索引导出当前 session 的最终 diff。
+ *
+ * @example
+ * ```ts
+ * const diff = computeVirtualDiff(state);
+ * expect(diff.map((entry) => entry.path)).toEqual(["hello.txt"]);
+ * ```
+ */
+export function computeVirtualDiff(state: VirtualWorkdirStateStore): VirtualDiffEntry[] {
+  return exportVirtualDiffFromChangeRecords(state.listChangeRecords());
 }

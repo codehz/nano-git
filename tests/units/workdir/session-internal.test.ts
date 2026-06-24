@@ -10,23 +10,25 @@ import {
   VirtualPathNotFoundError,
 } from "@/core/errors.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
-import { createVirtualWorkdirMemoryStateStore } from "@/workdir/memory-backend.ts";
 import {
   createNamedOriginChildLookup,
+  observeDirectoryChildren,
+  observeListedDirectoryChild,
+  observeNamedDirectoryChild,
+  planAffectedDirectoryChildren,
+} from "@/workdir/directory-view.ts";
+import { createVirtualWorkdirMemoryStateStore } from "@/workdir/memory-backend.ts";
+import {
   getDirectoryChildrenView,
   joinChildPath,
-  observeNamedDirectoryChild,
-  observeListedDirectoryChild,
-  observeDirectoryChildren,
-  planAffectedDirectoryChildren,
-  requireMissingWriteTarget,
   requireExistingWriteTarget,
+  requireMissingWriteTarget,
   resolveCurrentLeafAtPath,
   resolveLeafWriteTarget,
   resolvePathByParentLookup,
-  resolveWriteTransfer,
   resolveWriteParentDirectory,
   resolveWriteTargetInParent,
+  resolveWriteTransfer,
 } from "@/workdir/session-internal.ts";
 import { openVirtualWorkdirSession } from "@/workdir/session.ts";
 
