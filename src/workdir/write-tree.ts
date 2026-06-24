@@ -21,7 +21,9 @@ import {
 import type { SHA1, TreeEntry } from "../core/types.ts";
 import type { ObjectDatabase, ObjectSource } from "../core/types/odb.ts";
 import type { DirtyDirSummary } from "./dirty-dir.ts";
+import type { NodeId } from "./ids.ts";
 import type { SessionNode } from "./nodes.ts";
+import type { NamedOriginChildLookup, ObservedDirectoryChildNode } from "./session-internal.ts";
 import type { VirtualWorkdirStateStore } from "./state-store.ts";
 
 // ==================== 公开 API ====================
@@ -45,7 +47,7 @@ export function writeTreeFromSession(
   source: ObjectDatabase,
   state: VirtualWorkdirStateStore,
 ): SHA1 {
-  const root = state.getNode("root" as import("./ids.ts").NodeId);
+  const root = state.getNode("root" as NodeId);
   if (root === null || root.state.kind !== "directory") {
     throw new Error("Virtual workdir: root node is missing or not a directory");
   }
@@ -185,7 +187,7 @@ function compileNamedChildEntry(
   dirNode: SessionNode,
   dirPath: string,
   name: string,
-  originLookup: import("./session-internal.ts").NamedOriginChildLookup,
+  originLookup: NamedOriginChildLookup,
 ): { readonly entry: TreeEntry; readonly changed: boolean } | null {
   if (dirNode.state.kind !== "directory") {
     throw new Error("compileNamedChildEntry called on non-directory node");
@@ -202,7 +204,7 @@ function compileChildEntry(
   writeSource: ObjectDatabase,
   readSource: ObjectSource,
   state: VirtualWorkdirStateStore,
-  child: Pick<import("./session-internal.ts").ObservedDirectoryChildNode, "name" | "path" | "node">,
+  child: Pick<ObservedDirectoryChildNode, "name" | "path" | "node">,
 ): { readonly entry: TreeEntry; readonly changed: boolean } | null {
   const node = child.node;
   if (node.state.kind === "directory") {

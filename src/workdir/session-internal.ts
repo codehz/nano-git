@@ -260,7 +260,7 @@ export function observeNamedDirectoryChild(
   };
 }
 
-function getRootNode(state: VirtualWorkdirStateStore): SessionNode {
+export function getRootNode(state: VirtualWorkdirStateStore): SessionNode {
   const root = state.getNode(VIRTUAL_ROOT_NODE_ID);
   if (root === null) {
     throw new Error("Virtual workdir session is missing root node");

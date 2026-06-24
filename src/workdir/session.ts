@@ -22,22 +22,28 @@ import {
 } from "./change-index.ts";
 import { computeVirtualDiff } from "./diff.ts";
 import { createDirtyDirPlanner } from "./dirty-dir-plan.ts";
-import { VIRTUAL_ROOT_NODE_ID, createNodeId } from "./ids.ts";
+import { createNodeId } from "./ids.ts";
 import { createVirtualWorkdirMemoryStateStore } from "./memory-backend.ts";
-import { cloneSessionNodeForCopy, revertNodeState, type SessionNode } from "./nodes.ts";
+import { revertNodeState, type SessionNode } from "./nodes.ts";
 import { modeToVirtualEntryKind, readRepoBlobContent } from "./origin.ts";
 import { overlayBindEntry, overlayTombstoneEntry, overlayRenameEntry } from "./overlay.ts";
 import { assertValidVirtualPath, normalizeDirectoryPath, VIRTUAL_ROOT_PATH } from "./path.ts";
 import {
   getDirectoryChildrenView,
-  listDirectoryChildren,
-  observeListedDirectoryChild,
+  getRootNode,
   requireMissingWriteTarget,
   requireExistingWriteTarget,
   resolvePath,
   resolveLeafWriteTarget,
   resolveWriteTransfer,
 } from "./session-internal.ts";
+import {
+  cloneNodeGraphForCopy,
+  runInWriteTransaction,
+  statDirectoryNode,
+  statNode,
+  updateParentOverlay,
+} from "./session-transaction.ts";
 import { writeTreeFromSession } from "./write-tree.ts";
 
 import type { SHA1 } from "../core/types.ts";
@@ -498,115 +504,4 @@ export function openVirtualWorkdirSession(
   };
 
   return api;
-}
-// ==================== 辅助 ====================
-
-function getRootNode(state: VirtualWorkdirStateStore): SessionNode {
-  const root = state.getNode(VIRTUAL_ROOT_NODE_ID);
-  if (root === null) {
-    throw new Error("Virtual workdir session is missing root node");
-  }
-  return root;
-}
-
-function runInWriteTransaction<T>(
-  state: VirtualWorkdirStateStore,
-  onBeforeCommit: (() => void) | null,
-  onCommitted: () => void,
-  fn: () => T,
-): T {
-  const result =
-    onBeforeCommit === null
-      ? state.transact(fn)
-      : state.transact(() => {
-          const innerResult = fn();
-          onBeforeCommit();
-          return innerResult;
-        });
-  onCommitted();
-  return result;
-}
-
-/**
- * 更新父节点的 overlay（创建新节点对象替代 Map 中的旧引用）
- */
-function updateParentOverlay(
-  state: VirtualWorkdirStateStore,
-  parentId: NodeId,
-  newOverlay: import("./overlay.ts").DirectoryOverlay,
-): void {
-  const parentNode = state.getNode(parentId);
-  if (parentNode === null || parentNode.state.kind !== "directory") {
-    throw new Error("updateParentOverlay: parent is not a directory");
-  }
-  state.setNode({
-    ...parentNode,
-    state: { ...parentNode.state, overlay: newOverlay },
-  });
-}
-
-function statNode(source: ObjectDatabase, node: SessionNode, path: string): VirtualEntryStat {
-  if (node.state.kind === "directory") {
-    return statDirectoryNode(node);
-  }
-  if (node.state.kind === "symlink") {
-    const hash = node.origin.kind === "repo-blob" ? node.origin.hash : null;
-    let size = 0;
-    if (node.state.target !== undefined) {
-      size = node.state.target.length;
-    } else if (hash !== null) {
-      size = readRepoBlobContent(source, hash, path).length;
-    }
-    return { kind: "symlink", mode: "120000", size, hash };
-  }
-  const hash = node.origin.kind === "repo-blob" ? node.origin.hash : null;
-  let size = 0;
-  if (node.state.content !== undefined) {
-    size = node.state.content.length;
-  } else if (hash !== null) {
-    size = readRepoBlobContent(source, hash, path).length;
-  }
-  return { kind: "blob", mode: node.state.mode, size, hash };
-}
-
-function statDirectoryNode(node: SessionNode): VirtualEntryStat {
-  const hash = node.origin.kind === "repo-tree" ? node.origin.hash : null;
-  return { kind: "tree", mode: "40000", size: 0, hash };
-}
-
-function cloneNodeGraphForCopy(
-  source: ObjectDatabase,
-  state: VirtualWorkdirStateStore,
-  node: SessionNode,
-  path: string,
-): NodeId {
-  const newNodeId = createNodeId();
-  const cloned = cloneSessionNodeForCopy(node, newNodeId);
-  state.setNode(cloned);
-
-  if (node.state.kind !== "directory" || cloned.state.kind !== "directory") {
-    return newNodeId;
-  }
-
-  let overlay = cloned.state.overlay;
-  const children = listDirectoryChildren(source, state, node, path);
-  for (const child of children) {
-    const observedChild = observeListedDirectoryChild(state, path, child);
-    if (observedChild === null) {
-      continue;
-    }
-    const clonedChildId = cloneNodeGraphForCopy(
-      source,
-      state,
-      observedChild.node,
-      observedChild.path,
-    );
-    overlay = overlayBindEntry(overlay, observedChild.name, clonedChildId);
-  }
-
-  state.setNode({
-    ...cloned,
-    state: { kind: "directory", overlay },
-  });
-  return newNodeId;
 }

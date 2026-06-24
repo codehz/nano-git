@@ -6,9 +6,8 @@
  */
 
 import { createDirtyDirSummary, type DirtyDirSummary } from "./dirty-dir.ts";
-import { VIRTUAL_ROOT_NODE_ID } from "./ids.ts";
 import { VIRTUAL_ROOT_PATH } from "./path.ts";
-import { observeDirectoryChildren } from "./session-internal.ts";
+import { getRootNode, observeDirectoryChildren } from "./session-internal.ts";
 
 import type { ObjectSource } from "../core/types/odb.ts";
 import type { SessionNode } from "./nodes.ts";
@@ -93,14 +92,6 @@ export function createDirtyDirPlanner(
       }
     },
   };
-}
-
-function getRootNode(state: VirtualWorkdirStateStore): SessionNode {
-  const root = state.getNode(VIRTUAL_ROOT_NODE_ID);
-  if (root === null) {
-    throw new Error("Virtual workdir session is missing root node");
-  }
-  return root;
 }
 
 function collectInvalidatedSummaryPaths(paths: readonly string[]): ReadonlySet<string> {
