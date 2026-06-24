@@ -155,7 +155,7 @@ export function createRepoImportOperations(
       const lsRefsEntries = await lsRefs(v2Transport, {
         symrefs: true,
         peel: true,
-        refPrefixes: ["refs/heads/", "refs/tags/"],
+        refPrefixes: ["HEAD", "refs/heads/", "refs/tags/"],
       });
 
       const advertisement = lsRefsToRefAdvertisement(lsRefsEntries);

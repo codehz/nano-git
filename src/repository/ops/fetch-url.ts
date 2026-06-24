@@ -68,9 +68,9 @@ async function applyDefaultMapping(
   }
 
   // HEAD → 跟随默认分支
-  const head = session.headTarget();
-  if (head.refs.length > 0) {
-    plan.materialize(head).setHead();
+  const defaultBranch = session.defaultBranch();
+  if (defaultBranch.refs.length > 0) {
+    plan.materialize(defaultBranch).setHead();
   }
 
   const result = await plan.apply();
