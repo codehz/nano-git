@@ -9,7 +9,7 @@ import { createObjectRepositoryOperations } from "./ops/object-operations.ts";
 import { createPushRepositoryOperations } from "./ops/push-operations.ts";
 import { createRefRepositoryOperations } from "./ops/ref-operations.ts";
 
-import type { RepositoryBackend } from "../backend/index.ts";
+import type { RepositoryBackend } from "../backend/types.ts";
 import type { Repository } from "./types.ts";
 
 /**
@@ -29,6 +29,7 @@ import type { Repository } from "./types.ts";
  */
 export function createRepository(backend: RepositoryBackend): Repository {
   const { objects, refs, packs, shallow, gitDir } = backend;
+  const objectOps = createObjectRepositoryOperations(objects);
 
   return {
     objects,
@@ -36,7 +37,7 @@ export function createRepository(backend: RepositoryBackend): Repository {
     packs,
     shallow,
     gitDir,
-    ...createObjectRepositoryOperations(objects),
+    ...objectOps,
     ...createRefRepositoryOperations(backend),
     ...createMaintenanceRepositoryOperations(objects, refs, packs),
     ...createPushRepositoryOperations(backend),

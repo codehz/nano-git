@@ -19,11 +19,12 @@
 import { mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
-import { createFileRepositoryBackend } from "../backend/index.ts";
+import { createFileRepositoryBackend } from "../backend/file.ts";
 import { RepositoryError } from "../core/errors.ts";
 import { createRepository } from "./create.ts";
+import { createRepositoryFsObjectOperations } from "./ops/fs-object-operations.ts";
 
-import type { Repository } from "./types.ts";
+import type { FileRepository } from "./types.ts";
 
 /**
  * 初始化一个新的 bare Git 仓库
@@ -40,13 +41,13 @@ import type { Repository } from "./types.ts";
  * console.log(repo.getCurrentBranch()); // => "main"
  * ```
  */
-export function initRepository(path: string): Repository {
+export function initRepository(path: string): FileRepository {
   mkdirSync(join(path, "objects"), { recursive: true });
   mkdirSync(join(path, "refs", "heads"), { recursive: true });
   mkdirSync(join(path, "refs", "tags"), { recursive: true });
   writeFileSync(join(path, "HEAD"), "ref: refs/heads/main\n");
 
-  return createRepository(createFileRepositoryBackend(path));
+  return createFileRepository(path);
 }
 
 /**
@@ -70,10 +71,20 @@ export function initRepository(path: string): Repository {
  * const nonBareRepo = openRepository("/path/to/repo/.git");
  * ```
  */
-export function openRepository(path: string): Repository {
+export function openRepository(path: string): FileRepository {
   if (!existsSync(join(path, "HEAD"))) {
     throw new RepositoryError(`Not a git repository: ${path}`);
   }
 
-  return createRepository(createFileRepositoryBackend(path));
+  return createFileRepository(path);
+}
+
+function createFileRepository(path: string): FileRepository {
+  const backend = createFileRepositoryBackend(path);
+  const repo = createRepository(backend);
+  return {
+    ...repo,
+    ...createRepositoryFsObjectOperations(backend.objects, (data) => repo.writeBlob(data)),
+    gitDir: path,
+  };
 }

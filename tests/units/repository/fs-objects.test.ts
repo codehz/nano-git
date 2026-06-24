@@ -14,7 +14,7 @@ import { initRepository } from "@/repository/file.ts";
 import { openRepository } from "@/repository/file.ts";
 
 import type { GitAuthor, TreeEntry } from "@/core/types.ts";
-import type { Repository } from "@/repository/types.ts";
+import type { FileRepository } from "@/repository/types.ts";
 
 const testAuthor: GitAuthor = {
   name: "Test User",
@@ -25,7 +25,7 @@ const testAuthor: GitAuthor = {
 
 describe("文件系统仓库的对象操作", () => {
   let tempDir: string;
-  let repo: Repository;
+  let repo: FileRepository;
 
   beforeEach(() => {
     tempDir = join(tmpdir(), `nano-git-repo-${Date.now()}-${Math.random()}`);

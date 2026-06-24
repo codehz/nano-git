@@ -9,6 +9,7 @@ import { join } from "node:path";
 
 import { sha1, type GitAuthor } from "@/core/types.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
+import { createRepositoryFsObjectOperations } from "@/repository/ops/fs-object-operations.ts";
 import { createObjectRepositoryOperations } from "@/repository/ops/object-operations.ts";
 
 const testAuthor: GitAuthor = {
@@ -50,7 +51,8 @@ describe("createObjectRepositoryOperations()", () => {
     const filePath = join(dir, "test.txt");
     writeFileSync(filePath, "file content");
     try {
-      const hash = ops.writeBlobFile(filePath);
+      const fsOps = createRepositoryFsObjectOperations(store, (data) => ops.writeBlob(data));
+      const hash = fsOps.writeBlobFile(filePath);
       const obj = ops.catFile(hash);
       expect(obj.type).toBe("blob");
       if (obj.type === "blob") {

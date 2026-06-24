@@ -7,14 +7,13 @@ import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import {
-  createFileRepositoryBackend,
-  createMemoryRepositoryBackend,
-  type RepositoryBackend,
-} from "@/backend/index.ts";
+import { createFileRepositoryBackend } from "@/backend/file.ts";
+import { createMemoryRepositoryBackend } from "@/backend/memory.ts";
 import { createRepository } from "@/repository/create.ts";
 import { initRepository } from "@/repository/file.ts";
 import { openRepository } from "@/repository/file.ts";
+
+import type { RepositoryBackend } from "@/backend/types.ts";
 
 describe("initRepository()", () => {
   let tempDir: string;

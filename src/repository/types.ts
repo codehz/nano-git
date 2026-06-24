@@ -6,14 +6,17 @@
  * 这些操作对应 git 的 plumbing 命令。
  */
 
-import type { RepositoryPackSupport } from "../backend/index.ts";
+import type { RepositoryPackSupport } from "../backend/types.ts";
 import type { RefStore } from "../core/types/refs.ts";
 import type { ShallowStore } from "../core/types/shallow.ts";
 import type { ObjectDatabase } from "../odb/types.ts";
 import type { RepoImportOperations } from "./import/import-session-types.ts";
 import type { RepositoryFetchOperations } from "./ops/fetch-types.ts";
 import type { RepositoryMaintenanceOperations } from "./ops/maintenance-types.ts";
-import type { RepositoryObjectOperations } from "./ops/object-types.ts";
+import type {
+  RepositoryFsObjectOperations,
+  RepositoryObjectOperations,
+} from "./ops/object-types.ts";
 import type { RepositoryPushOperations } from "./ops/push-types.ts";
 import type { RepositoryRefOperations } from "./ops/ref-types.ts";
 
@@ -42,4 +45,12 @@ export interface Repository
 
   /** .git 目录路径（内存仓库为 null） */
   readonly gitDir: string | null;
+}
+
+/**
+ * 带文件系统扩展能力的仓库接口
+ */
+export interface FileRepository extends Repository, RepositoryFsObjectOperations {
+  /** .git 目录路径 */
+  readonly gitDir: string;
 }

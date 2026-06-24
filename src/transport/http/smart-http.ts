@@ -166,7 +166,7 @@ async function handleUploadPack(
  * @example
  * ```ts
  * // Bun.serve — 直接作为 fetch 处理器
- * import { createSmartHttpHandler } from "nano-git/transport/http/smart-http";
+ * import { createSmartHttpHandler } from "nano-git/transport/http";
  * import { openRepository } from "nano-git/repository/file";
  * Bun.serve({ port: 8080, fetch: createSmartHttpHandler(openRepository("/repo")) });
  *

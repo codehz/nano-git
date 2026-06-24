@@ -14,7 +14,8 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createFileRepositoryBackend, createMemoryRepositoryBackend } from "@/backend/index.ts";
+import { createFileRepositoryBackend } from "@/backend/file.ts";
+import { createMemoryRepositoryBackend } from "@/backend/memory.ts";
 import { sha1, type SHA1, type GitCommit } from "@/core/types.ts";
 import { writeObject } from "@/objects/raw.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";

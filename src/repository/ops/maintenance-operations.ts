@@ -16,7 +16,7 @@ import type {
   RepositoryGCOptions,
   RepositoryPackSupport,
   RepositoryRepackOptions,
-} from "../../backend/index.ts";
+} from "../../backend/types.ts";
 import type { SHA1 } from "../../core/types.ts";
 import type { RefStore } from "../../core/types/refs.ts";
 import type { ObjectDatabase } from "../../odb/types.ts";

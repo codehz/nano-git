@@ -6,7 +6,7 @@ import type { GitAuthor, GitObject, SHA1, TreeEntry } from "../../core/types.ts"
 import type { TreePatchOp, TreePatchResult } from "../tree/tree-patch.ts";
 
 /**
- * 仓库对象相关操作
+ * 仓库对象核心操作
  */
 export interface RepositoryObjectOperations {
   /**
@@ -22,13 +22,6 @@ export interface RepositoryObjectOperations {
    * 等价于 `git hash-object -w --stdin`
    */
   writeBlob(data: Buffer): SHA1;
-
-  /**
-   * 将文件作为 blob 写入对象存储
-   *
-   * 等价于 `git hash-object -w <file>`
-   */
-  writeBlobFile(filePath: string): SHA1;
 
   /**
    * 读取对象
@@ -50,13 +43,6 @@ export interface RepositoryObjectOperations {
    * 返回值同时包含 loose objects 和 packed objects。
    */
   listObjects(): SHA1[];
-
-  /**
-   * 将目录递归写入 tree 对象
-   *
-   * 等价于 `git write-tree`（但基于指定目录而非暂存区）
-   */
-  writeTree(dirPath: string): SHA1;
 
   /**
    * 从 tree 条目列表创建 tree 对象
@@ -121,4 +107,23 @@ export interface RepositoryObjectOperations {
     oids: string[],
     token?: string,
   ): Promise<import("../../transport/client/upload-pack/object-info.ts").ObjectInfoQueryResult>;
+}
+
+/**
+ * 文件系统对象操作扩展
+ */
+export interface RepositoryFsObjectOperations {
+  /**
+   * 将文件作为 blob 写入对象存储
+   *
+   * 等价于 `git hash-object -w <file>`
+   */
+  writeBlobFile(filePath: string): SHA1;
+
+  /**
+   * 将目录递归写入 tree 对象
+   *
+   * 等价于 `git write-tree`（但基于指定目录而非暂存区）
+   */
+  writeTree(dirPath: string): SHA1;
 }

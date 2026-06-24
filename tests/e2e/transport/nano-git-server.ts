@@ -5,7 +5,7 @@
  * 供 e2e 测试使用（git CLI 和 nano-git 客户端）。
  */
 
-import { createMemoryRepositoryBackend } from "@/backend/index.ts";
+import { createMemoryRepositoryBackend } from "@/backend/memory.ts";
 import { writeObject } from "@/objects/raw.ts";
 import { createSmartHttpHandler } from "@/transport/http/smart-http.ts";
 

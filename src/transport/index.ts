@@ -2,12 +2,12 @@
  * Git Wire 协议 — 共享工具层
  *
  * 仅导出协议原语层（protocol/）。
- * client/、server/、http/ 的模块可通过各自的子路径按需导入：
- * - nano-git/transport/client/upload-pack
- * - nano-git/transport/client/receive-pack
+ * 客户端与 HTTP 适配层可通过聚合子路径按需导入：
+ * - nano-git/transport/upload-pack
+ * - nano-git/transport/receive-pack
  * - nano-git/transport/server/upload-pack
  * - nano-git/transport/server/receive-pack
- * - nano-git/transport/http/smart-http
+ * - nano-git/transport/http
  * - 等
  */
 

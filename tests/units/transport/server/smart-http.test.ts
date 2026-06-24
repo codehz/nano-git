@@ -12,7 +12,7 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { createMemoryRepositoryBackend } from "@/backend/index.ts";
+import { createMemoryRepositoryBackend } from "@/backend/memory.ts";
 import { writeObject } from "@/objects/raw.ts";
 import { createSmartHttpHandler } from "@/transport/http/smart-http.ts";
 

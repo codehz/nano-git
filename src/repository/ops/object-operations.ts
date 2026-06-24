@@ -2,8 +2,6 @@
  * 仓库对象操作组装
  */
 
-import { readFileSync } from "node:fs";
-
 import { hashObject } from "../../core/hash.ts";
 import { writeObject, readObject } from "../../objects/raw.ts";
 import { createV2HttpTransport } from "../../transport/client/upload-pack/http.ts";
@@ -13,7 +11,6 @@ import {
   type TreePatchOp,
   type TreePatchResult,
 } from "../tree/tree-patch.ts";
-import { writeTreeRecursive } from "../tree/tree-writer.ts";
 
 import type {
   GitAuthor,
@@ -51,10 +48,6 @@ export function createObjectRepositoryOperations(
 
     writeBlob,
 
-    writeBlobFile(filePath: string): SHA1 {
-      return writeBlob(readFileSync(filePath));
-    },
-
     catFile(hash: SHA1): GitObject {
       return readObject(objects, hash);
     },
@@ -65,10 +58,6 @@ export function createObjectRepositoryOperations(
 
     listObjects(): SHA1[] {
       return objects.list();
-    },
-
-    writeTree(dirPath: string): SHA1 {
-      return writeTreeRecursive(objects, dirPath);
     },
 
     createTree(entries: TreeEntry[]): SHA1 {

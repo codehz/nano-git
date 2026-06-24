@@ -13,7 +13,7 @@
  * ```
  */
 
-import { createMemoryRepositoryBackend } from "../backend/index.ts";
+import { createMemoryRepositoryBackend } from "../backend/memory.ts";
 import { createRepository } from "./create.ts";
 
 import type { Repository } from "./types.ts";

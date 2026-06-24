@@ -8,7 +8,7 @@ import { writeObject, readObject } from "../../objects/raw.ts";
 import { branchNameToRef, tagNameToRef } from "../../refs/names.ts";
 import { resolveRefHash, resolveSymbolicRef, resolveTargetHash } from "../../refs/resolve.ts";
 
-import type { RepositoryBackend } from "../../backend/index.ts";
+import type { RepositoryBackend } from "../../backend/types.ts";
 import type { SHA1, GitAuthor, ObjectType, GitTag } from "../../core/types.ts";
 import type { RepositoryRefOperations } from "./ref-types.ts";
 

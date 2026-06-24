@@ -2,7 +2,7 @@
  * 仓库维护操作类型定义
  */
 
-import type { RepositoryGCOptions, RepositoryRepackOptions } from "../../backend/index.ts";
+import type { RepositoryGCOptions, RepositoryRepackOptions } from "../../backend/types.ts";
 import type { SHA1 } from "../../core/types.ts";
 import type { PackBuildResult } from "../../pack/types.ts";
 

@@ -91,7 +91,7 @@ console.log(`Created commit: ${commitHash}`);
 
 ```typescript
 import { openRepository } from "nano-git/repository/file";
-import { createSmartHttpHandler } from "nano-git/transport/http/smart-http";
+import { createSmartHttpHandler } from "nano-git/transport/http";
 
 // 创建 Git HTTP 后端处理函数（框架无关，标准 Request/Response）
 const handler = createSmartHttpHandler(openRepository("/path/to/repo"));
@@ -106,8 +106,8 @@ console.log("Git server running on http://localhost:8080");
 ### 使用显式仓库后端
 
 ```typescript
-import { createMemoryRepositoryBackend } from "nano-git/backend";
-import { createRepository } from "nano-git/repository/create";
+import { createMemoryRepositoryBackend } from "nano-git/backend/memory";
+import { createRepository } from "nano-git/repository/core";
 
 const backend = createMemoryRepositoryBackend();
 const repo = createRepository(backend);
@@ -301,11 +301,11 @@ bun run examples/demo.ts
 - 创建 blob、tree、commit 对象
 - 对象存储和读取
 
-## 按需加载的入口设计
+## 导出结构
 
-本库采用 **tree-shakeable** 的子路径导出设计，各模块按后端实现类型隔离。
-默认入口 `"nano-git"` 只导出核心类型和纯工具函数，**不包含任何后端实现**。
-具体子路径入口见 `package.json` 的 `exports` 字段或 `src/index.ts` 的 JSDoc 文档。
+本库默认入口 `"nano-git"` 直接提供高频的纯计算能力：类型、错误、对象编解码、refs 工具和 SHA-1 工具。
+带 `node:fs` / `node:zlib` 的运行时能力通过子路径显式导入，例如 `nano-git/repository/file`、`nano-git/pack`、`nano-git/transport/http`。
+tree-shaking 主要依赖模块本身的无副作用结构，而不是把所有 API 都拆成叶子级子路径。完整入口表见 `package.json` 的 `exports` 与 `src/index.ts` 的 JSDoc。
 
 ## Git 对象模型
 

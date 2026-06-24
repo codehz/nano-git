@@ -1,7 +1,11 @@
 /**
  * 仓库后端模块
  *
- * 统一导出 RepositoryBackend 接口及常用实现。
+ * 仅导出后端抽象类型。
+ *
+ * 具体实现请使用：
+ * - `nano-git/backend/memory`
+ * - `nano-git/backend/file`
  */
 
 export type {
@@ -11,12 +15,3 @@ export type {
   RepositoryPackSupport,
   RepositoryRepackOptions,
 } from "./types.ts";
-
-export {
-  createMemoryRepositoryBackend,
-  type CreateMemoryRepositoryBackendOptions,
-} from "./memory-backend.ts";
-export {
-  createFileRepositoryBackend,
-  type CreateFileRepositoryBackendOptions,
-} from "./file-backend.ts";
