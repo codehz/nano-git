@@ -28,6 +28,7 @@ import {
 import { resolvePath, resolveChild, listDirectoryChildren } from "./session-internal.ts";
 import { writeTreeFromSession } from "./write-tree.ts";
 
+import type { SHA1 } from "../core/types.ts";
 import type { ObjectDatabase } from "../core/types/odb.ts";
 import type {
   CreateVirtualWorkdirSessionOptions,
@@ -76,6 +77,11 @@ export function openVirtualWorkdirSession(
   source: ObjectDatabase,
   state: VirtualWorkdirStateStore,
 ): VirtualWorkdirSession {
+  const currentNodeHashes = new Map<NodeId, SHA1>();
+  const invalidateDiffCaches = (): void => {
+    currentNodeHashes.clear();
+  };
+
   const api: VirtualWorkdirSession = {
     get baseTree() {
       return state.readBaseTree();
@@ -166,7 +172,7 @@ export function openVirtualWorkdirSession(
     // ========== 写入 ==========
 
     mkdir(path: string): void {
-      runInWriteTransaction(state, () => {
+      runInWriteTransaction(state, invalidateDiffCaches, () => {
         assertValidVirtualPath(path);
         const parent = parentPath(path);
         const name = baseName(path);
@@ -213,7 +219,7 @@ export function openVirtualWorkdirSession(
       content: Buffer,
       options?: { readonly mode?: "100644" | "100755" },
     ): void {
-      runInWriteTransaction(state, () => {
+      runInWriteTransaction(state, invalidateDiffCaches, () => {
         assertValidVirtualPath(path);
         const mode: "100644" | "100755" = options?.mode ?? "100644";
         const parent = parentPath(path);
@@ -256,7 +262,7 @@ export function openVirtualWorkdirSession(
     },
 
     writeLink(path: string, target: string): void {
-      runInWriteTransaction(state, () => {
+      runInWriteTransaction(state, invalidateDiffCaches, () => {
         assertValidVirtualPath(path);
         const parent = parentPath(path);
         const name = baseName(path);
@@ -297,7 +303,7 @@ export function openVirtualWorkdirSession(
     },
 
     delete(path: string): void {
-      runInWriteTransaction(state, () => {
+      runInWriteTransaction(state, invalidateDiffCaches, () => {
         assertValidVirtualPath(path);
         const parent = parentPath(path);
         const name = baseName(path);
@@ -329,7 +335,7 @@ export function openVirtualWorkdirSession(
     },
 
     rename(from: string, to: string): void {
-      runInWriteTransaction(state, () => {
+      runInWriteTransaction(state, invalidateDiffCaches, () => {
         assertValidVirtualPath(from);
         assertValidVirtualPath(to);
 
@@ -427,7 +433,7 @@ export function openVirtualWorkdirSession(
     },
 
     copy(from: string, to: string): void {
-      runInWriteTransaction(state, () => {
+      runInWriteTransaction(state, invalidateDiffCaches, () => {
         assertValidVirtualPath(from);
         assertValidVirtualPath(to);
 
@@ -503,7 +509,7 @@ export function openVirtualWorkdirSession(
     },
 
     revert(path: string): void {
-      runInWriteTransaction(state, () => {
+      runInWriteTransaction(state, invalidateDiffCaches, () => {
         assertValidVirtualPath(path);
         const resolved = resolvePath(source, state, path);
         if (!resolved.found || resolved.node === null) {
@@ -520,7 +526,12 @@ export function openVirtualWorkdirSession(
     },
 
     diff(): VirtualDiffEntry[] {
-      return computeVirtualDiff(source, state);
+      return computeVirtualDiff(source, state, {
+        currentNodeHashes,
+        setCurrentNodeHash(nodeId, hash): void {
+          currentNodeHashes.set(nodeId, hash);
+        },
+      });
     },
 
     writeTree() {
@@ -528,7 +539,7 @@ export function openVirtualWorkdirSession(
     },
 
     reset(baseTree) {
-      runInWriteTransaction(state, () => {
+      runInWriteTransaction(state, invalidateDiffCaches, () => {
         state.reset(baseTree);
       });
     },
@@ -546,8 +557,14 @@ function getRootNode(state: VirtualWorkdirStateStore): SessionNode {
   return root;
 }
 
-function runInWriteTransaction<T>(state: VirtualWorkdirStateStore, fn: () => T): T {
-  return state.transact(fn);
+function runInWriteTransaction<T>(
+  state: VirtualWorkdirStateStore,
+  onCommitted: () => void,
+  fn: () => T,
+): T {
+  const result = state.transact(fn);
+  onCommitted();
+  return result;
 }
 
 /**

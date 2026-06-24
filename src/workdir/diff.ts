@@ -10,6 +10,7 @@ import { listDirectoryChildren } from "./session-internal.ts";
 import type { SHA1, TreeEntry } from "../core/types.ts";
 import type { ObjectSource } from "../core/types/odb.ts";
 import type { VirtualDiffEntry, VirtualDiffType } from "./core.ts";
+import type { NodeId } from "./ids.ts";
 import type { SessionNode } from "./nodes.ts";
 import type { VirtualWorkdirStateStore } from "./state-store.ts";
 
@@ -25,6 +26,13 @@ interface CopySourceMatch {
   readonly entry: SnapshotEntry;
 }
 
+interface VirtualDiffComputationCache {
+  readonly currentNodeHashes: ReadonlyMap<NodeId, SHA1>;
+  setCurrentNodeHash(nodeId: NodeId, hash: SHA1): void;
+}
+
+const baseSnapshotCache = new WeakMap<ObjectSource, Map<SHA1, readonly SnapshotEntry[]>>();
+
 /**
  * 计算当前 session 相对 baseTree 的最终 diff。
  *
@@ -37,9 +45,10 @@ interface CopySourceMatch {
 export function computeVirtualDiff(
   source: ObjectSource,
   state: VirtualWorkdirStateStore,
+  cache?: VirtualDiffComputationCache,
 ): VirtualDiffEntry[] {
   const baseEntries = snapshotBaseTree(source, state.readBaseTree(), VIRTUAL_ROOT_PATH);
-  const currentEntries = snapshotCurrentTree(source, state);
+  const currentEntries = snapshotCurrentTree(source, state, cache);
 
   const baseByPath = new Map(baseEntries.map((entry) => [entry.path, entry]));
   const currentByPath = new Map(currentEntries.map((entry) => [entry.path, entry]));
@@ -147,6 +156,13 @@ function toDiffEntry(
 }
 
 function snapshotBaseTree(source: ObjectSource, treeHash: SHA1, dirPath: string): SnapshotEntry[] {
+  if (dirPath === VIRTUAL_ROOT_PATH) {
+    const cached = getCachedBaseSnapshot(source, treeHash);
+    if (cached !== null) {
+      return [...cached];
+    }
+  }
+
   const tree = readRepoTree(source, treeHash, dirPath);
   const out: SnapshotEntry[] = [];
 
@@ -165,18 +181,23 @@ function snapshotBaseTree(source: ObjectSource, treeHash: SHA1, dirPath: string)
     });
   }
 
+  if (dirPath === VIRTUAL_ROOT_PATH) {
+    setCachedBaseSnapshot(source, treeHash, out);
+  }
+
   return out;
 }
 
 function snapshotCurrentTree(
   source: ObjectSource,
   state: VirtualWorkdirStateStore,
+  cache?: VirtualDiffComputationCache,
 ): SnapshotEntry[] {
   const root = state.getNode("root" as SessionNode["id"]);
   if (root === null) {
     throw new Error("Virtual workdir session is missing root node");
   }
-  return snapshotCurrentNode(source, state, root, VIRTUAL_ROOT_PATH);
+  return snapshotCurrentNode(source, state, root, VIRTUAL_ROOT_PATH, cache);
 }
 
 function snapshotCurrentNode(
@@ -184,6 +205,7 @@ function snapshotCurrentNode(
   state: VirtualWorkdirStateStore,
   node: SessionNode,
   path: string,
+  cache?: VirtualDiffComputationCache,
 ): SnapshotEntry[] {
   if (node.state.kind === "directory") {
     const children = listDirectoryChildren(source, state, node, path);
@@ -194,13 +216,13 @@ function snapshotCurrentNode(
         continue;
       }
       const childPath = path === VIRTUAL_ROOT_PATH ? child.name : `${path}/${child.name}`;
-      out.push(...snapshotCurrentNode(source, state, childNode, childPath));
+      out.push(...snapshotCurrentNode(source, state, childNode, childPath, cache));
     }
     return out;
   }
 
   const mode = node.state.mode;
-  const hash = currentNodeHash(source, node, path);
+  const hash = currentNodeHash(source, node, path, cache);
   return [
     {
       path,
@@ -214,10 +236,21 @@ function snapshotCurrentNode(
   ];
 }
 
-function currentNodeHash(source: ObjectSource, node: SessionNode, path: string): SHA1 {
+function currentNodeHash(
+  source: ObjectSource,
+  node: SessionNode,
+  path: string,
+  cache?: VirtualDiffComputationCache,
+): SHA1 {
   if (node.state.kind === "file") {
     if (node.state.content !== undefined) {
-      return hashObject("blob", node.state.content);
+      const cached = cache?.currentNodeHashes.get(node.id);
+      if (cached !== undefined) {
+        return cached;
+      }
+      const hash = hashObject("blob", node.state.content);
+      cache?.setCurrentNodeHash(node.id, hash);
+      return hash;
     }
     if (node.origin.kind === "repo-blob") {
       return node.origin.hash;
@@ -226,7 +259,13 @@ function currentNodeHash(source: ObjectSource, node: SessionNode, path: string):
 
   if (node.state.kind === "symlink") {
     if (node.state.target !== undefined) {
-      return hashObject("blob", node.state.target);
+      const cached = cache?.currentNodeHashes.get(node.id);
+      if (cached !== undefined) {
+        return cached;
+      }
+      const hash = hashObject("blob", node.state.target);
+      cache?.setCurrentNodeHash(node.id, hash);
+      return hash;
     }
     if (node.origin.kind === "repo-blob") {
       return node.origin.hash;
@@ -250,6 +289,23 @@ function normalizeBlobMode(mode: string): "100644" | "100755" | "120000" {
 
 function buildOriginSignature(mode: "100644" | "100755" | "120000", hash: SHA1): string {
   return `${mode}:${hash}`;
+}
+
+function getCachedBaseSnapshot(
+  source: ObjectSource,
+  treeHash: SHA1,
+): readonly SnapshotEntry[] | null {
+  return baseSnapshotCache.get(source)?.get(treeHash) ?? null;
+}
+
+function setCachedBaseSnapshot(
+  source: ObjectSource,
+  treeHash: SHA1,
+  entries: readonly SnapshotEntry[],
+): void {
+  const cache = baseSnapshotCache.get(source) ?? new Map<SHA1, readonly SnapshotEntry[]>();
+  cache.set(treeHash, entries);
+  baseSnapshotCache.set(source, cache);
 }
 
 function indexDeletesBySignature(

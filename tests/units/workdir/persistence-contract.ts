@@ -11,7 +11,11 @@ import { resetNodeIdCounterForTests } from "@/workdir/ids.ts";
 import { resetVirtualWorkdirSessionIdCounterForTests } from "@/workdir/session-id.ts";
 
 import type { SHA1 } from "@/core/types.ts";
-import type { VirtualWorkdirBackend, VirtualWorkdirSessionId } from "@/workdir/core.ts";
+import type {
+  VirtualDiffEntry,
+  VirtualWorkdirBackend,
+  VirtualWorkdirSessionId,
+} from "@/workdir/core.ts";
 
 export interface PersistentVirtualWorkdirBackendInstance {
   /** 当前打开的 backend */
@@ -161,6 +165,52 @@ export function runPersistentVirtualWorkdirContract(
 
             expect(reopenedA.writeTree()).toBe(treeA);
             expect(reopenedB.writeTree()).toBe(treeB);
+          } finally {
+            instance.dispose();
+          }
+        }
+      } finally {
+        harness.cleanup();
+      }
+    });
+
+    test("reopen 后 diff 不依赖进程内缓存", () => {
+      resetVirtualWorkdirSessionIdCounterForTests();
+      resetNodeIdCounterForTests();
+      const repo = createMemoryRepository();
+      const harness = createHarness();
+
+      try {
+        let sessionId: VirtualWorkdirSessionId;
+        let stableDiff: VirtualDiffEntry[];
+        {
+          const instance = harness.openBackend();
+          try {
+            sessionId = instance.backend.createSession({ baseTree: repo.createTree([]) });
+            const session = instance.backend.openSession(repo.objects, sessionId);
+            session.writeFile("a.txt", Buffer.from("alpha"));
+            session.writeFile("b.txt", Buffer.from("beta"));
+
+            stableDiff = session.diff();
+            expect(session.diff()).toEqual(stableDiff);
+          } finally {
+            instance.dispose();
+          }
+        }
+
+        {
+          const instance = harness.openBackend();
+          try {
+            const reopened = instance.backend.openSession(repo.objects, sessionId);
+            expect(reopened.diff()).toEqual(stableDiff);
+
+            reopened.writeFile("b.txt", Buffer.from("beta-2"));
+            const modifiedDiff = reopened.diff();
+            expect(modifiedDiff).not.toEqual(stableDiff);
+            expect(reopened.diff()).toEqual(modifiedDiff);
+            expect(modifiedDiff.map((entry) => entry.path)).toEqual(["a.txt", "b.txt"]);
+            expect(modifiedDiff[0]?.type).toBe("add");
+            expect(modifiedDiff[1]?.type).toBe("add");
           } finally {
             instance.dispose();
           }

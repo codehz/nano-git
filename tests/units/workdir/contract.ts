@@ -90,6 +90,21 @@ export function runVirtualWorkdirContract(
       expect(hash1).toBe(hash2);
     });
 
+    test("重复 diff 结果稳定", () => {
+      const repo = createMemoryRepository();
+      const fileHash = repo.writeBlob(Buffer.from("base"));
+      const baseTree = repo.createTree([{ mode: "100644", name: "file.txt", hash: fileHash }]);
+      const session = createSession(repo, { baseTree });
+
+      session.writeFile("file.txt", Buffer.from("edited"));
+      session.writeFile("fresh.txt", Buffer.from("new"));
+
+      const diff1 = session.diff();
+      const diff2 = session.diff();
+
+      expect(diff2).toEqual(diff1);
+    });
+
     test("rename 文件与目录保持可读", () => {
       const repo = createMemoryRepository();
       const session = createSession(repo, { baseTree: repo.createTree([]) });
