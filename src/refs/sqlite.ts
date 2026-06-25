@@ -11,47 +11,48 @@
 import { RefNotFoundError, TransactionError } from "../core/errors.ts";
 import { validateRefName, validateRefPrefix } from "./names.ts";
 
+import type { SqliteConnectionHandle } from "../backend/sqlite-pool.ts";
 import type {
   RefStore,
   RefTransaction,
   RefTransactionHook,
   ReadonlyRefTransaction,
 } from "../core/types/refs.ts";
-import type { Database } from "bun:sqlite";
 
 /**
  * 创建基于 SQLite 的 RefStore
  *
- * @param db - 已打开的 bun:sqlite Database 实例（生命周期由调用方管理）
+ * @param conn - SQLite 连接池句柄（含 statement 缓存）
  * @returns 符合 RefStore 接口的存储后端（含事务支持）
  *
  * @example
  * ```ts
- * import { Database } from "bun:sqlite";
- * const db = new Database("/tmp/repo.sqlite");
- * const store = createSqliteRefStore(db);
+ * import { acquireConnection } from "nano-git/backend/sqlite";
+ * using conn = acquireConnection("/tmp/repo.sqlite");
+ * const store = createSqliteRefStore(conn);
  *
  * store.write("refs/heads/main", "abc123");
  * const content = store.read("refs/heads/main");
  * ```
  */
-export function createSqliteRefStore(db: Database): RefStore {
-  // 预编译 SQL 语句
+export function createSqliteRefStore(conn: SqliteConnectionHandle): RefStore {
+  // 预编译 SQL 语句（通过 conn.prepare 缓存复用）
   // 注意：bun:sqlite 的 .get() 始终返回行对象，即使是单列查询
-  const selectStmt = db.query<{ target: string } | null, [string]>(
+  const selectStmt = conn.prepare<{ target: string } | null>(
     "SELECT target FROM refs WHERE name = ?",
   );
-  const selectExistsStmt = db.query<{ "1": number }, [string]>("SELECT 1 FROM refs WHERE name = ?");
-  const insertStmt = db.query<void, [string, string]>(
-    "INSERT OR REPLACE INTO refs (name, target) VALUES (?, ?)",
-  );
-  const deleteStmt = db.query<void, [string]>("DELETE FROM refs WHERE name = ?");
-  const listPrefixStmt = db.query<{ name: string }, [string, string]>(
+  const selectExistsStmt = conn.prepare<{ "1": number }>("SELECT 1 FROM refs WHERE name = ?");
+  const insertStmt = conn.prepare<void>("INSERT OR REPLACE INTO refs (name, target) VALUES (?, ?)");
+  const deleteStmt = conn.prepare<void>("DELETE FROM refs WHERE name = ?");
+  const listPrefixStmt = conn.prepare<{ name: string }>(
     "SELECT name FROM refs WHERE name >= ? AND name < ? ORDER BY name",
   );
-  const listAllStmt = db.query<{ name: string }, []>(
+  const listAllStmt = conn.prepare<{ name: string }>(
     "SELECT name FROM refs WHERE name LIKE 'refs/%' ORDER BY name",
   );
+
+  // 以下代码通过 closure 引用上述 stmt 变量和 conn.db
+  const db = conn.db;
 
   /**
    * 开启一个新的事务

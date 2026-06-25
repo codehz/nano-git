@@ -64,31 +64,31 @@ export function createSqliteRepositoryBackend(
   dbPath: string,
   options: CreateSqliteRepositoryBackendOptions = {},
 ): SqliteRepositoryBackend {
-  const { db, release } = acquireConnection(dbPath, options.walMode !== false);
+  const conn = acquireConnection(dbPath, options.walMode !== false);
 
   // 确保表结构存在（幂等，重复打开同一数据库不会重复创建）
-  db.run(
+  conn.db.run(
     "CREATE TABLE IF NOT EXISTS objects (hash TEXT PRIMARY KEY, type TEXT NOT NULL, content BLOB NOT NULL)",
   );
-  db.run("CREATE TABLE IF NOT EXISTS refs (name TEXT PRIMARY KEY, target TEXT NOT NULL)");
-  db.run("CREATE TABLE IF NOT EXISTS shallow (hash TEXT PRIMARY KEY)");
+  conn.db.run("CREATE TABLE IF NOT EXISTS refs (name TEXT PRIMARY KEY, target TEXT NOT NULL)");
+  conn.db.run("CREATE TABLE IF NOT EXISTS shallow (hash TEXT PRIMARY KEY)");
 
   // 初始化 HEAD
-  db.run("INSERT OR IGNORE INTO refs (name, target) VALUES (?, ?)", [
+  conn.db.run("INSERT OR IGNORE INTO refs (name, target) VALUES (?, ?)", [
     HEAD_REF,
     `ref: ${HEADS_PREFIX}main`,
   ]);
 
   return {
     gitDir: dbPath,
-    objects: createSqliteObjectStore(db),
-    refs: createSqliteRefStore(db),
-    shallow: createSqliteShallowStore(db),
+    objects: createSqliteObjectStore(conn),
+    refs: createSqliteRefStore(conn),
+    shallow: createSqliteShallowStore(conn),
     packs: null,
 
     /** 释放 SQLite 数据库连接（引用计数减一） */
     [Symbol.dispose](): void {
-      release();
+      conn.release();
     },
   };
 }

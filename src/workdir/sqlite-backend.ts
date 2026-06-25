@@ -2,7 +2,7 @@
  * Virtual Workdir SQLite backend
  */
 
-import { acquireConnection } from "../backend/sqlite-pool.ts";
+import { acquireConnection, type SqliteConnectionHandle } from "../backend/sqlite-pool.ts";
 import { sha1 } from "../core/types.ts";
 import { createRootDirectoryNode, type WorkdirNode } from "./nodes.ts";
 import { openVirtualWorkdir } from "./workdir.ts";
@@ -99,7 +99,7 @@ export function openSqliteVirtualWorkdir(
   const conn = acquireConnection(dbPath, options.walMode !== false);
   try {
     ensureSchema(conn.db);
-    const store = createSqliteVirtualWorkdirStateStore(conn.db, workdirKey);
+    const store = createSqliteVirtualWorkdirStateStore(conn, workdirKey);
     if (!hasWorkdir(conn.db, workdirKey)) {
       if (options.create !== true) {
         throw new Error(`Virtual workdir not found: ${workdirKey}`);
@@ -155,41 +155,28 @@ export function deleteSqliteVirtualWorkdir(
  *
  * @example
  * ```ts
- * const store = createSqliteVirtualWorkdirStateStore(db, "demo");
+ * using conn = acquireConnection("/tmp/workdir.sqlite");
+ * const store = createSqliteVirtualWorkdirStateStore(conn, "demo");
  * expect(store.kind).toBe("sqlite");
  * ```
  */
 export function createSqliteVirtualWorkdirStateStore(
-  db: Database,
+  conn: SqliteConnectionHandle,
   workdirKey: string,
 ): VirtualWorkdirStateStore {
-  const transactImpl = db.transaction((fn: () => unknown) => fn());
-  const readBaseTreeStmt = db.query<Pick<WorkdirRow, "base_tree"> | null, [string]>(
+  const transactImpl = conn.db.transaction((fn: () => unknown) => fn());
+  const readBaseTreeStmt = conn.prepare<Pick<WorkdirRow, "base_tree"> | null>(
     "SELECT base_tree FROM workdirs WHERE workdir_key = ?",
   );
-  const upsertWorkdirStmt = db.query<void, [string, string]>(
+  const upsertWorkdirStmt = conn.prepare<void>(
     "INSERT INTO workdirs (workdir_key, base_tree) VALUES (?, ?) ON CONFLICT(workdir_key) DO UPDATE SET base_tree = excluded.base_tree",
   );
-  const getNodeStmt = db.query<NodeRow | null, [string, string]>(
+  const getNodeStmt = conn.prepare<NodeRow | null>(
     `SELECT node_id, origin_kind, origin_hash, origin_mode, state_kind, state_mode, content, target, directory_overlay
      FROM workdir_nodes
      WHERE workdir_key = ? AND node_id = ?`,
   );
-  const setNodeStmt = db.query<
-    void,
-    [
-      string,
-      string,
-      string,
-      string | null,
-      string | null,
-      string,
-      string | null,
-      Uint8Array | null,
-      Uint8Array | null,
-      string | null,
-    ]
-  >(
+  const setNodeStmt = conn.prepare<void>(
     `INSERT INTO workdir_nodes (
         workdir_key, node_id, origin_kind, origin_hash, origin_mode,
         state_kind, state_mode, content, target, directory_overlay
@@ -204,38 +191,22 @@ export function createSqliteVirtualWorkdirStateStore(
         target = excluded.target,
         directory_overlay = excluded.directory_overlay`,
   );
-  const deleteNodeStmt = db.query<void, [string, string]>(
+  const deleteNodeStmt = conn.prepare<void>(
     "DELETE FROM workdir_nodes WHERE workdir_key = ? AND node_id = ?",
   );
-  const clearNodesStmt = db.query<void, [string]>(
-    "DELETE FROM workdir_nodes WHERE workdir_key = ?",
-  );
-  const listChangesStmt = db.query<ChangeRow, [string]>(
+  const clearNodesStmt = conn.prepare<void>("DELETE FROM workdir_nodes WHERE workdir_key = ?");
+  const listChangesStmt = conn.prepare<ChangeRow>(
     `SELECT path, previous_kind, previous_mode, previous_hash, current_kind, current_mode, current_hash, source_kind, source_path
      FROM workdir_changes
      WHERE workdir_key = ?
      ORDER BY path`,
   );
-  const getChangeStmt = db.query<ChangeRow | null, [string, string]>(
+  const getChangeStmt = conn.prepare<ChangeRow | null>(
     `SELECT path, previous_kind, previous_mode, previous_hash, current_kind, current_mode, current_hash, source_kind, source_path
      FROM workdir_changes
      WHERE workdir_key = ? AND path = ?`,
   );
-  const upsertChangeStmt = db.query<
-    void,
-    [
-      string,
-      string,
-      string | null,
-      string | null,
-      string | null,
-      string | null,
-      string | null,
-      string | null,
-      string | null,
-      string | null,
-    ]
-  >(
+  const upsertChangeStmt = conn.prepare<void>(
     `INSERT INTO workdir_changes (
       workdir_key, path, previous_kind, previous_mode, previous_hash,
       current_kind, current_mode, current_hash, source_kind, source_path
@@ -250,27 +221,22 @@ export function createSqliteVirtualWorkdirStateStore(
       source_kind = excluded.source_kind,
       source_path = excluded.source_path`,
   );
-  const deleteChangeStmt = db.query<void, [string, string]>(
+  const deleteChangeStmt = conn.prepare<void>(
     "DELETE FROM workdir_changes WHERE workdir_key = ? AND path = ?",
   );
-  const clearChangesStmt = db.query<void, [string]>(
-    "DELETE FROM workdir_changes WHERE workdir_key = ?",
-  );
-  const listDirtyDirsStmt = db.query<DirtyDirRow, [string]>(
+  const clearChangesStmt = conn.prepare<void>("DELETE FROM workdir_changes WHERE workdir_key = ?");
+  const listDirtyDirsStmt = conn.prepare<DirtyDirRow>(
     `SELECT path, is_dirty, dirty_entry_count, dirty_descendant_count, affected_names, current_tree_hash, hash_state
      FROM workdir_dirty_dirs
      WHERE workdir_key = ?
      ORDER BY path`,
   );
-  const getDirtyDirStmt = db.query<DirtyDirRow | null, [string, string]>(
+  const getDirtyDirStmt = conn.prepare<DirtyDirRow | null>(
     `SELECT path, is_dirty, dirty_entry_count, dirty_descendant_count, affected_names, current_tree_hash, hash_state
      FROM workdir_dirty_dirs
      WHERE workdir_key = ? AND path = ?`,
   );
-  const upsertDirtyDirStmt = db.query<
-    void,
-    [string, string, number, number, number, string, string | null, DirtyDirHashState]
-  >(
+  const upsertDirtyDirStmt = conn.prepare<void>(
     `INSERT INTO workdir_dirty_dirs (
       workdir_key, path, is_dirty, dirty_entry_count, dirty_descendant_count,
       affected_names, current_tree_hash, hash_state
@@ -284,14 +250,14 @@ export function createSqliteVirtualWorkdirStateStore(
        current_tree_hash = excluded.current_tree_hash,
        hash_state = excluded.hash_state`,
   );
-  const deleteDirtyDirStmt = db.query<void, [string, string]>(
+  const deleteDirtyDirStmt = conn.prepare<void>(
     "DELETE FROM workdir_dirty_dirs WHERE workdir_key = ? AND path = ?",
   );
-  const clearDirtyDirsStmt = db.query<void, [string]>(
+  const clearDirtyDirsStmt = conn.prepare<void>(
     "DELETE FROM workdir_dirty_dirs WHERE workdir_key = ?",
   );
 
-  const resetTx = db.transaction((baseTree: SHA1) => {
+  const resetTx = conn.db.transaction((baseTree: SHA1) => {
     upsertWorkdirStmt.run(workdirKey, baseTree);
     clearNodesStmt.run(workdirKey);
     clearChangesStmt.run(workdirKey);

@@ -12,9 +12,9 @@ import { ObjectNotFoundError } from "../core/errors.ts";
 import { hashObject } from "../core/hash.ts";
 import { sha1 } from "../core/types.ts";
 
+import type { SqliteConnectionHandle } from "../backend/sqlite-pool.ts";
 import type { RawGitObject, SHA1, ObjectType } from "../core/types.ts";
 import type { ObjectDatabase } from "./types.ts";
-import type { Database } from "bun:sqlite";
 
 // 数据库查询结果行类型
 interface ObjectRow {
@@ -26,33 +26,33 @@ interface ObjectRow {
 /**
  * 创建基于 SQLite 的对象数据库
  *
- * @param db - 已打开的 bun:sqlite Database 实例
+ * @param conn - SQLite 连接池句柄（含 statement 缓存）
  * @returns 符合 ObjectDatabase 接口的存储后端
  *
  * @example
  * ```ts
- * import { Database } from "bun:sqlite";
- * const db = new Database("/tmp/repo.sqlite");
- * const store = createSqliteObjectStore(db);
+ * import { acquireConnection } from "nano-git/backend/sqlite";
+ * using conn = acquireConnection("/tmp/repo.sqlite");
+ * const store = createSqliteObjectStore(conn);
  *
  * store.ingest(raw);
  * const obj = store.read(hash);
  * ```
  */
-export function createSqliteObjectStore(db: Database): ObjectDatabase {
-  // 预编译 SQL 语句
-  const selectStmt = db.query<ObjectRow, [string]>(
+export function createSqliteObjectStore(conn: SqliteConnectionHandle): ObjectDatabase {
+  // 预编译 SQL 语句（通过 conn.prepare 缓存复用）
+  const selectStmt = conn.prepare<ObjectRow>(
     "SELECT hash, type, content FROM objects WHERE hash = ?",
   );
-  const existsStmt = db.query<{ "1": number }, [string]>("SELECT 1 FROM objects WHERE hash = ?");
-  const insertStmt = db.query<void, [string, string, Uint8Array]>(
+  const existsStmt = conn.prepare<{ "1": number }>("SELECT 1 FROM objects WHERE hash = ?");
+  const insertStmt = conn.prepare<void>(
     "INSERT OR IGNORE INTO objects (hash, type, content) VALUES (?, ?, ?)",
   );
-  const deleteStmt = db.query<void, [string]>("DELETE FROM objects WHERE hash = ?");
-  const listStmt = db.query<Pick<ObjectRow, "hash">, []>("SELECT hash FROM objects ORDER BY hash");
+  const deleteStmt = conn.prepare<void>("DELETE FROM objects WHERE hash = ?");
+  const listStmt = conn.prepare<Pick<ObjectRow, "hash">>("SELECT hash FROM objects ORDER BY hash");
 
   /** 批量插入的事务包装 */
-  const ingestManyTx = db.transaction((objects: Iterable<RawGitObject>) => {
+  const ingestManyTx = conn.db.transaction((objects: Iterable<RawGitObject>) => {
     for (const raw of objects) {
       const expectedHash = hashObject(raw.type, raw.content);
       if (expectedHash !== raw.hash) {

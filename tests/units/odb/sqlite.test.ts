@@ -2,9 +2,9 @@
  * SQLite 对象存储单元测试
  */
 
-import { Database } from "bun:sqlite";
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 
+import { acquireConnection } from "@/backend/sqlite-pool.ts";
 import { ObjectNotFoundError } from "@/core/errors.ts";
 import { sha1 } from "@/core/types.ts";
 import { writeObject, readObject, encodeObject } from "@/objects/raw.ts";
@@ -22,19 +22,19 @@ const testAuthor: GitAuthor = {
 };
 
 describe("createSqliteObjectStore()", () => {
-  let db: Database;
+  let conn: ReturnType<typeof acquireConnection>;
   let store: ReturnType<typeof createSqliteObjectStore>;
 
   beforeEach(() => {
-    db = new Database(":memory:");
-    db.run(
+    conn = acquireConnection(":memory:");
+    conn.db.run(
       "CREATE TABLE IF NOT EXISTS objects (hash TEXT PRIMARY KEY, type TEXT NOT NULL, content BLOB NOT NULL)",
     );
-    store = createSqliteObjectStore(db);
+    store = createSqliteObjectStore(conn);
   });
 
   afterEach(() => {
-    db.close();
+    conn.release();
   });
 
   test("写入并读取 blob 对象", () => {

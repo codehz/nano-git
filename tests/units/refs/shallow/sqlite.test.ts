@@ -4,9 +4,9 @@
  * 覆盖 ShallowStore 接口的全部场景。
  */
 
-import { Database } from "bun:sqlite";
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 
+import { acquireConnection } from "@/backend/sqlite-pool.ts";
 import { sha1 } from "@/core/types.ts";
 import { createSqliteShallowStore } from "@/refs/shallow/sqlite.ts";
 
@@ -21,17 +21,17 @@ const HASH_B = makeHash("b");
 const HASH_C = makeHash("c");
 
 describe("createSqliteShallowStore()", () => {
-  let db: Database;
+  let conn: ReturnType<typeof acquireConnection>;
   let store: ReturnType<typeof createSqliteShallowStore>;
 
   beforeEach(() => {
-    db = new Database(":memory:");
-    db.run("CREATE TABLE IF NOT EXISTS shallow (hash TEXT PRIMARY KEY)");
-    store = createSqliteShallowStore(db);
+    conn = acquireConnection(":memory:");
+    conn.db.run("CREATE TABLE IF NOT EXISTS shallow (hash TEXT PRIMARY KEY)");
+    store = createSqliteShallowStore(conn);
   });
 
   afterEach(() => {
-    db.close();
+    conn.release();
   });
 
   test("默认状态下 read 返回空数组", () => {
@@ -84,14 +84,14 @@ describe("createSqliteShallowStore()", () => {
     store.write([HASH_A]);
 
     // readonly DB 会使写入操作失败
-    db.run("PRAGMA query_only = 1");
+    conn.db.run("PRAGMA query_only = 1");
 
     expect(() => {
       store.applyUpdate({ shallow: [HASH_B], unshallow: [HASH_A] });
     }).toThrow();
 
     // 恢复 readonly
-    db.run("PRAGMA query_only = 0");
+    conn.db.run("PRAGMA query_only = 0");
 
     // 确认数据未变更
     expect(store.read()).toEqual([HASH_A]);
@@ -100,13 +100,13 @@ describe("createSqliteShallowStore()", () => {
   test("write 原子性：中途出错时全部回滚", () => {
     store.write([HASH_A]);
 
-    db.run("PRAGMA query_only = 1");
+    conn.db.run("PRAGMA query_only = 1");
 
     expect(() => {
       store.write([HASH_B]);
     }).toThrow();
 
-    db.run("PRAGMA query_only = 0");
+    conn.db.run("PRAGMA query_only = 0");
 
     // write 是 DELETE ALL + INSERT，事务回滚应保持原状
     expect(store.read()).toEqual([HASH_A]);

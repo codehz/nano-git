@@ -4,12 +4,13 @@
  * 覆盖 RefStore 和 RefTransaction 的 SQLite 实现的全部场景。
  */
 
-import { Database } from "bun:sqlite";
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 
+import { acquireConnection } from "@/backend/sqlite-pool.ts";
 import { RefNotFoundError, TransactionError } from "@/core/errors.ts";
 import { createSqliteRefStore } from "@/refs/sqlite.ts";
 
+import type { SqliteConnectionHandle } from "@/backend/sqlite-pool.ts";
 import type { RefStore, RefTransactionHook } from "@/core/types/refs.ts";
 
 // ============================================================================
@@ -17,17 +18,17 @@ import type { RefStore, RefTransactionHook } from "@/core/types/refs.ts";
 // ============================================================================
 
 describe("createSqliteRefStore()", () => {
-  let db: Database;
+  let conn: SqliteConnectionHandle;
   let store: RefStore;
 
   beforeEach(() => {
-    db = new Database(":memory:");
-    db.run("CREATE TABLE IF NOT EXISTS refs (name TEXT PRIMARY KEY, target TEXT NOT NULL)");
-    store = createSqliteRefStore(db);
+    conn = acquireConnection(":memory:");
+    conn.db.run("CREATE TABLE IF NOT EXISTS refs (name TEXT PRIMARY KEY, target TEXT NOT NULL)");
+    store = createSqliteRefStore(conn);
   });
 
   afterEach(() => {
-    db.close();
+    conn.release();
   });
 
   test("read() 不存在的引用返回 null", () => {
@@ -129,17 +130,17 @@ describe("createSqliteRefStore()", () => {
 // ============================================================================
 
 describe("Sqlite RefTransaction", () => {
-  let db: Database;
+  let conn: SqliteConnectionHandle;
   let store: RefStore;
 
   beforeEach(() => {
-    db = new Database(":memory:");
-    db.run("CREATE TABLE IF NOT EXISTS refs (name TEXT PRIMARY KEY, target TEXT NOT NULL)");
-    store = createSqliteRefStore(db);
+    conn = acquireConnection(":memory:");
+    conn.db.run("CREATE TABLE IF NOT EXISTS refs (name TEXT PRIMARY KEY, target TEXT NOT NULL)");
+    store = createSqliteRefStore(conn);
   });
 
   afterEach(() => {
-    db.close();
+    conn.release();
   });
 
   test("空事务 commit 不报错", () => {
