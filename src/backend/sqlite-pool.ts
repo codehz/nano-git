@@ -5,16 +5,12 @@
  * 防止反复打开同一数据库文件带来的开销。
  *
  * 每个 acquire 对应一个 release，当引用计数归零时自动关闭连接。
+ * 返回的 handle 实现了 [Symbol.dispose]()，可用 `using` 语法自动释放。
  *
  * @example
  * ```ts
- * const { db, release } = acquireConnection("/tmp/repo.sqlite");
- * try {
- *   db.run("CREATE TABLE ...");
- *   // ...
- * } finally {
- *   release();
- * }
+ * using _conn = acquireConnection("/tmp/repo.sqlite");
+ * // 作用域结束时自动释放
  * ```
  */
 
@@ -33,6 +29,19 @@ export interface SqliteConnectionHandle {
   readonly db: Database;
   /** 释放连接（引用计数减一，归零时关闭数据库） */
   readonly release: () => void;
+  /** 支持 `using` 语法自动释放 */
+  [Symbol.dispose](): void;
+}
+
+/** 构造连接句柄（release + Symbol.dispose） */
+function makeHandle(db: Database, onRelease: () => void): SqliteConnectionHandle {
+  return {
+    db,
+    release: onRelease,
+    [Symbol.dispose](): void {
+      onRelease();
+    },
+  };
 }
 
 /**
@@ -53,28 +62,22 @@ export function acquireConnection(dbPath: string, walMode = true): SqliteConnect
       db.run("PRAGMA journal_mode = WAL");
     }
     let released = false;
-    return {
-      db,
-      release: (): void => {
-        if (released) return;
-        released = true;
-        db.close();
-      },
-    };
+    return makeHandle(db, () => {
+      if (released) return;
+      released = true;
+      db.close();
+    });
   }
 
   const existing = pool.get(dbPath);
   if (existing !== undefined) {
     existing.refCount++;
     let released = false;
-    return {
-      db: existing.db,
-      release: (): void => {
-        if (released) return;
-        released = true;
-        releaseConnection(dbPath);
-      },
-    };
+    return makeHandle(existing.db, () => {
+      if (released) return;
+      released = true;
+      releaseConnection(dbPath);
+    });
   }
 
   const db = new Database(dbPath);
@@ -84,14 +87,11 @@ export function acquireConnection(dbPath: string, walMode = true): SqliteConnect
   pool.set(dbPath, { db, refCount: 1 });
 
   let released = false;
-  return {
-    db,
-    release: (): void => {
-      if (released) return;
-      released = true;
-      releaseConnection(dbPath);
-    },
-  };
+  return makeHandle(db, () => {
+    if (released) return;
+    released = true;
+    releaseConnection(dbPath);
+  });
 }
 
 /** 内部释放逻辑 */
