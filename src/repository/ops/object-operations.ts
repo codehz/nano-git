@@ -16,11 +16,25 @@ import type {
   GitCommit,
   GitTree,
   GitObject,
+  RawGitObject,
   SHA1,
   TreeEntry,
 } from "../../core/types.ts";
 import type { ObjectDatabase } from "../../odb/types.ts";
 import type { RepositoryObjectOperations } from "./object-types.ts";
+
+/**
+ * 空 tree 的规范原始对象
+ *
+ * 空 tree 序列化后内容为空，header 为 "tree 0\0"，
+ * 其 SHA-1 是 Git 通用已知常数。
+ * 预计算一份避免每次重复序列化和哈希。
+ */
+const EMPTY_TREE_RAW: RawGitObject = {
+  hash: hashObject("tree", Buffer.alloc(0)),
+  type: "tree",
+  content: Buffer.alloc(0),
+};
 
 /**
  * 创建仓库对象相关操作
@@ -59,6 +73,10 @@ export function createObjectRepositoryOperations(
     },
 
     createTree(entries: TreeEntry[]): SHA1 {
+      if (entries.length === 0) {
+        objects.ingest(EMPTY_TREE_RAW);
+        return EMPTY_TREE_RAW.hash;
+      }
       const tree: GitTree = { type: "tree", entries };
       return writeObject(objects, tree);
     },
