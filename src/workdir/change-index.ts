@@ -338,7 +338,7 @@ function snapshotBaseTree(source: ObjectSource, treeHash: SHA1, dirPath: string)
 
   for (const entry of tree.entries) {
     const path = joinChildPath(dirPath, entry.name);
-    if (entry.mode === "40000") {
+    if (entry.mode === "040000") {
       out.push(...snapshotBaseTree(source, entry.hash, path));
       continue;
     }

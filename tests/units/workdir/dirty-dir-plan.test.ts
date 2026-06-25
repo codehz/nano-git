@@ -57,8 +57,8 @@ describe("createDirtyDirPlanner()", () => {
     const srcTree = repo.createTree([{ mode: "100644", name: "a.ts", hash: aHash }]);
     const docsTree = repo.createTree([{ mode: "100644", name: "readme.md", hash: readmeHash }]);
     const baseTree = repo.createTree([
-      { mode: "40000", name: "docs", hash: docsTree },
-      { mode: "40000", name: "src", hash: srcTree },
+      { mode: "040000", name: "docs", hash: docsTree },
+      { mode: "040000", name: "src", hash: srcTree },
     ]);
     const store = createVirtualWorkdirMemoryStateStore(baseTree);
     const session = openVirtualWorkdir(repo.objects, store);

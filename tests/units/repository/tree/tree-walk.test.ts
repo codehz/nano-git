@@ -48,7 +48,7 @@ describe("readTree()", () => {
       type: "tree",
       entries: [
         { mode: "100644", name: "root.txt", hash: fileHash },
-        { mode: "40000", name: "subdir", hash: subTreeHash },
+        { mode: "040000", name: "subdir", hash: subTreeHash },
       ],
     });
 
@@ -57,7 +57,7 @@ describe("readTree()", () => {
     expect(entries).toHaveLength(3);
     expect(entries[0]!.path).toBe("root.txt");
     expect(entries[1]!.path).toBe("subdir");
-    expect(entries[1]!.mode).toBe("40000");
+    expect(entries[1]!.mode).toBe("040000");
     expect(entries[2]!.path).toBe("subdir/inner.txt");
   });
 
@@ -69,11 +69,11 @@ describe("readTree()", () => {
     });
     const level2 = writeObject(store, {
       type: "tree",
-      entries: [{ mode: "40000", name: "level3", hash: level3 }],
+      entries: [{ mode: "040000", name: "level3", hash: level3 }],
     });
     const level1 = writeObject(store, {
       type: "tree",
-      entries: [{ mode: "40000", name: "level2", hash: level2 }],
+      entries: [{ mode: "040000", name: "level2", hash: level2 }],
     });
 
     const entries = readTree(store, level1);
@@ -123,7 +123,7 @@ describe("walkTree()", () => {
       type: "tree",
       entries: [
         { mode: "100644", name: "a.txt", hash: fileHash },
-        { mode: "40000", name: "dir", hash: subHash },
+        { mode: "040000", name: "dir", hash: subHash },
         { mode: "100644", name: "b.txt", hash: fileHash },
       ],
     });

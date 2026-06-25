@@ -40,7 +40,7 @@ describe("createChangeIndexPlanner()", () => {
     const repo = createMemoryRepository();
     const fileHash = repo.writeBlob(Buffer.from("a"));
     const childTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: fileHash }]);
-    const baseTree = repo.createTree([{ mode: "40000", name: "src", hash: childTree }]);
+    const baseTree = repo.createTree([{ mode: "040000", name: "src", hash: childTree }]);
     const store = createVirtualWorkdirMemoryStateStore(baseTree);
     const planner = createChangeIndexPlanner(repo.objects, store, createNoopActions());
 
@@ -51,7 +51,7 @@ describe("createChangeIndexPlanner()", () => {
     const repo = createMemoryRepository();
     const fileHash = repo.writeBlob(Buffer.from("a"));
     const childTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: fileHash }]);
-    const baseTree = repo.createTree([{ mode: "40000", name: "src", hash: childTree }]);
+    const baseTree = repo.createTree([{ mode: "040000", name: "src", hash: childTree }]);
     const store = createVirtualWorkdirMemoryStateStore(baseTree);
     const planner = createChangeIndexPlanner(repo.objects, store, createNoopActions());
 

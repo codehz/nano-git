@@ -62,9 +62,9 @@ describe("overlay 结构操作语义", () => {
   test("rename 复用同一 nodeId", () => {
     resetNodeIdCounterForTests();
     const id = createNodeId();
-    const origin = [child("old", "40000", id)];
+    const origin = [child("old", "040000", id)];
     let overlay = overlayRenameEntry(createEmptyDirectoryOverlay(), "old", "new", id);
-    const merged = mergeDirectoryChildren(origin, overlay, new Map([["new", "40000"]]));
+    const merged = mergeDirectoryChildren(origin, overlay, new Map([["new", "040000"]]));
     expect(merged.map((e) => e.name)).toEqual(["new"]);
     expect(merged[0]!.nodeId).toBe(id);
   });

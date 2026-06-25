@@ -6,6 +6,10 @@
  * - mode: 文件模式（如 "100644"）
  * - name: 文件名
  * - hash: 20 字节的原始 SHA-1（不是十六进制字符串）
+ *
+ * mode 规范化说明：
+ * Git CLI 显示目录 mode 为 "040000"（6 位八进制，前导补零），但磁盘上存储为 "40000"（5 字节）。
+ * 本模块在序列化/反序列化边界做双向转换，内部统一使用规范形式（"040000"）。
  */
 
 import { InvalidObjectError } from "../core/errors.ts";
@@ -13,8 +17,74 @@ import { sha1 } from "../core/types.ts";
 
 import type { GitTree, TreeEntry } from "../core/types.ts";
 
+// ============================================================================
+// Mode 规范化工具
+// ============================================================================
+
+/**
+ * 目录 mode 的磁盘格式（无前导零，5 字节）
+ */
+const DIR_MODE_ON_DISK = "40000";
+
+/**
+ * 目录 mode 的规范格式（有前导零，6 字节，与 git cat-file -p 显示一致）
+ */
+const DIR_MODE_CANONICAL = "040000";
+
+/**
+ * 将 mode 转换为规范形式（6 位八进制）
+ *
+ * 读取磁盘 tree 条目时调用：将 "40000" → "040000"，其他 mode 不变。
+ *
+ * @param mode - 来自磁盘的 mode 字符串
+ * @returns 规范化的 mode 字符串
+ *
+ * @example
+ * ```ts
+ * toCanonicalMode("40000")  // => "040000"
+ * toCanonicalMode("100644") // => "100644"
+ * ```
+ */
+export function toCanonicalMode(mode: string): string {
+  return mode === DIR_MODE_ON_DISK ? DIR_MODE_CANONICAL : mode;
+}
+
+/**
+ * 将 mode 转换为磁盘格式（无多余前导零）
+ *
+ * 写入磁盘 tree 条目时调用：将 "040000" → "40000"，其他 mode 不变。
+ *
+ * @param mode - 规范形式的 mode 字符串
+ * @returns 磁盘形式的 mode 字符串
+ *
+ * @example
+ * ```ts
+ * toOnDiskMode("040000") // => "40000"
+ * toOnDiskMode("100644") // => "100644"
+ * ```
+ */
+export function toOnDiskMode(mode: string): string {
+  return mode === DIR_MODE_CANONICAL ? DIR_MODE_ON_DISK : mode;
+}
+
+/**
+ * 将 TreeEntry 的 mode 转为规范形式（原地修改）
+ */
+export function canonicalizeEntry(entry: TreeEntry): TreeEntry {
+  if (entry.mode === DIR_MODE_ON_DISK) {
+    entry.mode = DIR_MODE_CANONICAL;
+  }
+  return entry;
+}
+
+// ============================================================================
+// 序列化 / 反序列化
+// ============================================================================
+
 /**
  * 序列化 Tree 对象
+ *
+ * 写入时自动将规范 mode 转换为磁盘格式（如 "040000" → "40000"）。
  *
  * @example
  * ```ts
@@ -29,8 +99,10 @@ export function serializeTree(tree: GitTree): Buffer {
   const buffers: Buffer[] = [];
 
   for (const entry of tree.entries) {
+    // 将规范 mode 转为磁盘格式（如 "040000" → "40000"）
+    const mode = toOnDiskMode(entry.mode);
     // "<mode> <name>\0"
-    const entryHeader = Buffer.from(`${entry.mode} ${entry.name}\0`, "utf-8");
+    const entryHeader = Buffer.from(`${mode} ${entry.name}\0`, "utf-8");
     // 20 字节的原始哈希
     const entryHash = Buffer.from(entry.hash, "hex");
 
@@ -46,6 +118,8 @@ export function serializeTree(tree: GitTree): Buffer {
 
 /**
  * 反序列化 Tree 对象
+ *
+ * 读取时自动将磁盘 mode 转换为规范形式（如 "40000" → "040000"）。
  */
 export function deserializeTree(content: Buffer): GitTree {
   const entries: TreeEntry[] = [];
@@ -77,7 +151,8 @@ export function deserializeTree(content: Buffer): GitTree {
 
     const hash = content.subarray(hashStart, hashEnd).toString("hex");
 
-    entries.push({ mode, name, hash: sha1(hash) });
+    // 将磁盘 mode 转为规范形式（如 "40000" → "040000"）
+    entries.push({ mode: toCanonicalMode(mode), name, hash: sha1(hash) });
     offset = hashEnd;
   }
 

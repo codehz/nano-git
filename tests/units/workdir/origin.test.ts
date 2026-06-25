@@ -18,7 +18,7 @@ describe("readRepoTree / readRepoBlobContent", () => {
 
   test("treeEntryToNodeOrigin 区分目录与 blob", () => {
     const h = sha1("95d09f2b10159347eece71399a7e2e907ea3df4f");
-    expect(treeEntryToNodeOrigin({ mode: "40000", name: "d", hash: h })).toEqual({
+    expect(treeEntryToNodeOrigin({ mode: "040000", name: "d", hash: h })).toEqual({
       kind: "repo-tree",
       hash: h,
     });

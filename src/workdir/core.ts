@@ -43,7 +43,7 @@ export type VirtualEntryKind = "blob" | "tree" | "symlink";
 export interface VirtualEntryStat {
   /** 条目种类 */
   readonly kind: VirtualEntryKind;
-  /** Git 文件模式（如 "100644"、"100755"、"40000"、"120000"） */
+  /** Git 文件模式（如 "100644"、"100755"、"040000"、"120000"） */
   readonly mode: string;
   /** 文件大小（对 blob 和 symlink 有效；目录返回 0） */
   readonly size: number;

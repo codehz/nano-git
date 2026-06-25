@@ -100,7 +100,7 @@ export function statNode(
  */
 export function statDirectoryNode(node: WorkdirNode): VirtualEntryStat {
   const hash = node.origin.kind === "repo-tree" ? node.origin.hash : null;
-  return { kind: "tree", mode: "40000", size: 0, hash };
+  return { kind: "tree", mode: "040000", size: 0, hash };
 }
 
 /**

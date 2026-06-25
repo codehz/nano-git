@@ -79,7 +79,7 @@ describe("Tree 兼容性", () => {
 
       const fileHash = repo.writeBlob(Buffer.from("nested file"));
       const subTreeHash = repo.createTree([{ mode: "100644", name: "nested.txt", hash: fileHash }]);
-      const rootTreeHash = repo.createTree([{ mode: "40000", name: "subdir", hash: subTreeHash }]);
+      const rootTreeHash = repo.createTree([{ mode: "040000", name: "subdir", hash: subTreeHash }]);
 
       const rootOutput = gitCatFile(tempDir, rootTreeHash);
       expect(rootOutput).toContain("040000 tree");

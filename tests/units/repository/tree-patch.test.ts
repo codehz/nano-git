@@ -65,7 +65,7 @@ describe("patchTree()", () => {
     if (root.type === "tree") {
       expect(root.entries).toHaveLength(1);
       expect(root.entries[0]!.name).toBe("a");
-      expect(root.entries[0]!.mode).toBe("40000");
+      expect(root.entries[0]!.mode).toBe("040000");
     }
 
     const aTree = repo.catFile((root as GitTree).entries.find((e) => e.name === "a")!.hash);
@@ -113,7 +113,7 @@ describe("patchTree()", () => {
   test("upsert 替换子树中的文件", () => {
     const oldHash = repo.writeBlob(Buffer.from("old"));
     const subTreeHash = repo.createTree([{ mode: "100644", name: "old.txt", hash: oldHash }]);
-    const rootHash = repo.createTree([{ mode: "40000", name: "sub", hash: subTreeHash }]);
+    const rootHash = repo.createTree([{ mode: "040000", name: "sub", hash: subTreeHash }]);
 
     const newHash = repo.writeBlob(Buffer.from("new"));
     const result = repo.patchTree(rootHash, [
@@ -161,7 +161,7 @@ describe("patchTree()", () => {
     const subHash = repo.createTree([
       { mode: "100644", name: "f.txt", hash: repo.writeBlob(Buffer.from("f")) },
     ]);
-    const rootHash = repo.createTree([{ mode: "40000", name: "subdir", hash: subHash }]);
+    const rootHash = repo.createTree([{ mode: "040000", name: "subdir", hash: subHash }]);
 
     const result = repo.patchTree(rootHash, [{ op: "delete", path: "subdir" }]);
 
@@ -331,7 +331,7 @@ describe("patchTree()", () => {
     const subHash = repo.createTree([
       { mode: "100644", name: "a.txt", hash: repo.writeBlob(Buffer.from("a")) },
     ]);
-    const rootHash = repo.createTree([{ mode: "40000", name: "src", hash: subHash }]);
+    const rootHash = repo.createTree([{ mode: "040000", name: "src", hash: subHash }]);
 
     const result = repo.patchTree(rootHash, [{ op: "rename", from: "src", to: "lib" }]);
 
@@ -340,7 +340,7 @@ describe("patchTree()", () => {
     if (root.type === "tree") {
       expect(root.entries).toHaveLength(1);
       expect(root.entries[0]!.name).toBe("lib");
-      expect(root.entries[0]!.mode).toBe("40000");
+      expect(root.entries[0]!.mode).toBe("040000");
       expect(root.entries[0]!.hash).toBe(subHash);
     }
   });
@@ -350,7 +350,7 @@ describe("patchTree()", () => {
     const subHash = repo.createTree([]);
     const rootHash = repo.createTree([
       { mode: "100644", name: "file.txt", hash },
-      { mode: "40000", name: "subdir", hash: subHash },
+      { mode: "040000", name: "subdir", hash: subHash },
     ]);
 
     const result = repo.patchTree(rootHash, [

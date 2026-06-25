@@ -58,7 +58,7 @@ describe("完整工作流", () => {
     const srcTreeHash = repo.createTree([{ mode: "100644", name: "index.js", hash: srcHash }]);
     const tree2Hash = repo.createTree([
       { mode: "100644", name: "README.md", hash: readmeV2Hash },
-      { mode: "40000", name: "src", hash: srcTreeHash },
+      { mode: "040000", name: "src", hash: srcTreeHash },
     ]);
     const commit2Hash = repo.createCommit(tree2Hash, [commit1Hash], "Add source code", testAuthor);
     repo.updateRef("refs/heads/main", commit2Hash);

@@ -91,7 +91,7 @@ describe("文件系统仓库的对象操作", () => {
     if (tree.type === "tree") {
       const subdirEntry = tree.entries.find((e: TreeEntry) => e.name === "subdir");
       expect(subdirEntry).toBeDefined();
-      expect(subdirEntry!.mode).toBe("40000");
+      expect(subdirEntry!.mode).toBe("040000");
 
       const subtree = repo.catFile(subdirEntry!.hash);
       expect(subtree.type).toBe("tree");
@@ -171,7 +171,7 @@ describe("文件系统仓库的对象操作", () => {
 
       const dirEntry = tree.entries.find((e: TreeEntry) => e.name === "real-dir");
       expect(dirEntry).toBeDefined();
-      expect(dirEntry!.mode).toBe("40000");
+      expect(dirEntry!.mode).toBe("040000");
     }
   });
 
@@ -211,7 +211,7 @@ describe("文件系统仓库的对象操作", () => {
     if (tree.type === "tree") {
       const subEntry = tree.entries.find((e: TreeEntry) => e.name === "sub");
       expect(subEntry).toBeDefined();
-      expect(subEntry!.mode).toBe("40000");
+      expect(subEntry!.mode).toBe("040000");
 
       const subtree = repo.catFile(subEntry!.hash);
       expect(subtree.type).toBe("tree");

@@ -81,7 +81,7 @@ describe("observeDirectoryChildren()", () => {
     const repo = createMemoryRepository();
     const childBlob = repo.writeBlob(Buffer.from("base"));
     const childTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: childBlob }]);
-    const baseTree = repo.createTree([{ mode: "40000", name: "src", hash: childTree }]);
+    const baseTree = repo.createTree([{ mode: "040000", name: "src", hash: childTree }]);
     const store = createVirtualWorkdirMemoryStateStore(baseTree);
     const session = openVirtualWorkdir(repo.objects, store);
 
@@ -242,7 +242,7 @@ describe("resolvePathByParentLookup()", () => {
     const repo = createMemoryRepository();
     const blobHash = repo.writeBlob(Buffer.from("a"));
     const subTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]);
-    const baseTree = repo.createTree([{ mode: "40000", name: "src", hash: subTree }]);
+    const baseTree = repo.createTree([{ mode: "040000", name: "src", hash: subTree }]);
     const store = createVirtualWorkdirMemoryStateStore(baseTree);
     const session = openVirtualWorkdir(repo.objects, store);
 
@@ -388,7 +388,7 @@ describe("resolveLeafWriteTarget()", () => {
   test("目录路径上写入时抛 VirtualNotFileError", () => {
     const repo = createMemoryRepository();
     const subTree = repo.createTree([]);
-    const baseTree = repo.createTree([{ mode: "40000", name: "dir", hash: subTree }]);
+    const baseTree = repo.createTree([{ mode: "040000", name: "dir", hash: subTree }]);
     const store = createVirtualWorkdirMemoryStateStore(baseTree);
 
     expect(() => resolveLeafWriteTarget(repo.objects, store, "dir")).toThrow(VirtualNotFileError);
@@ -411,7 +411,7 @@ describe("resolveCurrentLeafAtPath()", () => {
   test("目录路径返回 null", () => {
     const repo = createMemoryRepository();
     const subTree = repo.createTree([]);
-    const baseTree = repo.createTree([{ mode: "40000", name: "dir", hash: subTree }]);
+    const baseTree = repo.createTree([{ mode: "040000", name: "dir", hash: subTree }]);
     const store = createVirtualWorkdirMemoryStateStore(baseTree);
 
     expect(resolveCurrentLeafAtPath(repo.objects, store, "dir")).toBeNull();
@@ -432,7 +432,7 @@ describe("resolveWriteTransfer()", () => {
     const dirTree = repo.createTree([]);
     const baseTree = repo.createTree([
       { mode: "100644", name: "a.txt", hash: blobHash },
-      { mode: "40000", name: "dir", hash: dirTree },
+      { mode: "040000", name: "dir", hash: dirTree },
     ]);
     const store = createVirtualWorkdirMemoryStateStore(baseTree);
 

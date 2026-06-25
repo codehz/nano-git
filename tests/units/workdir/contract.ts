@@ -57,7 +57,7 @@ export function runVirtualWorkdirContract(
       const dirHash = repo.createTree([{ mode: "100644", name: "nested.txt", hash: fileHash }]);
       const baseTree = repo.createTree([
         { mode: "100644", name: "file.txt", hash: fileHash },
-        { mode: "40000", name: "dir", hash: dirHash },
+        { mode: "040000", name: "dir", hash: dirHash },
         { mode: "120000", name: "link", hash: linkHash },
       ]);
       const session = createWorkdir(repo, { baseTree });

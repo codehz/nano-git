@@ -41,7 +41,7 @@ export function writeTreeRecursive(store: ObjectDatabase, dirPath: string): SHA1
     if (stat.isDirectory()) {
       const subtreeHash = writeTreeRecursive(store, fullPath);
       entries.push({
-        mode: "40000",
+        mode: "040000",
         name,
         hash: subtreeHash,
       });

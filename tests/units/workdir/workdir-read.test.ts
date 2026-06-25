@@ -23,7 +23,7 @@ describe("createVirtualWorkdir() 只读", () => {
     expect(session.readdir("")).toEqual([]);
     expect(session.stat("")).toEqual({
       kind: "tree",
-      mode: "40000",
+      mode: "040000",
       size: 0,
       hash: baseTree,
     });
@@ -37,7 +37,7 @@ describe("createVirtualWorkdir() 只读", () => {
     const baseTree = repo.createTree([
       { mode: "100644", name: "a.txt", hash: blobHash },
       { mode: "120000", name: "link", hash: linkHash },
-      { mode: "40000", name: "dir", hash: subTree },
+      { mode: "040000", name: "dir", hash: subTree },
     ]);
     const session = createVirtualWorkdir(repo.objects, { baseTree });
 
@@ -47,7 +47,7 @@ describe("createVirtualWorkdir() 只读", () => {
     expect(session.readLink("link")).toBe("target\n");
     expect(session.readdir()).toEqual([
       { name: "a.txt", kind: "blob", mode: "100644" },
-      { name: "dir", kind: "tree", mode: "40000" },
+      { name: "dir", kind: "tree", mode: "040000" },
       { name: "link", kind: "symlink", mode: "120000" },
     ]);
     expect(session.readdir("dir")).toEqual([]);

@@ -164,7 +164,7 @@ function processOpsSequentially(
  * 在 tree 中查找路径对应的条目
  *
  * 沿路径依次读取 tree 对象，最后一段返回目标条目。
- * 中间段必须为目录（mode "40000"），否则抛出异常。
+ * 中间段必须为目录（mode "040000"），否则抛出异常。
  */
 function findEntryByPath(objects: ObjectDatabase, treeHash: SHA1, path: string): TreeEntry | null {
   const segments = path.split("/");
@@ -184,7 +184,7 @@ function findEntryByPath(objects: ObjectDatabase, treeHash: SHA1, path: string):
       return entry;
     }
 
-    if (entry.mode !== "40000") {
+    if (entry.mode !== "040000") {
       throw new Error(
         `Cannot access '${segments.slice(0, i + 1).join("/")}': not a directory (mode: ${entry.mode})`,
       );
@@ -310,7 +310,7 @@ function applyPatchRecursive(
     const existingHash = existingEntry?.hash ?? null;
 
     // 验证：如果现有条目存在且不是目录，不能在其下递归操作
-    if (existingEntry !== undefined && existingEntry.mode !== "40000") {
+    if (existingEntry !== undefined && existingEntry.mode !== "040000") {
       throw new Error(
         `Cannot access '${prefix}${name}': existing entry is not a directory (mode: ${existingEntry.mode})`,
       );
@@ -338,7 +338,7 @@ function applyPatchRecursive(
       upsertedPaths,
     );
     writtenTrees.push(...result.written);
-    finalEntryMap.set(name, { mode: "40000", name, hash: result.hash });
+    finalEntryMap.set(name, { mode: "040000", name, hash: result.hash });
   }
 
   // 单独跟踪已删除的条目名（避免与 finalEntryMap 的"未修改"语义混淆）

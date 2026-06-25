@@ -68,7 +68,7 @@ describe("writeTree object reuse", () => {
     const subTreeHash = repo.createTree([{ mode: "100644", name: "child.txt", hash: nestedHash }]);
     const rootBlobHash = repo.writeBlob(Buffer.from("root"));
     const baseTree = repo.createTree([
-      { mode: "40000", name: "dir", hash: subTreeHash },
+      { mode: "040000", name: "dir", hash: subTreeHash },
       { mode: "100644", name: "root.txt", hash: rootBlobHash },
     ]);
     const session = createVirtualWorkdir(repo.objects, { baseTree });
@@ -102,8 +102,8 @@ describe("writeTree object reuse", () => {
     const leftTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: leftBlob }]);
     const rightTree = repo.createTree([{ mode: "100644", name: "b.txt", hash: rightBlob }]);
     const baseTree = repo.createTree([
-      { mode: "40000", name: "left", hash: leftTree },
-      { mode: "40000", name: "right", hash: rightTree },
+      { mode: "040000", name: "left", hash: leftTree },
+      { mode: "040000", name: "right", hash: rightTree },
     ]);
 
     const store = createVirtualWorkdirMemoryStateStore(baseTree);
@@ -217,7 +217,7 @@ describe("writeTree object reuse", () => {
     const root = readTree(repo, nextTree);
 
     expect(root.entries).toHaveLength(1);
-    expect(root.entries[0]?.mode).toBe("40000");
+    expect(root.entries[0]?.mode).toBe("040000");
     expect(root.entries[0]?.name).toBe("src");
     expect(readTree(repo, root.entries[0]!.hash).entries).toEqual([]);
   });

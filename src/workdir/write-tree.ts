@@ -211,7 +211,7 @@ function compileChildEntry(
     const newHash = compileDirectory(writeSource, readSource, state, node, child.path);
     const originHash = node.origin.kind === "repo-tree" ? node.origin.hash : null;
     return {
-      entry: { mode: "40000", name: child.name, hash: newHash },
+      entry: { mode: "040000", name: child.name, hash: newHash },
       changed: newHash !== originHash,
     };
   }

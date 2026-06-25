@@ -450,7 +450,7 @@ export function ensureNodeFromTreeEntry(state: VirtualWorkdirStateStore, entry: 
   if (state.getNode(id) === null) {
     const origin = treeEntryToNodeOrigin(entry);
     let nodeState: WorkdirNode["state"];
-    if (entry.mode === "40000") {
+    if (entry.mode === "040000") {
       nodeState = {
         kind: "directory",
         overlay: { addedEntries: new Map(), deletedNames: new Set() },
@@ -518,7 +518,7 @@ export function buildAddedModes(
 
 function workdirNodeMode(node: WorkdirNode): string {
   if (node.state.kind === "directory") {
-    return "40000";
+    return "040000";
   }
   if (node.state.kind === "symlink") {
     return "120000";

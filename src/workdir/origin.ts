@@ -59,7 +59,7 @@ export function treeEntriesToOriginChildren(entries: readonly TreeEntry[]): Orig
  * 根据 tree 条目构造节点 origin
  */
 export function treeEntryToNodeOrigin(entry: TreeEntry): NodeOrigin {
-  if (entry.mode === "40000") {
+  if (entry.mode === "040000") {
     return { kind: "repo-tree", hash: entry.hash };
   }
   if (entry.mode === "100644" || entry.mode === "100755" || entry.mode === "120000") {
@@ -74,7 +74,7 @@ export function treeEntryToNodeOrigin(entry: TreeEntry): NodeOrigin {
  * Git mode 转为 VirtualEntryKind
  */
 export function modeToVirtualEntryKind(mode: string): VirtualEntryKind {
-  if (mode === "40000") {
+  if (mode === "040000") {
     return "tree";
   }
   if (mode === "120000") {

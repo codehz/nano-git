@@ -92,7 +92,7 @@ function walkTreeRecursive(
     }
 
     // 递归子树
-    if (entry.mode === "40000") {
+    if (entry.mode === "040000") {
       walkTreeRecursive(objects, entry.hash, path, result, visit);
     }
   }

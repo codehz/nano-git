@@ -42,8 +42,8 @@ describe("mkdir", () => {
 
     session.mkdir("src");
     expect(session.exists("src")).toBe(true);
-    expect(session.stat("src")).toMatchObject({ kind: "tree", mode: "40000" });
-    expect(session.readdir()).toEqual([{ name: "src", kind: "tree", mode: "40000" }]);
+    expect(session.stat("src")).toMatchObject({ kind: "tree", mode: "040000" });
+    expect(session.readdir()).toEqual([{ name: "src", kind: "tree", mode: "040000" }]);
     expect(session.readdir("src")).toEqual([]);
   });
 
@@ -58,7 +58,7 @@ describe("mkdir", () => {
 
     expect(session.exists("a/b/c")).toBe(true);
     expect(session.stat("a/b/c")).toMatchObject({ kind: "tree" });
-    expect(session.readdir("a/b")).toEqual([{ name: "c", kind: "tree", mode: "40000" }]);
+    expect(session.readdir("a/b")).toEqual([{ name: "c", kind: "tree", mode: "040000" }]);
   });
 
   test("父目录不存在时抛 VirtualPathNotFoundError", () => {
@@ -393,7 +393,7 @@ describe("writeTree", () => {
 
     // 读取 src 子树
     const srcEntry = tree.entries.find((e) => e.name === "src")!;
-    expect(srcEntry.mode).toBe("40000");
+    expect(srcEntry.mode).toBe("040000");
     const srcTree = readTree(repo, srcEntry.hash);
     const srcNames = srcTree.entries.map((e) => e.name).sort();
     expect(srcNames).toEqual(["lib.ts", "main.ts"]);
@@ -420,7 +420,7 @@ describe("writeTree", () => {
     const tree = readTree(repo, newTree);
     expect(tree.entries).toHaveLength(1);
     expect(tree.entries[0]!.name).toBe("empty");
-    expect(tree.entries[0]!.mode).toBe("40000");
+    expect(tree.entries[0]!.mode).toBe("040000");
   });
 
   test("writeTree 后通过新 workdir 读取验证", () => {
@@ -1050,7 +1050,7 @@ describe("revert", () => {
     const repo = createMemoryRepository();
     const childHash = repo.writeBlob(Buffer.from("base"));
     const dirHash = repo.createTree([{ mode: "100644", name: "base.txt", hash: childHash }]);
-    const baseTree = repo.createTree([{ mode: "40000", name: "dir", hash: dirHash }]);
+    const baseTree = repo.createTree([{ mode: "040000", name: "dir", hash: dirHash }]);
     const session = createVirtualWorkdir(repo.objects, { baseTree });
 
     session.writeFile("dir/new.txt", Buffer.from("new"));
@@ -1160,7 +1160,7 @@ describe("reset", () => {
     const repo = createMemoryRepository();
     const blobHash = repo.writeBlob(Buffer.from("base"));
     const srcTree = repo.createTree([{ mode: "100644", name: "a.ts", hash: blobHash }]);
-    const baseTree = repo.createTree([{ mode: "40000", name: "src", hash: srcTree }]);
+    const baseTree = repo.createTree([{ mode: "040000", name: "src", hash: srcTree }]);
     const store = createVirtualWorkdirMemoryStateStore(baseTree);
     const session = openVirtualWorkdir(repo.objects, store);
 

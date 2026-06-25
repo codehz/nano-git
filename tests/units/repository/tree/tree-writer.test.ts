@@ -72,7 +72,7 @@ describe("writeTreeRecursive()", () => {
       expect(tree.entries).toHaveLength(2);
       const subdir = tree.entries.find((e) => e.name === "subdir");
       expect(subdir).toBeDefined();
-      expect(subdir!.mode).toBe("40000");
+      expect(subdir!.mode).toBe("040000");
 
       // 验证子 tree 内容
       const subTree = readObject(store, subdir!.hash);

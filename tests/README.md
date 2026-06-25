@@ -92,4 +92,4 @@ bun test --watch
 ### 已知兼容性细节
 
 - Git 的 `commit-tree` 命令会在 commit message 末尾自动添加换行符，nano-git 的反序列化会保留此行为
-- Tree 目录 mode 使用 `"40000"`（无前导零），与 Git 实际行为一致
+- Tree 目录 mode 使用 `"040000"`（规范形式，与 `git cat-file -p` 显示一致），序列化时自动转为 `"40000"` 以匹配 Git 磁盘格式
