@@ -210,8 +210,12 @@ export interface VirtualWorkdir {
    */
   mkdir(path: string, options?: { readonly recursive?: boolean }): void;
 
-  /** 删除路径（文件、目录或符号链接） */
-  delete(path: string): void;
+  /**
+   * 删除路径（文件、目录或符号链接）
+   *
+   * 默认要求路径已存在；`force: true` 时路径不存在则静默忽略（与 Node `fs.rm` 的 `force` 语义一致）。
+   */
+  delete(path: string, options?: { readonly force?: boolean }): void;
 
   // ==================== 结构操作 ====================
 

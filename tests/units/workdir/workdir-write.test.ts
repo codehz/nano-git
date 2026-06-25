@@ -353,6 +353,24 @@ describe("delete", () => {
     });
     expect(() => session.delete("no/such")).toThrow(VirtualPathNotFoundError);
   });
+
+  test("force 时删除不存在的路径不报错", () => {
+    const repo = createMemoryRepository();
+    const session = createVirtualWorkdir(repo.objects, {
+      baseTree: repo.createTree([]),
+    });
+    expect(() => session.delete("no/such", { force: true })).not.toThrow();
+  });
+
+  test("force 时重复删除已删除路径不报错", () => {
+    const repo = createMemoryRepository();
+    const session = createVirtualWorkdir(repo.objects, {
+      baseTree: repo.createTree([]),
+    });
+    session.writeFile("f.txt", Buffer.from("data"));
+    session.delete("f.txt");
+    expect(() => session.delete("f.txt", { force: true })).not.toThrow();
+  });
 });
 
 // ==================== writeTree ====================

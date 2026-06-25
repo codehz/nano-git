@@ -377,7 +377,12 @@ export function openVirtualWorkdir(
       );
     },
 
-    delete(path: string): void {
+    delete(path: string, options?: { readonly force?: boolean }): void {
+      if (options?.force === true) {
+        if (path !== VIRTUAL_ROOT_PATH && !resolvePath(source, state, path).found) {
+          return;
+        }
+      }
       runInWriteTransaction(
         state,
         () => {
