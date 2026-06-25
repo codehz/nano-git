@@ -6,14 +6,16 @@
  *
  * 支持 [Symbol.dispose]() 释放数据库连接，
  * 可使用 `using` 语法管理生命周期。
+ *
+ * 数据库连接通过全局连接池管理（引用计数），
+ * 相同 dbPath 复用同一连接，避免反复打开同一个数据库文件。
  */
-
-import { Database } from "bun:sqlite";
 
 import { HEAD_REF, HEADS_PREFIX } from "../core/types/refs.ts";
 import { createSqliteObjectStore } from "../odb/sqlite.ts";
 import { createSqliteShallowStore } from "../refs/shallow/sqlite.ts";
 import { createSqliteRefStore } from "../refs/sqlite.ts";
+import { acquireConnection } from "./sqlite-pool.ts";
 
 import type { RepositoryBackend } from "./types.ts";
 
@@ -37,7 +39,8 @@ export interface SqliteRepositoryBackend extends RepositoryBackend {
 /**
  * 创建基于 SQLite 文件的完整仓库后端
  *
- * 内部创建 Database 实例并组合三个子 store。
+ * 内部通过连接池获取 Database 实例并组合三个子 store。
+ * 相同 dbPath 复用同一连接，引用计数归零时自动关闭。
  * 返回的 backend 实现了 [Symbol.dispose]()，可使用 `using` 语法
  * 或在不再使用时手动调用 `backend[Symbol.dispose]()`。
  *
@@ -61,13 +64,9 @@ export function createSqliteRepositoryBackend(
   dbPath: string,
   options: CreateSqliteRepositoryBackendOptions = {},
 ): SqliteRepositoryBackend {
-  const db = new Database(dbPath);
+  const { db, release } = acquireConnection(dbPath, options.walMode !== false);
 
-  if (options.walMode !== false) {
-    db.run("PRAGMA journal_mode = WAL");
-  }
-
-  // 确保表结构存在
+  // 确保表结构存在（幂等，重复打开同一数据库不会重复创建）
   db.run(
     "CREATE TABLE IF NOT EXISTS objects (hash TEXT PRIMARY KEY, type TEXT NOT NULL, content BLOB NOT NULL)",
   );
@@ -87,9 +86,9 @@ export function createSqliteRepositoryBackend(
     shallow: createSqliteShallowStore(db),
     packs: null,
 
-    /** 释放 SQLite 数据库连接 */
+    /** 释放 SQLite 数据库连接（引用计数减一） */
     [Symbol.dispose](): void {
-      db.close();
+      release();
     },
   };
 }

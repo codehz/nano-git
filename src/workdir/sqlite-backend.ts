@@ -2,8 +2,7 @@
  * Virtual Workdir SQLite backend
  */
 
-import { Database } from "bun:sqlite";
-
+import { acquireConnection } from "../backend/sqlite-pool.ts";
 import { sha1 } from "../core/types.ts";
 import { createRootDirectoryNode, type WorkdirNode } from "./nodes.ts";
 import { openVirtualWorkdir } from "./workdir.ts";
@@ -16,6 +15,7 @@ import type { DirtyDirHashState, DirtyDirSummary } from "./dirty-dir.ts";
 import type { NodeId } from "./ids.ts";
 import type { DirectoryOverlay } from "./overlay.ts";
 import type { VirtualWorkdirStateStore } from "./state-store.ts";
+import type { Database } from "bun:sqlite";
 
 /** SQLite 连接层的可选参数 */
 export interface SqliteVirtualWorkdirConnectionOptions {
@@ -96,32 +96,33 @@ export function openSqliteVirtualWorkdir(
   workdirKey: string,
   options: OpenSqliteVirtualWorkdirOptions,
 ): SqliteVirtualWorkdir {
-  const db = new Database(dbPath);
-  if (options.walMode !== false) {
-    db.run("PRAGMA journal_mode = WAL");
-  }
-  ensureSchema(db);
-  const store = createSqliteVirtualWorkdirStateStore(db, workdirKey);
-  if (!hasWorkdir(db, workdirKey)) {
-    if (options.create !== true) {
-      db.close();
-      throw new Error(`Virtual workdir not found: ${workdirKey}`);
-    }
-    store.reset(options.baseTree);
-  }
-  validateWorkdirIntegrity(db, workdirKey);
-
-  let disposed = false;
-  const workdir = openVirtualWorkdir(source, store);
-  return Object.assign(workdir, {
-    [Symbol.dispose](): void {
-      if (disposed) {
-        return;
+  const conn = acquireConnection(dbPath, options.walMode !== false);
+  try {
+    ensureSchema(conn.db);
+    const store = createSqliteVirtualWorkdirStateStore(conn.db, workdirKey);
+    if (!hasWorkdir(conn.db, workdirKey)) {
+      if (options.create !== true) {
+        throw new Error(`Virtual workdir not found: ${workdirKey}`);
       }
-      disposed = true;
-      db.close();
-    },
-  });
+      store.reset(options.baseTree);
+    }
+    validateWorkdirIntegrity(conn.db, workdirKey);
+
+    let released = false;
+    const workdir = openVirtualWorkdir(source, store);
+    return Object.assign(workdir, {
+      [Symbol.dispose](): void {
+        if (released) {
+          return;
+        }
+        released = true;
+        conn.release();
+      },
+    });
+  } catch (error) {
+    conn.release();
+    throw error;
+  }
 }
 
 /**
@@ -137,18 +138,15 @@ export function deleteSqliteVirtualWorkdir(
   workdirKey: string,
   options: SqliteVirtualWorkdirConnectionOptions = {},
 ): void {
-  const db = new Database(dbPath);
+  const conn = acquireConnection(dbPath, options.walMode !== false);
   try {
-    if (options.walMode !== false) {
-      db.run("PRAGMA journal_mode = WAL");
-    }
-    ensureSchema(db);
-    if (!hasWorkdir(db, workdirKey)) {
+    ensureSchema(conn.db);
+    if (!hasWorkdir(conn.db, workdirKey)) {
       throw new Error(`Virtual workdir not found: ${workdirKey}`);
     }
-    deleteWorkdirRows(db, workdirKey);
+    deleteWorkdirRows(conn.db, workdirKey);
   } finally {
-    db.close();
+    conn.release();
   }
 }
 
