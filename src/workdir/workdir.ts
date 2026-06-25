@@ -21,7 +21,6 @@ import {
   writeChangeRecordForCopy,
 } from "./change-index.ts";
 import { computeVirtualDiff } from "./change-index.ts";
-import { createDirtyDirPlanner } from "./dirty-dir-plan.ts";
 import { createNodeId } from "./ids.ts";
 import { createVirtualWorkdirMemoryStateStore } from "./memory-backend.ts";
 import { revertNodeState, type WorkdirNode } from "./nodes.ts";
@@ -150,8 +149,6 @@ export function openVirtualWorkdir(
     rewriteRename: rewriteChangeIndexForRename,
     writeCopy: writeChangeIndexForCopy,
   });
-  const dirtyDirPlanner = createDirtyDirPlanner(source, state);
-
   refreshChangeIndex();
 
   const createDirectoryAtPath = (path: string): void => {
@@ -280,29 +277,13 @@ export function openVirtualWorkdir(
 
     mkdir(path: string, options?: { readonly recursive?: boolean }): void {
       const recursive = options?.recursive === true;
-      runInWriteTransaction(
-        state,
-        () => {
-          if (recursive) {
-            const segments = splitPathSegments(path);
-            const paths: string[] = [];
-            for (let i = 0; i < segments.length; i++) {
-              paths.push(segments.slice(0, i + 1).join("/"));
-            }
-            dirtyDirPlanner.rebuild(paths);
-          } else {
-            dirtyDirPlanner.rebuild([path]);
-          }
-        },
-        invalidateDiffCaches,
-        () => {
-          if (recursive) {
-            mkdirRecursive(path);
-          } else {
-            createDirectoryAtPath(path);
-          }
-        },
-      );
+      runInWriteTransaction(state, null, invalidateDiffCaches, () => {
+        if (recursive) {
+          mkdirRecursive(path);
+        } else {
+          createDirectoryAtPath(path);
+        }
+      });
     },
 
     writeFile(
@@ -314,7 +295,6 @@ export function openVirtualWorkdir(
         state,
         () => {
           changeIndexPlanner.apply(changeIndexPlanner.planRefreshForPath(path));
-          dirtyDirPlanner.rebuild([path]);
         },
         invalidateDiffCaches,
         () => {
@@ -348,7 +328,6 @@ export function openVirtualWorkdir(
         state,
         () => {
           changeIndexPlanner.apply(changeIndexPlanner.planRefreshForPath(path));
-          dirtyDirPlanner.rebuild([path]);
         },
         invalidateDiffCaches,
         () => {
@@ -390,7 +369,6 @@ export function openVirtualWorkdir(
           changeIndexPlanner.apply(
             changeIndexPlanner.planRefreshForPath(path, { treatMissingAsIncremental: true }),
           );
-          dirtyDirPlanner.rebuild([path]);
         },
         invalidateDiffCaches,
         () => {
@@ -410,15 +388,6 @@ export function openVirtualWorkdir(
         state,
         () => {
           changeIndexPlanner.apply(changeIndexPlanner.planRewriteForRename(from, to));
-          const dirtyPaths = [from, to];
-          const toParent = parentPath(to);
-          if (toParent !== null) {
-            const segments = splitPathSegments(toParent);
-            for (let i = 0; i < segments.length; i++) {
-              dirtyPaths.push(segments.slice(0, i + 1).join("/"));
-            }
-          }
-          dirtyDirPlanner.rebuild(dirtyPaths);
         },
         invalidateDiffCaches,
         () => {
@@ -487,7 +456,6 @@ export function openVirtualWorkdir(
         state,
         () => {
           changeIndexPlanner.apply(changeIndexPlanner.planWriteForCopy(from, to));
-          dirtyDirPlanner.rebuild([from, to]);
         },
         invalidateDiffCaches,
         () => {
@@ -524,7 +492,6 @@ export function openVirtualWorkdir(
         state,
         () => {
           changeIndexPlanner.apply(changeIndexPlanner.planRefreshForPath(path));
-          dirtyDirPlanner.rebuild([path]);
         },
         invalidateDiffCaches,
         () => {
@@ -555,7 +522,6 @@ export function openVirtualWorkdir(
     reset(baseTree) {
       runInWriteTransaction(state, null, invalidateDiffCaches, () => {
         state.reset(baseTree);
-        dirtyDirPlanner.clear();
       });
     },
   };

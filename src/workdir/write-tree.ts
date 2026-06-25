@@ -1,30 +1,40 @@
 /**
  * Virtual Workdir overlay -> tree 最小化编译
  *
- * 遍历 workdir 的目录 overlay，将受影响的目录重写为新 tree，
- * 未修改的 repo-backed 子树/文件尽量复用原对象哈希。
+ * 采用 patchTree 式构造：从 change records + overlay 状态收集脏路径，
+ * 沿受影响路径定向编译，只重写有变化的目录 tree 对象。
+ *
+ * 与旧实现的区别：
+ * - 不依赖 DirtyDirSummary 预计算，writeFile/delete 等操作不再触发全量遍历
+ * - 脏路径收集仅在 writeTree 时按需执行
+ * - 已解析节点中的 overlay 修改通过定向遍历发现
  *
  * writeTree() 成功后不清空 overlay，不推进 baseTree。
  */
 
 import { writeObject } from "../objects/raw.ts";
-import {
-  createNamedOriginChildLookup,
-  observeListedDirectoryChild,
-  observeNamedDirectoryChild,
-  planAffectedDirectoryChildren,
-} from "./directory-view.ts";
-import { materializeDirtyDirSummary } from "./dirty-dir.ts";
+import { createNamedOriginChildLookup, resolveNamedChild } from "./directory-view.ts";
+import { originBackedNodeId } from "./ids.ts";
 import { readRepoTree } from "./origin.ts";
-import { listDirectoryChildren } from "./workdir-path.ts";
+import { VIRTUAL_ROOT_PATH } from "./path.ts";
+import { joinChildPath } from "./workdir-path.ts";
 
 import type { SHA1, TreeEntry } from "../core/types.ts";
 import type { ObjectDatabase, ObjectSource } from "../core/types/odb.ts";
-import type { NamedOriginChildLookup, ObservedDirectoryChildNode } from "./directory-view.ts";
-import type { DirtyDirSummary } from "./dirty-dir.ts";
+import type { NormalizedChangeRecord } from "./change-index.ts";
 import type { NodeId } from "./ids.ts";
 import type { WorkdirNode } from "./nodes.ts";
 import type { VirtualWorkdirStateStore } from "./state-store.ts";
+
+// ==================== 编译上下文 ====================
+
+interface CompileContext {
+  readonly writeSource: ObjectDatabase;
+  readonly readSource: ObjectSource;
+  readonly state: VirtualWorkdirStateStore;
+  readonly changes: ReadonlyMap<string, NormalizedChangeRecord>;
+  readonly dirtyPaths: ReadonlySet<string>;
+}
 
 // ==================== 公开 API ====================
 
@@ -51,206 +61,251 @@ export function writeTreeFromSession(
   if (root === null || root.state.kind !== "directory") {
     throw new Error("Virtual workdir: root node is missing or not a directory");
   }
-  return compileDirectory(source, source, state, root);
+
+  // 收集变更记录（叶子路径的净效应）
+  const changes = new Map<string, NormalizedChangeRecord>();
+  for (const record of state.listChangeRecords()) {
+    changes.set(record.path, record);
+  }
+
+  // 构建脏路径集：变更记录路径 + overlay 修改路径 + 各自祖先
+  const dirtyPaths = collectDirtyPaths(source, state, changes);
+
+  const ctx: CompileContext = {
+    writeSource: source,
+    readSource: source,
+    state,
+    changes,
+    dirtyPaths,
+  };
+
+  return compileDirectory(ctx, root, VIRTUAL_ROOT_PATH);
 }
 
-// ==================== 内部编译 ====================
+// ==================== 脏路径收集 ====================
 
 /**
- * 递归编译目录 overlay -> 新 tree
+ * 收集所有需要编译的目录路径。
  *
- * 返回新 tree 的 SHA-1（若目录无任何变化则直接复用 origin hash）。
+ * 来源：
+ * 1. Change records 中每条路径及其祖先
+ * 2. 已解析节点中有 overlay 修改的目录及其祖先
  */
-function compileDirectory(
-  writeSource: ObjectDatabase,
-  readSource: ObjectSource,
+function collectDirtyPaths(
+  source: ObjectSource,
   state: VirtualWorkdirStateStore,
-  dirNode: WorkdirNode,
-  dirPath = "",
-): SHA1 {
+  changes: ReadonlyMap<string, NormalizedChangeRecord>,
+): Set<string> {
+  const dirty = new Set<string>();
+
+  // 来源 1：change records
+  for (const path of changes.keys()) {
+    addPathAndAncestors(dirty, path);
+  }
+
+  // 来源 2：overlay 修改（仅遍历已解析的节点，不触发懒注册）
+  const root = state.getNode("root" as NodeId);
+  if (root !== null && root.state.kind === "directory") {
+    walkResolvedOverlayNodes(source, state, root, VIRTUAL_ROOT_PATH, dirty);
+  }
+
+  return dirty;
+}
+
+/** 将路径及其所有祖先加入集合 */
+function addPathAndAncestors(dirty: Set<string>, path: string): void {
+  dirty.add(path);
+  while (true) {
+    const slashIndex = path.lastIndexOf("/");
+    if (slashIndex < 0) {
+      if (path !== VIRTUAL_ROOT_PATH) {
+        dirty.add(VIRTUAL_ROOT_PATH);
+      }
+      return;
+    }
+    path = path.slice(0, slashIndex);
+    dirty.add(path);
+  }
+}
+
+/**
+ * 沿已解析节点遍历，将存在 overlay 修改的目录路径加入脏路径集。
+ *
+ * 仅遍历已在 state 中解析的节点（origin 子节点通过 ensureNodeFromTreeEntry
+ * 懒注册时才会在 state 中存在），未解析的子树跳过。
+ */
+function walkResolvedOverlayNodes(
+  source: ObjectSource,
+  state: VirtualWorkdirStateStore,
+  node: WorkdirNode,
+  dirPath: string,
+  dirty: Set<string>,
+): void {
+  if (node.state.kind !== "directory") return;
+
+  if (isNodeOverlayDirty(node)) {
+    addPathAndAncestors(dirty, dirPath);
+  }
+
+  // 检查 origin 中已解析的子目录节点
+  if (node.origin.kind === "repo-tree") {
+    const tree = readRepoTree(source, node.origin.hash, dirPath);
+    for (const entry of tree.entries) {
+      if (entry.mode !== "040000") continue;
+      const childId = originBackedNodeId(entry.hash);
+      const childNode = state.getNode(childId);
+      if (childNode === null) continue; // 未解析 → 不可能有 overlay 修改
+      const childPath = joinChildPath(dirPath, entry.name);
+      walkResolvedOverlayNodes(source, state, childNode, childPath, dirty);
+    }
+  }
+
+  // 检查 overlay 新增的目录子项
+  for (const [name, childId] of node.state.overlay.addedEntries) {
+    const childNode = state.getNode(childId);
+    if (childNode === null || childNode.state.kind !== "directory") continue;
+    const childPath = joinChildPath(dirPath, name);
+    walkResolvedOverlayNodes(source, state, childNode, childPath, dirty);
+  }
+}
+
+function isNodeOverlayDirty(node: WorkdirNode): boolean {
+  if (node.state.kind !== "directory") return false;
+  return node.state.overlay.addedEntries.size > 0 || node.state.overlay.deletedNames.size > 0;
+}
+
+// ==================== 目录编译 ====================
+
+/**
+ * 递归编译目录 -> tree 对象
+ *
+ * 返回新 tree 的 SHA-1（无变化时直接复用 origin hash）。
+ */
+function compileDirectory(ctx: CompileContext, dirNode: WorkdirNode, dirPath: string): SHA1 {
   if (dirNode.state.kind !== "directory") {
     throw new Error("compileDirectory called on non-directory node");
   }
 
-  const summary = state.getDirtyDirSummary(dirPath);
+  // 无任何变更且 origin 存在 → 直接复用
   if (
-    summary !== null &&
-    summary.hashState === "materialized" &&
-    summary.currentTreeHash !== null
+    !ctx.dirtyPaths.has(dirPath) &&
+    !isNodeOverlayDirty(dirNode) &&
+    dirNode.origin.kind === "repo-tree"
   ) {
-    return summary.currentTreeHash;
-  }
-  if (summary === null && dirNode.origin.kind === "repo-tree") {
     return dirNode.origin.hash;
   }
 
-  let anyChanged = false;
-  const newEntries = collectCompiledEntries(
-    writeSource,
-    readSource,
-    state,
-    dirNode,
-    dirPath,
-    summary,
-    (changed) => {
-      if (changed) {
-        anyChanged = true;
-      }
-    },
-  );
-
-  if (summary !== null && (summary.dirtyEntryCount > 0 || summary.dirtyDescendantCount > 0)) {
-    anyChanged = true;
+  // 读取 origin tree
+  let originEntries: readonly TreeEntry[] = [];
+  if (dirNode.origin.kind === "repo-tree") {
+    const originTree = readRepoTree(ctx.readSource, dirNode.origin.hash, dirPath);
+    originEntries = originTree.entries;
   }
 
-  if (!anyChanged && dirNode.origin.kind === "repo-tree") {
-    state.setDirtyDirSummary(materializeDirtyDirSummary(summary, dirPath, dirNode.origin.hash));
-    return dirNode.origin.hash;
-  }
+  const overlay = dirNode.state.overlay;
+  const treeEntries: TreeEntry[] = [];
 
-  newEntries.sort((a, b) => a.name.localeCompare(b.name));
-  const treeHash = writeObject(writeSource, { type: "tree", entries: newEntries });
-  state.setDirtyDirSummary(materializeDirtyDirSummary(summary, dirPath, treeHash));
-  return treeHash;
-}
+  // --- 处理 origin 条目（按 origin 顺序） ---
+  if (dirNode.origin.kind === "repo-tree") {
+    const lookup = createNamedOriginChildLookup(originEntries);
 
-function collectCompiledEntries(
-  writeSource: ObjectDatabase,
-  readSource: ObjectSource,
-  state: VirtualWorkdirStateStore,
-  dirNode: WorkdirNode,
-  dirPath: string,
-  summary: DirtyDirSummary | null,
-  markChanged: (changed: boolean) => void,
-): TreeEntry[] {
-  if (dirNode.state.kind !== "directory") {
-    throw new Error("collectCompiledEntries called on non-directory node");
-  }
+    for (const originEntry of originEntries) {
+      // 已被 overlay 删除
+      if (overlay.deletedNames.has(originEntry.name)) continue;
+      // 已被 overlay 替换（在 addedEntries 循环中处理）
+      if (overlay.addedEntries.has(originEntry.name)) continue;
 
-  if (dirNode.origin.kind !== "repo-tree" || summary === null) {
-    return listDirectoryChildren(readSource, state, dirNode, dirPath).flatMap((child) => {
-      const observedChild = observeListedDirectoryChild(state, dirPath, child);
-      if (observedChild === null) {
-        return [];
+      const childPath = joinChildPath(dirPath, originEntry.name);
+
+      if (originEntry.mode === "040000") {
+        // —— 子目录 ——
+        const resolved = resolveNamedChild(ctx.state, dirNode, lookup, originEntry.name);
+        if (resolved.found && resolved.node.state.kind === "directory") {
+          if (ctx.dirtyPaths.has(childPath) || isNodeOverlayDirty(resolved.node)) {
+            const hash = compileDirectory(ctx, resolved.node, childPath);
+            treeEntries.push({ mode: "040000", name: originEntry.name, hash });
+          } else {
+            // 子目录无任何变化 → 复用 origin entry
+            treeEntries.push(originEntry);
+          }
+        } else if (resolved.found) {
+          // Origin 是目录，但被替换为文件/符号链接
+          const compiled = compileNodeToEntry(ctx, resolved.node, childPath, originEntry.name);
+          if (compiled !== null) treeEntries.push(compiled);
+        } else {
+          // 节点不存在（不应发生），保守保留 origin entry
+          treeEntries.push(originEntry);
+        }
+      } else {
+        // —— 文件/符号链接 ——
+        if (ctx.changes.has(childPath)) {
+          const resolved = resolveNamedChild(ctx.state, dirNode, lookup, originEntry.name);
+          if (resolved.found) {
+            const compiled = compileNodeToEntry(ctx, resolved.node, childPath, originEntry.name);
+            if (compiled !== null) treeEntries.push(compiled);
+          }
+        } else {
+          treeEntries.push(originEntry);
+        }
       }
-      const entry = compileChildEntry(writeSource, readSource, state, observedChild);
-      if (entry === null) {
-        return [];
-      }
-      markChanged(entry.changed);
-      return [entry.entry];
-    });
-  }
-
-  const originTree = readRepoTree(readSource, dirNode.origin.hash, dirPath);
-  const originLookup = createNamedOriginChildLookup(originTree.entries);
-  const affectedNames = collectAffectedChildNames(summary);
-  const childPlan = planAffectedDirectoryChildren(originLookup, affectedNames);
-  const out: TreeEntry[] = [];
-
-  for (const planEntry of childPlan) {
-    if (!planEntry.shouldCompile) {
-      if (planEntry.originEntry === null) {
-        throw new Error(`collectCompiledEntries: missing origin entry for '${planEntry.name}'`);
-      }
-      out.push(planEntry.originEntry);
-      continue;
     }
-
-    const compiled = compileNamedChildEntry(
-      writeSource,
-      readSource,
-      state,
-      dirNode,
-      dirPath,
-      planEntry.name,
-      originLookup,
-    );
-    if (compiled === null) {
-      continue;
-    }
-    markChanged(compiled.changed);
-    out.push(compiled.entry);
   }
 
-  return out;
-}
-
-function collectAffectedChildNames(summary: DirtyDirSummary): ReadonlySet<string> {
-  return new Set(summary.affectedNames);
-}
-
-function compileNamedChildEntry(
-  writeSource: ObjectDatabase,
-  readSource: ObjectSource,
-  state: VirtualWorkdirStateStore,
-  dirNode: WorkdirNode,
-  dirPath: string,
-  name: string,
-  originLookup: NamedOriginChildLookup,
-): { readonly entry: TreeEntry; readonly changed: boolean } | null {
-  if (dirNode.state.kind !== "directory") {
-    throw new Error("compileNamedChildEntry called on non-directory node");
+  // --- 处理 overlay 新增条目 ---
+  for (const [name, nodeId] of overlay.addedEntries) {
+    const childNode = ctx.state.getNode(nodeId);
+    if (childNode === null) continue;
+    const childPath = joinChildPath(dirPath, name);
+    const compiled = compileNodeToEntry(ctx, childNode, childPath, name);
+    if (compiled !== null) treeEntries.push(compiled);
   }
 
-  const observedChild = observeNamedDirectoryChild(state, dirNode, dirPath, originLookup, name);
-  if (observedChild === null) {
-    return null;
-  }
-  return compileChildEntry(writeSource, readSource, state, observedChild);
+  // 排序（Git tree 要求按名称字典序）
+  treeEntries.sort((a, b) => a.name.localeCompare(b.name));
+
+  return writeObject(ctx.writeSource, { type: "tree", entries: treeEntries });
 }
 
-function compileChildEntry(
-  writeSource: ObjectDatabase,
-  readSource: ObjectSource,
-  state: VirtualWorkdirStateStore,
-  child: Pick<ObservedDirectoryChildNode, "name" | "path" | "node">,
-): { readonly entry: TreeEntry; readonly changed: boolean } | null {
-  const node = child.node;
+// ==================== 节点 → TreeEntry 编译 ====================
+
+function compileNodeToEntry(
+  ctx: CompileContext,
+  node: WorkdirNode,
+  childPath: string,
+  childName: string,
+): TreeEntry | null {
   if (node.state.kind === "directory") {
-    const newHash = compileDirectory(writeSource, readSource, state, node, child.path);
-    const originHash = node.origin.kind === "repo-tree" ? node.origin.hash : null;
-    return {
-      entry: { mode: "040000", name: child.name, hash: newHash },
-      changed: newHash !== originHash,
-    };
+    const hash = compileDirectory(ctx, node, childPath);
+    return { mode: "040000", name: childName, hash };
   }
 
   if (node.state.kind === "file") {
     if (node.state.content !== undefined) {
-      const hash = writeObject(writeSource, {
+      const hash = writeObject(ctx.writeSource, {
         type: "blob",
         content: node.state.content,
       });
-      return {
-        entry: { mode: node.state.mode, name: child.name, hash },
-        changed: node.origin.kind !== "repo-blob" || hash !== node.origin.hash,
-      };
+      return { mode: node.state.mode, name: childName, hash };
     }
     if (node.origin.kind === "repo-blob") {
-      return {
-        entry: { mode: node.state.mode, name: child.name, hash: node.origin.hash },
-        changed: false,
-      };
+      return { mode: node.state.mode, name: childName, hash: node.origin.hash };
     }
     return null;
   }
 
-  if (node.state.target !== undefined) {
-    const hash = writeObject(writeSource, {
-      type: "blob",
-      content: node.state.target,
-    });
-    return {
-      entry: { mode: "120000", name: child.name, hash },
-      changed: node.origin.kind !== "repo-blob" || hash !== node.origin.hash,
-    };
+  if (node.state.kind === "symlink") {
+    if (node.state.target !== undefined) {
+      const hash = writeObject(ctx.writeSource, {
+        type: "blob",
+        content: node.state.target,
+      });
+      return { mode: "120000", name: childName, hash };
+    }
+    if (node.origin.kind === "repo-blob") {
+      return { mode: "120000", name: childName, hash: node.origin.hash };
+    }
+    return null;
   }
-  if (node.origin.kind === "repo-blob") {
-    return {
-      entry: { mode: "120000", name: child.name, hash: node.origin.hash },
-      changed: false,
-    };
-  }
+
   return null;
 }

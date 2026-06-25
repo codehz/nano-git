@@ -1201,7 +1201,7 @@ describe("reset", () => {
     expect(session.readFile("f").toString()).toBe(fresh.readFile("f").toString());
   });
 
-  test("reset 会清空 dirty dir summaries", () => {
+  test("reset 后 diff 为空（替代旧版 dirty dir summaries 清空测试）", () => {
     const repo = createMemoryRepository();
     const oldBaseTree = repo.createTree([]);
     const newBaseTree = repo.createTree([]);
@@ -1210,13 +1210,13 @@ describe("reset", () => {
 
     session.mkdir("dir");
     session.writeFile("dir/file.txt", Buffer.from("data"));
-    expect(store.listDirtyDirSummaries().length).toBeGreaterThan(0);
+    expect(session.diff().length).toBeGreaterThan(0);
 
     session.reset(newBaseTree);
-    expect(store.listDirtyDirSummaries()).toEqual([]);
+    expect(session.diff()).toEqual([]);
   });
 
-  test("新增后再删除会收敛并清空 dirty dir summaries", () => {
+  test("新增后再删除 diff 会正确收敛", () => {
     const repo = createMemoryRepository();
     const baseTree = repo.createTree([]);
     const store = createVirtualWorkdirMemoryStateStore(baseTree);
@@ -1224,23 +1224,13 @@ describe("reset", () => {
 
     session.mkdir("src");
     session.writeFile("src/a.ts", Buffer.from("a1"));
-    expect(store.listDirtyDirSummaries().length).toBeGreaterThan(0);
+    expect(session.diff().length).toBeGreaterThan(0);
 
     session.delete("src/a.ts");
-    expect(store.listDirtyDirSummaries()).toEqual([
-      {
-        path: "",
-        isDirty: true,
-        dirtyEntryCount: 1,
-        dirtyDescendantCount: 0,
-        affectedNames: ["src"],
-        currentTreeHash: null,
-        hashState: "stale",
-      },
-    ]);
+    expect(session.diff().length).toBe(0);
   });
 
-  test("repo-backed 文件 revert 到 clean 后会清空 dirty dir summaries", () => {
+  test("repo-backed 文件 revert 到 clean 后 diff 为空", () => {
     const repo = createMemoryRepository();
     const blobHash = repo.writeBlob(Buffer.from("base"));
     const srcTree = repo.createTree([{ mode: "100644", name: "a.ts", hash: blobHash }]);
@@ -1249,21 +1239,13 @@ describe("reset", () => {
     const session = openVirtualWorkdir(repo.objects, store);
 
     session.writeFile("src/a.ts", Buffer.from("next"));
-    expect(store.getDirtyDirSummary("")).toEqual({
-      path: "",
-      isDirty: true,
-      dirtyEntryCount: 1,
-      dirtyDescendantCount: 1,
-      affectedNames: ["src"],
-      currentTreeHash: null,
-      hashState: "stale",
-    });
+    expect(session.diff().length).toBeGreaterThan(0);
 
     session.revert("src/a.ts");
-    expect(store.listDirtyDirSummaries()).toEqual([]);
+    expect(session.diff()).toEqual([]);
   });
 
-  test("dirty dir summaries 会累积 affectedNames 并在后续写入时保持去重", () => {
+  test("多次写入后 writeTree 产出正确的 tree 结构", () => {
     const repo = createMemoryRepository();
     const baseTree = repo.createTree([]);
     const store = createVirtualWorkdirMemoryStateStore(baseTree);
@@ -1274,23 +1256,17 @@ describe("reset", () => {
     session.writeFile("src/b.ts", Buffer.from("b1"));
     session.writeFile("src/a.ts", Buffer.from("a2"));
 
-    expect(store.getDirtyDirSummary("")).toEqual({
-      path: "",
-      isDirty: true,
-      dirtyEntryCount: 1,
-      dirtyDescendantCount: 2,
-      affectedNames: ["src"],
-      currentTreeHash: null,
-      hashState: "stale",
-    });
-    expect(store.getDirtyDirSummary("src")).toEqual({
-      path: "src",
-      isDirty: true,
-      dirtyEntryCount: 2,
-      dirtyDescendantCount: 0,
-      affectedNames: ["a.ts", "b.ts"],
-      currentTreeHash: null,
-      hashState: "stale",
-    });
+    const treeHash = session.writeTree();
+    const root = repo.catFile(treeHash) as GitTree;
+    expect(root.type).toBe("tree");
+    expect(root.entries).toHaveLength(1);
+    expect(root.entries[0]?.name).toBe("src");
+    const src = repo.catFile(root.entries[0]!.hash) as GitTree;
+    expect(src.type).toBe("tree");
+    expect(src.entries).toHaveLength(2);
+    const aEntry = src.entries.find((e) => e.name === "a.ts");
+    const bEntry = src.entries.find((e) => e.name === "b.ts");
+    expect(aEntry).toBeDefined();
+    expect(bEntry).toBeDefined();
   });
 });

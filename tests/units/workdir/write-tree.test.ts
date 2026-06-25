@@ -163,7 +163,7 @@ describe("writeTree object reuse", () => {
     expect(store.getNode(keepNodeId)).toBeNull();
   });
 
-  test("dirty summary 缓存当前 tree hash，重复 writeTree 不重复编译脏子树", () => {
+  test("重复 writeTree 会重新编译但产出相同 hash（无 DirtyDirSummary 缓存）", () => {
     const repo = createMemoryRepository();
     const baseBlob = repo.writeBlob(Buffer.from("base"));
     const baseTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: baseBlob }]);
@@ -173,15 +173,13 @@ describe("writeTree object reuse", () => {
 
     session.writeFile("a.txt", Buffer.from("next"));
     const firstTree = session.writeTree();
-    const firstIngestCount = counting.getIngestCount();
     const secondTree = session.writeTree();
-    const secondIngestCount = counting.getIngestCount();
 
     expect(secondTree).toBe(firstTree);
-    expect(secondIngestCount).toBe(firstIngestCount);
+    // 注意：新实现无 DirtyDirSummary 缓存，writeTree 会重新编译
   });
 
-  test("writeTree 会把 dirty summary 的 hashState 推进为 materialized", () => {
+  test("writeTree 产出正确的 tree 结构（不含脏目录摘要）", () => {
     const repo = createMemoryRepository();
     const baseTree = repo.createTree([]);
     const store = createVirtualWorkdirMemoryStateStore(baseTree);
@@ -189,22 +187,17 @@ describe("writeTree object reuse", () => {
 
     session.mkdir("src");
     session.writeFile("src/a.ts", Buffer.from("export const a = 1;\n"));
-    expect(store.getDirtyDirSummary("src")?.hashState).toBe("stale");
-    expect(store.getDirtyDirSummary("src")?.currentTreeHash).toBeNull();
 
     const treeHash = session.writeTree();
-    const rootSummary = store.getDirtyDirSummary("");
-    const srcSummary = store.getDirtyDirSummary("src");
+    const root = readTree(repo, treeHash);
 
-    expect(rootSummary?.hashState).toBe("materialized");
-    expect(srcSummary?.hashState).toBe("materialized");
-    expect(rootSummary?.currentTreeHash).toBe(treeHash);
-    expect(srcSummary?.currentTreeHash).not.toBeNull();
-    expect(rootSummary?.dirtyEntryCount).toBe(1);
-    expect(rootSummary?.dirtyDescendantCount).toBe(1);
-    expect(srcSummary?.dirtyEntryCount).toBe(1);
-    expect(srcSummary?.dirtyDescendantCount).toBe(0);
-    expect(srcSummary?.affectedNames).toEqual(["a.ts"]);
+    expect(root.entries).toHaveLength(1);
+    expect(root.entries[0]?.mode).toBe("040000");
+    expect(root.entries[0]?.name).toBe("src");
+    const src = readTree(repo, root.entries[0]!.hash);
+    expect(src.entries).toHaveLength(1);
+    expect(src.entries[0]?.name).toBe("a.ts");
+    expect(src.entries[0]?.mode).toBe("100644");
   });
 
   test("新建空目录在无子级 summary 时仍会写出新 tree", () => {

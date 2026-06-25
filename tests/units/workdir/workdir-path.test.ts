@@ -95,7 +95,11 @@ describe("observeDirectoryChildren()", () => {
 
     const observed = observeDirectoryChildren(repo.objects, store, root, "", {
       onDirectoryChild(child) {
-        return store.getDirtyDirSummary(child.path)?.dirtyEntryCount ?? 0;
+        // 目录脏检测：递归检查子项是否有 change record
+        const childChangeRecords = store
+          .listChangeRecords()
+          .filter((r) => r.path.startsWith(child.path + "/") || r.path === child.path);
+        return childChangeRecords.length;
       },
       isLeafChildDirty(child) {
         return store.getChangeRecord(child.path) !== null;
