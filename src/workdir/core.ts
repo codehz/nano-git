@@ -232,7 +232,8 @@ export interface VirtualWorkdir {
    * 复制路径
    *
    * 新建 workdir node，共享 origin，不共享 node 身份。
-   * 目录复制为浅复制，子项保持懒加载。
+   * 目录复制采用 CoW（写时复制）：子树节点共享同一份 origin 引用，
+   * 任一副本下的子项被修改时才会真正分裂出独立副本。
    */
   copy(from: string, to: string): void;
 

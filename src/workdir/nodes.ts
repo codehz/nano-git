@@ -164,7 +164,8 @@ export function revertNodeState(node: WorkdirNode): WorkdirNode {
 }
 
 /**
- * 为 `copy` 创建新节点：共享 origin，目录为浅复制（子项绑定保留，但 nodeId 为新）
+ * 为 `copy` 创建新节点：共享 origin，目录采用 CoW（写时复制）
+ * （子项绑定保留，但 nodeId 为新；实际子树只在任一副本写入时分裂）
  */
 export function cloneWorkdirNodeForCopy(source: WorkdirNode, newId: NodeId): WorkdirNode {
   const origin = source.origin;
