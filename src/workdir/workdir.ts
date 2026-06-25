@@ -27,7 +27,12 @@ import { createVirtualWorkdirMemoryStateStore } from "./memory-backend.ts";
 import { revertNodeState, type WorkdirNode } from "./nodes.ts";
 import { modeToVirtualEntryKind, readRepoBlobContent } from "./origin.ts";
 import { overlayBindEntry, overlayTombstoneEntry, overlayRenameEntry } from "./overlay.ts";
-import { assertValidVirtualPath, normalizeDirectoryPath, VIRTUAL_ROOT_PATH } from "./path.ts";
+import {
+  assertValidVirtualPath,
+  normalizeDirectoryPath,
+  splitPathSegments,
+  VIRTUAL_ROOT_PATH,
+} from "./path.ts";
 import {
   getDirectoryChildrenView,
   getRootNode,
@@ -148,6 +153,40 @@ export function openVirtualWorkdir(
 
   refreshChangeIndex();
 
+  const createDirectoryAtPath = (path: string): void => {
+    const target = requireMissingWriteTarget(source, state, path);
+    const nodeId = createNodeId();
+    const newNode: WorkdirNode = {
+      id: nodeId,
+      origin: { kind: "none" },
+      state: {
+        kind: "directory",
+        overlay: { addedEntries: new Map(), deletedNames: new Set() },
+      },
+    };
+    state.setNode(newNode);
+    updateParentOverlay(
+      state,
+      target.parentNode.id,
+      overlayBindEntry(target.parentNode.state.overlay, target.name, nodeId),
+    );
+  };
+
+  const mkdirRecursive = (path: string): void => {
+    const segments = splitPathSegments(path);
+    for (let i = 0; i < segments.length; i++) {
+      const partialPath = segments.slice(0, i + 1).join("/");
+      const resolved = resolvePath(source, state, partialPath);
+      if (resolved.found && resolved.node !== null) {
+        if (resolved.node.state.kind !== "directory") {
+          throw new VirtualNotDirectoryError(partialPath);
+        }
+        continue;
+      }
+      createDirectoryAtPath(partialPath);
+    }
+  };
+
   const api: VirtualWorkdir = {
     get baseTree() {
       return state.readBaseTree();
@@ -238,30 +277,29 @@ export function openVirtualWorkdir(
 
     // ========== 写入 ==========
 
-    mkdir(path: string): void {
+    mkdir(path: string, options?: { readonly recursive?: boolean }): void {
+      const recursive = options?.recursive === true;
       runInWriteTransaction(
         state,
-        () => dirtyDirPlanner.rebuild([path]),
+        () => {
+          if (recursive) {
+            const segments = splitPathSegments(path);
+            const paths: string[] = [];
+            for (let i = 0; i < segments.length; i++) {
+              paths.push(segments.slice(0, i + 1).join("/"));
+            }
+            dirtyDirPlanner.rebuild(paths);
+          } else {
+            dirtyDirPlanner.rebuild([path]);
+          }
+        },
         invalidateDiffCaches,
         () => {
-          const target = requireMissingWriteTarget(source, state, path);
-
-          // 创建新目录节点 + 绑定到父 overlay
-          const nodeId = createNodeId();
-          const newNode: WorkdirNode = {
-            id: nodeId,
-            origin: { kind: "none" },
-            state: {
-              kind: "directory",
-              overlay: { addedEntries: new Map(), deletedNames: new Set() },
-            },
-          };
-          state.setNode(newNode);
-          updateParentOverlay(
-            state,
-            target.parentNode.id,
-            overlayBindEntry(target.parentNode.state.overlay, target.name, nodeId),
-          );
+          if (recursive) {
+            mkdirRecursive(path);
+          } else {
+            createDirectoryAtPath(path);
+          }
         },
       );
     },

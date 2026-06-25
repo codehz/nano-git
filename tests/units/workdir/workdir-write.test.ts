@@ -85,6 +85,58 @@ describe("mkdir", () => {
     const session = createVirtualWorkdir(repo.objects, { baseTree });
     expect(() => session.mkdir("f/sub")).toThrow(VirtualNotDirectoryError);
   });
+
+  test("recursive 一次创建多级目录", () => {
+    const repo = createMemoryRepository();
+    const session = createVirtualWorkdir(repo.objects, {
+      baseTree: repo.createTree([]),
+    });
+
+    session.mkdir("a/b/c", { recursive: true });
+
+    expect(session.exists("a/b/c")).toBe(true);
+    expect(session.stat("a/b/c")).toMatchObject({ kind: "tree" });
+    expect(session.readdir("a/b")).toEqual([{ name: "c", kind: "tree", mode: "040000" }]);
+  });
+
+  test("recursive 目标已是目录时不报错", () => {
+    const repo = createMemoryRepository();
+    const session = createVirtualWorkdir(repo.objects, {
+      baseTree: repo.createTree([]),
+    });
+
+    session.mkdir("dir");
+    session.mkdir("dir", { recursive: true });
+    session.mkdir("dir/sub", { recursive: true });
+
+    expect(session.exists("dir/sub")).toBe(true);
+  });
+
+  test("recursive 路径上存在文件时抛 VirtualNotDirectoryError", () => {
+    const repo = createMemoryRepository();
+    const blobHash = repo.writeBlob(Buffer.from("data"));
+    const baseTree = repo.createTree([{ mode: "100644", name: "f", hash: blobHash }]);
+    const session = createVirtualWorkdir(repo.objects, { baseTree });
+
+    expect(() => session.mkdir("f/sub", { recursive: true })).toThrow(VirtualNotDirectoryError);
+  });
+
+  test("recursive 目标路径已是文件时抛 VirtualNotDirectoryError", () => {
+    const repo = createMemoryRepository();
+    const blobHash = repo.writeBlob(Buffer.from("data"));
+    const baseTree = repo.createTree([{ mode: "100644", name: "f", hash: blobHash }]);
+    const session = createVirtualWorkdir(repo.objects, { baseTree });
+
+    expect(() => session.mkdir("f", { recursive: true })).toThrow(VirtualNotDirectoryError);
+  });
+
+  test("未传 recursive 时父目录不存在仍抛 VirtualPathNotFoundError", () => {
+    const repo = createMemoryRepository();
+    const session = createVirtualWorkdir(repo.objects, {
+      baseTree: repo.createTree([]),
+    });
+    expect(() => session.mkdir("no/such")).toThrow(VirtualPathNotFoundError);
+  });
 });
 
 // ==================== writeFile ====================

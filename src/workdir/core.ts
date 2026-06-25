@@ -202,8 +202,13 @@ export interface VirtualWorkdir {
   /** 写入符号链接（新建或覆盖） */
   writeLink(path: string, target: string): void;
 
-  /** 创建目录（含必要父目录） */
-  mkdir(path: string): void;
+  /**
+   * 创建目录
+   *
+   * 默认要求各级父目录已存在；`recursive: true` 时自动创建缺失的父目录，
+   * 且目标路径已是目录时不报错。路径上任意段为文件（非目录）时抛出 `VirtualNotDirectoryError`。
+   */
+  mkdir(path: string, options?: { readonly recursive?: boolean }): void;
 
   /** 删除路径（文件、目录或符号链接） */
   delete(path: string): void;
