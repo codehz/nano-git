@@ -1,7 +1,7 @@
 /**
- * Virtual Workdir 事务包装与会话辅助函数
+ * Virtual Workdir 写事务与节点辅助函数
  *
- * 从 session.ts 提取，降低编排层的复杂度：
+ * 从 workdir.ts 提取，降低编排层复杂度：
  * - 写操作事务生命周期管理
  * - 父目录 overlay 更新
  * - 节点状态统计（stat）
@@ -10,10 +10,10 @@
 
 import { observeListedDirectoryChild } from "./directory-view.ts";
 import { createNodeId } from "./ids.ts";
-import { cloneSessionNodeForCopy, type SessionNode } from "./nodes.ts";
+import { cloneWorkdirNodeForCopy, type WorkdirNode } from "./nodes.ts";
 import { readRepoBlobContent } from "./origin.ts";
 import { overlayBindEntry, type DirectoryOverlay } from "./overlay.ts";
-import { listDirectoryChildren } from "./session-internal.ts";
+import { listDirectoryChildren } from "./workdir-path.ts";
 
 import type { ObjectDatabase } from "../core/types/odb.ts";
 import type { VirtualEntryStat } from "./core.ts";
@@ -23,7 +23,7 @@ import type { VirtualWorkdirStateStore } from "./state-store.ts";
 /**
  * 在 state store 事务边界内执行写操作。
  *
- * @param state - session 内部状态存储
+ * @param state - workdir 内部状态存储
  * @param onBeforeCommit - 提交前回调（在事务 callback 内执行）；可为 null
  * @param onCommitted - 提交后回调（在事务 callback 外执行）
  * @param fn - 实际写入逻辑
@@ -65,11 +65,11 @@ export function updateParentOverlay(
 }
 
 /**
- * 获取节点统计信息（用于 session.stat() 实现）
+ * 获取节点统计信息（用于 workdir.stat() 实现）
  */
 export function statNode(
   source: ObjectDatabase,
-  node: SessionNode,
+  node: WorkdirNode,
   path: string,
 ): VirtualEntryStat {
   if (node.state.kind === "directory") {
@@ -98,7 +98,7 @@ export function statNode(
 /**
  * 目录节点统计信息（无大小，hash 取 origin）
  */
-export function statDirectoryNode(node: SessionNode): VirtualEntryStat {
+export function statDirectoryNode(node: WorkdirNode): VirtualEntryStat {
   const hash = node.origin.kind === "repo-tree" ? node.origin.hash : null;
   return { kind: "tree", mode: "40000", size: 0, hash };
 }
@@ -111,11 +111,11 @@ export function statDirectoryNode(node: SessionNode): VirtualEntryStat {
 export function cloneNodeGraphForCopy(
   source: ObjectDatabase,
   state: VirtualWorkdirStateStore,
-  node: SessionNode,
+  node: WorkdirNode,
   path: string,
 ): NodeId {
   const newNodeId = createNodeId();
-  const cloned = cloneSessionNodeForCopy(node, newNodeId);
+  const cloned = cloneWorkdirNodeForCopy(node, newNodeId);
   state.setNode(cloned);
 
   if (node.state.kind !== "directory" || cloned.state.kind !== "directory") {

@@ -6,8 +6,8 @@ import { describe, test, expect } from "bun:test";
 import { createMemoryRepository } from "@/repository/memory.ts";
 import { originBackedNodeId } from "@/workdir/ids.ts";
 import { createVirtualWorkdirMemoryStateStore } from "@/workdir/memory-backend.ts";
-import { createVirtualWorkdirSession } from "@/workdir/session.ts";
-import { openVirtualWorkdirSession } from "@/workdir/session.ts";
+import { createVirtualWorkdir } from "@/workdir/workdir.ts";
+import { openVirtualWorkdir } from "@/workdir/workdir.ts";
 
 import type { GitTree } from "@/core/types.ts";
 import type { ObjectDatabase } from "@/core/types/odb.ts";
@@ -71,7 +71,7 @@ describe("writeTree object reuse", () => {
       { mode: "40000", name: "dir", hash: subTreeHash },
       { mode: "100644", name: "root.txt", hash: rootBlobHash },
     ]);
-    const session = createVirtualWorkdirSession(repo.objects, { baseTree });
+    const session = createVirtualWorkdir(repo.objects, { baseTree });
 
     session.writeFile("root.txt", Buffer.from("changed"));
     const nextTree = session.writeTree();
@@ -85,7 +85,7 @@ describe("writeTree object reuse", () => {
     const repo = createMemoryRepository();
     const blobHash = repo.writeBlob(Buffer.from("shared"));
     const baseTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]);
-    const session = createVirtualWorkdirSession(repo.objects, { baseTree });
+    const session = createVirtualWorkdir(repo.objects, { baseTree });
 
     session.copy("a.txt", "b.txt");
     const nextTree = session.writeTree();
@@ -107,7 +107,7 @@ describe("writeTree object reuse", () => {
     ]);
 
     const store = createVirtualWorkdirMemoryStateStore(baseTree);
-    const session = openVirtualWorkdirSession(repo.objects, store);
+    const session = openVirtualWorkdir(repo.objects, store);
     session.writeFile("left/a.txt", Buffer.from("left-2"));
 
     const nextTree = session.writeTree();
@@ -120,7 +120,7 @@ describe("writeTree object reuse", () => {
     const baseBlob = repo.writeBlob(Buffer.from("base"));
     const baseTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: baseBlob }]);
     const store = createVirtualWorkdirMemoryStateStore(baseTree);
-    const session = openVirtualWorkdirSession(repo.objects, store);
+    const session = openVirtualWorkdir(repo.objects, store);
 
     session.writeFile("b.txt", Buffer.from("next"));
     const nextTree = session.writeTree();
@@ -141,7 +141,7 @@ describe("writeTree object reuse", () => {
     ]);
 
     const store = createVirtualWorkdirMemoryStateStore(baseTree);
-    const session = openVirtualWorkdirSession(repo.objects, store);
+    const session = openVirtualWorkdir(repo.objects, store);
 
     const rightNodeId = originBackedNodeId(rightBlob);
     const keepNodeId = originBackedNodeId(keepBlob);
@@ -169,7 +169,7 @@ describe("writeTree object reuse", () => {
     const baseTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: baseBlob }]);
     const store = createVirtualWorkdirMemoryStateStore(baseTree);
     const counting = createCountingObjectDatabase(repo.objects);
-    const session = openVirtualWorkdirSession(counting.objects, store);
+    const session = openVirtualWorkdir(counting.objects, store);
 
     session.writeFile("a.txt", Buffer.from("next"));
     const firstTree = session.writeTree();
@@ -185,7 +185,7 @@ describe("writeTree object reuse", () => {
     const repo = createMemoryRepository();
     const baseTree = repo.createTree([]);
     const store = createVirtualWorkdirMemoryStateStore(baseTree);
-    const session = openVirtualWorkdirSession(repo.objects, store);
+    const session = openVirtualWorkdir(repo.objects, store);
 
     session.mkdir("src");
     session.writeFile("src/a.ts", Buffer.from("export const a = 1;\n"));
@@ -210,7 +210,7 @@ describe("writeTree object reuse", () => {
   test("新建空目录在无子级 summary 时仍会写出新 tree", () => {
     const repo = createMemoryRepository();
     const baseTree = repo.createTree([]);
-    const session = createVirtualWorkdirSession(repo.objects, { baseTree });
+    const session = createVirtualWorkdir(repo.objects, { baseTree });
 
     session.mkdir("src");
     const nextTree = session.writeTree();

@@ -1,56 +1,20 @@
 /**
- * workdir/memory-backend.ts 生命周期测试
+ * workdir/memory-backend.ts 内部状态测试
  */
 import { describe, test, expect } from "bun:test";
 
 import { createMemoryRepository } from "@/repository/memory.ts";
 import { createVirtualWorkdirMemoryStateStore } from "@/workdir/memory-backend.ts";
-import { createMemoryVirtualWorkdirBackend } from "@/workdir/memory.ts";
+import { createVirtualWorkdir } from "@/workdir/memory.ts";
 import { VIRTUAL_ROOT_NODE_ID } from "@/workdir/nodes.ts";
-import { resetVirtualWorkdirSessionIdCounterForTests } from "@/workdir/session-id.ts";
 
-describe("createMemoryVirtualWorkdirBackend()", () => {
-  test("create/open/list 支持基本 session 生命周期", () => {
-    resetVirtualWorkdirSessionIdCounterForTests();
+describe("memory VirtualWorkdir", () => {
+  test("多个实例互不污染", () => {
     const repo = createMemoryRepository();
-    const backend = createMemoryVirtualWorkdirBackend();
     const baseTree = repo.createTree([]);
 
-    const sessionId = backend.createSession({ baseTree });
-    expect(backend.listSessions()).toEqual([sessionId]);
-
-    const session = backend.openSession(repo.objects, sessionId);
-    expect(session.baseTree).toBe(baseTree);
-    session.writeFile("hello.txt", Buffer.from("world"));
-
-    const reopened = backend.openSession(repo.objects, sessionId);
-    expect(reopened.readFile("hello.txt").toString()).toBe("world");
-  });
-
-  test("deleteSession 后不可再次打开", () => {
-    resetVirtualWorkdirSessionIdCounterForTests();
-    const repo = createMemoryRepository();
-    const backend = createMemoryVirtualWorkdirBackend();
-    const sessionId = backend.createSession({ baseTree: repo.createTree([]) });
-
-    backend.deleteSession(sessionId);
-    expect(backend.listSessions()).toEqual([]);
-    expect(() => backend.openSession(repo.objects, sessionId)).toThrow(
-      /Virtual workdir session not found/,
-    );
-  });
-
-  test("多个 session 互不污染", () => {
-    resetVirtualWorkdirSessionIdCounterForTests();
-    const repo = createMemoryRepository();
-    const backend = createMemoryVirtualWorkdirBackend();
-    const baseTree = repo.createTree([]);
-
-    const sessionA = backend.createSession({ baseTree });
-    const sessionB = backend.createSession({ baseTree });
-
-    const a = backend.openSession(repo.objects, sessionA);
-    const b = backend.openSession(repo.objects, sessionB);
+    const a = createVirtualWorkdir(repo.objects, { baseTree });
+    const b = createVirtualWorkdir(repo.objects, { baseTree });
 
     a.writeFile("a.txt", Buffer.from("alpha"));
     b.writeFile("b.txt", Buffer.from("beta"));

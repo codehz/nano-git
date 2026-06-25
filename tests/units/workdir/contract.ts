@@ -14,12 +14,12 @@ import { createMemoryRepository } from "@/repository/memory.ts";
 
 import type { SHA1 } from "@/core/types.ts";
 import type { Repository } from "@/repository/types.ts";
-import type { CreateVirtualWorkdirSessionOptions, VirtualWorkdirSession } from "@/workdir/core.ts";
+import type { CreateVirtualWorkdirOptions, VirtualWorkdir } from "@/workdir/core.ts";
 
-export type VirtualWorkdirSessionFactory = (
+export type VirtualWorkdirFactory = (
   repo: Repository,
-  options: CreateVirtualWorkdirSessionOptions,
-) => VirtualWorkdirSession;
+  options: CreateVirtualWorkdirOptions,
+) => VirtualWorkdir;
 
 /**
  * 运行 Virtual Workdir backend 合同测试
@@ -27,18 +27,18 @@ export type VirtualWorkdirSessionFactory = (
  * @example
  * ```ts
  * runVirtualWorkdirContract("memory", (repo, options) =>
- *   createVirtualWorkdirSession(repo.objects, options),
+ *   createVirtualWorkdir(repo.objects, options),
  * );
  * ```
  */
 export function runVirtualWorkdirContract(
   name: string,
-  createSession: VirtualWorkdirSessionFactory,
+  createWorkdir: VirtualWorkdirFactory,
 ): void {
   describe(`VirtualWorkdir contract: ${name}`, () => {
     test("从空 tree 打开并写入文件/目录/符号链接", () => {
       const repo = createMemoryRepository();
-      const session = createSession(repo, { baseTree: repo.createTree([]) });
+      const session = createWorkdir(repo, { baseTree: repo.createTree([]) });
 
       expect(session.readdir()).toEqual([]);
       session.mkdir("dir");
@@ -60,7 +60,7 @@ export function runVirtualWorkdirContract(
         { mode: "40000", name: "dir", hash: dirHash },
         { mode: "120000", name: "link", hash: linkHash },
       ]);
-      const session = createSession(repo, { baseTree });
+      const session = createWorkdir(repo, { baseTree });
 
       expect(session.readFile("file.txt").toString()).toBe("hello");
       expect(session.readFile("dir/nested.txt").toString()).toBe("hello");
@@ -70,7 +70,7 @@ export function runVirtualWorkdirContract(
     test("删除路径后不可见", () => {
       const repo = createMemoryRepository();
       const fileHash = repo.writeBlob(Buffer.from("gone"));
-      const session = createSession(repo, {
+      const session = createWorkdir(repo, {
         baseTree: repo.createTree([{ mode: "100644", name: "file.txt", hash: fileHash }]),
       });
 
@@ -81,7 +81,7 @@ export function runVirtualWorkdirContract(
 
     test("重复 writeTree 结果稳定", () => {
       const repo = createMemoryRepository();
-      const session = createSession(repo, { baseTree: repo.createTree([]) });
+      const session = createWorkdir(repo, { baseTree: repo.createTree([]) });
 
       session.writeFile("file.txt", Buffer.from("stable"));
       const hash1 = session.writeTree();
@@ -94,7 +94,7 @@ export function runVirtualWorkdirContract(
       const repo = createMemoryRepository();
       const fileHash = repo.writeBlob(Buffer.from("base"));
       const baseTree = repo.createTree([{ mode: "100644", name: "file.txt", hash: fileHash }]);
-      const session = createSession(repo, { baseTree });
+      const session = createWorkdir(repo, { baseTree });
 
       session.writeFile("file.txt", Buffer.from("edited"));
       session.writeFile("fresh.txt", Buffer.from("new"));
@@ -107,7 +107,7 @@ export function runVirtualWorkdirContract(
 
     test("rename 文件与目录保持可读", () => {
       const repo = createMemoryRepository();
-      const session = createSession(repo, { baseTree: repo.createTree([]) });
+      const session = createWorkdir(repo, { baseTree: repo.createTree([]) });
 
       session.mkdir("src");
       session.writeFile("src/main.ts", Buffer.from("code"));
@@ -120,7 +120,7 @@ export function runVirtualWorkdirContract(
 
     test("copy 文件与目录后可独立修改", () => {
       const repo = createMemoryRepository();
-      const session = createSession(repo, { baseTree: repo.createTree([]) });
+      const session = createWorkdir(repo, { baseTree: repo.createTree([]) });
 
       session.mkdir("src");
       session.writeFile("src/main.ts", Buffer.from("v1"));
@@ -134,7 +134,7 @@ export function runVirtualWorkdirContract(
     test("revert 可恢复 repo-backed 节点", () => {
       const repo = createMemoryRepository();
       const fileHash = repo.writeBlob(Buffer.from("base"));
-      const session = createSession(repo, {
+      const session = createWorkdir(repo, {
         baseTree: repo.createTree([{ mode: "100644", name: "file.txt", hash: fileHash }]),
       });
 
@@ -146,7 +146,7 @@ export function runVirtualWorkdirContract(
 
     test("纯新建节点 revert 抛专用错误", () => {
       const repo = createMemoryRepository();
-      const session = createSession(repo, { baseTree: repo.createTree([]) });
+      const session = createWorkdir(repo, { baseTree: repo.createTree([]) });
 
       session.writeFile("fresh.txt", Buffer.from("data"));
       expect(() => session.revert("fresh.txt")).toThrow(VirtualRevertNotSupportedError);
@@ -156,7 +156,7 @@ export function runVirtualWorkdirContract(
       const repo = createMemoryRepository();
       const fileHash = repo.writeBlob(Buffer.from("after"));
       const nextTree = repo.createTree([{ mode: "100644", name: "after.txt", hash: fileHash }]);
-      const session = createSession(repo, { baseTree: repo.createTree([]) });
+      const session = createWorkdir(repo, { baseTree: repo.createTree([]) });
 
       session.writeFile("before.txt", Buffer.from("before"));
       session.reset(nextTree);
@@ -169,7 +169,7 @@ export function runVirtualWorkdirContract(
     test("origin 缺失时报 VirtualOriginUnavailableError", () => {
       const repo = createMemoryRepository();
       const fileHash = repo.writeBlob(Buffer.from("gone"));
-      const session = createSession(repo, {
+      const session = createWorkdir(repo, {
         baseTree: repo.createTree([{ mode: "100644", name: "file.txt", hash: fileHash }]),
       });
 
@@ -177,16 +177,16 @@ export function runVirtualWorkdirContract(
       expect(() => session.readFile("file.txt")).toThrow(VirtualOriginUnavailableError);
     });
 
-    test("writeTree 后可被新 session 重新打开", () => {
+    test("writeTree 后可被新 workdir 重新打开", () => {
       const repo = createMemoryRepository();
-      const session = createSession(repo, { baseTree: repo.createTree([]) });
+      const session = createWorkdir(repo, { baseTree: repo.createTree([]) });
 
       session.writeFile("a.txt", Buffer.from("alpha"));
       session.mkdir("dir");
       session.writeFile("dir/b.txt", Buffer.from("beta"));
 
       const tree = session.writeTree();
-      const reopened = createSession(repo, { baseTree: tree as SHA1 });
+      const reopened = createWorkdir(repo, { baseTree: tree as SHA1 });
 
       expect(reopened.readFile("a.txt").toString()).toBe("alpha");
       expect(reopened.readFile("dir/b.txt").toString()).toBe("beta");

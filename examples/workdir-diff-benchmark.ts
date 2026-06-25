@@ -2,7 +2,7 @@
  * Virtual Workdir diff 基准脚本
  *
  * 对比两条路径：
- * 1. 当前 `session.diff()` 的索引直读路径
+ * 1. 当前 `workdir.diff()` 的索引直读路径
  * 2. `rebuildNormalizedChangeIndex()` 的全量快照重建路径
  *
  * 默认覆盖三类典型 workload：
@@ -22,11 +22,11 @@ import {
   rebuildNormalizedChangeIndex,
 } from "../src/workdir/change-index.ts";
 import { createVirtualWorkdirMemoryStateStore } from "../src/workdir/memory-backend.ts";
-import { openVirtualWorkdirSession } from "../src/workdir/session.ts";
+import { openVirtualWorkdir } from "../src/workdir/workdir.ts";
 
 import type { SHA1 } from "../src/core/types.ts";
 import type { Repository } from "../src/repository/types.ts";
-import type { VirtualWorkdirSession } from "../src/workdir/core.ts";
+import type { VirtualWorkdir } from "../src/workdir/core.ts";
 import type { VirtualWorkdirStateStore } from "../src/workdir/state-store.ts";
 
 interface BenchOptions {
@@ -36,7 +36,7 @@ interface BenchOptions {
 interface ScenarioRuntime {
   readonly repo: Repository;
   readonly state: VirtualWorkdirStateStore;
-  readonly session: VirtualWorkdirSession;
+  readonly workdir: VirtualWorkdir;
   readonly changedPathCount: number;
 }
 
@@ -136,14 +136,14 @@ function createScenarioDefinitions(options: BenchOptions): readonly ScenarioDefi
 
 function runScenarioBenchmark(definition: ScenarioDefinition): BenchResult {
   const runtime = definition.setup();
-  const indexedDiff = runtime.session.diff();
+  const indexedDiff = runtime.workdir.diff();
   const baselineDiff = computeBaselineDiff(runtime.repo, runtime.state);
   assertDiffParity(definition.name, indexedDiff, baselineDiff);
 
-  warmup(() => runtime.session.diff(), 10);
+  warmup(() => runtime.workdir.diff(), 10);
   warmup(() => computeBaselineDiff(runtime.repo, runtime.state), 2);
 
-  const indexed = measure(() => runtime.session.diff(), definition.indexedIterations);
+  const indexed = measure(() => runtime.workdir.diff(), definition.indexedIterations);
   const baseline = measure(
     () => computeBaselineDiff(runtime.repo, runtime.state),
     definition.baselineIterations,
@@ -163,55 +163,55 @@ function setupLargeTreeSmallChangeScenario(
   totalFiles: number,
   changedFiles: number,
 ): ScenarioRuntime {
-  const { repo, paths, session, state } = createBaseSession(totalFiles);
+  const { repo, paths, workdir, state } = createBaseWorkdir(totalFiles);
   for (const [index, path] of selectSpreadPaths(paths, changedFiles).entries()) {
-    session.writeFile(path, Buffer.from(`changed:${index}:${path}\n`));
+    workdir.writeFile(path, Buffer.from(`changed:${index}:${path}\n`));
   }
   return {
     repo,
     state,
-    session,
+    workdir,
     changedPathCount: changedFiles,
   };
 }
 
 function setupBatchRenameScenario(totalFiles: number, renameCount: number): ScenarioRuntime {
-  const { repo, paths, session, state } = createBaseSession(totalFiles);
+  const { repo, paths, workdir, state } = createBaseWorkdir(totalFiles);
   for (const path of selectSpreadPaths(paths, renameCount)) {
     const target = path.replace("/file-", "/renamed-");
-    session.rename(path, target);
+    workdir.rename(path, target);
   }
   return {
     repo,
     state,
-    session,
+    workdir,
     changedPathCount: renameCount,
   };
 }
 
 function setupRepeatedModifyScenario(totalFiles: number, rewriteCount: number): ScenarioRuntime {
-  const { repo, paths, session, state } = createBaseSession(totalFiles);
+  const { repo, paths, workdir, state } = createBaseWorkdir(totalFiles);
   const targetPath = paths[Math.floor(paths.length / 2)];
   if (targetPath === undefined) {
     throw new Error("Repeated modify scenario requires at least one base path");
   }
   for (let index = 0; index < rewriteCount; index += 1) {
-    session.writeFile(targetPath, Buffer.from(`rewrite:${index}\n`));
+    workdir.writeFile(targetPath, Buffer.from(`rewrite:${index}\n`));
   }
   return {
     repo,
     state,
-    session,
+    workdir,
     changedPathCount: 1,
   };
 }
 
-function createBaseSession(totalFiles: number): {
+function createBaseWorkdir(totalFiles: number): {
   readonly repo: Repository;
   readonly baseTree: SHA1;
   readonly paths: readonly string[];
   readonly state: VirtualWorkdirStateStore;
-  readonly session: VirtualWorkdirSession;
+  readonly workdir: VirtualWorkdir;
 } {
   const repo = createMemoryRepository();
   const rootTree = repo.createTree([]);
@@ -224,14 +224,14 @@ function createBaseSession(totalFiles: number): {
   })) satisfies Parameters<typeof patchTree>[2];
   const baseTree = patchTree(repo.objects, rootTree, ops).rootHash;
   const state = createVirtualWorkdirMemoryStateStore(baseTree);
-  const session = openVirtualWorkdirSession(repo.objects, state);
+  const workdir = openVirtualWorkdir(repo.objects, state);
 
   return {
     repo,
     baseTree,
     paths,
     state,
-    session,
+    workdir,
   };
 }
 
@@ -268,7 +268,7 @@ function computeBaselineDiff(repo: Repository, state: VirtualWorkdirStateStore) 
 
 function assertDiffParity(
   scenarioName: string,
-  indexedDiff: ReturnType<VirtualWorkdirSession["diff"]>,
+  indexedDiff: ReturnType<VirtualWorkdir["diff"]>,
   baselineDiff: ReturnType<typeof computeBaselineDiff>,
 ): void {
   const indexedJson = JSON.stringify(indexedDiff);

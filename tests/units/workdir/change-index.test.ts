@@ -10,7 +10,7 @@ import {
   writeChangeRecordForCopy,
 } from "@/workdir/change-index.ts";
 import { createVirtualWorkdirMemoryStateStore } from "@/workdir/memory-backend.ts";
-import { openVirtualWorkdirSession } from "@/workdir/session.ts";
+import { openVirtualWorkdir } from "@/workdir/workdir.ts";
 
 describe("change-index lineage", () => {
   test("refreshChangeRecordForPath() 保留 rename 来源", () => {
@@ -18,7 +18,7 @@ describe("change-index lineage", () => {
     const blobHash = repo.writeBlob(Buffer.from("data"));
     const baseTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]);
     const store = createVirtualWorkdirMemoryStateStore(baseTree);
-    const session = openVirtualWorkdirSession(repo.objects, store);
+    const session = openVirtualWorkdir(repo.objects, store);
 
     session.rename("a.txt", "b.txt");
     session.writeFile("b.txt", Buffer.from("changed"));
@@ -42,7 +42,7 @@ describe("change-index lineage", () => {
     const blobHash = repo.writeBlob(Buffer.from("data"));
     const baseTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]);
     const store = createVirtualWorkdirMemoryStateStore(baseTree);
-    const session = openVirtualWorkdirSession(repo.objects, store);
+    const session = openVirtualWorkdir(repo.objects, store);
 
     session.rename("a.txt", "b.txt");
     session.copy("b.txt", "c.txt");
@@ -65,7 +65,7 @@ describe("change-index lineage", () => {
     const blobHash = repo.writeBlob(Buffer.from("data"));
     const baseTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]);
     const store = createVirtualWorkdirMemoryStateStore(baseTree);
-    const session = openVirtualWorkdirSession(repo.objects, store);
+    const session = openVirtualWorkdir(repo.objects, store);
 
     session.rename("a.txt", "b.txt");
     session.writeFile("b.txt", Buffer.from("changed"));

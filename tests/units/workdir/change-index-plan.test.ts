@@ -6,7 +6,7 @@ import { describe, expect, test } from "bun:test";
 import { createMemoryRepository } from "@/repository/memory.ts";
 import { createChangeIndexPlanner } from "@/workdir/change-index-plan.ts";
 import { createVirtualWorkdirMemoryStateStore } from "@/workdir/memory-backend.ts";
-import { openVirtualWorkdirSession } from "@/workdir/session.ts";
+import { openVirtualWorkdir } from "@/workdir/workdir.ts";
 
 describe("createChangeIndexPlanner()", () => {
   test("已有 rename/copy 来源的路径会回退到全量重建", () => {
@@ -14,7 +14,7 @@ describe("createChangeIndexPlanner()", () => {
     const blobHash = repo.writeBlob(Buffer.from("base"));
     const baseTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]);
     const store = createVirtualWorkdirMemoryStateStore(baseTree);
-    const session = openVirtualWorkdirSession(repo.objects, store);
+    const session = openVirtualWorkdir(repo.objects, store);
 
     session.rename("a.txt", "b.txt");
 

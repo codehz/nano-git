@@ -17,7 +17,7 @@ import {
   getDirectoryChildrenView,
   joinChildPath,
   resolveCurrentLeafAtPath,
-} from "./session-internal.ts";
+} from "./workdir-path.ts";
 
 import type { SHA1, TreeEntry } from "../core/types.ts";
 import type { ObjectSource } from "../core/types/odb.ts";
@@ -28,7 +28,7 @@ import type {
   VirtualDiffSource,
 } from "./core.ts";
 import type { NodeId } from "./ids.ts";
-import type { SessionNode } from "./nodes.ts";
+import type { WorkdirNode } from "./nodes.ts";
 import type { VirtualWorkdirStateStore } from "./state-store.ts";
 
 /**
@@ -72,7 +72,7 @@ export interface VirtualDiffComputationCache {
 const baseSnapshotCache = new WeakMap<ObjectSource, Map<SHA1, BaseSnapshotView>>();
 
 /**
- * 重建当前 session 的规范化变更索引。
+ * 重建当前 workdir 的规范化变更索引。
  *
  * @example
  * ```ts
@@ -302,7 +302,7 @@ export function rewriteChangeRecordForRename(
  * 为 copy 目标路径写入折叠后的变更记录。
  *
  * 仅适用于叶子节点 copy；
- * session-only 来源允许退化为普通 create。
+ * workdir-only 来源允许退化为普通 create。
  */
 export function writeChangeRecordForCopy(
   source: ObjectSource,
@@ -375,9 +375,9 @@ function snapshotCurrentTree(
   state: VirtualWorkdirStateStore,
   cache?: VirtualDiffComputationCache,
 ): SnapshotEntry[] {
-  const root = state.getNode("root" as SessionNode["id"]);
+  const root = state.getNode("root" as WorkdirNode["id"]);
   if (root === null) {
-    throw new Error("Virtual workdir session is missing root node");
+    throw new Error("Virtual workdir is missing root node");
   }
   return snapshotCurrentNode(source, state, root, VIRTUAL_ROOT_PATH, cache);
 }
@@ -385,7 +385,7 @@ function snapshotCurrentTree(
 function snapshotCurrentNode(
   source: ObjectSource,
   state: VirtualWorkdirStateStore,
-  node: SessionNode,
+  node: WorkdirNode,
   path: string,
   cache?: VirtualDiffComputationCache,
 ): SnapshotEntry[] {
@@ -408,7 +408,7 @@ function snapshotCurrentNode(
 
 function currentNodeHash(
   source: ObjectSource,
-  node: SessionNode,
+  node: WorkdirNode,
   path: string,
   cache?: VirtualDiffComputationCache,
 ): SHA1 {
@@ -608,7 +608,7 @@ function snapshotCurrentEntryAtPath(
 
 function snapshotCurrentLeafNode(
   source: ObjectSource,
-  leaf: { readonly path: string; readonly node: SessionNode },
+  leaf: { readonly path: string; readonly node: WorkdirNode },
   cache?: VirtualDiffComputationCache,
 ): SnapshotEntry {
   if (leaf.node.state.kind === "directory") {
@@ -742,7 +742,7 @@ function modeKind(mode: TreeEntry["mode"]): "blob" | "symlink" {
 }
 
 /**
- * 从规范化变更索引导出当前 session 的最终 diff。
+ * 从规范化变更索引导出当前 workdir 的最终 diff。
  *
  * @example
  * ```ts

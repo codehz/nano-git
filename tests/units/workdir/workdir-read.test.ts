@@ -1,5 +1,5 @@
 /**
- * workdir/session.ts 只读视图单元测试（Phase 3）
+ * workdir/workdir.ts 只读视图单元测试（Phase 3）
  */
 import { describe, test, expect } from "bun:test";
 
@@ -9,13 +9,13 @@ import {
   VirtualPathNotFoundError,
 } from "@/core/errors.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
-import { createVirtualWorkdirSession } from "@/workdir/session.ts";
+import { createVirtualWorkdir } from "@/workdir/workdir.ts";
 
-describe("createVirtualWorkdirSession() 只读", () => {
+describe("createVirtualWorkdir() 只读", () => {
   test("空 tree 根目录可读", () => {
     const repo = createMemoryRepository();
     const baseTree = repo.createTree([]);
-    const session = createVirtualWorkdirSession(repo.objects, { baseTree });
+    const session = createVirtualWorkdir(repo.objects, { baseTree });
 
     expect(session.baseTree).toBe(baseTree);
     expect(session.exists("")).toBe(true);
@@ -39,7 +39,7 @@ describe("createVirtualWorkdirSession() 只读", () => {
       { mode: "120000", name: "link", hash: linkHash },
       { mode: "40000", name: "dir", hash: subTree },
     ]);
-    const session = createVirtualWorkdirSession(repo.objects, { baseTree });
+    const session = createVirtualWorkdir(repo.objects, { baseTree });
 
     expect(session.exists("a.txt")).toBe(true);
     expect(session.exists("missing")).toBe(false);
@@ -56,7 +56,7 @@ describe("createVirtualWorkdirSession() 只读", () => {
 
   test("路径不存在时 readFile 抛 VirtualPathNotFoundError", () => {
     const repo = createMemoryRepository();
-    const session = createVirtualWorkdirSession(repo.objects, {
+    const session = createVirtualWorkdir(repo.objects, {
       baseTree: repo.createTree([]),
     });
     expect(() => session.readFile("nope")).toThrow(VirtualPathNotFoundError);
@@ -66,7 +66,7 @@ describe("createVirtualWorkdirSession() 只读", () => {
     const repo = createMemoryRepository();
     const linkHash = repo.writeBlob(Buffer.from("x"));
     const baseTree = repo.createTree([{ mode: "120000", name: "l", hash: linkHash }]);
-    const session = createVirtualWorkdirSession(repo.objects, { baseTree });
+    const session = createVirtualWorkdir(repo.objects, { baseTree });
     expect(() => session.readFile("l")).toThrow(VirtualNotFileError);
   });
 
@@ -74,7 +74,7 @@ describe("createVirtualWorkdirSession() 只读", () => {
     const repo = createMemoryRepository();
     const blobHash = repo.writeBlob(Buffer.from("gone"));
     const baseTree = repo.createTree([{ mode: "100644", name: "f", hash: blobHash }]);
-    const session = createVirtualWorkdirSession(repo.objects, { baseTree });
+    const session = createVirtualWorkdir(repo.objects, { baseTree });
     repo.objects.delete(blobHash);
     expect(() => session.readFile("f")).toThrow(VirtualOriginUnavailableError);
   });

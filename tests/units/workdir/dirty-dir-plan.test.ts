@@ -6,13 +6,13 @@ import { describe, expect, test } from "bun:test";
 import { createMemoryRepository } from "@/repository/memory.ts";
 import { createDirtyDirPlanner } from "@/workdir/dirty-dir-plan.ts";
 import { createVirtualWorkdirMemoryStateStore } from "@/workdir/memory-backend.ts";
-import { openVirtualWorkdirSession } from "@/workdir/session.ts";
+import { openVirtualWorkdir } from "@/workdir/workdir.ts";
 
 describe("createDirtyDirPlanner()", () => {
   test("clear() 会清空全部 dirty dir summaries", () => {
     const repo = createMemoryRepository();
     const store = createVirtualWorkdirMemoryStateStore(repo.createTree([]));
-    const session = openVirtualWorkdirSession(repo.objects, store);
+    const session = openVirtualWorkdir(repo.objects, store);
     const planner = createDirtyDirPlanner(repo.objects, store);
 
     session.mkdir("src");
@@ -27,7 +27,7 @@ describe("createDirtyDirPlanner()", () => {
   test("rebuild() 会删除已经收敛为 clean 的摘要", () => {
     const repo = createMemoryRepository();
     const store = createVirtualWorkdirMemoryStateStore(repo.createTree([]));
-    const session = openVirtualWorkdirSession(repo.objects, store);
+    const session = openVirtualWorkdir(repo.objects, store);
     const planner = createDirtyDirPlanner(repo.objects, store);
 
     session.mkdir("src");
@@ -61,7 +61,7 @@ describe("createDirtyDirPlanner()", () => {
       { mode: "40000", name: "src", hash: srcTree },
     ]);
     const store = createVirtualWorkdirMemoryStateStore(baseTree);
-    const session = openVirtualWorkdirSession(repo.objects, store);
+    const session = openVirtualWorkdir(repo.objects, store);
     const planner = createDirtyDirPlanner(repo.objects, store);
 
     session.writeFile("src/a.ts", Buffer.from("next"));

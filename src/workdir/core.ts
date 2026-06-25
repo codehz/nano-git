@@ -2,7 +2,7 @@
  * Virtual Workdir 公开类型、接口与错误
  *
  * 本文件是 `nano-git/workdir/core` 子路径的唯一入口，
- * 包含 VirtualWorkdirSession 的公开 API 边界定义。
+ * 包含 VirtualWorkdir 的公开 API 边界定义。
  *
  * 约定：
  * - 本文件只放公开边界定义（接口、类型、re-export 的错误类）
@@ -11,7 +11,6 @@
  */
 
 import type { SHA1 } from "../core/types.ts";
-import type { ObjectDatabase } from "../core/types/odb.ts";
 
 export {
   VirtualPathNotFoundError,
@@ -141,47 +140,40 @@ export type VirtualDiffEntry =
       readonly source?: VirtualDiffSource;
     };
 
-// ==================== Session 工厂选项 ====================
+// ==================== Workdir 工厂选项 ====================
 
 /**
- * 创建 VirtualWorkdirSession 的选项
+ * 创建 VirtualWorkdir 的选项
  */
-export interface CreateVirtualWorkdirSessionOptions {
+export interface CreateVirtualWorkdirOptions {
   /** 基线 tree 的 SHA-1 哈希 */
   readonly baseTree: SHA1;
 }
 
 /**
- * Virtual Workdir session 标识
- */
-export type VirtualWorkdirSessionId = string & { readonly __brand: "VirtualWorkdirSessionId" };
-
-// ==================== Session 公共接口 ====================
-
-/**
- * VirtualWorkdirSession（虚拟工作目录会话）
+ * VirtualWorkdir（虚拟工作目录实例）
  *
  * 提供独立生命周期的可变 tree 视图，基于 `baseTree + CoW overlay` 模型。
  * 不绑定 commit，不涉及 Git index / 真实工作目录。
  *
- * 当前 session 对 origin 仓库对象采用弱保证：
+ * 当前实例对 origin 仓库对象采用弱保证：
  * 如果 base tree / origin blob 在后续被移除、损坏或不可读取，
  * 相关读取、`revert()`、`writeTree()` 等操作会抛出 `VirtualOriginUnavailableError`。
  *
  * @example
  * ```ts
  * import { createMemoryRepository } from "nano-git/repository/memory";
- * import { createVirtualWorkdirSession } from "nano-git/workdir/memory";
+ * import { createVirtualWorkdir } from "nano-git/workdir/memory";
  *
  * const repo = createMemoryRepository();
  * const tree = repo.writeTree(); // 初始空 tree
- * const session = createVirtualWorkdirSession(repo, { baseTree: tree });
+ * const workdir = createVirtualWorkdir(repo.objects, { baseTree: tree });
  *
- * session.writeFile("hello.txt", Buffer.from("world"));
- * const newTree = session.writeTree();
+ * workdir.writeFile("hello.txt", Buffer.from("world"));
+ * const newTree = workdir.writeTree();
  * ```
  */
-export interface VirtualWorkdirSession {
+export interface VirtualWorkdir {
   /** 当前基线 tree 的 SHA-1 哈希 */
   readonly baseTree: SHA1;
 
@@ -229,7 +221,7 @@ export interface VirtualWorkdirSession {
   /**
    * 复制路径
    *
-   * 新建 session node，共享 origin，不共享 node 身份。
+   * 新建 workdir node，共享 origin，不共享 node 身份。
    * 目录复制为浅复制，子项保持懒加载。
    */
   copy(from: string, to: string): void;
@@ -260,40 +252,9 @@ export interface VirtualWorkdirSession {
   writeTree(): SHA1;
 
   /**
-   * 重置 session 到指定基线 tree
+   * 重置当前实例到指定基线 tree
    *
    * 丢弃全部 overlay 与变更历史。
    */
   reset(baseTree: SHA1): void;
-}
-
-// ==================== 后端抽象接口 ====================
-
-/**
- * VirtualWorkdirBackend
- *
- * session 内部状态存储的抽象接口。
- * memory / file / sqlite 后端通过实现此接口来提供不同的持久化策略。
- *
- * `file` / `sqlite` 持久化 backend 当前都按单进程、单写者场景收口；
- * 不承诺跨进程并发写安全，也不提供多写者协调协议。
- *
- * 本接口在后续 Phase 中会逐步补充完整方法签名。
- * 当前仅为命名冻结与角色声明。
- */
-export interface VirtualWorkdirBackend {
-  /** 后端类型标识 */
-  readonly kind: "memory" | "file" | "sqlite";
-
-  /** 创建新 session 并返回其标识 */
-  createSession(options: CreateVirtualWorkdirSessionOptions): VirtualWorkdirSessionId;
-
-  /** 打开已存在的 session */
-  openSession(source: ObjectDatabase, sessionId: VirtualWorkdirSessionId): VirtualWorkdirSession;
-
-  /** 删除 session */
-  deleteSession(sessionId: VirtualWorkdirSessionId): void;
-
-  /** 列出当前后端中可完整恢复的 session */
-  listSessions(): VirtualWorkdirSessionId[];
 }

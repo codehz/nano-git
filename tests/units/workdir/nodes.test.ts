@@ -6,7 +6,7 @@ import { describe, test, expect } from "bun:test";
 import { sha1 } from "@/core/types.ts";
 import { createNodeId, resetNodeIdCounterForTests, VIRTUAL_ROOT_NODE_ID } from "@/workdir/ids.ts";
 import {
-  cloneSessionNodeForCopy,
+  cloneWorkdirNodeForCopy,
   createNewDirectoryNode,
   createRootDirectoryNode,
   isNodeDirty,
@@ -40,12 +40,12 @@ describe("revert / copy 节点语义", () => {
     expect(nodeHasRepoOrigin(reverted)).toBe(true);
   });
 
-  test("cloneSessionNodeForCopy 目录浅复制且共享 origin", () => {
+  test("cloneWorkdirNodeForCopy 目录浅复制且共享 origin", () => {
     resetNodeIdCounterForTests();
     const tree = sha1("95d09f2b10159347eece71399a7e2e907ea3df4f");
     const src = createRootDirectoryNode(tree);
     const copyId = createNodeId();
-    const copy = cloneSessionNodeForCopy(src, copyId);
+    const copy = cloneWorkdirNodeForCopy(src, copyId);
     expect(copy.id).toBe(copyId);
     expect(copy.origin).toEqual(src.origin);
     expect(copy.state.kind).toBe("directory");

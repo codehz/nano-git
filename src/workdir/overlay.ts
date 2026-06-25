@@ -9,12 +9,12 @@ import type { NodeId } from "./ids.ts";
 // ==================== 类型 ====================
 
 /**
- * 目录 overlay 状态（挂在目录 SessionNode 上）
+ * 目录 overlay 状态（挂在目录 WorkdirNode 上）
  */
 export interface DirectoryOverlay {
-  /** session 新增或覆盖：条目名 -> 绑定的 nodeId */
+  /** workdir 新增或覆盖：条目名 -> 绑定的 nodeId */
   readonly addedEntries: Map<string, NodeId>;
-  /** session 删除的 origin/先前条目名（tombstone） */
+  /** workdir 删除的 origin/先前条目名（tombstone） */
   readonly deletedNames: Set<string>;
 }
 

@@ -1,7 +1,7 @@
 /**
- * Virtual Workdir session 内部共享逻辑
+ * Virtual Workdir 路径解析与共享读视图
  *
- * 供 session.ts 与 write-tree.ts 复用：
+ * 供 workdir.ts 与 write-tree.ts 复用：
  * - 路径解析（resolvePath / resolveWriteTarget*）
  * - 目录子项展开（listDirectoryChildren / getDirectoryChildrenView）
  * - origin 节点懒注册（ensureNodeFromTreeEntry）
@@ -30,39 +30,39 @@ import {
 import type { TreeEntry } from "../core/types.ts";
 import type { ObjectSource } from "../core/types/odb.ts";
 import type { NodeId } from "./ids.ts";
-import type { DirectoryNodeState, FileNodeState, SessionNode, SymlinkNodeState } from "./nodes.ts";
+import type { DirectoryNodeState, FileNodeState, WorkdirNode, SymlinkNodeState } from "./nodes.ts";
 import type { MergedDirectoryChild, OriginDirectoryChild } from "./overlay.ts";
 import type { VirtualWorkdirStateStore } from "./state-store.ts";
 
-type DirectorySessionNode = SessionNode & { readonly state: DirectoryNodeState };
-type LeafSessionNode = SessionNode & { readonly state: FileNodeState | SymlinkNodeState };
+type DirectoryWorkdirNode = WorkdirNode & { readonly state: DirectoryNodeState };
+type LeafWorkdirNode = WorkdirNode & { readonly state: FileNodeState | SymlinkNodeState };
 
 // ==================== 类型 ====================
 
 export type ResolveResult =
   | { readonly found: false; readonly node: null }
-  | { readonly found: true; readonly node: SessionNode };
+  | { readonly found: true; readonly node: WorkdirNode };
 
 export interface ResolvedDirectoryChild {
   readonly child: MergedDirectoryChild;
-  readonly node: SessionNode;
+  readonly node: WorkdirNode;
 }
 
 export interface ResolvedLeafPath {
   readonly path: string;
-  readonly node: LeafSessionNode;
+  readonly node: LeafWorkdirNode;
 }
 
 export interface ResolvedWriteParentDirectory {
   readonly parentPath: string;
   readonly name: string;
-  readonly parentNode: DirectorySessionNode;
+  readonly parentNode: DirectoryWorkdirNode;
 }
 
 export interface ResolvedWriteTarget {
   readonly parentPath: string;
   readonly name: string;
-  readonly parentNode: DirectorySessionNode;
+  readonly parentNode: DirectoryWorkdirNode;
   readonly existing: ResolvedDirectoryChild | null;
 }
 
@@ -73,7 +73,7 @@ export interface ResolvedExistingWriteTarget extends ResolvedWriteParentDirector
 export interface ResolvedLeafWriteTarget extends ResolvedWriteParentDirectory {
   readonly existing: {
     readonly child: MergedDirectoryChild;
-    readonly node: LeafSessionNode;
+    readonly node: LeafWorkdirNode;
   } | null;
 }
 
@@ -85,7 +85,7 @@ export interface ResolvedWriteTransfer {
 interface ParentLookupContext {
   readonly parentPath: string;
   readonly name: string;
-  readonly parentNode: SessionNode | null;
+  readonly parentNode: WorkdirNode | null;
 }
 
 /**
@@ -113,10 +113,10 @@ export function joinChildPath(dirPath: string, name: string): string {
   return dirPath === VIRTUAL_ROOT_PATH ? name : `${dirPath}/${name}`;
 }
 
-export function getRootNode(state: VirtualWorkdirStateStore): SessionNode {
+export function getRootNode(state: VirtualWorkdirStateStore): WorkdirNode {
   const root = state.getNode(VIRTUAL_ROOT_NODE_ID);
   if (root === null) {
-    throw new Error("Virtual workdir session is missing root node");
+    throw new Error("Virtual workdir is missing root node");
   }
   return root;
 }
@@ -179,7 +179,7 @@ export function resolveWriteParentDirectory(
   return {
     parentPath: target.parentPath,
     name: target.name,
-    parentNode: target.parentNode as DirectorySessionNode,
+    parentNode: target.parentNode as DirectoryWorkdirNode,
   };
 }
 
@@ -290,7 +290,7 @@ export function resolveLeafWriteTarget(
     existing:
       target.existing === null
         ? null
-        : { child: target.existing.child, node: target.existing.node as LeafSessionNode },
+        : { child: target.existing.child, node: target.existing.node as LeafWorkdirNode },
   };
 }
 
@@ -316,7 +316,7 @@ export function resolveCurrentLeafAtPath(
   }
   return {
     path,
-    node: resolved.node as LeafSessionNode,
+    node: resolved.node as LeafWorkdirNode,
   };
 }
 
@@ -350,10 +350,10 @@ export function resolveWriteTransfer(
 export function resolveChild(
   source: ObjectSource,
   state: VirtualWorkdirStateStore,
-  parentNode: SessionNode,
+  parentNode: WorkdirNode,
   parentPath: string,
   name: string,
-): { found: false; node: null } | { found: true; node: SessionNode } {
+): { found: false; node: null } | { found: true; node: WorkdirNode } {
   const resolved = resolveDirectoryChild(source, state, parentNode, parentPath, name);
   if (!resolved.found) {
     return { found: false, node: null };
@@ -367,12 +367,12 @@ export function resolveChild(
 export function resolveDirectoryChild(
   source: ObjectSource,
   state: VirtualWorkdirStateStore,
-  parentNode: SessionNode,
+  parentNode: WorkdirNode,
   parentPath: string,
   name: string,
 ):
   | { found: false; child: null; node: null }
-  | { found: true; child: MergedDirectoryChild; node: SessionNode } {
+  | { found: true; child: MergedDirectoryChild; node: WorkdirNode } {
   if (parentNode.state.kind !== "directory") {
     return { found: false, child: null, node: null };
   }
@@ -401,7 +401,7 @@ export function resolveDirectoryChild(
 export function getDirectoryChildrenView(
   source: ObjectSource,
   state: VirtualWorkdirStateStore,
-  dirNode: SessionNode,
+  dirNode: WorkdirNode,
   dirPath: string,
 ): DirectoryChildrenView {
   const children = listDirectoryChildren(source, state, dirNode, dirPath);
@@ -443,13 +443,13 @@ export function resolvePathByParentLookup(
 }
 
 /**
- * 确保 origin 条目对应的 session 节点已懒注册
+ * 确保 origin 条目对应的 workdir 节点已懒注册
  */
 export function ensureNodeFromTreeEntry(state: VirtualWorkdirStateStore, entry: TreeEntry): NodeId {
   const id = originBackedNodeId(entry.hash);
   if (state.getNode(id) === null) {
     const origin = treeEntryToNodeOrigin(entry);
-    let nodeState: SessionNode["state"];
+    let nodeState: WorkdirNode["state"];
     if (entry.mode === "40000") {
       nodeState = {
         kind: "directory",
@@ -472,7 +472,7 @@ export function ensureNodeFromTreeEntry(state: VirtualWorkdirStateStore, entry: 
 export function listDirectoryChildren(
   source: ObjectSource,
   state: VirtualWorkdirStateStore,
-  dirNode: SessionNode,
+  dirNode: WorkdirNode,
   dirPath: string,
 ): MergedDirectoryChild[] {
   if (dirNode.state.kind !== "directory") {
@@ -498,7 +498,7 @@ export function listDirectoryChildren(
  */
 export function buildAddedModes(
   state: VirtualWorkdirStateStore,
-  dirNode: SessionNode,
+  dirNode: WorkdirNode,
 ): ReadonlyMap<string, string> {
   if (dirNode.state.kind !== "directory") {
     return new Map();
@@ -508,7 +508,7 @@ export function buildAddedModes(
     const nodeId = dirNode.state.overlay.addedEntries.get(name)!;
     const node = state.getNode(nodeId);
     if (node !== null) {
-      addedModes.set(name, sessionNodeMode(node));
+      addedModes.set(name, workdirNodeMode(node));
     }
   }
   return addedModes;
@@ -516,7 +516,7 @@ export function buildAddedModes(
 
 // ==================== 辅助 ====================
 
-function sessionNodeMode(node: SessionNode): string {
+function workdirNodeMode(node: WorkdirNode): string {
   if (node.state.kind === "directory") {
     return "40000";
   }

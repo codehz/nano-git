@@ -1,5 +1,5 @@
 /**
- * Virtual Workdir 文件系统 backend
+ * Virtual Workdir 文件系统持久化实现
  */
 
 import {
@@ -14,19 +14,13 @@ import {
 import { dirname, join } from "node:path";
 
 import { sha1 } from "../core/types.ts";
-import { createRootDirectoryNode, type SessionNode } from "./nodes.ts";
-import { createVirtualWorkdirSessionId } from "./session-id.ts";
-import { openVirtualWorkdirSession } from "./session.ts";
+import { createRootDirectoryNode, type WorkdirNode } from "./nodes.ts";
+import { openVirtualWorkdir } from "./workdir.ts";
 
 import type { SHA1 } from "../core/types.ts";
 import type { ObjectDatabase } from "../core/types/odb.ts";
 import type { NormalizedChangeRecord } from "./change-index.ts";
-import type {
-  CreateVirtualWorkdirSessionOptions,
-  VirtualWorkdirBackend,
-  VirtualWorkdirSession,
-  VirtualWorkdirSessionId,
-} from "./core.ts";
+import type { CreateVirtualWorkdirOptions, VirtualWorkdir } from "./core.ts";
 import type { DirtyDirHashState, DirtyDirSummary } from "./dirty-dir.ts";
 import type { NodeId } from "./ids.ts";
 import type { VirtualWorkdirStateStore } from "./state-store.ts";
@@ -100,106 +94,77 @@ interface FileNodeRecord {
       };
 }
 
-/** 创建文件系统 Virtual Workdir backend 的可选参数 */
-export interface CreateFileVirtualWorkdirBackendOptions {
-  /** session 根目录名，默认 `sessions` */
-  readonly sessionsDirName?: string;
+/** 打开文件系统 VirtualWorkdir 的可选参数 */
+export interface OpenFileVirtualWorkdirOptions extends CreateVirtualWorkdirOptions {
+  /** 不存在时按 baseTree 初始化 */
+  readonly create?: boolean;
 }
 
 /**
- * 创建基于文件系统目录的 Virtual Workdir backend
+ * 打开基于目录持久化的 VirtualWorkdir
  *
  * @example
  * ```ts
- * const backend = createFileVirtualWorkdirBackend("/tmp/workdirs");
- * const sessionId = backend.createSession({ baseTree: tree });
- * const session = backend.openSession(repo.objects, sessionId);
- * expect(session.baseTree).toBe(tree);
+ * const workdir = openFileVirtualWorkdir(repo.objects, "/tmp/workdir", {
+ *   baseTree: tree,
+ *   create: true,
+ * });
+ * expect(workdir.baseTree).toBe(tree);
  * ```
  */
-export function createFileVirtualWorkdirBackend(
-  rootDir: string,
-  options: CreateFileVirtualWorkdirBackendOptions = {},
-): VirtualWorkdirBackend {
-  const sessionsRoot = join(rootDir, options.sessionsDirName ?? "sessions");
-  mkdirSync(sessionsRoot, { recursive: true });
-
-  return {
-    kind: "file",
-
-    createSession(options: CreateVirtualWorkdirSessionOptions): VirtualWorkdirSessionId {
-      const sessionId = createVirtualWorkdirSessionId();
-      const store = createFileVirtualWorkdirStateStore(sessionsRoot, sessionId);
-      store.reset(options.baseTree);
-      return sessionId;
-    },
-
-    openSession(source: ObjectDatabase, sessionId: VirtualWorkdirSessionId): VirtualWorkdirSession {
-      if (!hasSession(sessionsRoot, sessionId)) {
-        throw new Error(`Virtual workdir session not found: ${sessionId}`);
-      }
-      validateSessionIntegrity(sessionsRoot, sessionId);
-      return openVirtualWorkdirSession(
-        source,
-        createFileVirtualWorkdirStateStore(sessionsRoot, sessionId),
-      );
-    },
-
-    deleteSession(sessionId: VirtualWorkdirSessionId): void {
-      if (!hasSession(sessionsRoot, sessionId)) {
-        throw new Error(`Virtual workdir session not found: ${sessionId}`);
-      }
-      rmSync(getSessionDir(sessionsRoot, sessionId), { recursive: true, force: true });
-    },
-
-    listSessions(): VirtualWorkdirSessionId[] {
-      if (!existsSync(sessionsRoot)) {
-        return [];
-      }
-      return readdirSync(sessionsRoot, { withFileTypes: true })
-        .filter((entry) => entry.isDirectory())
-        .filter((entry) => !entry.name.endsWith(FILE_WORKDIR_TRANSACTION_SNAPSHOT_SUFFIX))
-        .filter((entry) => existsSync(getManifestPath(join(sessionsRoot, entry.name))))
-        .map((entry) => decodePathToken(entry.name) as VirtualWorkdirSessionId)
-        .filter((sessionId) => {
-          try {
-            validateSessionIntegrity(sessionsRoot, sessionId);
-            return true;
-          } catch {
-            return false;
-          }
-        })
-        .sort();
-    },
-  };
+export function openFileVirtualWorkdir(
+  source: ObjectDatabase,
+  workdirDir: string,
+  options: OpenFileVirtualWorkdirOptions,
+): VirtualWorkdir {
+  const store = createFileVirtualWorkdirStateStore(workdirDir);
+  if (!hasFileVirtualWorkdir(workdirDir)) {
+    if (options.create !== true) {
+      throw new Error(`Virtual workdir not found: ${workdirDir}`);
+    }
+    store.reset(options.baseTree);
+  }
+  validateFileVirtualWorkdirIntegrity(workdirDir);
+  return openVirtualWorkdir(source, store);
 }
 
 /**
- * 创建单个 session 的文件系统状态存储
+ * 删除指定目录上的持久化 VirtualWorkdir
  *
  * @example
  * ```ts
- * const store = createFileVirtualWorkdirStateStore("/tmp/workdirs/sessions", sessionId);
+ * deleteFileVirtualWorkdir("/tmp/workdir");
+ * ```
+ */
+export function deleteFileVirtualWorkdir(workdirDir: string): void {
+  if (!hasFileVirtualWorkdir(workdirDir)) {
+    throw new Error(`Virtual workdir not found: ${workdirDir}`);
+  }
+  rmSync(workdirDir, { recursive: true, force: true });
+}
+
+/**
+ * 创建单个文件系统 VirtualWorkdir 的状态存储
+ *
+ * @example
+ * ```ts
+ * const store = createFileVirtualWorkdirStateStore("/tmp/workdir");
  * expect(store.kind).toBe("file");
  * ```
  */
-export function createFileVirtualWorkdirStateStore(
-  sessionsRoot: string,
-  sessionId: VirtualWorkdirSessionId,
-): VirtualWorkdirStateStore {
-  const sessionDir = getSessionDir(sessionsRoot, sessionId);
-  const manifestPath = getManifestPath(sessionDir);
-  const contentDir = getContentDir(sessionDir);
+export function createFileVirtualWorkdirStateStore(workdirDir: string): VirtualWorkdirStateStore {
+  const manifestPath = getManifestPath(workdirDir);
+  const contentDir = getContentDir(workdirDir);
 
   return {
     kind: "file",
 
     transact<T>(fn: () => T): T {
-      const snapshotDir = `${sessionDir}${FILE_WORKDIR_TRANSACTION_SNAPSHOT_SUFFIX}`;
+      const snapshotDir = `${workdirDir}${FILE_WORKDIR_TRANSACTION_SNAPSHOT_SUFFIX}`;
       rmSync(snapshotDir, { recursive: true, force: true });
 
-      if (existsSync(sessionDir)) {
-        copyDirectoryRecursive(sessionDir, snapshotDir);
+      if (existsSync(workdirDir)) {
+        copyDirectoryRecursive(workdirDir, snapshotDir);
       }
 
       try {
@@ -207,9 +172,9 @@ export function createFileVirtualWorkdirStateStore(
         rmSync(snapshotDir, { recursive: true, force: true });
         return result;
       } catch (error) {
-        rmSync(sessionDir, { recursive: true, force: true });
+        rmSync(workdirDir, { recursive: true, force: true });
         if (existsSync(snapshotDir)) {
-          renameSync(snapshotDir, sessionDir);
+          renameSync(snapshotDir, workdirDir);
         }
         throw error;
       }
@@ -220,10 +185,10 @@ export function createFileVirtualWorkdirStateStore(
     },
 
     writeBaseTree(baseTree: SHA1): void {
-      updateManifest(sessionDir, (manifest) => ({ ...manifest, baseTree }));
+      updateManifest(workdirDir, (manifest) => ({ ...manifest, baseTree }));
     },
 
-    getNode(id: NodeId): SessionNode | null {
+    getNode(id: NodeId): WorkdirNode | null {
       const manifest = readManifest(manifestPath);
       const record = manifest.nodes[id];
       if (record === undefined) {
@@ -232,8 +197,8 @@ export function createFileVirtualWorkdirStateStore(
       return restoreNode(record, contentDir);
     },
 
-    setNode(node: SessionNode): void {
-      updateManifest(sessionDir, (manifest) => {
+    setNode(node: WorkdirNode): void {
+      updateManifest(workdirDir, (manifest) => {
         const record = persistNode(contentDir, node);
         return {
           ...manifest,
@@ -246,7 +211,7 @@ export function createFileVirtualWorkdirStateStore(
     },
 
     deleteNode(id: NodeId): void {
-      updateManifest(sessionDir, (manifest) => {
+      updateManifest(workdirDir, (manifest) => {
         if (manifest.nodes[id] === undefined) {
           return manifest;
         }
@@ -268,7 +233,7 @@ export function createFileVirtualWorkdirStateStore(
     },
 
     setChangeRecord(record: NormalizedChangeRecord): void {
-      updateManifest(sessionDir, (manifest) => {
+      updateManifest(workdirDir, (manifest) => {
         const others = manifest.changeRecords.filter((item) => item.path !== record.path);
         return {
           ...manifest,
@@ -280,7 +245,7 @@ export function createFileVirtualWorkdirStateStore(
     },
 
     deleteChangeRecord(path: string): void {
-      updateManifest(sessionDir, (manifest) => ({
+      updateManifest(workdirDir, (manifest) => ({
         ...manifest,
         changeRecords: manifest.changeRecords.filter((item) => item.path !== path),
       }));
@@ -299,7 +264,7 @@ export function createFileVirtualWorkdirStateStore(
     },
 
     setDirtyDirSummary(summary: DirtyDirSummary): void {
-      updateManifest(sessionDir, (manifest) => {
+      updateManifest(workdirDir, (manifest) => {
         const others = manifest.dirtyDirSummaries.filter((item) => item.path !== summary.path);
         return {
           ...manifest,
@@ -311,15 +276,15 @@ export function createFileVirtualWorkdirStateStore(
     },
 
     deleteDirtyDirSummary(path: string): void {
-      updateManifest(sessionDir, (manifest) => ({
+      updateManifest(workdirDir, (manifest) => ({
         ...manifest,
         dirtyDirSummaries: manifest.dirtyDirSummaries.filter((item) => item.path !== path),
       }));
     },
 
     reset(baseTree: SHA1): void {
-      rmSync(sessionDir, { recursive: true, force: true });
-      ensureSessionDirs(sessionDir, contentDir);
+      rmSync(workdirDir, { recursive: true, force: true });
+      ensureWorkdirDirs(workdirDir, contentDir);
       writeManifestAtomic(
         manifestPath,
         createManifest(baseTree, {
@@ -332,46 +297,39 @@ export function createFileVirtualWorkdirStateStore(
   };
 }
 
-function hasSession(sessionsRoot: string, sessionId: VirtualWorkdirSessionId): boolean {
-  return existsSync(getManifestPath(getSessionDir(sessionsRoot, sessionId)));
+function hasFileVirtualWorkdir(workdirDir: string): boolean {
+  return existsSync(getManifestPath(workdirDir));
 }
 
-function validateSessionIntegrity(sessionsRoot: string, sessionId: VirtualWorkdirSessionId): void {
-  const sessionDir = getSessionDir(sessionsRoot, sessionId);
-  const manifest = readManifest(getManifestPath(sessionDir));
+export function validateFileVirtualWorkdirIntegrity(workdirDir: string): void {
+  const manifest = readManifest(getManifestPath(workdirDir));
   const root = manifest.nodes.root;
   if (root === undefined) {
-    throw new Error(`Virtual workdir session is corrupted: missing root node for ${sessionId}`);
+    throw new Error(`Virtual workdir is corrupted: missing root node for ${workdirDir}`);
   }
-  const rootNode = restoreNode(root, getContentDir(sessionDir));
+  const rootNode = restoreNode(root, getContentDir(workdirDir));
   if (rootNode.state.kind !== "directory") {
-    throw new Error(
-      `Virtual workdir session is corrupted: root node is not a directory for ${sessionId}`,
-    );
+    throw new Error(`Virtual workdir is corrupted: root node is not a directory for ${workdirDir}`);
   }
   for (const record of Object.values(manifest.nodes)) {
-    restoreNode(record, getContentDir(sessionDir));
+    restoreNode(record, getContentDir(workdirDir));
   }
 }
 
-function getSessionDir(sessionsRoot: string, sessionId: VirtualWorkdirSessionId): string {
-  return join(sessionsRoot, encodePathToken(sessionId));
+function getManifestPath(workdirDir: string): string {
+  return join(workdirDir, "manifest.json");
 }
 
-function getManifestPath(sessionDir: string): string {
-  return join(sessionDir, "manifest.json");
-}
-
-function getContentDir(sessionDir: string): string {
-  return join(sessionDir, "content");
+function getContentDir(workdirDir: string): string {
+  return join(workdirDir, "content");
 }
 
 function getContentPath(contentDir: string, payloadRef: string): string {
   return join(contentDir, `${encodePathToken(payloadRef)}.bin`);
 }
 
-function ensureSessionDirs(sessionDir: string, contentDir: string): void {
-  mkdirSync(sessionDir, { recursive: true });
+function ensureWorkdirDirs(workdirDir: string, contentDir: string): void {
+  mkdirSync(workdirDir, { recursive: true });
   mkdirSync(contentDir, { recursive: true });
 }
 
@@ -404,12 +362,12 @@ function createManifest(
 }
 
 function updateManifest(
-  sessionDir: string,
+  workdirDir: string,
   updater: (manifest: FileSessionManifest) => FileSessionManifest,
 ): void {
-  const manifestPath = getManifestPath(sessionDir);
-  const contentDir = getContentDir(sessionDir);
-  ensureSessionDirs(sessionDir, contentDir);
+  const manifestPath = getManifestPath(workdirDir);
+  const contentDir = getContentDir(workdirDir);
+  ensureWorkdirDirs(workdirDir, contentDir);
   const next = updater(readManifest(manifestPath));
   writeManifestAtomic(manifestPath, next);
 }
@@ -420,7 +378,7 @@ function writeManifestAtomic(path: string, manifest: FileSessionManifest): void 
 
 function readManifest(manifestPath: string): FileSessionManifest {
   if (!existsSync(manifestPath)) {
-    throw new Error(`Virtual workdir session manifest not found: ${manifestPath}`);
+    throw new Error(`Virtual workdir manifest not found: ${manifestPath}`);
   }
   const manifest = readJson<FileSessionManifest>(manifestPath);
   validateManifest(manifest);
@@ -451,7 +409,7 @@ function validateManifest(manifest: FileSessionManifest): void {
   }
 }
 
-function persistNode(contentDir: string, node: SessionNode): FileNodeRecord {
+function persistNode(contentDir: string, node: WorkdirNode): FileNodeRecord {
   if (node.state.kind === "directory") {
     return serializeDirectoryNode(node);
   }
@@ -485,7 +443,7 @@ function persistNode(contentDir: string, node: SessionNode): FileNodeRecord {
   };
 }
 
-function serializeDirectoryNode(node: SessionNode): FileNodeRecord {
+function serializeDirectoryNode(node: WorkdirNode): FileNodeRecord {
   if (node.state.kind !== "directory") {
     throw new Error("serializeDirectoryNode: node is not a directory");
   }
@@ -509,7 +467,7 @@ function persistPayload(contentDir: string, nodeId: NodeId, payload: Buffer): st
   return payloadRef;
 }
 
-function restoreNode(record: FileNodeRecord, contentDir: string): SessionNode {
+function restoreNode(record: FileNodeRecord, contentDir: string): WorkdirNode {
   const origin = restoreOrigin(record.origin);
   if (record.state.kind === "directory") {
     return {
@@ -617,7 +575,7 @@ function isFileDirectoryOverlayPayload(
   return hasValidAddedEntries && hasValidDeletedNames;
 }
 
-function restoreOrigin(record: FileNodeRecord["origin"]): SessionNode["origin"] {
+function restoreOrigin(record: FileNodeRecord["origin"]): WorkdirNode["origin"] {
   const origin = record as
     | { readonly kind: "none" }
     | { readonly kind: "repo-tree"; readonly hash: string }
@@ -740,8 +698,4 @@ function writeBufferAtomic(path: string, value: Buffer): void {
 
 function encodePathToken(value: string): string {
   return encodeURIComponent(value);
-}
-
-function decodePathToken(value: string): string {
-  return decodeURIComponent(value);
 }

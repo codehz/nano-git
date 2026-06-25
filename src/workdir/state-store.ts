@@ -1,7 +1,7 @@
 /**
  * Virtual Workdir 内部状态存储抽象
  *
- * 供 session 编排层、路径解析层、write-tree 共享使用。
+ * 供 workdir 编排层、路径解析层、write-tree 共享使用。
  * 目标是让 memory / file / sqlite backend 复用同一套行为逻辑。
  */
 
@@ -9,7 +9,7 @@ import type { SHA1 } from "../core/types.ts";
 import type { NormalizedChangeRecord } from "./change-index.ts";
 import type { DirtyDirSummary } from "./dirty-dir.ts";
 import type { NodeId } from "./ids.ts";
-import type { SessionNode } from "./nodes.ts";
+import type { WorkdirNode } from "./nodes.ts";
 
 /**
  * Virtual Workdir 内部状态存储接口
@@ -21,7 +21,7 @@ export interface VirtualWorkdirStateStore {
   /**
    * 在单次提交边界内执行状态变更
    *
-   * 用于把一次 session 写操作封装为单个内部事务。
+   * 用于把一次 workdir 写操作封装为单个内部事务。
    * 若回调抛错，store 应尽力恢复到调用前状态。
    */
   transact<T>(fn: () => T): T;
@@ -33,10 +33,10 @@ export interface VirtualWorkdirStateStore {
   writeBaseTree(baseTree: SHA1): void;
 
   /** 读取节点，不存在时返回 null */
-  getNode(id: NodeId): SessionNode | null;
+  getNode(id: NodeId): WorkdirNode | null;
 
   /** 写入或覆盖节点 */
-  setNode(node: SessionNode): void;
+  setNode(node: WorkdirNode): void;
 
   /** 删除节点 */
   deleteNode(id: NodeId): void;

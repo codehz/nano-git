@@ -1,5 +1,5 @@
 /**
- * VirtualWorkdirSession 行为编排
+ * VirtualWorkdir 行为编排
  *
  * Phase 5：完整文件/目录 rename 与 copy 语义。
  */
@@ -24,7 +24,7 @@ import { computeVirtualDiff } from "./change-index.ts";
 import { createDirtyDirPlanner } from "./dirty-dir-plan.ts";
 import { createNodeId } from "./ids.ts";
 import { createVirtualWorkdirMemoryStateStore } from "./memory-backend.ts";
-import { revertNodeState, type SessionNode } from "./nodes.ts";
+import { revertNodeState, type WorkdirNode } from "./nodes.ts";
 import { modeToVirtualEntryKind, readRepoBlobContent } from "./origin.ts";
 import { overlayBindEntry, overlayTombstoneEntry, overlayRenameEntry } from "./overlay.ts";
 import { assertValidVirtualPath, normalizeDirectoryPath, VIRTUAL_ROOT_PATH } from "./path.ts";
@@ -36,24 +36,24 @@ import {
   resolvePath,
   resolveLeafWriteTarget,
   resolveWriteTransfer,
-} from "./session-internal.ts";
+} from "./workdir-path.ts";
 import {
   cloneNodeGraphForCopy,
   runInWriteTransaction,
   statDirectoryNode,
   statNode,
   updateParentOverlay,
-} from "./session-transaction.ts";
+} from "./workdir-transaction.ts";
 import { writeTreeFromSession } from "./write-tree.ts";
 
 import type { SHA1 } from "../core/types.ts";
 import type { ObjectDatabase } from "../core/types/odb.ts";
 import type {
-  CreateVirtualWorkdirSessionOptions,
+  CreateVirtualWorkdirOptions,
   VirtualDirEntry,
   VirtualDiffEntry,
   VirtualEntryStat,
-  VirtualWorkdirSession,
+  VirtualWorkdir,
 } from "./core.ts";
 import type { NodeId } from "./ids.ts";
 import type { VirtualWorkdirStateStore } from "./state-store.ts";
@@ -61,40 +61,40 @@ import type { VirtualWorkdirStateStore } from "./state-store.ts";
 // ==================== 工厂 ====================
 
 /**
- * 基于 ObjectDatabase 创建 VirtualWorkdirSession
+ * 基于 ObjectDatabase 创建 VirtualWorkdir
  *
  * @example
  * ```ts
  * const repo = createMemoryRepository();
  * const tree = repo.createTree([]);
- * const session = createVirtualWorkdirSession(repo.objects, { baseTree: tree });
- * expect(session.readdir()).toEqual([]);
+ * const workdir = createVirtualWorkdir(repo.objects, { baseTree: tree });
+ * expect(workdir.readdir()).toEqual([]);
  * ```
  */
-export function createVirtualWorkdirSession(
+export function createVirtualWorkdir(
   source: ObjectDatabase,
-  options: CreateVirtualWorkdirSessionOptions,
-): VirtualWorkdirSession {
+  options: CreateVirtualWorkdirOptions,
+): VirtualWorkdir {
   const state = createVirtualWorkdirMemoryStateStore(options.baseTree);
-  return openVirtualWorkdirSession(source, state);
+  return openVirtualWorkdir(source, state);
 }
 
 // ==================== API 组装 ====================
 
 /**
- * 基于已有状态存储打开 session
+ * 基于已有状态存储打开 VirtualWorkdir
  *
  * @example
  * ```ts
  * const store = createVirtualWorkdirMemoryStateStore(tree);
- * const session = openVirtualWorkdirSession(repo.objects, store);
- * expect(session.baseTree).toBe(tree);
+ * const workdir = openVirtualWorkdir(repo.objects, store);
+ * expect(workdir.baseTree).toBe(tree);
  * ```
  */
-export function openVirtualWorkdirSession(
+export function openVirtualWorkdir(
   source: ObjectDatabase,
   state: VirtualWorkdirStateStore,
-): VirtualWorkdirSession {
+): VirtualWorkdir {
   const currentNodeHashes = new Map<NodeId, SHA1>();
   const invalidateDiffCaches = (): void => {
     currentNodeHashes.clear();
@@ -148,7 +148,7 @@ export function openVirtualWorkdirSession(
 
   refreshChangeIndex();
 
-  const api: VirtualWorkdirSession = {
+  const api: VirtualWorkdir = {
     get baseTree() {
       return state.readBaseTree();
     },
@@ -248,7 +248,7 @@ export function openVirtualWorkdirSession(
 
           // 创建新目录节点 + 绑定到父 overlay
           const nodeId = createNodeId();
-          const newNode: SessionNode = {
+          const newNode: WorkdirNode = {
             id: nodeId,
             origin: { kind: "none" },
             state: {
@@ -284,7 +284,7 @@ export function openVirtualWorkdirSession(
 
           const nodeId = target.existing !== null ? target.existing.node.id : createNodeId();
 
-          const fileNode: SessionNode = {
+          const fileNode: WorkdirNode = {
             id: nodeId,
             origin: target.existing !== null ? target.existing.node.origin : { kind: "none" },
             state: { kind: "file", mode, content },
@@ -318,7 +318,7 @@ export function openVirtualWorkdirSession(
           const nodeId =
             writeTarget.existing !== null ? writeTarget.existing.node.id : createNodeId();
 
-          const linkNode: SessionNode = {
+          const linkNode: WorkdirNode = {
             id: nodeId,
             origin:
               writeTarget.existing !== null ? writeTarget.existing.node.origin : { kind: "none" },

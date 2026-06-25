@@ -1,5 +1,5 @@
 /**
- * file backend 合同测试入口
+ * file VirtualWorkdir 合同测试入口
  */
 
 import { afterAll } from "bun:test";
@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { runVirtualWorkdirContract } from "./contract.ts";
-import { createFileVirtualWorkdirBackend } from "@/workdir/file.ts";
+import { openFileVirtualWorkdir } from "@/workdir/file.ts";
 
 const tempRoots: string[] = [];
 
@@ -21,7 +21,8 @@ afterAll(() => {
 runVirtualWorkdirContract("file", (repo, options) => {
   const root = mkdtempSync(join(tmpdir(), "nano-git-workdir-contract-file-"));
   tempRoots.push(root);
-  const backend = createFileVirtualWorkdirBackend(root);
-  const sessionId = backend.createSession(options);
-  return backend.openSession(repo.objects, sessionId);
+  return openFileVirtualWorkdir(repo.objects, root, {
+    ...options,
+    create: true,
+  });
 });

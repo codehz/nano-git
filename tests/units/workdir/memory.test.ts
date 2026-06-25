@@ -1,10 +1,8 @@
 /**
- * memory backend 合同测试入口
+ * memory VirtualWorkdir 合同测试入口
  */
 
 import { runVirtualWorkdirContract } from "./contract.ts";
-import { createVirtualWorkdirSession } from "@/workdir/memory.ts";
+import { createVirtualWorkdir } from "@/workdir/memory.ts";
 
-runVirtualWorkdirContract("memory", (repo, options) =>
-  createVirtualWorkdirSession(repo.objects, options),
-);
+runVirtualWorkdirContract("memory", (repo, options) => createVirtualWorkdir(repo.objects, options));

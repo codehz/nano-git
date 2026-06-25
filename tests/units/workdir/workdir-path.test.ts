@@ -1,5 +1,5 @@
 /**
- * workdir/session-internal.ts 辅助逻辑测试
+ * workdir/workdir-path.ts 路径辅助逻辑测试
  */
 import { describe, test, expect } from "bun:test";
 
@@ -29,8 +29,8 @@ import {
   resolveWriteParentDirectory,
   resolveWriteTargetInParent,
   resolveWriteTransfer,
-} from "@/workdir/session-internal.ts";
-import { openVirtualWorkdirSession } from "@/workdir/session.ts";
+} from "@/workdir/workdir-path.ts";
+import { openVirtualWorkdir } from "@/workdir/workdir.ts";
 
 import type { GitTree } from "@/core/types.ts";
 
@@ -83,7 +83,7 @@ describe("observeDirectoryChildren()", () => {
     const childTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: childBlob }]);
     const baseTree = repo.createTree([{ mode: "40000", name: "src", hash: childTree }]);
     const store = createVirtualWorkdirMemoryStateStore(baseTree);
-    const session = openVirtualWorkdirSession(repo.objects, store);
+    const session = openVirtualWorkdir(repo.objects, store);
 
     session.writeFile("src/a.txt", Buffer.from("next"));
     session.writeFile("new.txt", Buffer.from("created"));
@@ -117,7 +117,7 @@ describe("getDirectoryChildrenView()", () => {
       { mode: "100644", name: "a.txt", hash: aHash },
     ]);
     const store = createVirtualWorkdirMemoryStateStore(baseTree);
-    const session = openVirtualWorkdirSession(repo.objects, store);
+    const session = openVirtualWorkdir(repo.objects, store);
 
     session.writeFile("c.txt", Buffer.from("c"));
 
@@ -244,7 +244,7 @@ describe("resolvePathByParentLookup()", () => {
     const subTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]);
     const baseTree = repo.createTree([{ mode: "40000", name: "src", hash: subTree }]);
     const store = createVirtualWorkdirMemoryStateStore(baseTree);
-    const session = openVirtualWorkdirSession(repo.objects, store);
+    const session = openVirtualWorkdir(repo.objects, store);
 
     session.writeFile("src/b.txt", Buffer.from("b"));
 
@@ -262,7 +262,7 @@ describe("resolveWriteParentDirectory()", () => {
     const repo = createMemoryRepository();
     const baseTree = repo.createTree([]);
     const store = createVirtualWorkdirMemoryStateStore(baseTree);
-    const session = openVirtualWorkdirSession(repo.objects, store);
+    const session = openVirtualWorkdir(repo.objects, store);
 
     session.mkdir("src");
 

@@ -1,5 +1,5 @@
 /**
- * Virtual Workdir 会话节点状态模型
+ * Virtual Workdir 节点状态模型
  *
  * 节点身份（nodeId）与目录路径绑定分离；origin 描述 repo-backed 来源。
  */
@@ -22,7 +22,7 @@ export type BlobObjectMode = "100644" | "100755" | "120000";
 // ==================== Origin ====================
 
 /**
- * 节点来源（repo 对象或纯 session 新建）
+ * 节点来源（repo 对象或纯 workdir 新建）
  */
 export type NodeOrigin =
   | { readonly kind: "none" }
@@ -34,7 +34,7 @@ export type NodeOrigin =
 /**
  * 目录节点当前状态
  *
- * `overlay` 表达 session 层增删改；子项 nodeId 通过 overlay 合成与懒加载解析。
+ * `overlay` 表达 workdir 层增删改；子项 nodeId 通过 overlay 合成与懒加载解析。
  */
 export interface DirectoryNodeState {
   readonly kind: "directory";
@@ -60,15 +60,15 @@ export interface SymlinkNodeState {
   readonly target?: Buffer;
 }
 
-export type SessionNodeState = DirectoryNodeState | FileNodeState | SymlinkNodeState;
+export type WorkdirNodeState = DirectoryNodeState | FileNodeState | SymlinkNodeState;
 
 /**
- * 完整的会话节点记录
+ * 完整的 workdir 节点记录
  */
-export interface SessionNode {
+export interface WorkdirNode {
   readonly id: NodeId;
   readonly origin: NodeOrigin;
-  readonly state: SessionNodeState;
+  readonly state: WorkdirNodeState;
 }
 
 // ==================== 工厂与变换 ====================
@@ -76,7 +76,7 @@ export interface SessionNode {
 /**
  * 创建绑定 repo 根 tree 的目录节点（带空 overlay）
  */
-export function createRootDirectoryNode(originTreeHash: SHA1): SessionNode {
+export function createRootDirectoryNode(originTreeHash: SHA1): WorkdirNode {
   return {
     id: VIRTUAL_ROOT_NODE_ID,
     origin: { kind: "repo-tree", hash: originTreeHash },
@@ -85,9 +85,9 @@ export function createRootDirectoryNode(originTreeHash: SHA1): SessionNode {
 }
 
 /**
- * 创建纯 session 新建、无 origin 的目录节点
+ * 创建纯 workdir 新建、无 origin 的目录节点
  */
-export function createNewDirectoryNode(id: NodeId): SessionNode {
+export function createNewDirectoryNode(id: NodeId): WorkdirNode {
   return {
     id,
     origin: { kind: "none" },
@@ -98,7 +98,7 @@ export function createNewDirectoryNode(id: NodeId): SessionNode {
 /**
  * 节点是否携带可 revert 的 repo origin
  */
-export function nodeHasRepoOrigin(node: SessionNode): boolean {
+export function nodeHasRepoOrigin(node: WorkdirNode): boolean {
   return node.origin.kind === "repo-tree" || node.origin.kind === "repo-blob";
 }
 
@@ -113,16 +113,16 @@ export function isBlobStateMaterialized(state: FileNodeState | SymlinkNodeState)
 }
 
 /**
- * 目录 overlay 是否有 session 层修改
+ * 目录 overlay 是否有 workdir 层修改
  */
 export function isDirectoryOverlayDirty(overlay: DirectoryOverlay): boolean {
   return overlay.addedEntries.size > 0 || overlay.deletedNames.size > 0;
 }
 
 /**
- * 节点是否存在 session 层 CoW 修改（可尝试 revert）
+ * 节点是否存在 workdir 层 CoW 修改（可尝试 revert）
  */
-export function isNodeDirty(node: SessionNode): boolean {
+export function isNodeDirty(node: WorkdirNode): boolean {
   if (node.state.kind === "directory") {
     return isDirectoryOverlayDirty(node.state.overlay);
   }
@@ -137,7 +137,7 @@ export function isNodeDirty(node: SessionNode): boolean {
  *
  * 无 repo origin 时返回原状态引用，由上层决定是否抛错。
  */
-export function revertNodeState(node: SessionNode): SessionNode {
+export function revertNodeState(node: WorkdirNode): WorkdirNode {
   if (!nodeHasRepoOrigin(node)) {
     return node;
   }
@@ -166,7 +166,7 @@ export function revertNodeState(node: SessionNode): SessionNode {
 /**
  * 为 `copy` 创建新节点：共享 origin，目录为浅复制（子项绑定保留，但 nodeId 为新）
  */
-export function cloneSessionNodeForCopy(source: SessionNode, newId: NodeId): SessionNode {
+export function cloneWorkdirNodeForCopy(source: WorkdirNode, newId: NodeId): WorkdirNode {
   const origin = source.origin;
 
   if (source.state.kind === "directory") {

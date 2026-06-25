@@ -5,5 +5,4 @@
  * 该入口不提供跨进程持久化与恢复能力。
  */
 
-export { createMemoryVirtualWorkdirBackend } from "./memory-backend.ts";
-export { createVirtualWorkdirSession, openVirtualWorkdirSession } from "./session.ts";
+export { createVirtualWorkdir, openVirtualWorkdir } from "./workdir.ts";

@@ -1,11 +1,11 @@
 /**
  * Virtual Workdir change-index 刷新策略
  *
- * 把 session 写路径里的“是否允许增量刷新”判断与
+ * 把 workdir 写路径里的“是否允许增量刷新”判断与
  * “应该执行哪种 change-index 更新动作”集中到单独模块。
  */
 
-import { resolvePath } from "./session-internal.ts";
+import { resolvePath } from "./workdir-path.ts";
 
 import type { ObjectSource } from "../core/types/odb.ts";
 import type { VirtualWorkdirStateStore } from "./state-store.ts";

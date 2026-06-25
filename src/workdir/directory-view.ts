@@ -1,22 +1,18 @@
 /**
  * Virtual Workdir 目录展开、观察与编译计划
  *
- * 从 session-internal.ts 拆分，聚焦以下职责：
+ * 从 workdir-path.ts 拆分，聚焦以下职责：
  * - 目录子项观察（observeDirectoryChildren / observeListedDirectoryChild / observeNamedDirectoryChild）
  * - origin 按名查询视图（createNamedOriginChildLookup）
  * - 受影响子项编译计划（planAffectedDirectoryChildren）
  */
 
 import { VirtualNotDirectoryError } from "../core/errors.ts";
-import {
-  ensureNodeFromTreeEntry,
-  joinChildPath,
-  listDirectoryChildren,
-} from "./session-internal.ts";
+import { ensureNodeFromTreeEntry, joinChildPath, listDirectoryChildren } from "./workdir-path.ts";
 
 import type { TreeEntry } from "../core/types.ts";
 import type { ObjectSource } from "../core/types/odb.ts";
-import type { SessionNode } from "./nodes.ts";
+import type { WorkdirNode } from "./nodes.ts";
 import type { MergedDirectoryChild } from "./overlay.ts";
 import type { VirtualWorkdirStateStore } from "./state-store.ts";
 
@@ -67,7 +63,7 @@ export interface ObservedDirectoryChildNode {
   /** 原始目录子项 */
   readonly child: MergedDirectoryChild;
   /** 当前节点 */
-  readonly node: SessionNode;
+  readonly node: WorkdirNode;
 }
 
 // ==================== 定向节点解析 ====================
@@ -79,10 +75,10 @@ export interface ObservedDirectoryChildNode {
  */
 export function resolveNamedChild(
   state: VirtualWorkdirStateStore,
-  dirNode: SessionNode,
+  dirNode: WorkdirNode,
   originLookup: NamedOriginChildLookup,
   name: string,
-): { found: false; node: null } | { found: true; node: SessionNode } {
+): { found: false; node: null } | { found: true; node: WorkdirNode } {
   if (dirNode.state.kind !== "directory") {
     return { found: false, node: null };
   }
@@ -149,7 +145,7 @@ export function observeListedDirectoryChild(
  */
 export function observeNamedDirectoryChild(
   state: VirtualWorkdirStateStore,
-  dirNode: SessionNode,
+  dirNode: WorkdirNode,
   dirPath: string,
   originLookup: NamedOriginChildLookup,
   name: string,
@@ -190,18 +186,18 @@ export function observeNamedDirectoryChild(
 export function observeDirectoryChildren(
   source: ObjectSource,
   state: VirtualWorkdirStateStore,
-  dirNode: SessionNode,
+  dirNode: WorkdirNode,
   dirPath: string,
   options: {
     onDirectoryChild(child: {
       readonly name: string;
       readonly path: string;
-      readonly node: SessionNode;
+      readonly node: WorkdirNode;
     }): number;
     isLeafChildDirty(child: {
       readonly name: string;
       readonly path: string;
-      readonly node: SessionNode;
+      readonly node: WorkdirNode;
     }): boolean;
   },
 ): ObservedDirectoryChildren {

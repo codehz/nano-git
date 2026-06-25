@@ -1,17 +1,17 @@
 /**
  * Virtual Workdir dirty-dir summary 重建策略
  *
- * 把 session 写路径里的脏目录摘要清理与重建逻辑集中到单独模块，
- * 让 session.ts 更接近纯编排层。
+ * 把 workdir 写路径里的脏目录摘要清理与重建逻辑集中到单独模块，
+ * 让 workdir.ts 更接近纯编排层。
  */
 
 import { observeDirectoryChildren } from "./directory-view.ts";
 import { createDirtyDirSummary, type DirtyDirSummary } from "./dirty-dir.ts";
 import { VIRTUAL_ROOT_PATH } from "./path.ts";
-import { getRootNode } from "./session-internal.ts";
+import { getRootNode } from "./workdir-path.ts";
 
 import type { ObjectSource } from "../core/types/odb.ts";
-import type { SessionNode } from "./nodes.ts";
+import type { WorkdirNode } from "./nodes.ts";
 import type { VirtualWorkdirStateStore } from "./state-store.ts";
 
 /**
@@ -46,7 +46,7 @@ export function createDirtyDirPlanner(
       const nextSummaries = new Map<string, DirtyDirSummary>();
       const invalidatedDirPaths = collectInvalidatedSummaryPaths(touchedPaths);
 
-      const visitDirectory = (node: SessionNode, dirPath: string): number => {
+      const visitDirectory = (node: WorkdirNode, dirPath: string): number => {
         if (node.state.kind !== "directory") {
           throw new Error(`rebuildDirtyDirectorySummaries: '${dirPath}' is not a directory`);
         }

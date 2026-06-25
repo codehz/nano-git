@@ -1,7 +1,7 @@
 /**
  * Virtual Workdir overlay -> tree 最小化编译
  *
- * 遍历 session 的目录 overlay，将受影响的目录重写为新 tree，
+ * 遍历 workdir 的目录 overlay，将受影响的目录重写为新 tree，
  * 未修改的 repo-backed 子树/文件尽量复用原对象哈希。
  *
  * writeTree() 成功后不清空 overlay，不推进 baseTree。
@@ -16,26 +16,26 @@ import {
 } from "./directory-view.ts";
 import { materializeDirtyDirSummary } from "./dirty-dir.ts";
 import { readRepoTree } from "./origin.ts";
-import { listDirectoryChildren } from "./session-internal.ts";
+import { listDirectoryChildren } from "./workdir-path.ts";
 
 import type { SHA1, TreeEntry } from "../core/types.ts";
 import type { ObjectDatabase, ObjectSource } from "../core/types/odb.ts";
 import type { NamedOriginChildLookup, ObservedDirectoryChildNode } from "./directory-view.ts";
 import type { DirtyDirSummary } from "./dirty-dir.ts";
 import type { NodeId } from "./ids.ts";
-import type { SessionNode } from "./nodes.ts";
+import type { WorkdirNode } from "./nodes.ts";
 import type { VirtualWorkdirStateStore } from "./state-store.ts";
 
 // ==================== 公开 API ====================
 
 /**
- * 将当前 session 状态编译为新的根 tree
+ * 将当前 workdir 状态编译为新的根 tree
  *
  * 只重写受 overlay 影响的目录；文件/符号链接仅在 materialized 时写新 blob。
  * 未修改的 repo-backed 条目直接复用 origin hash。
  *
  * @param source - 可写对象数据库（用于写入新 blob/tree）
- * @param state - session 内存状态
+ * @param state - workdir 内部状态
  * @returns 新根 tree 的 SHA-1
  *
  * @example
@@ -65,7 +65,7 @@ function compileDirectory(
   writeSource: ObjectDatabase,
   readSource: ObjectSource,
   state: VirtualWorkdirStateStore,
-  dirNode: SessionNode,
+  dirNode: WorkdirNode,
   dirPath = "",
 ): SHA1 {
   if (dirNode.state.kind !== "directory") {
@@ -118,7 +118,7 @@ function collectCompiledEntries(
   writeSource: ObjectDatabase,
   readSource: ObjectSource,
   state: VirtualWorkdirStateStore,
-  dirNode: SessionNode,
+  dirNode: WorkdirNode,
   dirPath: string,
   summary: DirtyDirSummary | null,
   markChanged: (changed: boolean) => void,
@@ -184,7 +184,7 @@ function compileNamedChildEntry(
   writeSource: ObjectDatabase,
   readSource: ObjectSource,
   state: VirtualWorkdirStateStore,
-  dirNode: SessionNode,
+  dirNode: WorkdirNode,
   dirPath: string,
   name: string,
   originLookup: NamedOriginChildLookup,
