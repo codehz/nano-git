@@ -16,10 +16,14 @@
 
 import { Database } from "bun:sqlite";
 
+import type { Statement } from "bun:sqlite";
+
 /** 连接池条目 */
 interface PoolEntry {
   db: Database;
   refCount: number;
+  /** 按 SQL 文本缓存的 prepared statement */
+  stmts: Map<string, unknown>;
 }
 
 const pool = new Map<string, PoolEntry>();
@@ -29,15 +33,34 @@ export interface SqliteConnectionHandle {
   readonly db: Database;
   /** 释放连接（引用计数减一，归零时关闭数据库） */
   readonly release: () => void;
+  /**
+   * 获取缓存的 prepared statement
+   *
+   * 相同 SQL 文本返回同一实例，避免重复编译。
+   * 绑定参数类型由调用方按 SQL 保证一致，此处不做泛型约束。
+   */
+  readonly prepare: <T>(sql: string) => Statement<T, any[]>;
   /** 支持 `using` 语法自动释放 */
   [Symbol.dispose](): void;
 }
 
-/** 构造连接句柄（release + Symbol.dispose） */
-function makeHandle(db: Database, onRelease: () => void): SqliteConnectionHandle {
+/** 构造连接句柄 */
+function makeHandle(
+  db: Database,
+  stmts: Map<string, unknown>,
+  onRelease: () => void,
+): SqliteConnectionHandle {
   return {
     db,
     release: onRelease,
+    prepare<T>(sql: string): Statement<T, any[]> {
+      let stmt = stmts.get(sql) as Statement<T, any[]> | undefined;
+      if (stmt === undefined) {
+        stmt = db.query(sql) as unknown as Statement<T, any[]>;
+        stmts.set(sql, stmt);
+      }
+      return stmt;
+    },
     [Symbol.dispose](): void {
       onRelease();
     },
@@ -61,8 +84,9 @@ export function acquireConnection(dbPath: string, walMode = true): SqliteConnect
     if (walMode) {
       db.run("PRAGMA journal_mode = WAL");
     }
+    const localCache = new Map<string, unknown>();
     let released = false;
-    return makeHandle(db, () => {
+    return makeHandle(db, localCache, () => {
       if (released) return;
       released = true;
       db.close();
@@ -73,7 +97,7 @@ export function acquireConnection(dbPath: string, walMode = true): SqliteConnect
   if (existing !== undefined) {
     existing.refCount++;
     let released = false;
-    return makeHandle(existing.db, () => {
+    return makeHandle(existing.db, existing.stmts, () => {
       if (released) return;
       released = true;
       releaseConnection(dbPath);
@@ -84,10 +108,11 @@ export function acquireConnection(dbPath: string, walMode = true): SqliteConnect
   if (walMode) {
     db.run("PRAGMA journal_mode = WAL");
   }
-  pool.set(dbPath, { db, refCount: 1 });
+  const stmts = new Map<string, unknown>();
+  pool.set(dbPath, { db, refCount: 1, stmts });
 
   let released = false;
-  return makeHandle(db, () => {
+  return makeHandle(db, stmts, () => {
     if (released) return;
     released = true;
     releaseConnection(dbPath);
