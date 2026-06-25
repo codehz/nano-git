@@ -19,6 +19,9 @@ import {
   gitCatFileType,
   gitCatFileRaw,
   gitWriteTreeBare,
+  gitCommitTree,
+  gitFsck,
+  gitUpdateRef,
   createTempDir,
   cleanupDir,
   createFile,
@@ -254,6 +257,30 @@ describe("Tree 兼容性", () => {
       } finally {
         cleanupDir(workDir);
       }
+    });
+  });
+
+  // --- 空子目录兼容性 ---
+
+  describe("空子目录兼容性", () => {
+    test("nano-git 创建的空子目录 tree 不触发 git fsck 错误", () => {
+      const repo = openRepository(tempDir);
+
+      // 空 tree（代表空子目录）
+      const emptyTreeHash = repo.createTree([]);
+      // 根 tree 包含空子目录条目
+      const rootTreeHash = repo.createTree([
+        { mode: "040000", name: "emptydir", hash: emptyTreeHash },
+      ]);
+
+      // 用 git commit-tree 创建 commit
+      const commitHash = gitCommitTree(tempDir, rootTreeHash, "Add empty subdirectory");
+      gitUpdateRef(tempDir, "refs/heads/main", commitHash);
+
+      // git fsck 不应报错
+      const fsckOutput = gitFsck(tempDir);
+      expect(fsckOutput).not.toContain("error");
+      expect(fsckOutput).not.toContain("broken");
     });
   });
 });
