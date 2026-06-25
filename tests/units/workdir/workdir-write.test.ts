@@ -656,24 +656,24 @@ describe("diff（写入操作）", () => {
   });
 });
 
-// ==================== rename ====================
+// ==================== move ====================
 
-describe("rename", () => {
-  test("同目录下重命名文件", () => {
+describe("move", () => {
+  test("同目录下移动文件", () => {
     const repo = createMemoryRepository();
     const session = createVirtualWorkdir(repo.objects, {
       baseTree: repo.createTree([]),
     });
 
     session.writeFile("old.txt", Buffer.from("content"));
-    session.rename("old.txt", "new.txt");
+    session.move("old.txt", "new.txt");
 
     expect(session.exists("old.txt")).toBe(false);
     expect(session.exists("new.txt")).toBe(true);
     expect(session.readFile("new.txt").toString()).toBe("content");
   });
 
-  test("跨目录重命名文件", () => {
+  test("跨目录树移动文件（目标父目录已存在）", () => {
     const repo = createMemoryRepository();
     const session = createVirtualWorkdir(repo.objects, {
       baseTree: repo.createTree([]),
@@ -681,26 +681,40 @@ describe("rename", () => {
 
     session.writeFile("a.txt", Buffer.from("moved"));
     session.mkdir("sub");
-    session.rename("a.txt", "sub/b.txt");
+    session.move("a.txt", "sub/b.txt");
 
     expect(session.exists("a.txt")).toBe(false);
     expect(session.exists("sub/b.txt")).toBe(true);
     expect(session.readFile("sub/b.txt").toString()).toBe("moved");
   });
 
-  test("重命名 repo-backed 文件", () => {
+  test("跨目录树移动文件（自动创建目标父目录）", () => {
+    const repo = createMemoryRepository();
+    const session = createVirtualWorkdir(repo.objects, {
+      baseTree: repo.createTree([]),
+    });
+
+    session.writeFile("a.txt", Buffer.from("nested"));
+    session.move("a.txt", "other/deep/b.txt");
+
+    expect(session.exists("a.txt")).toBe(false);
+    expect(session.exists("other/deep/b.txt")).toBe(true);
+    expect(session.readFile("other/deep/b.txt").toString()).toBe("nested");
+  });
+
+  test("move repo-backed 文件", () => {
     const repo = createMemoryRepository();
     const blobHash = repo.writeBlob(Buffer.from("repo data"));
     const baseTree = repo.createTree([{ mode: "100644", name: "f", hash: blobHash }]);
     const session = createVirtualWorkdir(repo.objects, { baseTree });
 
-    session.rename("f", "g");
+    session.move("f", "g");
     expect(session.exists("f")).toBe(false);
     expect(session.exists("g")).toBe(true);
     expect(session.readFile("g").toString()).toBe("repo data");
   });
 
-  test("重命名目录", () => {
+  test("move 目录", () => {
     const repo = createMemoryRepository();
     const session = createVirtualWorkdir(repo.objects, {
       baseTree: repo.createTree([]),
@@ -708,21 +722,21 @@ describe("rename", () => {
 
     session.mkdir("src");
     session.writeFile("src/main.ts", Buffer.from("code"));
-    session.rename("src", "lib");
+    session.move("src", "lib");
 
     expect(session.exists("src")).toBe(false);
     expect(session.exists("lib")).toBe(true);
     expect(session.readFile("lib/main.ts").toString()).toBe("code");
   });
 
-  test("重命名后 writeTree 不制造额外 blob", () => {
+  test("move 后 writeTree 不制造额外 blob", () => {
     const repo = createMemoryRepository();
     const session = createVirtualWorkdir(repo.objects, {
       baseTree: repo.createTree([]),
     });
 
     session.writeFile("old.txt", Buffer.from("content"));
-    session.rename("old.txt", "new.txt");
+    session.move("old.txt", "new.txt");
     const tree = session.writeTree();
 
     const treeObj = readTree(repo, tree);
@@ -731,14 +745,14 @@ describe("rename", () => {
     expect(readBlob(repo, treeObj.entries[0]!.hash).toString()).toBe("content");
   });
 
-  test("repo-backed rename 产出 rename diff", () => {
+  test("repo-backed move 产出 move diff", () => {
     const repo = createMemoryRepository();
     const blobHash = repo.writeBlob(Buffer.from("data"));
     const session = createVirtualWorkdir(repo.objects, {
       baseTree: repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]),
     });
 
-    session.rename("a.txt", "b.txt");
+    session.move("a.txt", "b.txt");
     expect(session.diff()).toMatchObject([
       {
         kind: "update",
@@ -757,21 +771,21 @@ describe("rename", () => {
           contentChanged: false,
         },
         source: {
-          kind: "rename",
+          kind: "move",
           path: "a.txt",
         },
       },
     ]);
   });
 
-  test("rename 后修改内容仍保留 rename 来源", () => {
+  test("move 后修改内容仍保留 move 来源", () => {
     const repo = createMemoryRepository();
     const blobHash = repo.writeBlob(Buffer.from("data"));
     const session = createVirtualWorkdir(repo.objects, {
       baseTree: repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]),
     });
 
-    session.rename("a.txt", "b.txt");
+    session.move("a.txt", "b.txt");
     session.writeFile("b.txt", Buffer.from("changed"));
 
     expect(session.diff()).toMatchObject([
@@ -787,7 +801,7 @@ describe("rename", () => {
           mode: "100644",
         },
         source: {
-          kind: "rename",
+          kind: "move",
           path: "a.txt",
         },
         changes: {
@@ -799,14 +813,14 @@ describe("rename", () => {
     ]);
   });
 
-  test("删除 rename 目标仍保持全量语义正确", () => {
+  test("删除 move 目标仍保持全量语义正确", () => {
     const repo = createMemoryRepository();
     const blobHash = repo.writeBlob(Buffer.from("data"));
     const session = createVirtualWorkdir(repo.objects, {
       baseTree: repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]),
     });
 
-    session.rename("a.txt", "b.txt");
+    session.move("a.txt", "b.txt");
     session.delete("b.txt");
 
     expect(session.diff()).toMatchObject([
@@ -827,7 +841,7 @@ describe("rename", () => {
       baseTree: repo.createTree([]),
     });
 
-    expect(() => session.rename("noexist", "dest")).toThrow(VirtualPathNotFoundError);
+    expect(() => session.move("noexist", "dest")).toThrow(VirtualPathNotFoundError);
   });
 
   test("目标已存在抛 VirtualPathAlreadyExistsError", () => {
@@ -838,17 +852,17 @@ describe("rename", () => {
 
     session.writeFile("a.txt", Buffer.from("a"));
     session.writeFile("b.txt", Buffer.from("b"));
-    expect(() => session.rename("a.txt", "b.txt")).toThrow(VirtualPathAlreadyExistsError);
+    expect(() => session.move("a.txt", "b.txt")).toThrow(VirtualPathAlreadyExistsError);
   });
 
-  test("rename 到自身为无操作", () => {
+  test("move 到自身为无操作", () => {
     const repo = createMemoryRepository();
     const session = createVirtualWorkdir(repo.objects, {
       baseTree: repo.createTree([]),
     });
 
     session.writeFile("f.txt", Buffer.from("data"));
-    session.rename("f.txt", "f.txt");
+    session.move("f.txt", "f.txt");
     expect(session.exists("f.txt")).toBe(true);
     expect(session.readFile("f.txt").toString()).toBe("data");
     expect(session.diff()).toMatchObject([
@@ -863,15 +877,15 @@ describe("rename", () => {
     ]);
   });
 
-  test("纯新增文件 rename 后变更记录不膨胀", () => {
+  test("纯新增文件 move 后变更记录不膨胀", () => {
     const repo = createMemoryRepository();
     const baseTree = repo.createTree([]);
     const store = createVirtualWorkdirMemoryStateStore(baseTree);
     const session = openVirtualWorkdir(repo.objects, store);
 
     session.writeFile("a.txt", Buffer.from("data"));
-    session.rename("a.txt", "b.txt");
-    session.rename("b.txt", "c.txt");
+    session.move("a.txt", "b.txt");
+    session.move("b.txt", "c.txt");
 
     expect(store.listChangeRecords()).toHaveLength(1);
     expect(session.diff()).toMatchObject([

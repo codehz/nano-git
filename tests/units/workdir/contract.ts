@@ -105,14 +105,14 @@ export function runVirtualWorkdirContract(
       expect(diff2).toEqual(diff1);
     });
 
-    test("rename 文件与目录保持可读", () => {
+    test("move 文件与目录保持可读", () => {
       const repo = createMemoryRepository();
       const session = createWorkdir(repo, { baseTree: repo.createTree([]) });
 
       session.mkdir("src");
       session.writeFile("src/main.ts", Buffer.from("code"));
-      session.rename("src/main.ts", "src/index.ts");
-      session.rename("src", "lib");
+      session.move("src/main.ts", "src/index.ts");
+      session.move("src", "lib");
 
       expect(session.exists("src")).toBe(false);
       expect(session.readFile("lib/index.ts").toString()).toBe("code");

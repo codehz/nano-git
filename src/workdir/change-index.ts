@@ -44,7 +44,7 @@ export interface NormalizedChangeRecord {
   readonly previous: VirtualDiffObject | null;
   /** 变更后对象 */
   readonly current: VirtualDiffObject | null;
-  /** rename/copy 来源 */
+  /** move/copy 来源 */
   readonly source: VirtualDiffSource | null;
 }
 
@@ -156,7 +156,7 @@ export function rebuildNormalizedChangeIndex(
         path,
         previous: renameFrom.previous,
         current: addRecord.current,
-        source: { kind: "rename", path: renameFrom.path },
+        source: { kind: "move", path: renameFrom.path },
       });
       continue;
     }
@@ -264,9 +264,9 @@ export function refreshChangeRecordForPath(
 }
 
 /**
- * 将单一路径的变更记录折叠为 rename 目标路径。
+ * 将单一路径的变更记录折叠为 move 目标路径。
  *
- * 仅适用于叶子节点 rename；
+ * 仅适用于叶子节点 move；
  * 目录及无法判定来源的情况应由调用方回退到全量重建。
  */
 export function rewriteChangeRecordForRename(
@@ -279,7 +279,7 @@ export function rewriteChangeRecordForRename(
   const previousRecord = state.getChangeRecord(from);
   const currentTarget = snapshotCurrentEntryAtPath(source, state, to, cache);
   if (currentTarget === null) {
-    throw new Error(`Cannot rewrite rename change record for missing path: ${to}`);
+    throw new Error(`Cannot rewrite move change record for missing path: ${to}`);
   }
 
   const nextRecord = computeRenameRecordForPath(
@@ -291,7 +291,7 @@ export function rewriteChangeRecordForRename(
     currentTarget,
   );
   if (nextRecord === null) {
-    throw new Error(`Cannot rewrite rename change record from '${from}' to '${to}'`);
+    throw new Error(`Cannot rewrite move change record from '${from}' to '${to}'`);
   }
 
   state.deleteChangeRecord(from);
@@ -512,7 +512,7 @@ function computeRenameRecordForPath(
     to,
     baseEntry.object,
     currentTarget.object,
-    createDiffSource("rename", from),
+    createDiffSource("move", from),
   );
 }
 
@@ -540,7 +540,7 @@ function preserveLineageRecordForPath(
   previousRecord: NormalizedChangeRecord | null,
   currentEntry: SnapshotEntry | null,
 ): NormalizedChangeRecord | null | undefined {
-  if (previousRecord?.source?.kind === "rename" && previousRecord.previous !== null) {
+  if (previousRecord?.source?.kind === "move" && previousRecord.previous !== null) {
     if (currentEntry === null) {
       return null;
     }
@@ -589,7 +589,7 @@ function deriveRenameRecordFromPreviousRecord(
     to,
     previousRecord.previous,
     currentTarget.object,
-    createDiffSource("rename", from),
+    createDiffSource("move", from),
   );
 }
 
@@ -640,7 +640,7 @@ function createNormalizedChangeRecord(
   };
 }
 
-function createDiffSource(kind: "rename" | "copy", path: string): VirtualDiffSource {
+function createDiffSource(kind: "move" | "copy", path: string): VirtualDiffSource {
   return { kind, path };
 }
 

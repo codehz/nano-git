@@ -9,14 +9,14 @@ import { createVirtualWorkdirMemoryStateStore } from "@/workdir/memory-backend.t
 import { openVirtualWorkdir } from "@/workdir/workdir.ts";
 
 describe("createChangeIndexPlanner()", () => {
-  test("已有 rename/copy 来源的路径会回退到全量重建", () => {
+  test("已有 move/copy 来源的路径会回退到全量重建", () => {
     const repo = createMemoryRepository();
     const blobHash = repo.writeBlob(Buffer.from("base"));
     const baseTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]);
     const store = createVirtualWorkdirMemoryStateStore(baseTree);
     const session = openVirtualWorkdir(repo.objects, store);
 
-    session.rename("a.txt", "b.txt");
+    session.move("a.txt", "b.txt");
 
     const planner = createChangeIndexPlanner(repo.objects, store, createNoopActions());
 
@@ -70,7 +70,7 @@ describe("createChangeIndexPlanner()", () => {
         calls.push(`refresh:${path}`);
       },
       rewriteRename(from, to) {
-        calls.push(`rename:${from}->${to}`);
+        calls.push(`move:${from}->${to}`);
       },
       writeCopy(from, to) {
         calls.push(`copy:${from}->${to}`);
@@ -85,7 +85,7 @@ describe("createChangeIndexPlanner()", () => {
     expect(calls).toEqual([
       "rebuild-all",
       "refresh:a.txt",
-      "rename:a.txt->b.txt",
+      "move:a.txt->b.txt",
       "copy:a.txt->c.txt",
     ]);
   });

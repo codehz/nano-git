@@ -20,7 +20,7 @@ import { openVirtualWorkdir } from "./workdir.ts";
 import type { SHA1 } from "../core/types.ts";
 import type { ObjectDatabase } from "../core/types/odb.ts";
 import type { NormalizedChangeRecord } from "./change-index.ts";
-import type { CreateVirtualWorkdirOptions, VirtualWorkdir } from "./core.ts";
+import type { CreateVirtualWorkdirOptions, VirtualDiffSource, VirtualWorkdir } from "./core.ts";
 import type { DirtyDirHashState, DirtyDirSummary } from "./dirty-dir.ts";
 import type { NodeId } from "./ids.ts";
 import type { VirtualWorkdirStateStore } from "./state-store.ts";
@@ -48,8 +48,9 @@ interface FileChangeRecord {
     readonly mode: "100644" | "100755" | "120000";
     readonly hash: string;
   } | null;
+  /** move/copy 来源；`rename` 为旧版磁盘格式，读入时规范为 `move` */
   readonly source: {
-    readonly kind: "rename" | "copy";
+    readonly kind: "move" | "copy" | "rename";
     readonly path: string;
   } | null;
 }
@@ -623,8 +624,18 @@ function restoreChangeRecord(record: FileChangeRecord): NormalizedChangeRecord {
       record.previous === null ? null : { ...record.previous, hash: record.previous.hash as SHA1 },
     current:
       record.current === null ? null : { ...record.current, hash: record.current.hash as SHA1 },
-    source: record.source,
+    source: record.source === null ? null : readFileDiffSource(record.source),
   };
+}
+
+function readFileDiffSource(source: NonNullable<FileChangeRecord["source"]>): VirtualDiffSource {
+  if (source.kind === "copy") {
+    return { kind: "copy", path: source.path };
+  }
+  if (source.kind === "move" || source.kind === "rename") {
+    return { kind: "move", path: source.path };
+  }
+  throw new Error(`Invalid file workdir diff source kind: ${String(source.kind)}`);
 }
 
 function serializeDirtyDirSummary(summary: DirtyDirSummary): FileDirtyDirSummary {

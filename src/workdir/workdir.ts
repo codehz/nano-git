@@ -1,7 +1,7 @@
 /**
  * VirtualWorkdir 行为编排
  *
- * Phase 5：完整文件/目录 rename 与 copy 语义。
+ * Phase 5：完整文件/目录 move 与 copy 语义。
  */
 
 import {
@@ -30,6 +30,7 @@ import { overlayBindEntry, overlayTombstoneEntry, overlayRenameEntry } from "./o
 import {
   assertValidVirtualPath,
   normalizeDirectoryPath,
+  parentPath,
   splitPathSegments,
   VIRTUAL_ROOT_PATH,
 } from "./path.ts";
@@ -404,12 +405,20 @@ export function openVirtualWorkdir(
       );
     },
 
-    rename(from: string, to: string): void {
+    move(from: string, to: string): void {
       runInWriteTransaction(
         state,
         () => {
           changeIndexPlanner.apply(changeIndexPlanner.planRewriteForRename(from, to));
-          dirtyDirPlanner.rebuild([from, to]);
+          const dirtyPaths = [from, to];
+          const toParent = parentPath(to);
+          if (toParent !== null) {
+            const segments = splitPathSegments(toParent);
+            for (let i = 0; i < segments.length; i++) {
+              dirtyPaths.push(segments.slice(0, i + 1).join("/"));
+            }
+          }
+          dirtyDirPlanner.rebuild(dirtyPaths);
         },
         invalidateDiffCaches,
         () => {
@@ -420,6 +429,11 @@ export function openVirtualWorkdir(
             return;
           }
 
+          const toParent = parentPath(to);
+          if (toParent !== null) {
+            mkdirRecursive(toParent);
+          }
+
           const { from: fromTarget, to: toTarget } = resolveWriteTransfer(source, state, from, to);
           const sourceNode = fromTarget.existing.node;
 
@@ -428,19 +442,19 @@ export function openVirtualWorkdir(
             throw new VirtualPathAlreadyExistsError(to);
           }
 
-          // 检查 rename 是否将目录移入自身子目录
+          // 检查是否将目录移入自身子目录
           if (sourceNode.state.kind === "directory") {
             const toPath = to;
             const fromPath = from;
             if (toPath.startsWith(fromPath + "/") || toPath === fromPath) {
               throw new Error(
-                `Cannot rename '${from}' to '${to}': destination is a subdirectory of source`,
+                `Cannot move '${from}' to '${to}': destination is a subdirectory of source`,
               );
             }
           }
 
           if (fromTarget.parentNode.id === toTarget.parentNode.id) {
-            // 同目录 rename：单次 overlayRenameEntry 操作
+            // 同父目录：单次 overlayRenameEntry（move）操作
             updateParentOverlay(
               state,
               fromTarget.parentNode.id,
@@ -452,7 +466,7 @@ export function openVirtualWorkdir(
               ),
             );
           } else {
-            // 跨目录 rename：先解绑源，再绑定目标
+            // 跨目录树：先解绑源，再绑定目标
             updateParentOverlay(
               state,
               fromTarget.parentNode.id,

@@ -7,7 +7,7 @@
  *
  * 默认覆盖三类典型 workload：
  * - 10k files / 100 changed
- * - 批量 rename
+ * - 批量 move
  * - 同一路径反复修改
  *
  * 用法：
@@ -98,7 +98,7 @@ function createScenarioDefinitions(options: BenchOptions): readonly ScenarioDefi
         setup: () => setupLargeTreeSmallChangeScenario(2_000, 20),
       },
       {
-        name: "批量 rename（2k / 200）",
+        name: "批量 move（2k / 200）",
         indexedIterations: 300,
         baselineIterations: 10,
         setup: () => setupBatchRenameScenario(2_000, 200),
@@ -120,7 +120,7 @@ function createScenarioDefinitions(options: BenchOptions): readonly ScenarioDefi
       setup: () => setupLargeTreeSmallChangeScenario(10_000, 100),
     },
     {
-      name: "批量 rename（10k / 1k）",
+      name: "批量 move（10k / 1k）",
       indexedIterations: 400,
       baselineIterations: 12,
       setup: () => setupBatchRenameScenario(10_000, 1_000),
@@ -179,7 +179,7 @@ function setupBatchRenameScenario(totalFiles: number, renameCount: number): Scen
   const { repo, paths, workdir, state } = createBaseWorkdir(totalFiles);
   for (const path of selectSpreadPaths(paths, renameCount)) {
     const target = path.replace("/file-", "/renamed-");
-    workdir.rename(path, target);
+    workdir.move(path, target);
   }
   return {
     repo,

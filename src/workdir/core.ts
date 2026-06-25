@@ -80,11 +80,11 @@ export interface VirtualDiffObject {
 }
 
 /**
- * rename/copy 来源描述
+ * move/copy 来源描述
  */
 export interface VirtualDiffSource {
   /** 来源类型 */
-  readonly kind: "rename" | "copy";
+  readonly kind: "move" | "copy";
   /** 来源路径 */
   readonly path: string;
 }
@@ -114,7 +114,7 @@ export type VirtualDiffEntry =
       readonly path: string;
       /** 当前对象 */
       readonly current: VirtualDiffObject;
-      /** rename/copy 的来源 */
+      /** move/copy 的来源 */
       readonly source?: VirtualDiffSource;
     }
   | {
@@ -136,7 +136,7 @@ export type VirtualDiffEntry =
       readonly current: VirtualDiffObject;
       /** 变化维度 */
       readonly changes: VirtualDiffChanges;
-      /** rename/copy 的来源 */
+      /** move/copy 的来源 */
       readonly source?: VirtualDiffSource;
     };
 
@@ -220,12 +220,13 @@ export interface VirtualWorkdir {
   // ==================== 结构操作 ====================
 
   /**
-   * 重命名路径
+   * 移动路径（可跨目录树）
    *
    * 只做路径重绑定，不退化为 delete + write。
-   * 目录重命名后，子项保持懒加载。
+   * 目标父目录不存在时会自动创建中间目录。
+   * 目录移动后，子项保持懒加载。
    */
-  rename(from: string, to: string): void;
+  move(from: string, to: string): void;
 
   /**
    * 复制路径

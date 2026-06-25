@@ -13,14 +13,14 @@ import { createVirtualWorkdirMemoryStateStore } from "@/workdir/memory-backend.t
 import { openVirtualWorkdir } from "@/workdir/workdir.ts";
 
 describe("change-index lineage", () => {
-  test("refreshChangeRecordForPath() 保留 rename 来源", () => {
+  test("refreshChangeRecordForPath() 保留 move 来源", () => {
     const repo = createMemoryRepository();
     const blobHash = repo.writeBlob(Buffer.from("data"));
     const baseTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]);
     const store = createVirtualWorkdirMemoryStateStore(baseTree);
     const session = openVirtualWorkdir(repo.objects, store);
 
-    session.rename("a.txt", "b.txt");
+    session.move("a.txt", "b.txt");
     session.writeFile("b.txt", Buffer.from("changed"));
 
     const beforeRefresh = store.getChangeRecord("b.txt");
@@ -31,20 +31,20 @@ describe("change-index lineage", () => {
     expect(store.getChangeRecord("b.txt")).toMatchObject({
       path: "b.txt",
       source: {
-        kind: "rename",
+        kind: "move",
         path: "a.txt",
       },
     });
   });
 
-  test("writeChangeRecordForCopy() 继承 rename 的原始来源路径", () => {
+  test("writeChangeRecordForCopy() 继承 move 的原始来源路径", () => {
     const repo = createMemoryRepository();
     const blobHash = repo.writeBlob(Buffer.from("data"));
     const baseTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]);
     const store = createVirtualWorkdirMemoryStateStore(baseTree);
     const session = openVirtualWorkdir(repo.objects, store);
 
-    session.rename("a.txt", "b.txt");
+    session.move("a.txt", "b.txt");
     session.copy("b.txt", "c.txt");
 
     store.deleteChangeRecord("c.txt");
@@ -60,14 +60,14 @@ describe("change-index lineage", () => {
     });
   });
 
-  test("rebuildNormalizedChangeIndex() 全量重建后保留 rename/copy lineage 语义", () => {
+  test("rebuildNormalizedChangeIndex() 全量重建后保留 move/copy lineage 语义", () => {
     const repo = createMemoryRepository();
     const blobHash = repo.writeBlob(Buffer.from("data"));
     const baseTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]);
     const store = createVirtualWorkdirMemoryStateStore(baseTree);
     const session = openVirtualWorkdir(repo.objects, store);
 
-    session.rename("a.txt", "b.txt");
+    session.move("a.txt", "b.txt");
     session.writeFile("b.txt", Buffer.from("changed"));
     session.copy("b.txt", "c.txt");
 
@@ -75,7 +75,7 @@ describe("change-index lineage", () => {
       {
         path: "b.txt",
         source: {
-          kind: "rename",
+          kind: "move",
           path: "a.txt",
         },
       },

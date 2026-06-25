@@ -321,7 +321,7 @@ export function resolveCurrentLeafAtPath(
 }
 
 /**
- * 解析 `rename` / `copy` 这类“已存在源 -> 目标路径”的双路径上下文。
+ * 解析 `move` / `copy` 这类“已存在源 -> 目标路径”的双路径上下文。
  *
  * @example
  * ```ts

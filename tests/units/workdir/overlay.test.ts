@@ -59,7 +59,7 @@ describe("mergeDirectoryChildren()", () => {
 });
 
 describe("overlay 结构操作语义", () => {
-  test("rename 复用同一 nodeId", () => {
+  test("move 复用同一 nodeId", () => {
     resetNodeIdCounterForTests();
     const id = createNodeId();
     const origin = [child("old", "040000", id)];
