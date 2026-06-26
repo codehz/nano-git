@@ -43,6 +43,26 @@ function readTree(repo: ReturnType<typeof createMemoryRepository>, hash: string)
 }
 
 describe("planAffectedDirectoryChildren()", () => {
+  test("空 origin lookup 仅输出纯新增受影响名字", () => {
+    const plan = planAffectedDirectoryChildren(
+      createNamedOriginChildLookup([]),
+      new Set(["b.txt", "a.txt"]),
+    );
+
+    expect(plan).toEqual([
+      {
+        name: "b.txt",
+        originEntry: null,
+        shouldCompile: true,
+      },
+      {
+        name: "a.txt",
+        originEntry: null,
+        shouldCompile: true,
+      },
+    ]);
+  });
+
   test("保持 origin 顺序并将纯新增受影响名字补到末尾", () => {
     const lookup = createNamedOriginChildLookup([
       { mode: "100644", name: "a.txt", hash: "a".repeat(40) as import("@/core/types.ts").SHA1 },
@@ -77,6 +97,28 @@ describe("planAffectedDirectoryChildren()", () => {
 });
 
 describe("observeDirectoryChildren()", () => {
+  test("非目录节点抛 VirtualNotDirectoryError", () => {
+    const repo = createMemoryRepository();
+    const blobHash = repo.writeBlob(Buffer.from("a"));
+    const store = createVirtualWorkdirMemoryStateStore(repo.createTree([]));
+    const node = {
+      id: "file:standalone" as import("@/workdir/ids.ts").NodeId,
+      origin: { kind: "repo-blob" as const, mode: "100644" as const, hash: blobHash },
+      state: { kind: "file" as const, mode: "100644" as const },
+    };
+
+    expect(() =>
+      observeDirectoryChildren(repo.objects, store, node, "a.txt", {
+        onDirectoryChild() {
+          return 0;
+        },
+        isLeafChildDirty() {
+          return false;
+        },
+      }),
+    ).toThrow(VirtualNotDirectoryError);
+  });
+
   test("同时归纳 overlay 新增和子目录脏项", () => {
     const repo = createMemoryRepository();
     const childBlob = repo.writeBlob(Buffer.from("base"));
@@ -184,6 +226,51 @@ describe("observeListedDirectoryChild()", () => {
 });
 
 describe("observeNamedDirectoryChild()", () => {
+  test("overlay 绑定的节点缺失时返回 null", () => {
+    const repo = createMemoryRepository();
+    const store = createVirtualWorkdirMemoryStateStore(repo.createTree([]));
+    const session = openVirtualWorkdir(repo.objects, store);
+
+    session.writeFile("a.txt", Buffer.from("a"));
+    const root = store.getNode("root" as import("@/workdir/ids.ts").NodeId);
+    if (root === null || root.state.kind !== "directory") {
+      throw new Error("Expected root directory node");
+    }
+    const nodeId = root.state.overlay.addedEntries.get("a.txt");
+    if (nodeId === undefined) {
+      throw new Error("Expected a.txt node");
+    }
+    store.deleteNode(nodeId);
+
+    expect(
+      observeNamedDirectoryChild(store, root, "", createNamedOriginChildLookup([]), "a.txt"),
+    ).toBeNull();
+  });
+
+  test("目录节点被 tombstone 后返回 null", () => {
+    const repo = createMemoryRepository();
+    const blobHash = repo.writeBlob(Buffer.from("a"));
+    const baseTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]);
+    const store = createVirtualWorkdirMemoryStateStore(baseTree);
+    const session = openVirtualWorkdir(repo.objects, store);
+    session.delete("a.txt");
+    const root = store.getNode("root" as import("@/workdir/ids.ts").NodeId);
+    if (root === null || root.state.kind !== "directory") {
+      throw new Error("Expected root directory node");
+    }
+
+    const tree = readTree(repo, baseTree);
+    expect(
+      observeNamedDirectoryChild(
+        store,
+        root,
+        "",
+        createNamedOriginChildLookup(tree.entries),
+        "a.txt",
+      ),
+    ).toBeNull();
+  });
+
   test("按名称返回当前节点与完整子路径", () => {
     const repo = createMemoryRepository();
     const blobHash = repo.writeBlob(Buffer.from("a"));
@@ -227,6 +314,21 @@ describe("observeNamedDirectoryChild()", () => {
         createNamedOriginChildLookup(tree.entries),
         "missing.txt",
       ),
+    ).toBeNull();
+  });
+
+  test("传入非目录节点时返回 null", () => {
+    const repo = createMemoryRepository();
+    const blobHash = repo.writeBlob(Buffer.from("a"));
+    const node = {
+      id: "file:standalone" as import("@/workdir/ids.ts").NodeId,
+      origin: { kind: "repo-blob" as const, mode: "100644" as const, hash: blobHash },
+      state: { kind: "file" as const, mode: "100644" as const },
+    };
+    const store = createVirtualWorkdirMemoryStateStore(repo.createTree([]));
+
+    expect(
+      observeNamedDirectoryChild(store, node, "", createNamedOriginChildLookup([]), "a.txt"),
     ).toBeNull();
   });
 });
