@@ -1,5 +1,5 @@
 /**
- * 文件系统对象存储单元测试
+ * 文件系统对象存储特有行为测试
  */
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
@@ -8,17 +8,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { sha1 } from "@/core/types.ts";
-import { writeObject, readObject } from "@/objects/raw.ts";
+import { writeObject } from "@/objects/raw.ts";
 import { createFileObjectStore } from "@/odb/file.ts";
 
-import type { GitBlob, GitTree, GitCommit, GitAuthor } from "@/core/types.ts";
-
-const testAuthor: GitAuthor = {
-  name: "Test User",
-  email: "test@example.com",
-  timestamp: 1700000000,
-  timezone: "+0800",
-};
+import type { GitBlob } from "@/core/types.ts";
 
 describe("createFileObjectStore()", () => {
   let tempDir: string;
@@ -59,78 +52,5 @@ describe("createFileObjectStore()", () => {
     const hash = writeObject(store, blob);
     const expectedPath = join(tempDir, "objects", hash.slice(0, 2), hash.slice(2));
     expect(existsSync(expectedPath)).toBe(true);
-  });
-
-  test("exists() 正确判断对象是否存在", () => {
-    const blob: GitBlob = {
-      type: "blob",
-      content: Buffer.from("test"),
-    };
-    const hash = writeObject(store, blob);
-    expect(store.exists(hash)).toBe(true);
-    expect(store.exists(sha1("0000000000000000000000000000000000000000"))).toBe(false);
-  });
-
-  test("读取不存在的对象应抛出异常", () => {
-    const fakeHash = sha1("0000000000000000000000000000000000000000");
-    expect(() => store.read(fakeHash)).toThrow("Object not found");
-  });
-
-  test("重复写入同一对象不会报错", () => {
-    const blob: GitBlob = {
-      type: "blob",
-      content: Buffer.from("duplicate"),
-    };
-    const hash1 = writeObject(store, blob);
-    const hash2 = writeObject(store, blob);
-    expect(hash1).toBe(hash2);
-  });
-
-  test("写入并读取 tree 对象", () => {
-    const blobHash = writeObject(store, {
-      type: "blob",
-      content: Buffer.from("content"),
-    });
-
-    const tree: GitTree = {
-      type: "tree",
-      entries: [{ mode: "100644", name: "file.txt", hash: blobHash }],
-    };
-    const treeHash = writeObject(store, tree);
-
-    const read = readObject(store, treeHash);
-    expect(read.type).toBe("tree");
-    if (read.type === "tree") {
-      expect(read.entries).toHaveLength(1);
-      expect(read.entries[0]!.name).toBe("file.txt");
-    }
-  });
-
-  test("写入并读取 commit 对象", () => {
-    const treeHash = writeObject(store, { type: "tree", entries: [] });
-    const commit: GitCommit = {
-      type: "commit",
-      tree: treeHash,
-      parents: [],
-      author: testAuthor,
-      committer: testAuthor,
-      message: "Initial commit",
-    };
-    const commitHash = writeObject(store, commit);
-
-    const read = readObject(store, commitHash);
-    expect(read.type).toBe("commit");
-    if (read.type === "commit") {
-      expect(read.message).toBe("Initial commit");
-    }
-  });
-
-  test("list() 返回 loose object 哈希", () => {
-    expect(store.list()).toHaveLength(0);
-
-    const hash1 = writeObject(store, { type: "blob", content: Buffer.from("a") });
-    const hash2 = writeObject(store, { type: "blob", content: Buffer.from("b") });
-
-    expect(store.list()).toEqual([hash1, hash2].sort());
   });
 });
