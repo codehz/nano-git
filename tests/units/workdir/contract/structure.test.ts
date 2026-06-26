@@ -11,6 +11,22 @@ import {
 } from "@/core/errors.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
 
+import type { GitTree, SHA1 } from "@/core/types.ts";
+
+/** 读取 tree 对象（类型断言辅助） */
+function readTree(repo: ReturnType<typeof createMemoryRepository>, hash: string): GitTree {
+  const obj = repo.catFile(hash as SHA1);
+  if (obj.type !== "tree") throw new Error(`Expected tree, got ${obj.type}`);
+  return obj;
+}
+
+/** 读取 blob 内容（类型断言辅助） */
+function readBlob(repo: ReturnType<typeof createMemoryRepository>, hash: string): Buffer {
+  const obj = repo.catFile(hash as SHA1);
+  if (obj.type !== "blob") throw new Error(`Expected blob, got ${obj.type}`);
+  return obj.content;
+}
+
 describe("VirtualWorkdir contract: structure", () => {
   describe.each(virtualWorkdirBackends)("$name", ({ createWorkdir }) => {
     test("删除路径后不可见", () => {
@@ -160,6 +176,123 @@ describe("VirtualWorkdir contract: structure", () => {
       session.writeFile("b.txt", Buffer.from("b"));
 
       expect(() => session.copy("a.txt", "b.txt")).toThrow(VirtualPathAlreadyExistsError);
+    });
+
+    // ====== 以下测试由单后端 workdir-move / workdir-copy / workdir-delete 转换而来 ======
+
+    test("move 空目录产出 remove + create diff", () => {
+      const repo = createMemoryRepository();
+      const emptyTree = repo.createTree([]);
+      const baseTree = repo.createTree([{ mode: "040000", name: "src", hash: emptyTree }]);
+      const session = createWorkdir(repo, { baseTree });
+
+      session.move("src", "lib");
+
+      expect(session.diff()).toMatchObject([
+        {
+          kind: "create",
+          path: "lib",
+          current: { kind: "tree", mode: "040000", hash: emptyTree },
+        },
+        {
+          kind: "remove",
+          path: "src",
+          previous: { kind: "tree", mode: "040000", hash: emptyTree },
+        },
+      ]);
+    });
+
+    test("move 后 writeTree 不制造额外 blob", () => {
+      const repo = createMemoryRepository();
+      const session = createWorkdir(repo, { baseTree: repo.createTree([]) });
+
+      session.writeFile("old.txt", Buffer.from("content"));
+      session.move("old.txt", "new.txt");
+      const tree = session.writeTree();
+
+      const treeObj = readTree(repo, tree);
+      expect(treeObj.entries).toHaveLength(1);
+      expect(treeObj.entries[0]!.name).toBe("new.txt");
+      expect(readBlob(repo, treeObj.entries[0]!.hash).toString()).toBe("content");
+    });
+
+    test("move 后修改内容仍表现为 remove + create", () => {
+      const repo = createMemoryRepository();
+      const blobHash = repo.writeBlob(Buffer.from("data"));
+      const session = createWorkdir(repo, {
+        baseTree: repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]),
+      });
+
+      session.move("a.txt", "b.txt");
+      session.writeFile("b.txt", Buffer.from("changed"));
+
+      const diff = session.diff();
+      expect(diff.find((entry) => entry.path === "a.txt")).toMatchObject({
+        kind: "remove",
+        path: "a.txt",
+        previous: { kind: "blob", mode: "100644" },
+      });
+      expect(diff.find((entry) => entry.path === "b.txt")).toMatchObject({
+        kind: "create",
+        path: "b.txt",
+        current: { kind: "blob", mode: "100644" },
+      });
+    });
+
+    test("删除 move 目标仍保持全量语义正确", () => {
+      const repo = createMemoryRepository();
+      const blobHash = repo.writeBlob(Buffer.from("data"));
+      const session = createWorkdir(repo, {
+        baseTree: repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]),
+      });
+
+      session.move("a.txt", "b.txt");
+      session.delete("b.txt");
+
+      expect(session.diff()).toMatchObject([
+        {
+          kind: "remove",
+          path: "a.txt",
+          previous: { kind: "blob", mode: "100644" },
+        },
+      ]);
+    });
+
+    test("move 到自身为无操作", () => {
+      const repo = createMemoryRepository();
+      const session = createWorkdir(repo, { baseTree: repo.createTree([]) });
+
+      session.writeFile("f.txt", Buffer.from("data"));
+      session.move("f.txt", "f.txt");
+      expect(session.exists("f.txt")).toBe(true);
+      expect(session.readFile("f.txt").toString()).toBe("data");
+      expect(session.diff()).toMatchObject([
+        {
+          kind: "create",
+          path: "f.txt",
+          current: { kind: "blob", mode: "100644" },
+        },
+      ]);
+    });
+
+    test("复制后 writeTree 验证导出正确", () => {
+      const repo = createMemoryRepository();
+      const session = createWorkdir(repo, { baseTree: repo.createTree([]) });
+
+      session.writeFile("a.txt", Buffer.from("data"));
+      session.copy("a.txt", "b.txt");
+      const tree = session.writeTree();
+
+      const treeObj = readTree(repo, tree);
+      const names = treeObj.entries.map((e) => e.name).sort();
+      expect(names).toEqual(["a.txt", "b.txt"]);
+    });
+
+    test("删除不存在的路径抛 VirtualPathNotFoundError", () => {
+      const repo = createMemoryRepository();
+      const session = createWorkdir(repo, { baseTree: repo.createTree([]) });
+
+      expect(() => session.delete("no/such")).toThrow(VirtualPathNotFoundError);
     });
   });
 });

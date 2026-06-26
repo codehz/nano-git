@@ -98,5 +98,77 @@ describe("VirtualWorkdir contract: writeTree", () => {
       expect(root.entries[0]).toMatchObject({ mode: "100644", name: "manuscript" });
       expect(readBlob(repo, root.entries[0]!.hash).toString()).toBe("file-now");
     });
+
+    // ====== 以下测试由单后端 workdir-write-tree / workdir-reset 转换而来 ======
+
+    test("新建单文件后 writeTree", () => {
+      const repo = createMemoryRepository();
+      const baseTree = repo.createTree([]);
+      const session = createWorkdir(repo, { baseTree });
+
+      session.writeFile("a.txt", Buffer.from("hello"));
+      const newTree = session.writeTree();
+      expect(newTree).not.toBe(baseTree);
+
+      const tree = readTree(repo, newTree);
+      expect(tree.entries).toHaveLength(1);
+      expect(tree.entries[0]!.name).toBe("a.txt");
+      expect(tree.entries[0]!.mode).toBe("100644");
+
+      const blob = readBlob(repo, tree.entries[0]!.hash);
+      expect(blob.toString()).toBe("hello");
+    });
+
+    test("writeTree 不破坏 overlay，新建文件后可继续读取", () => {
+      const repo = createMemoryRepository();
+      const session = createWorkdir(repo, { baseTree: repo.createTree([]) });
+
+      session.writeFile("f.txt", Buffer.from("data"));
+      session.writeTree();
+      expect(session.readFile("f.txt").toString()).toBe("data");
+    });
+
+    test("嵌套目录+多文件 writeTree", () => {
+      const repo = createMemoryRepository();
+      const session = createWorkdir(repo, { baseTree: repo.createTree([]) });
+
+      session.mkdir("src");
+      session.writeFile("src/main.ts", Buffer.from("console.log(1)"));
+      session.writeFile("src/lib.ts", Buffer.from("export {}"));
+      session.writeFile("README.md", Buffer.from("# Project"));
+
+      const newTree = session.writeTree();
+      const tree = readTree(repo, newTree);
+      expect(tree.entries).toHaveLength(2);
+      const names = tree.entries.map((e) => e.name).sort();
+      expect(names).toEqual(["README.md", "src"]);
+
+      const srcEntry = tree.entries.find((e) => e.name === "src")!;
+      expect(srcEntry.mode).toBe("040000");
+      const srcTree = readTree(repo, srcEntry.hash);
+      const srcNames = srcTree.entries.map((e) => e.name).sort();
+      expect(srcNames).toEqual(["lib.ts", "main.ts"]);
+    });
+
+    test("多次写入后 writeTree 产出正确的 tree 结构", () => {
+      const repo = createMemoryRepository();
+      const session = createWorkdir(repo, { baseTree: repo.createTree([]) });
+
+      session.mkdir("src");
+      session.writeFile("src/a.ts", Buffer.from("a1"));
+      session.writeFile("src/b.ts", Buffer.from("b1"));
+      session.writeFile("src/a.ts", Buffer.from("a2"));
+
+      const treeHash = session.writeTree();
+      const root = readTree(repo, treeHash);
+      expect(root.entries).toHaveLength(1);
+      expect(root.entries[0]?.name).toBe("src");
+      const src = readTree(repo, root.entries[0]!.hash);
+      expect(src.entries).toHaveLength(2);
+      const aEntry = src.entries.find((e) => e.name === "a.ts");
+      const bEntry = src.entries.find((e) => e.name === "b.ts");
+      expect(aEntry).toBeDefined();
+      expect(bEntry).toBeDefined();
+    });
   });
 });

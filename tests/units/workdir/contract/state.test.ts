@@ -211,5 +211,21 @@ describe("VirtualWorkdir contract: state", () => {
         },
       ]);
     });
+
+    // ====== 以下测试由单后端 workdir-reset 转换而来 ======
+
+    test("reset 后行为等同新 workdir", () => {
+      const repo = createMemoryRepository();
+      const fileHash = repo.writeBlob(Buffer.from("base"));
+      const baseTree = repo.createTree([{ mode: "100644", name: "f", hash: fileHash }]);
+      const session = createWorkdir(repo, { baseTree: repo.createTree([]) });
+
+      session.writeFile("temp.txt", Buffer.from("temp"));
+      session.reset(baseTree);
+
+      const fresh = createWorkdir(repo, { baseTree });
+      expect(session.readdir()).toEqual(fresh.readdir());
+      expect(session.readFile("f").toString()).toBe(fresh.readFile("f").toString());
+    });
   });
 });

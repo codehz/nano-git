@@ -234,5 +234,42 @@ describe("VirtualWorkdir contract: read/write", () => {
       session.mkdir("dir");
       expect(() => session.mkdir("dir")).toThrow(VirtualPathAlreadyExistsError);
     });
+
+    // ====== 以下测试由单后端 workdir-read / workdir-mkdir 转换而来 ======
+
+    test("空 tree 根目录可读", () => {
+      const repo = createMemoryRepository();
+      const baseTree = repo.createTree([]);
+      const session = createWorkdir(repo, { baseTree });
+
+      expect(session.baseTree).toBe(baseTree);
+      expect(session.exists("")).toBe(true);
+      expect(session.readdir()).toEqual([]);
+      expect(session.readdir("")).toEqual([]);
+      expect(session.stat("")).toEqual({
+        kind: "tree",
+        mode: "040000",
+        size: 0,
+        hash: baseTree,
+      });
+    });
+
+    test("mkdir recursive 在文件路径上存在文件时报 VirtualNotDirectoryError", () => {
+      const repo = createMemoryRepository();
+      const fileHash = repo.writeBlob(Buffer.from("data"));
+      const baseTree = repo.createTree([{ mode: "100644", name: "f", hash: fileHash }]);
+      const session = createWorkdir(repo, { baseTree });
+
+      expect(() => session.mkdir("f/sub", { recursive: true })).toThrow(VirtualNotDirectoryError);
+    });
+
+    test("mkdir recursive 目标路径已是文件时报 VirtualNotDirectoryError", () => {
+      const repo = createMemoryRepository();
+      const fileHash = repo.writeBlob(Buffer.from("data"));
+      const baseTree = repo.createTree([{ mode: "100644", name: "f", hash: fileHash }]);
+      const session = createWorkdir(repo, { baseTree });
+
+      expect(() => session.mkdir("f", { recursive: true })).toThrow(VirtualNotDirectoryError);
+    });
   });
 });
