@@ -8,7 +8,6 @@ import {
   createEmptyDirectoryOverlay,
   mergeDirectoryChildren,
   overlayBindEntry,
-  overlayRenameEntry,
   overlayTombstoneEntry,
   resolveChildNodeId,
   type OriginDirectoryChild,
@@ -59,14 +58,17 @@ describe("mergeDirectoryChildren()", () => {
 });
 
 describe("overlay 结构操作语义", () => {
-  test("move 复用同一 nodeId", () => {
+  test("copy + delete 可以表达重命名后的可见结果", () => {
     resetNodeIdCounterForTests();
-    const id = createNodeId();
-    const origin = [child("old", "040000", id)];
-    let overlay = overlayRenameEntry(createEmptyDirectoryOverlay(), "old", "new", id);
+    const originalId = createNodeId();
+    const copiedId = createNodeId();
+    const origin = [child("old", "040000", originalId)];
+    let overlay = createEmptyDirectoryOverlay();
+    overlay = overlayTombstoneEntry(overlay, "old");
+    overlay = overlayBindEntry(overlay, "new", copiedId);
     const merged = mergeDirectoryChildren(origin, overlay, new Map([["new", "040000"]]));
     expect(merged.map((e) => e.name)).toEqual(["new"]);
-    expect(merged[0]!.nodeId).toBe(id);
+    expect(merged[0]!.nodeId).toBe(copiedId);
   });
 
   test("copy 使用不同 nodeId（由调用方绑定）", () => {

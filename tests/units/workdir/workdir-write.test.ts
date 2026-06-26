@@ -889,7 +889,7 @@ describe("move", () => {
     expect(session.readFile("lib/main.ts").toString()).toBe("code");
   });
 
-  test("move 空目录产出 move diff", () => {
+  test("move 空目录产出 remove + create diff", () => {
     const repo = createMemoryRepository();
     const emptyTree = repo.createTree([]);
     const baseTree = repo.createTree([{ mode: "040000", name: "src", hash: emptyTree }]);
@@ -899,21 +899,21 @@ describe("move", () => {
 
     expect(session.diff()).toMatchObject([
       {
-        kind: "update",
+        kind: "create",
         path: "lib",
-        previous: {
-          kind: "tree",
-          mode: "040000",
-          hash: emptyTree,
-        },
         current: {
           kind: "tree",
           mode: "040000",
           hash: emptyTree,
         },
-        source: {
-          kind: "move",
-          path: "src",
+      },
+      {
+        kind: "remove",
+        path: "src",
+        previous: {
+          kind: "tree",
+          mode: "040000",
+          hash: emptyTree,
         },
       },
     ]);
@@ -935,7 +935,7 @@ describe("move", () => {
     expect(readBlob(repo, treeObj.entries[0]!.hash).toString()).toBe("content");
   });
 
-  test("repo-backed move 产出 move diff", () => {
+  test("repo-backed move 产出 remove + create diff", () => {
     const repo = createMemoryRepository();
     const blobHash = repo.writeBlob(Buffer.from("data"));
     const session = createVirtualWorkdir(repo.objects, {
@@ -943,32 +943,26 @@ describe("move", () => {
     });
 
     session.move("a.txt", "b.txt");
-    expect(session.diff()).toMatchObject([
-      {
-        kind: "update",
-        path: "b.txt",
-        previous: {
-          kind: "blob",
-          mode: "100644",
-        },
-        current: {
-          kind: "blob",
-          mode: "100644",
-        },
-        changes: {
-          kindChanged: false,
-          modeChanged: false,
-          contentChanged: false,
-        },
-        source: {
-          kind: "move",
-          path: "a.txt",
-        },
+    const diff = session.diff();
+    expect(diff.find((entry) => entry.path === "a.txt")).toMatchObject({
+      kind: "remove",
+      path: "a.txt",
+      previous: {
+        kind: "blob",
+        mode: "100644",
       },
-    ]);
+    });
+    expect(diff.find((entry) => entry.path === "b.txt")).toMatchObject({
+      kind: "create",
+      path: "b.txt",
+      current: {
+        kind: "blob",
+        mode: "100644",
+      },
+    });
   });
 
-  test("move 后修改内容仍保留 move 来源", () => {
+  test("move 后修改内容仍表现为 remove + create", () => {
     const repo = createMemoryRepository();
     const blobHash = repo.writeBlob(Buffer.from("data"));
     const session = createVirtualWorkdir(repo.objects, {
@@ -978,29 +972,23 @@ describe("move", () => {
     session.move("a.txt", "b.txt");
     session.writeFile("b.txt", Buffer.from("changed"));
 
-    expect(session.diff()).toMatchObject([
-      {
-        kind: "update",
-        path: "b.txt",
-        previous: {
-          kind: "blob",
-          mode: "100644",
-        },
-        current: {
-          kind: "blob",
-          mode: "100644",
-        },
-        source: {
-          kind: "move",
-          path: "a.txt",
-        },
-        changes: {
-          kindChanged: false,
-          modeChanged: false,
-          contentChanged: true,
-        },
+    const diff = session.diff();
+    expect(diff.find((entry) => entry.path === "a.txt")).toMatchObject({
+      kind: "remove",
+      path: "a.txt",
+      previous: {
+        kind: "blob",
+        mode: "100644",
       },
-    ]);
+    });
+    expect(diff.find((entry) => entry.path === "b.txt")).toMatchObject({
+      kind: "create",
+      path: "b.txt",
+      current: {
+        kind: "blob",
+        mode: "100644",
+      },
+    });
   });
 
   test("删除 move 目标仍保持全量语义正确", () => {
@@ -1227,10 +1215,6 @@ describe("copy", () => {
           kind: "blob",
           mode: "100644",
         },
-        source: {
-          kind: "copy",
-          path: "a.txt",
-        },
       },
     ]);
   });
@@ -1257,9 +1241,6 @@ describe("copy", () => {
     ]);
     const copyEntry = session.diff()[1];
     expect(copyEntry?.kind).toBe("create");
-    if (copyEntry?.kind === "create") {
-      expect(copyEntry.source).toBeUndefined();
-    }
   });
 
   test("源不存在抛 VirtualPathNotFoundError", () => {

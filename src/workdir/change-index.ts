@@ -16,7 +16,7 @@ import { readRepoBlobContent, readRepoTree } from "./origin.ts";
 import { VIRTUAL_ROOT_PATH } from "./path.ts";
 import { getDirectoryChildrenView, joinChildPath, resolvePath } from "./workdir-path.ts";
 
-import type { DiffChanges, DiffEntry, DiffObject, DiffSource } from "../core/diff.ts";
+import type { DiffChanges, DiffEntry, DiffObject } from "../core/diff.ts";
 import type { SHA1, TreeEntry } from "../core/types.ts";
 import type { ObjectSource } from "../core/types/odb.ts";
 import type { NodeId } from "./ids.ts";
@@ -36,19 +36,12 @@ export interface NormalizedChangeRecord {
   readonly previous: DiffObject | null;
   /** 变更后对象 */
   readonly current: DiffObject | null;
-  /** move/copy 来源 */
-  readonly source: DiffSource | null;
 }
 
 interface SnapshotEntry {
   readonly path: string;
   readonly object: DiffObject;
   readonly originSignature: string | null;
-}
-
-interface CopySourceMatch {
-  readonly path: string;
-  readonly entry: SnapshotEntry;
 }
 
 interface BaseSnapshotView {
@@ -78,7 +71,6 @@ export function rebuildNormalizedChangeIndex(
   cache?: VirtualDiffComputationCache,
 ): NormalizedChangeRecord[] {
   const baseSnapshot = baseSnapshotViewForTree(source, state.readBaseTree());
-  const baseEntries = baseSnapshot.entries;
   const currentEntries = snapshotCurrentTree(source, state, cache);
 
   const baseByPath = baseSnapshot.byPath;
@@ -99,7 +91,6 @@ export function rebuildNormalizedChangeIndex(
           path,
           previous: previous.object,
           current: current.object,
-          source: null,
         });
       }
       continue;
@@ -110,7 +101,6 @@ export function rebuildNormalizedChangeIndex(
         path,
         previous: previous.object,
         current: null,
-        source: null,
       });
       continue;
     }
@@ -120,47 +110,6 @@ export function rebuildNormalizedChangeIndex(
         path,
         previous: null,
         current: current.object,
-        source: null,
-      });
-    }
-  }
-
-  const unmatchedDeletesBySignature = indexDeletesBySignature(deletes);
-  const matchedDeletePaths = new Set<string>();
-
-  for (const [path, addRecord] of Array.from(adds.entries()).sort(([left], [right]) =>
-    left.localeCompare(right),
-  )) {
-    const current = currentByPath.get(path);
-    if (current === undefined || current.originSignature === null) {
-      continue;
-    }
-
-    const deleteCandidates = unmatchedDeletesBySignature.get(current.originSignature) ?? [];
-    const renameFrom = deleteCandidates.find(
-      (candidate) => !matchedDeletePaths.has(candidate.path),
-    );
-    if (renameFrom !== undefined) {
-      matchedDeletePaths.add(renameFrom.path);
-      adds.delete(path);
-      deletes.delete(renameFrom.path);
-      out.push({
-        path,
-        previous: renameFrom.previous,
-        current: addRecord.current,
-        source: { kind: "move", path: renameFrom.path },
-      });
-      continue;
-    }
-
-    const copyFrom = findCopySource(baseEntries, current);
-    if (copyFrom !== null) {
-      adds.delete(path);
-      out.push({
-        path,
-        previous: null,
-        current: addRecord.current,
-        source: { kind: "copy", path: copyFrom.path },
       });
     }
   }
@@ -188,7 +137,6 @@ export function exportVirtualDiffFromChangeRecords(
           kind: "create",
           path: record.path,
           current: record.current,
-          source: record.source ?? undefined,
         } satisfies DiffEntry;
       }
 
@@ -207,7 +155,6 @@ export function exportVirtualDiffFromChangeRecords(
           previous: record.previous,
           current: record.current,
           changes: diffChanges(record.previous, record.current),
-          source: record.source ?? undefined,
         } satisfies DiffEntry;
       }
 
@@ -246,75 +193,12 @@ export function refreshChangeRecordForPath(
   path: string,
   cache?: VirtualDiffComputationCache,
 ): void {
-  const previousRecord = state.getChangeRecord(path);
-  const nextRecord = computeChangeRecordForPath(source, state, path, previousRecord, cache);
+  const nextRecord = computeChangeRecordForPath(source, state, path, cache);
   if (nextRecord === null) {
     state.deleteChangeRecord(path);
     return;
   }
   state.setChangeRecord(nextRecord);
-}
-
-/**
- * 将单一路径的变更记录折叠为 move 目标路径。
- *
- * 仅适用于叶子节点 move；
- * 目录及无法判定来源的情况应由调用方回退到全量重建。
- */
-export function rewriteChangeRecordForRename(
-  source: ObjectSource,
-  state: VirtualWorkdirStateStore,
-  from: string,
-  to: string,
-  cache?: VirtualDiffComputationCache,
-): void {
-  const previousRecord = state.getChangeRecord(from);
-  const currentTarget = snapshotCurrentEntryAtPath(source, state, to, cache);
-  if (currentTarget === null) {
-    throw new Error(`Cannot rewrite move change record for missing path: ${to}`);
-  }
-
-  const nextRecord = computeRenameRecordForPath(
-    source,
-    state,
-    from,
-    to,
-    previousRecord,
-    currentTarget,
-  );
-  if (nextRecord === null) {
-    throw new Error(`Cannot rewrite move change record from '${from}' to '${to}'`);
-  }
-
-  state.deleteChangeRecord(from);
-  state.setChangeRecord(nextRecord);
-}
-
-/**
- * 为 copy 目标路径写入折叠后的变更记录。
- *
- * 仅适用于叶子节点 copy；
- * workdir-only 来源允许退化为普通 create。
- */
-export function writeChangeRecordForCopy(
-  source: ObjectSource,
-  state: VirtualWorkdirStateStore,
-  from: string,
-  to: string,
-  cache?: VirtualDiffComputationCache,
-): void {
-  const sourceRecord = state.getChangeRecord(from);
-  const currentTarget = snapshotCurrentEntryAtPath(source, state, to, cache);
-  if (currentTarget === null) {
-    throw new Error(`Cannot write copy change record for missing path: ${to}`);
-  }
-
-  state.setChangeRecord({
-    path: to,
-    previous: null,
-    current: currentTarget.object,
-    source: deriveCopySource(from, sourceRecord, source, state),
-  });
 }
 
 function snapshotBaseTree(source: ObjectSource, treeHash: SHA1, dirPath: string): SnapshotEntry[] {
@@ -503,15 +387,10 @@ function computeChangeRecordForPath(
   source: ObjectSource,
   state: VirtualWorkdirStateStore,
   path: string,
-  previousRecord: NormalizedChangeRecord | null,
   cache?: VirtualDiffComputationCache,
 ): NormalizedChangeRecord | null {
   const baseEntry = baseSnapshotEntryAtPath(source, state.readBaseTree(), path);
   const currentEntry = snapshotCurrentEntryAtPath(source, state, path, cache);
-  const preservedLineage = preserveLineageRecordForPath(path, previousRecord, currentEntry);
-  if (preservedLineage !== undefined) {
-    return preservedLineage;
-  }
 
   if (baseEntry === null && currentEntry === null) {
     return null;
@@ -533,113 +412,6 @@ function computeChangeRecordForPath(
   }
 
   throw new Error(`Unreachable change-record state at path: ${path}`);
-}
-
-function computeRenameRecordForPath(
-  source: ObjectSource,
-  state: VirtualWorkdirStateStore,
-  from: string,
-  to: string,
-  previousRecord: NormalizedChangeRecord | null,
-  currentTarget: SnapshotEntry,
-): NormalizedChangeRecord | null {
-  const derivedFromPrevious = deriveRenameRecordFromPreviousRecord(
-    from,
-    to,
-    previousRecord,
-    currentTarget,
-  );
-  if (derivedFromPrevious !== undefined) {
-    return derivedFromPrevious;
-  }
-
-  const baseEntry = baseSnapshotEntryAtPath(source, state.readBaseTree(), from);
-  if (baseEntry === null) {
-    return null;
-  }
-  return createNormalizedChangeRecord(
-    to,
-    baseEntry.object,
-    currentTarget.object,
-    createDiffSource("move", from),
-  );
-}
-
-function deriveCopySource(
-  from: string,
-  sourceRecord: NormalizedChangeRecord | null,
-  source: ObjectSource,
-  state: VirtualWorkdirStateStore,
-): DiffSource | null {
-  const fromRecordSource = sourceRecord?.source;
-  if (fromRecordSource !== null && fromRecordSource !== undefined) {
-    return createDiffSource("copy", fromRecordSource.path);
-  }
-  if (
-    sourceRecord?.previous !== null ||
-    baseSnapshotEntryAtPath(source, state.readBaseTree(), from) !== null
-  ) {
-    return createDiffSource("copy", from);
-  }
-  return null;
-}
-
-function preserveLineageRecordForPath(
-  path: string,
-  previousRecord: NormalizedChangeRecord | null,
-  currentEntry: SnapshotEntry | null,
-): NormalizedChangeRecord | null | undefined {
-  if (previousRecord?.source?.kind === "move" && previousRecord.previous !== null) {
-    if (currentEntry === null) {
-      return null;
-    }
-    return createNormalizedChangeRecord(
-      path,
-      previousRecord.previous,
-      currentEntry.object,
-      previousRecord.source,
-    );
-  }
-
-  if (previousRecord?.source?.kind === "copy") {
-    if (currentEntry === null) {
-      return null;
-    }
-    return createNormalizedChangeRecord(path, null, currentEntry.object, previousRecord.source);
-  }
-
-  return undefined;
-}
-
-function deriveRenameRecordFromPreviousRecord(
-  from: string,
-  to: string,
-  previousRecord: NormalizedChangeRecord | null,
-  currentTarget: SnapshotEntry,
-): NormalizedChangeRecord | null | undefined {
-  if (previousRecord === null) {
-    return undefined;
-  }
-  if (previousRecord.current === null) {
-    return null;
-  }
-  if (previousRecord.source !== null) {
-    return createNormalizedChangeRecord(
-      to,
-      previousRecord.previous,
-      currentTarget.object,
-      previousRecord.source,
-    );
-  }
-  if (previousRecord.previous === null) {
-    return createNormalizedChangeRecord(to, null, currentTarget.object);
-  }
-  return createNormalizedChangeRecord(
-    to,
-    previousRecord.previous,
-    currentTarget.object,
-    createDiffSource("move", from),
-  );
 }
 
 function snapshotCurrentEntryAtPath(
@@ -683,18 +455,12 @@ function createNormalizedChangeRecord(
   path: string,
   previous: DiffObject | null,
   current: DiffObject | null,
-  source: DiffSource | null = null,
 ): NormalizedChangeRecord {
   return {
     path,
     previous,
     current,
-    source,
   };
-}
-
-function createDiffSource(kind: "move" | "copy", path: string): DiffSource {
-  return { kind, path };
 }
 
 function createDiffObject(mode: "100644" | "100755" | "040000" | "120000", hash: SHA1): DiffObject {
@@ -755,39 +521,6 @@ function baseSnapshotEntryAtPath(
   path: string,
 ): SnapshotEntry | null {
   return baseSnapshotViewForTree(source, treeHash).byPath.get(path) ?? null;
-}
-
-function indexDeletesBySignature(
-  deletes: ReadonlyMap<string, NormalizedChangeRecord>,
-): ReadonlyMap<string, NormalizedChangeRecord[]> {
-  const out = new Map<string, NormalizedChangeRecord[]>();
-  for (const entry of deletes.values()) {
-    if (entry.previous === null) {
-      continue;
-    }
-    const signature = buildOriginSignature(entry.previous.mode, entry.previous.hash);
-    const list = out.get(signature) ?? [];
-    list.push(entry);
-    out.set(signature, list);
-  }
-  return out;
-}
-
-function findCopySource(
-  baseEntries: readonly SnapshotEntry[],
-  current: SnapshotEntry,
-): CopySourceMatch | null {
-  if (current.originSignature === null) {
-    return null;
-  }
-
-  const source = baseEntries
-    .filter((entry) => entry.originSignature === current.originSignature)
-    .sort((left, right) => left.path.localeCompare(right.path))[0];
-  if (source === undefined) {
-    return null;
-  }
-  return { path: source.path, entry: source };
 }
 
 function modeKind(mode: TreeEntry["mode"]): "blob" | "tree" | "symlink" {

@@ -111,7 +111,7 @@ export function mergeDirectoryChildren(
 // ==================== 变更操作（目录 overlay） ====================
 
 /**
- * 在目录 overlay 中绑定或覆盖条目（create / modify / move 目标 / copy 目标）
+ * 在目录 overlay 中绑定或覆盖条目（create / modify / copy 目标）
  */
 export function overlayBindEntry(
   overlay: DirectoryOverlay,
@@ -137,20 +137,6 @@ export function overlayTombstoneEntry(overlay: DirectoryOverlay, name: string): 
     deletedNames.add(name);
   }
   return { addedEntries, deletedNames };
-}
-
-/**
- * 在同一目录内 move：复用 nodeId，仅改绑定名
- */
-export function overlayRenameEntry(
-  overlay: DirectoryOverlay,
-  fromName: string,
-  toName: string,
-  nodeId: NodeId,
-): DirectoryOverlay {
-  let next = overlayTombstoneEntry(overlay, fromName);
-  next = overlayBindEntry(next, toName, nodeId);
-  return next;
 }
 
 /**

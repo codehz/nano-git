@@ -158,9 +158,8 @@ export interface VirtualWorkdir {
   /**
    * 移动路径（可跨目录树）
    *
-   * 只做路径重绑定，不退化为 delete + write。
+   * 当前语义等价于 copy + delete。
    * 目标父目录不存在时会自动创建中间目录。
-   * 目录移动后，子项保持懒加载。
    */
   move(from: string, to: string): void;
 

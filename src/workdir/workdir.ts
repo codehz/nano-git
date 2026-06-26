@@ -19,7 +19,7 @@ import { createNodeId } from "./ids.ts";
 import { createVirtualWorkdirMemoryStateStore } from "./memory-backend.ts";
 import { revertNodeState, type WorkdirNode } from "./nodes.ts";
 import { modeToVirtualEntryKind, readRepoBlobContent } from "./origin.ts";
-import { overlayBindEntry, overlayTombstoneEntry, overlayRenameEntry } from "./overlay.ts";
+import { overlayBindEntry, overlayTombstoneEntry } from "./overlay.ts";
 import {
   assertValidVirtualPath,
   normalizeDirectoryPath,
@@ -113,8 +113,6 @@ export function openVirtualWorkdir(
   const changeIndexPlanner = createChangeIndexPlanner(source, state, {
     rebuildAll: refreshChangeIndex,
     refreshPath: refreshChangeIndex,
-    rewriteRename: refreshChangeIndex,
-    writeCopy: refreshChangeIndex,
   });
   refreshChangeIndex();
 
@@ -362,7 +360,7 @@ export function openVirtualWorkdir(
       runInWriteTransaction(
         state,
         () => {
-          changeIndexPlanner.apply(changeIndexPlanner.planRewriteForRename(from, to));
+          changeIndexPlanner.apply(changeIndexPlanner.planMove(from, to));
         },
         invalidateDiffCaches,
         () => {
@@ -397,31 +395,27 @@ export function openVirtualWorkdir(
             }
           }
 
+          const newNodeId = cloneNodeGraphForCopy(source, state, sourceNode, from);
           if (fromTarget.parentNode.id === toTarget.parentNode.id) {
-            // 同父目录：单次 overlayRenameEntry（move）操作
-            updateParentOverlay(
-              state,
-              fromTarget.parentNode.id,
-              overlayRenameEntry(
-                fromTarget.parentNode.state.overlay,
-                fromTarget.name,
-                toTarget.name,
-                sourceNode.id,
-              ),
-            );
-          } else {
-            // 跨目录树：先解绑源，再绑定目标
-            updateParentOverlay(
-              state,
-              fromTarget.parentNode.id,
+            const nextOverlay = overlayBindEntry(
               overlayTombstoneEntry(fromTarget.parentNode.state.overlay, fromTarget.name),
+              toTarget.name,
+              newNodeId,
             );
-            updateParentOverlay(
-              state,
-              toTarget.parentNode.id,
-              overlayBindEntry(toTarget.parentNode.state.overlay, toTarget.name, sourceNode.id),
-            );
+            updateParentOverlay(state, fromTarget.parentNode.id, nextOverlay);
+            return;
           }
+
+          updateParentOverlay(
+            state,
+            fromTarget.parentNode.id,
+            overlayTombstoneEntry(fromTarget.parentNode.state.overlay, fromTarget.name),
+          );
+          updateParentOverlay(
+            state,
+            toTarget.parentNode.id,
+            overlayBindEntry(toTarget.parentNode.state.overlay, toTarget.name, newNodeId),
+          );
         },
       );
     },
@@ -430,7 +424,7 @@ export function openVirtualWorkdir(
       runInWriteTransaction(
         state,
         () => {
-          changeIndexPlanner.apply(changeIndexPlanner.planWriteForCopy(from, to));
+          changeIndexPlanner.apply(changeIndexPlanner.planCopy(from, to));
         },
         invalidateDiffCaches,
         () => {

@@ -37,7 +37,7 @@ export interface OpenSqliteVirtualWorkdirOptions
  */
 export type SqliteVirtualWorkdir = VirtualWorkdir & { [Symbol.dispose](): void };
 
-const WORKDIR_SQLITE_SCHEMA_VERSION = 6;
+const WORKDIR_SQLITE_SCHEMA_VERSION = 7;
 
 interface WorkdirRow {
   workdir_key: string;
@@ -64,8 +64,6 @@ interface ChangeRow {
   current_kind: string | null;
   current_mode: string | null;
   current_hash: string | null;
-  source_kind: string | null;
-  source_path: string | null;
 }
 
 interface DirtyDirRow {
@@ -196,30 +194,28 @@ export function createSqliteVirtualWorkdirStateStore(
   );
   const clearNodesStmt = conn.prepare<void>("DELETE FROM workdir_nodes WHERE workdir_key = ?");
   const listChangesStmt = conn.prepare<ChangeRow>(
-    `SELECT path, previous_kind, previous_mode, previous_hash, current_kind, current_mode, current_hash, source_kind, source_path
+    `SELECT path, previous_kind, previous_mode, previous_hash, current_kind, current_mode, current_hash
      FROM workdir_changes
      WHERE workdir_key = ?
      ORDER BY path`,
   );
   const getChangeStmt = conn.prepare<ChangeRow | null>(
-    `SELECT path, previous_kind, previous_mode, previous_hash, current_kind, current_mode, current_hash, source_kind, source_path
+    `SELECT path, previous_kind, previous_mode, previous_hash, current_kind, current_mode, current_hash
      FROM workdir_changes
      WHERE workdir_key = ? AND path = ?`,
   );
   const upsertChangeStmt = conn.prepare<void>(
     `INSERT INTO workdir_changes (
       workdir_key, path, previous_kind, previous_mode, previous_hash,
-      current_kind, current_mode, current_hash, source_kind, source_path
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      current_kind, current_mode, current_hash
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(workdir_key, path) DO UPDATE SET
       previous_kind = excluded.previous_kind,
       previous_mode = excluded.previous_mode,
       previous_hash = excluded.previous_hash,
       current_kind = excluded.current_kind,
       current_mode = excluded.current_mode,
-      current_hash = excluded.current_hash,
-      source_kind = excluded.source_kind,
-      source_path = excluded.source_path`,
+      current_hash = excluded.current_hash`,
   );
   const deleteChangeStmt = conn.prepare<void>(
     "DELETE FROM workdir_changes WHERE workdir_key = ? AND path = ?",
@@ -319,8 +315,6 @@ export function createSqliteVirtualWorkdirStateStore(
         record.current?.kind ?? null,
         record.current?.mode ?? null,
         record.current?.hash ?? null,
-        record.source?.kind ?? null,
-        record.source?.path ?? null,
       );
     },
 
@@ -399,8 +393,6 @@ function ensureSchema(db: Database): void {
       current_kind TEXT,
       current_mode TEXT,
       current_hash TEXT,
-      source_kind TEXT,
-      source_path TEXT,
       PRIMARY KEY (workdir_key, path)
     )
   `);
@@ -642,13 +634,6 @@ function readChangeRecord(row: ChangeRow): NormalizedChangeRecord {
             mode: readDiffObjectMode(row.current_mode),
             hash: row.current_hash as SHA1,
           },
-    source:
-      row.source_kind === null || row.source_path === null
-        ? null
-        : {
-            kind: readDiffSourceKind(row.source_kind),
-            path: row.source_path,
-          },
   };
 }
 
@@ -664,14 +649,6 @@ function readDiffObjectMode(raw: string): "100644" | "100755" | "040000" | "1200
     return raw;
   }
   throw new Error(`Invalid SQLite workdir diff object mode: ${raw}`);
-}
-
-/** 解析 diff 来源种类。 */
-function readDiffSourceKind(raw: string): "move" | "copy" {
-  if (raw === "move" || raw === "copy") {
-    return raw;
-  }
-  throw new Error(`Invalid SQLite workdir diff source kind: ${raw}`);
 }
 
 function readDirtyDirSummary(row: DirtyDirRow): DirtyDirSummary {

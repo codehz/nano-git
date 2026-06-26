@@ -15,9 +15,7 @@ import type { VirtualWorkdirStateStore } from "./state-store.ts";
  */
 export type ChangeIndexUpdatePlan =
   | { readonly kind: "rebuild-all" }
-  | { readonly kind: "refresh-path"; readonly path: string }
-  | { readonly kind: "rewrite-rename"; readonly from: string; readonly to: string }
-  | { readonly kind: "write-copy"; readonly from: string; readonly to: string };
+  | { readonly kind: "refresh-path"; readonly path: string };
 
 /**
  * path 增量刷新判定选项
@@ -33,8 +31,6 @@ export interface ChangeIndexPathRefreshOptions {
 export interface ChangeIndexUpdateActions {
   rebuildAll(): void;
   refreshPath(path: string): void;
-  rewriteRename(from: string, to: string): void;
-  writeCopy(from: string, to: string): void;
 }
 
 /**
@@ -44,8 +40,8 @@ export interface ChangeIndexPlanner {
   apply(plan: ChangeIndexUpdatePlan): void;
   planRefreshForPath(path: string, options?: ChangeIndexPathRefreshOptions): ChangeIndexUpdatePlan;
   planDeletePath(path: string, options?: ChangeIndexPathRefreshOptions): ChangeIndexUpdatePlan;
-  planRewriteForRename(from: string, to: string): ChangeIndexUpdatePlan;
-  planWriteForCopy(from: string, to: string): ChangeIndexUpdatePlan;
+  planMove(from: string, to: string): ChangeIndexUpdatePlan;
+  planCopy(from: string, to: string): ChangeIndexUpdatePlan;
 }
 
 /**
@@ -56,8 +52,6 @@ export interface ChangeIndexPlanner {
  * const planner = createChangeIndexPlanner(source, state, {
  *   rebuildAll() {},
  *   refreshPath() {},
- *   rewriteRename() {},
- *   writeCopy() {},
  * });
  * expect(planner.planRefreshForPath("a.txt").kind).toBe("refresh-path");
  * ```
@@ -71,11 +65,6 @@ export function createChangeIndexPlanner(
     path: string,
     options?: ChangeIndexPathRefreshOptions,
   ): boolean => {
-    const record = state.getChangeRecord(path);
-    if (record !== null && record.source !== null) {
-      return false;
-    }
-
     const resolved = resolvePath(source, state, path);
     if (!resolved.found || resolved.node === null) {
       return options?.treatMissingAsIncremental === true;
@@ -100,12 +89,6 @@ export function createChangeIndexPlanner(
         case "refresh-path":
           actions.refreshPath(plan.path);
           return;
-        case "rewrite-rename":
-          actions.rewriteRename(plan.from, plan.to);
-          return;
-        case "write-copy":
-          actions.writeCopy(plan.from, plan.to);
-          return;
       }
     },
 
@@ -123,17 +106,17 @@ export function createChangeIndexPlanner(
           : { kind: "rebuild-all" };
     },
 
-    planRewriteForRename(from, to): ChangeIndexUpdatePlan {
+    planMove(from, to): ChangeIndexUpdatePlan {
       return canIncrementallyRefreshPath(from) &&
         canIncrementallyRefreshPath(to, { treatMissingAsIncremental: true })
-        ? { kind: "rewrite-rename", from, to }
+        ? { kind: "rebuild-all" }
         : { kind: "rebuild-all" };
     },
 
-    planWriteForCopy(from, to): ChangeIndexUpdatePlan {
+    planCopy(from, to): ChangeIndexUpdatePlan {
       return canIncrementallyWriteCopy(from) &&
         canIncrementallyRefreshPath(to, { treatMissingAsIncremental: true })
-        ? { kind: "write-copy", from, to }
+        ? { kind: "rebuild-all" }
         : { kind: "rebuild-all" };
     },
   };

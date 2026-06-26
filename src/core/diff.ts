@@ -30,16 +30,6 @@ export interface DiffObject {
 }
 
 /**
- * move/copy 来源描述
- */
-export interface DiffSource {
-  /** 来源类型 */
-  readonly kind: "move" | "copy";
-  /** 来源路径 */
-  readonly path: string;
-}
-
-/**
  * 同路径更新的变化维度
  */
 export interface DiffChanges {
@@ -62,8 +52,6 @@ export type DiffEntry =
       readonly path: string;
       /** 当前对象 */
       readonly current: DiffObject;
-      /** move/copy 的来源 */
-      readonly source?: DiffSource;
     }
   | {
       /** 删除路径 */
@@ -84,6 +72,4 @@ export type DiffEntry =
       readonly current: DiffObject;
       /** 变化维度 */
       readonly changes: DiffChanges;
-      /** move/copy 的来源 */
-      readonly source?: DiffSource;
     };

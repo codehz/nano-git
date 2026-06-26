@@ -17,7 +17,7 @@ import { sha1 } from "../core/types.ts";
 import { createRootDirectoryNode, type WorkdirNode } from "./nodes.ts";
 import { openVirtualWorkdir } from "./workdir.ts";
 
-import type { DiffObject, DiffSource } from "../core/diff.ts";
+import type { DiffObject } from "../core/diff.ts";
 import type { SHA1 } from "../core/types.ts";
 import type { ObjectDatabase } from "../core/types/odb.ts";
 import type { NormalizedChangeRecord } from "./change-index.ts";
@@ -26,7 +26,7 @@ import type { DirtyDirHashState, DirtyDirSummary } from "./dirty-dir.ts";
 import type { NodeId } from "./ids.ts";
 import type { VirtualWorkdirStateStore } from "./state-store.ts";
 
-const FILE_WORKDIR_MANIFEST_VERSION = 5;
+const FILE_WORKDIR_MANIFEST_VERSION = 6;
 const FILE_WORKDIR_TRANSACTION_SNAPSHOT_SUFFIX = ".txn-snapshot";
 
 interface FileSessionManifest {
@@ -41,11 +41,6 @@ interface FileChangeRecord {
   readonly path: string;
   readonly previous: DiffObject | null;
   readonly current: DiffObject | null;
-  /** move/copy 来源 */
-  readonly source: {
-    readonly kind: "move" | "copy";
-    readonly path: string;
-  } | null;
 }
 
 interface FileDirtyDirSummary {
@@ -606,7 +601,6 @@ function serializeChangeRecord(record: NormalizedChangeRecord): FileChangeRecord
     path: record.path,
     previous: record.previous,
     current: record.current,
-    source: record.source,
   };
 }
 
@@ -617,18 +611,7 @@ function restoreChangeRecord(record: FileChangeRecord): NormalizedChangeRecord {
       record.previous === null ? null : { ...record.previous, hash: record.previous.hash as SHA1 },
     current:
       record.current === null ? null : { ...record.current, hash: record.current.hash as SHA1 },
-    source: record.source === null ? null : readFileDiffSource(record.source),
   };
-}
-
-function readFileDiffSource(source: NonNullable<FileChangeRecord["source"]>): DiffSource {
-  if (source.kind === "copy") {
-    return { kind: "copy", path: source.path };
-  }
-  if (source.kind === "move") {
-    return { kind: "move", path: source.path };
-  }
-  throw new Error(`Invalid file workdir diff source kind: ${String(source.kind)}`);
 }
 
 function serializeDirtyDirSummary(summary: DirtyDirSummary): FileDirtyDirSummary {
