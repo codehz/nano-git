@@ -47,6 +47,19 @@ describe("createChangeIndexPlanner()", () => {
     expect(planner.planRefreshForPath("src")).toEqual({ kind: "rebuild-all" });
   });
 
+  test("删除目录时保持全量重建策略", () => {
+    const repo = createMemoryRepository();
+    const fileHash = repo.writeBlob(Buffer.from("a"));
+    const childTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: fileHash }]);
+    const baseTree = repo.createTree([{ mode: "040000", name: "src", hash: childTree }]);
+    const store = createVirtualWorkdirMemoryStateStore(baseTree);
+    const planner = createChangeIndexPlanner(repo.objects, store, createNoopActions());
+
+    expect(planner.planDeletePath("src", { treatMissingAsIncremental: true })).toEqual({
+      kind: "rebuild-all",
+    });
+  });
+
   test("从目录复制会回退到全量重建", () => {
     const repo = createMemoryRepository();
     const fileHash = repo.writeBlob(Buffer.from("a"));
@@ -79,12 +92,14 @@ describe("createChangeIndexPlanner()", () => {
 
     planner.apply({ kind: "rebuild-all" });
     planner.apply({ kind: "refresh-path", path: "a.txt" });
+    planner.apply(planner.planDeletePath("missing.txt", { treatMissingAsIncremental: true }));
     planner.apply({ kind: "rewrite-rename", from: "a.txt", to: "b.txt" });
     planner.apply({ kind: "write-copy", from: "a.txt", to: "c.txt" });
 
     expect(calls).toEqual([
       "rebuild-all",
       "refresh:a.txt",
+      "refresh:missing.txt",
       "move:a.txt->b.txt",
       "copy:a.txt->c.txt",
     ]);

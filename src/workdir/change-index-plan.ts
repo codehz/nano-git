@@ -43,6 +43,7 @@ export interface ChangeIndexUpdateActions {
 export interface ChangeIndexPlanner {
   apply(plan: ChangeIndexUpdatePlan): void;
   planRefreshForPath(path: string, options?: ChangeIndexPathRefreshOptions): ChangeIndexUpdatePlan;
+  planDeletePath(path: string, options?: ChangeIndexPathRefreshOptions): ChangeIndexUpdatePlan;
   planRewriteForRename(from: string, to: string): ChangeIndexUpdatePlan;
   planWriteForCopy(from: string, to: string): ChangeIndexUpdatePlan;
 }
@@ -112,6 +113,14 @@ export function createChangeIndexPlanner(
       return canIncrementallyRefreshPath(path, options)
         ? { kind: "refresh-path", path }
         : { kind: "rebuild-all" };
+    },
+
+    planDeletePath(path, options): ChangeIndexUpdatePlan {
+      return canIncrementallyRefreshPath(path)
+        ? { kind: "refresh-path", path }
+        : canIncrementallyRefreshPath(path, options)
+          ? { kind: "refresh-path", path }
+          : { kind: "rebuild-all" };
     },
 
     planRewriteForRename(from, to): ChangeIndexUpdatePlan {

@@ -371,6 +371,27 @@ describe("delete", () => {
     session.delete("f.txt");
     expect(() => session.delete("f.txt", { force: true })).not.toThrow();
   });
+
+  test("删除目录后同名写文件不会残留子路径 diff", () => {
+    const repo = createMemoryRepository();
+    const session = createVirtualWorkdir(repo.objects, {
+      baseTree: repo.createTree([]),
+    });
+
+    session.mkdir("manuscript");
+    session.writeFile("manuscript/a.md", Buffer.from("a"));
+    session.delete("manuscript", { force: true });
+    session.writeFile("manuscript", Buffer.from("file-now"));
+
+    expect(session.stat("manuscript")).toMatchObject({ kind: "blob", mode: "100644", size: 8 });
+    expect(session.diff()).toMatchObject([
+      {
+        kind: "create",
+        path: "manuscript",
+        current: { kind: "blob", mode: "100644" },
+      },
+    ]);
+  });
 });
 
 // ==================== writeTree ====================
@@ -1228,6 +1249,24 @@ describe("reset", () => {
 
     session.delete("src/a.ts");
     expect(session.diff().length).toBe(0);
+  });
+
+  test("删除目录后同名写文件时 writeTree 不保留旧子文件", () => {
+    const repo = createMemoryRepository();
+    const baseTree = repo.createTree([]);
+    const store = createVirtualWorkdirMemoryStateStore(baseTree);
+    const session = openVirtualWorkdir(repo.objects, store);
+
+    session.mkdir("manuscript");
+    session.writeFile("manuscript/a.md", Buffer.from("a"));
+    session.delete("manuscript", { force: true });
+    session.writeFile("manuscript", Buffer.from("file-now"));
+
+    const treeHash = session.writeTree();
+    const root = readTree(repo, treeHash);
+    expect(root.entries).toHaveLength(1);
+    expect(root.entries[0]).toMatchObject({ mode: "100644", name: "manuscript" });
+    expect(readBlob(repo, root.entries[0]!.hash).toString()).toBe("file-now");
   });
 
   test("repo-backed 文件 revert 到 clean 后 diff 为空", () => {

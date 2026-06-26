@@ -363,12 +363,13 @@ export function openVirtualWorkdir(
           return;
         }
       }
+      const changeIndexPlan = changeIndexPlanner.planDeletePath(path, {
+        treatMissingAsIncremental: true,
+      });
       runInWriteTransaction(
         state,
         () => {
-          changeIndexPlanner.apply(
-            changeIndexPlanner.planRefreshForPath(path, { treatMissingAsIncremental: true }),
-          );
+          changeIndexPlanner.apply(changeIndexPlan);
         },
         invalidateDiffCaches,
         () => {
