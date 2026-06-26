@@ -206,7 +206,7 @@ export function createFileRefStore(gitDir: string): RefStore {
 
         const txSnapshot = freezePending(pending);
 
-        // Phase 1: 创建所有 lock 文件
+        // 创建所有 lock 文件
         const locks: string[] = [];
         try {
           for (const refName of pending.keys()) {
@@ -219,7 +219,7 @@ export function createFileRefStore(gitDir: string): RefStore {
             hook.onPrepare?.(txSnapshot);
           }
 
-          // Phase 2: 写入 lock 文件内容
+          // 写入 lock 文件内容
           let idx = 0;
           for (const [, content] of pending) {
             const lock = locks[idx]!;
@@ -232,7 +232,7 @@ export function createFileRefStore(gitDir: string): RefStore {
             }
           }
 
-          // Phase 3: rename lock → ref（原子切换）
+          // rename lock → ref（原子切换）
           idx = 0;
           for (const [ref, content] of pending) {
             const lock = locks[idx]!;

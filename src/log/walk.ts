@@ -242,7 +242,7 @@ function* walkTopo(
   since: number | undefined,
   until: number | undefined,
 ): Generator<LogEntry, void, undefined> {
-  // Phase 1: 收集所有提交，构建 parent→children 映射
+  // 收集所有提交，构建 parent→children 映射
   const commits = new Map<SHA1, GitCommit>();
   const children = new Map<SHA1, SHA1[]>();
 
@@ -273,7 +273,7 @@ function* walkTopo(
 
   if (commits.size === 0) return;
 
-  // Phase 2: 统计 childCount，初始化队列
+  // 统计 childCount，初始化队列
   const childCount = new Map<SHA1, number>();
   const pq = new MaxHeapByTimestamp();
 
@@ -285,7 +285,7 @@ function* walkTopo(
     }
   }
 
-  // Phase 3: 按拓扑序输出
+  // 按拓扑序输出
   let skipped = 0;
   let emitted = 0;
 
