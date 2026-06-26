@@ -4,6 +4,7 @@
 
 import { hashObject } from "../../core/hash.ts";
 import { writeObject, readObject } from "../../objects/raw.ts";
+import { diffTrees, readTreeSnapshot } from "../tree/tree-diff.ts";
 import {
   patchTree as patchTreeImpl,
   type TreePatchOp,
@@ -101,6 +102,14 @@ export function createObjectRepositoryOperations(
 
     patchTree(rootHash: SHA1, ops: TreePatchOp[]): TreePatchResult {
       return patchTreeImpl(objects, rootHash, ops);
+    },
+
+    readTreeSnapshot(rootHash: SHA1) {
+      return readTreeSnapshot(objects, rootHash);
+    },
+
+    diffTrees(previousTree: SHA1, currentTree: SHA1) {
+      return diffTrees(objects, previousTree, currentTree);
     },
   };
 }

@@ -63,6 +63,13 @@ export type {
 } from "./backend/types.ts";
 export type { RemoteSource } from "./remote/types.ts";
 export type { Repository, FileRepository } from "./repository/types.ts";
+export type {
+  TreeDiffEntry,
+  TreeDiffChanges,
+  TreeSnapshotEntry,
+  TreeSnapshotKind,
+  TreeSnapshotObject,
+} from "./repository/tree/tree-diff.ts";
 
 // ============================================================================
 // SHA-1 哈希工具（仅 node:crypto）

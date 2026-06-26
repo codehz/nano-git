@@ -70,6 +70,60 @@ describe("createMemoryRepository()", () => {
     }
   });
 
+  test("readTreeSnapshot() 返回完整 tree 快照", () => {
+    const fileHash = repo.writeBlob(Buffer.from("content"));
+    const nestedTree = repo.createTree([{ mode: "100644", name: "main.ts", hash: fileHash }]);
+    const rootTree = repo.createTree([{ mode: "040000", name: "src", hash: nestedTree }]);
+
+    expect(repo.readTreeSnapshot(rootTree)).toEqual([
+      {
+        path: "src",
+        object: {
+          kind: "tree",
+          mode: "040000",
+          hash: nestedTree,
+        },
+      },
+      {
+        path: "src/main.ts",
+        object: {
+          kind: "blob",
+          mode: "100644",
+          hash: fileHash,
+        },
+      },
+    ]);
+  });
+
+  test("diffTrees() 比较两个 tree 快照", () => {
+    const beforeBlob = repo.writeBlob(Buffer.from("before"));
+    const afterBlob = repo.writeBlob(Buffer.from("after"));
+    const previousTree = repo.createTree([{ mode: "100644", name: "README.md", hash: beforeBlob }]);
+    const currentTree = repo.createTree([{ mode: "100644", name: "README.md", hash: afterBlob }]);
+
+    expect(repo.diffTrees(previousTree, currentTree)).toEqual([
+      {
+        kind: "update",
+        path: "README.md",
+        previous: {
+          kind: "blob",
+          mode: "100644",
+          hash: beforeBlob,
+        },
+        current: {
+          kind: "blob",
+          mode: "100644",
+          hash: afterBlob,
+        },
+        changes: {
+          kindChanged: false,
+          modeChanged: false,
+          contentChanged: true,
+        },
+      },
+    ]);
+  });
+
   test("createCommit() 创建 commit 对象", () => {
     const treeHash = repo.createTree([]);
     const commitHash = repo.createCommit(treeHash, [], "Initial commit", testAuthor);

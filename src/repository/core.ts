@@ -6,3 +6,10 @@
 
 export { createRepository } from "./create.ts";
 export type { Repository, FileRepository } from "./types.ts";
+export type {
+  TreeDiffEntry,
+  TreeDiffChanges,
+  TreeSnapshotEntry,
+  TreeSnapshotKind,
+  TreeSnapshotObject,
+} from "./tree/tree-diff.ts";

@@ -3,6 +3,7 @@
  */
 
 import type { GitAuthor, GitObject, SHA1, TreeEntry } from "../../core/types.ts";
+import type { TreeDiffEntry, TreeSnapshotEntry } from "../tree/tree-diff.ts";
 import type { TreePatchOp, TreePatchResult } from "../tree/tree-patch.ts";
 
 /**
@@ -82,6 +83,21 @@ export interface RepositoryObjectOperations {
    * ```
    */
   patchTree(rootHash: SHA1, ops: TreePatchOp[]): TreePatchResult;
+
+  /**
+   * 读取 tree 的完整快照
+   *
+   * 返回展平后的路径视图，并包含目录条目自身。
+   */
+  readTreeSnapshot(rootHash: SHA1): TreeSnapshotEntry[];
+
+  /**
+   * 比较两个 tree 的快照差异
+   *
+   * 当前只提供同路径 create / remove / update 语义，
+   * 不分析 move / copy。
+   */
+  diffTrees(previousTree: SHA1, currentTree: SHA1): TreeDiffEntry[];
 }
 
 /**

@@ -114,13 +114,13 @@
       "types": "./dist/repository/sqlite.d.mts",
       "default": "./dist/repository/sqlite.mjs"
     },
+    "./repository/tree/tree-diff": {
+      "types": "./dist/repository/tree/tree-diff.d.mts",
+      "default": "./dist/repository/tree/tree-diff.mjs"
+    },
     "./repository/tree/tree-patch": {
       "types": "./dist/repository/tree/tree-patch.d.mts",
       "default": "./dist/repository/tree/tree-patch.mjs"
-    },
-    "./repository/tree/tree-walk": {
-      "types": "./dist/repository/tree/tree-walk.d.mts",
-      "default": "./dist/repository/tree/tree-walk.mjs"
     },
     "./sha1": {
       "types": "./dist/sha1.d.mts",
