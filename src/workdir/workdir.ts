@@ -13,13 +13,7 @@ import {
   VirtualRevertNotSupportedError,
 } from "../core/errors.ts";
 import { createChangeIndexPlanner } from "./change-index-plan.ts";
-import {
-  refreshChangeRecordForPath,
-  rebuildNormalizedChangeIndex,
-  replaceChangeRecords,
-  rewriteChangeRecordForRename,
-  writeChangeRecordForCopy,
-} from "./change-index.ts";
+import { rebuildNormalizedChangeIndex, replaceChangeRecords } from "./change-index.ts";
 import { computeVirtualDiff } from "./change-index.ts";
 import { createNodeId } from "./ids.ts";
 import { createVirtualWorkdirMemoryStateStore } from "./memory-backend.ts";
@@ -116,38 +110,11 @@ export function openVirtualWorkdir(
       }),
     );
   };
-  const refreshChangeIndexForPath = (path: string): void => {
-    invalidateDiffCaches();
-    refreshChangeRecordForPath(source, state, path, {
-      currentNodeHashes,
-      setCurrentNodeHash(nodeId, hash): void {
-        currentNodeHashes.set(nodeId, hash);
-      },
-    });
-  };
-  const rewriteChangeIndexForRename = (from: string, to: string): void => {
-    invalidateDiffCaches();
-    rewriteChangeRecordForRename(source, state, from, to, {
-      currentNodeHashes,
-      setCurrentNodeHash(nodeId, hash): void {
-        currentNodeHashes.set(nodeId, hash);
-      },
-    });
-  };
-  const writeChangeIndexForCopy = (from: string, to: string): void => {
-    invalidateDiffCaches();
-    writeChangeRecordForCopy(source, state, from, to, {
-      currentNodeHashes,
-      setCurrentNodeHash(nodeId, hash): void {
-        currentNodeHashes.set(nodeId, hash);
-      },
-    });
-  };
   const changeIndexPlanner = createChangeIndexPlanner(source, state, {
     rebuildAll: refreshChangeIndex,
-    refreshPath: refreshChangeIndexForPath,
-    rewriteRename: rewriteChangeIndexForRename,
-    writeCopy: writeChangeIndexForCopy,
+    refreshPath: refreshChangeIndex,
+    rewriteRename: refreshChangeIndex,
+    writeCopy: refreshChangeIndex,
   });
   refreshChangeIndex();
 
@@ -277,13 +244,20 @@ export function openVirtualWorkdir(
 
     mkdir(path: string, options?: { readonly recursive?: boolean }): void {
       const recursive = options?.recursive === true;
-      runInWriteTransaction(state, null, invalidateDiffCaches, () => {
-        if (recursive) {
-          mkdirRecursive(path);
-        } else {
-          createDirectoryAtPath(path);
-        }
-      });
+      runInWriteTransaction(
+        state,
+        () => {
+          changeIndexPlanner.apply({ kind: "rebuild-all" });
+        },
+        invalidateDiffCaches,
+        () => {
+          if (recursive) {
+            mkdirRecursive(path);
+          } else {
+            createDirectoryAtPath(path);
+          }
+        },
+      );
     },
 
     writeFile(

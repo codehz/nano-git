@@ -39,13 +39,13 @@ interface FileSessionManifest {
 interface FileChangeRecord {
   readonly path: string;
   readonly previous: {
-    readonly kind: "blob" | "symlink";
-    readonly mode: "100644" | "100755" | "120000";
+    readonly kind: "blob" | "tree" | "symlink";
+    readonly mode: "100644" | "100755" | "040000" | "120000";
     readonly hash: string;
   } | null;
   readonly current: {
-    readonly kind: "blob" | "symlink";
-    readonly mode: "100644" | "100755" | "120000";
+    readonly kind: "blob" | "tree" | "symlink";
+    readonly mode: "100644" | "100755" | "040000" | "120000";
     readonly hash: string;
   } | null;
   /** move/copy 来源；`rename` 为旧版磁盘格式，读入时规范为 `move` */

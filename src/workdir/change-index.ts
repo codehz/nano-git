@@ -6,18 +6,15 @@
  * - 写事务结束前重建净效应表并持久化
  *
  * 当前实现仍复用全量快照算法重建索引，
- * 后续阶段再替换为真正的增量维护。
+ * 并将目录本身纳入 diff 视图。
  */
 
 import { hashObject } from "../core/hash.ts";
+import { serializeTree } from "../objects/tree.ts";
 import { observeListedDirectoryChild } from "./directory-view.ts";
 import { readRepoBlobContent, readRepoTree } from "./origin.ts";
 import { VIRTUAL_ROOT_PATH } from "./path.ts";
-import {
-  getDirectoryChildrenView,
-  joinChildPath,
-  resolveCurrentLeafAtPath,
-} from "./workdir-path.ts";
+import { getDirectoryChildrenView, joinChildPath, resolvePath } from "./workdir-path.ts";
 
 import type { SHA1, TreeEntry } from "../core/types.ts";
 import type { ObjectSource } from "../core/types/odb.ts";
@@ -339,6 +336,11 @@ function snapshotBaseTree(source: ObjectSource, treeHash: SHA1, dirPath: string)
   for (const entry of tree.entries) {
     const path = joinChildPath(dirPath, entry.name);
     if (entry.mode === "040000") {
+      out.push({
+        path,
+        object: createDiffObject("040000", entry.hash),
+        originSignature: buildOriginSignature("040000", entry.hash),
+      });
       out.push(...snapshotBaseTree(source, entry.hash, path));
       continue;
     }
@@ -391,6 +393,9 @@ function snapshotCurrentNode(
 ): SnapshotEntry[] {
   if (node.state.kind === "directory") {
     const out: SnapshotEntry[] = [];
+    if (path !== VIRTUAL_ROOT_PATH) {
+      out.push(snapshotCurrentDirectoryNode(source, state, node, path, cache));
+    }
     for (const child of getDirectoryChildrenView(source, state, node, path).children) {
       const observedChild = observeListedDirectoryChild(state, path, child);
       if (observedChild === null) {
@@ -403,15 +408,64 @@ function snapshotCurrentNode(
     return out;
   }
 
-  return [snapshotCurrentLeafNode(source, { path, node }, cache)];
+  return [snapshotCurrentLeafNode(source, state, { path, node }, cache)];
+}
+
+function snapshotCurrentDirectoryNode(
+  source: ObjectSource,
+  state: VirtualWorkdirStateStore,
+  node: WorkdirNode,
+  path: string,
+  cache?: VirtualDiffComputationCache,
+): SnapshotEntry {
+  const hash = currentNodeHash(source, state, node, path, cache);
+  return {
+    path,
+    object: createDiffObject("040000", hash),
+    originSignature:
+      node.origin.kind === "repo-tree" ? buildOriginSignature("040000", node.origin.hash) : null,
+  };
 }
 
 function currentNodeHash(
   source: ObjectSource,
+  state: VirtualWorkdirStateStore,
   node: WorkdirNode,
   path: string,
   cache?: VirtualDiffComputationCache,
 ): SHA1 {
+  if (node.state.kind === "directory") {
+    const cached = cache?.currentNodeHashes.get(node.id);
+    if (cached !== undefined) {
+      return cached;
+    }
+    if (
+      node.origin.kind === "repo-tree" &&
+      node.state.overlay.addedEntries.size === 0 &&
+      node.state.overlay.deletedNames.size === 0
+    ) {
+      cache?.setCurrentNodeHash(node.id, node.origin.hash);
+      return node.origin.hash;
+    }
+
+    const entries: TreeEntry[] = [];
+    for (const child of getDirectoryChildrenView(source, state, node, path).children) {
+      const observedChild = observeListedDirectoryChild(state, path, child);
+      if (observedChild === null) {
+        continue;
+      }
+      entries.push({
+        mode:
+          observedChild.node.state.kind === "directory" ? "040000" : observedChild.node.state.mode,
+        name: observedChild.name,
+        hash: currentNodeHash(source, state, observedChild.node, observedChild.path, cache),
+      });
+    }
+    const hash = hashObject("tree", serializeTree({ type: "tree", entries }));
+    cache?.setCurrentNodeHash(node.id, hash);
+    return hash;
+  }
+
   if (node.state.kind === "file") {
     if (node.state.content !== undefined) {
       const cached = cache?.currentNodeHashes.get(node.id);
@@ -599,22 +653,26 @@ function snapshotCurrentEntryAtPath(
   path: string,
   cache?: VirtualDiffComputationCache,
 ): SnapshotEntry | null {
-  const resolved = resolveCurrentLeafAtPath(source, state, path);
-  if (resolved === null) {
+  const resolved = resolvePath(source, state, path);
+  if (!resolved.found || resolved.node === null) {
     return null;
   }
-  return snapshotCurrentLeafNode(source, resolved, cache);
+  if (resolved.node.state.kind === "directory") {
+    return snapshotCurrentDirectoryNode(source, state, resolved.node, path, cache);
+  }
+  return snapshotCurrentLeafNode(source, state, { path, node: resolved.node }, cache);
 }
 
 function snapshotCurrentLeafNode(
   source: ObjectSource,
+  state: VirtualWorkdirStateStore,
   leaf: { readonly path: string; readonly node: WorkdirNode },
   cache?: VirtualDiffComputationCache,
 ): SnapshotEntry {
   if (leaf.node.state.kind === "directory") {
     throw new Error(`snapshotCurrentLeafNode called on directory: ${leaf.path}`);
   }
-  const hash = currentNodeHash(source, leaf.node, leaf.path, cache);
+  const hash = currentNodeHash(source, state, leaf.node, leaf.path, cache);
   const object = createDiffObject(leaf.node.state.mode, hash);
   return {
     path: leaf.path,
@@ -644,7 +702,10 @@ function createDiffSource(kind: "move" | "copy", path: string): VirtualDiffSourc
   return { kind, path };
 }
 
-function createDiffObject(mode: "100644" | "100755" | "120000", hash: SHA1): VirtualDiffObject {
+function createDiffObject(
+  mode: "100644" | "100755" | "040000" | "120000",
+  hash: SHA1,
+): VirtualDiffObject {
   return {
     kind: modeKind(mode),
     mode,
@@ -675,7 +736,7 @@ function normalizeBlobMode(mode: string): "100644" | "100755" | "120000" {
   return "100644";
 }
 
-function buildOriginSignature(mode: "100644" | "100755" | "120000", hash: SHA1): string {
+function buildOriginSignature(mode: "100644" | "100755" | "040000" | "120000", hash: SHA1): string {
   return `${mode}:${hash}`;
 }
 
@@ -737,7 +798,10 @@ function findCopySource(
   return { path: source.path, entry: source };
 }
 
-function modeKind(mode: TreeEntry["mode"]): "blob" | "symlink" {
+function modeKind(mode: TreeEntry["mode"]): "blob" | "tree" | "symlink" {
+  if (mode === "040000") {
+    return "tree";
+  }
   return mode === "120000" ? "symlink" : "blob";
 }
 

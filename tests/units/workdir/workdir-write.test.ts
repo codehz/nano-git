@@ -45,6 +45,16 @@ describe("mkdir", () => {
     expect(session.stat("src")).toMatchObject({ kind: "tree", mode: "040000" });
     expect(session.readdir()).toEqual([{ name: "src", kind: "tree", mode: "040000" }]);
     expect(session.readdir("src")).toEqual([]);
+    expect(session.diff()).toMatchObject([
+      {
+        kind: "create",
+        path: "src",
+        current: {
+          kind: "tree",
+          mode: "040000",
+        },
+      },
+    ]);
   });
 
   test("嵌套目录", () => {
@@ -406,6 +416,7 @@ describe("delete", () => {
     expect(session.exists("dir")).toBe(true);
     session.delete("dir");
     expect(session.exists("dir")).toBe(false);
+    expect(session.diff()).toEqual([]);
   });
 
   test("删除 repo-backed 文件", () => {
@@ -711,14 +722,43 @@ describe("diff（写入操作）", () => {
     expect(session.diff()).toEqual([]);
   });
 
-  test("仅新建目录时不输出目录 diff", () => {
+  test("仅新建目录时输出目录 diff", () => {
     const repo = createMemoryRepository();
     const session = createVirtualWorkdir(repo.objects, {
       baseTree: repo.createTree([]),
     });
 
     session.mkdir("dir");
-    expect(session.diff()).toEqual([]);
+    expect(session.diff()).toMatchObject([
+      {
+        kind: "create",
+        path: "dir",
+        current: {
+          kind: "tree",
+          mode: "040000",
+        },
+      },
+    ]);
+  });
+
+  test("删除空目录产出 remove", () => {
+    const repo = createMemoryRepository();
+    const emptyTree = repo.createTree([]);
+    const baseTree = repo.createTree([{ mode: "040000", name: "dir", hash: emptyTree }]);
+    const session = createVirtualWorkdir(repo.objects, { baseTree });
+
+    session.delete("dir");
+    expect(session.diff()).toMatchObject([
+      {
+        kind: "remove",
+        path: "dir",
+        previous: {
+          kind: "tree",
+          mode: "040000",
+          hash: emptyTree,
+        },
+      },
+    ]);
   });
 
   test("文件与符号链接互换产出 update 且标记 kindChanged", () => {
@@ -847,6 +887,36 @@ describe("move", () => {
     expect(session.exists("src")).toBe(false);
     expect(session.exists("lib")).toBe(true);
     expect(session.readFile("lib/main.ts").toString()).toBe("code");
+  });
+
+  test("move 空目录产出 move diff", () => {
+    const repo = createMemoryRepository();
+    const emptyTree = repo.createTree([]);
+    const baseTree = repo.createTree([{ mode: "040000", name: "src", hash: emptyTree }]);
+    const session = createVirtualWorkdir(repo.objects, { baseTree });
+
+    session.move("src", "lib");
+
+    expect(session.diff()).toMatchObject([
+      {
+        kind: "update",
+        path: "lib",
+        previous: {
+          kind: "tree",
+          mode: "040000",
+          hash: emptyTree,
+        },
+        current: {
+          kind: "tree",
+          mode: "040000",
+          hash: emptyTree,
+        },
+        source: {
+          kind: "move",
+          path: "src",
+        },
+      },
+    ]);
   });
 
   test("move 后 writeTree 不制造额外 blob", () => {
@@ -1432,7 +1502,16 @@ describe("reset", () => {
     expect(session.diff().length).toBeGreaterThan(0);
 
     session.delete("src/a.ts");
-    expect(session.diff().length).toBe(0);
+    expect(session.diff()).toMatchObject([
+      {
+        kind: "create",
+        path: "src",
+        current: {
+          kind: "tree",
+          mode: "040000",
+        },
+      },
+    ]);
   });
 
   test("删除目录后同名写文件时 writeTree 不保留旧子文件", () => {

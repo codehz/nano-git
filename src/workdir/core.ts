@@ -72,9 +72,9 @@ export interface VirtualDirEntry {
  */
 export interface VirtualDiffObject {
   /** 条目种类 */
-  readonly kind: "blob" | "symlink";
+  readonly kind: "blob" | "tree" | "symlink";
   /** Git 文件模式 */
-  readonly mode: "100644" | "100755" | "120000";
+  readonly mode: "100644" | "100755" | "040000" | "120000";
   /** 对象哈希 */
   readonly hash: SHA1;
 }
@@ -258,7 +258,7 @@ export interface VirtualWorkdir {
   /**
    * 读取最终 diff
    *
-   * 输出按路径稳定排序，仅包含文件与符号链接条目。
+   * 输出按路径稳定排序，包含文件、目录与符号链接条目。
    */
   diff(): VirtualDiffEntry[];
 
