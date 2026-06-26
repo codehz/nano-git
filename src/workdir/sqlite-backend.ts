@@ -652,15 +652,15 @@ function readChangeRecord(row: ChangeRow): NormalizedChangeRecord {
   };
 }
 
-function readDiffObjectKind(raw: string): "blob" | "symlink" {
-  if (raw === "blob" || raw === "symlink") {
+function readDiffObjectKind(raw: string): "blob" | "tree" | "symlink" {
+  if (raw === "blob" || raw === "tree" || raw === "symlink") {
     return raw;
   }
   throw new Error(`Invalid SQLite workdir diff object kind: ${raw}`);
 }
 
-function readDiffObjectMode(raw: string): "100644" | "100755" | "120000" {
-  if (raw === "100644" || raw === "100755" || raw === "120000") {
+function readDiffObjectMode(raw: string): "100644" | "100755" | "040000" | "120000" {
+  if (raw === "100644" || raw === "100755" || raw === "040000" || raw === "120000") {
     return raw;
   }
   throw new Error(`Invalid SQLite workdir diff object mode: ${raw}`);
