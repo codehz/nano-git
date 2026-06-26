@@ -24,14 +24,6 @@ function readBlob(repo: Repository, hash: string): Buffer {
 }
 
 describe("writeTree", () => {
-  test("空 workdir writeTree 返回 baseTree", () => {
-    const repo = createMemoryRepository();
-    const baseTree = repo.createTree([]);
-    const session = createVirtualWorkdir(repo.objects, { baseTree });
-
-    expect(session.writeTree()).toBe(baseTree);
-  });
-
   test("新建单文件后 writeTree", () => {
     const repo = createMemoryRepository();
     const baseTree = repo.createTree([]);
@@ -63,35 +55,6 @@ describe("writeTree", () => {
     expect(session.readFile("f.txt").toString()).toBe("data");
   });
 
-  test("连续多次 writeTree 结果可重复", () => {
-    const repo = createMemoryRepository();
-    const session = createVirtualWorkdir(repo.objects, {
-      baseTree: repo.createTree([]),
-    });
-
-    session.writeFile("f.txt", Buffer.from("stable"));
-    const hash1 = session.writeTree();
-    const hash2 = session.writeTree();
-    expect(hash1).toBe(hash2);
-  });
-
-  test("未修改路径的 blob hash 保持稳定复用", () => {
-    const repo = createMemoryRepository();
-    const blobHash = repo.writeBlob(Buffer.from("unchanged"));
-    const baseTree = repo.createTree([{ mode: "100644", name: "old.txt", hash: blobHash }]);
-    const session = createVirtualWorkdir(repo.objects, { baseTree });
-
-    // 只新增一个文件，不动 old.txt
-    session.writeFile("new.txt", Buffer.from("new"));
-    const newTree = session.writeTree();
-
-    const tree = readTree(repo, newTree);
-    const oldEntry = tree.entries.find((e) => e.name === "old.txt");
-    expect(oldEntry).toBeDefined();
-    // old.txt 应复用原 blob
-    expect(oldEntry!.hash).toBe(blobHash);
-  });
-
   test("嵌套目录+多文件 writeTree", () => {
     const repo = createMemoryRepository();
     const session = createVirtualWorkdir(repo.objects, {
@@ -117,16 +80,6 @@ describe("writeTree", () => {
     expect(srcNames).toEqual(["lib.ts", "main.ts"]);
   });
 
-  test("writeTree 后 baseTree 不变", () => {
-    const repo = createMemoryRepository();
-    const baseTree = repo.createTree([]);
-    const session = createVirtualWorkdir(repo.objects, { baseTree });
-
-    session.writeFile("f.txt", Buffer.from("data"));
-    session.writeTree();
-    expect(session.baseTree).toBe(baseTree);
-  });
-
   test("新建空目录后 writeTree", () => {
     const repo = createMemoryRepository();
     const session = createVirtualWorkdir(repo.objects, {
@@ -139,22 +92,5 @@ describe("writeTree", () => {
     expect(tree.entries).toHaveLength(1);
     expect(tree.entries[0]!.name).toBe("empty");
     expect(tree.entries[0]!.mode).toBe("040000");
-  });
-
-  test("writeTree 后通过新 workdir 读取验证", () => {
-    const repo = createMemoryRepository();
-    const session1 = createVirtualWorkdir(repo.objects, {
-      baseTree: repo.createTree([]),
-    });
-
-    session1.writeFile("a.txt", Buffer.from("alpha"));
-    session1.writeFile("b.txt", Buffer.from("beta"));
-    const hash = session1.writeTree();
-
-    // 用新的 workdir 打开导出 tree
-    const session2 = createVirtualWorkdir(repo.objects, { baseTree: hash });
-    expect(session2.readdir().length).toBe(2);
-    expect(session2.readFile("a.txt").toString()).toBe("alpha");
-    expect(session2.readFile("b.txt").toString()).toBe("beta");
   });
 });

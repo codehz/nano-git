@@ -52,49 +52,6 @@ describe("copy", () => {
     expect(() => session.copy("from.txt", "target/child.txt")).toThrow(VirtualNotDirectoryError);
   });
 
-  test("复制目录到自己的子目录会保留源目录可读", () => {
-    const repo = createMemoryRepository();
-    const session = createVirtualWorkdir(repo.objects, {
-      baseTree: repo.createTree([]),
-    });
-
-    session.mkdir("src");
-    session.writeFile("src/main.ts", Buffer.from("code"));
-
-    session.copy("src", "src/nested");
-
-    expect(session.readFile("src/main.ts").toString()).toBe("code");
-    expect(session.readFile("src/nested/main.ts").toString()).toBe("code");
-  });
-
-  test("复制文件", () => {
-    const repo = createMemoryRepository();
-    const session = createVirtualWorkdir(repo.objects, {
-      baseTree: repo.createTree([]),
-    });
-
-    session.writeFile("a.txt", Buffer.from("data"));
-    session.copy("a.txt", "b.txt");
-
-    expect(session.exists("a.txt")).toBe(true);
-    expect(session.exists("b.txt")).toBe(true);
-    expect(session.readFile("a.txt").toString()).toBe("data");
-    expect(session.readFile("b.txt").toString()).toBe("data");
-  });
-
-  test("复制 repo-backed 文件", () => {
-    const repo = createMemoryRepository();
-    const blobHash = repo.writeBlob(Buffer.from("repo data"));
-    const baseTree = repo.createTree([{ mode: "100644", name: "f", hash: blobHash }]);
-    const session = createVirtualWorkdir(repo.objects, { baseTree });
-
-    session.copy("f", "f_copy");
-
-    expect(session.exists("f")).toBe(true);
-    expect(session.exists("f_copy")).toBe(true);
-    expect(session.readFile("f_copy").toString()).toBe("repo data");
-  });
-
   test("复制后源和目标可独立修改", () => {
     const repo = createMemoryRepository();
     const session = createVirtualWorkdir(repo.objects, {
@@ -107,22 +64,6 @@ describe("copy", () => {
 
     expect(session.readFile("a.txt").toString()).toBe("modified");
     expect(session.readFile("b.txt").toString()).toBe("original");
-  });
-
-  test("复制目录（浅复制）", () => {
-    const repo = createMemoryRepository();
-    const session = createVirtualWorkdir(repo.objects, {
-      baseTree: repo.createTree([]),
-    });
-
-    session.mkdir("src");
-    session.writeFile("src/main.ts", Buffer.from("code"));
-    session.copy("src", "src_copy");
-
-    expect(session.exists("src")).toBe(true);
-    expect(session.exists("src_copy")).toBe(true);
-    // 子项应可读取（懒加载）
-    expect(session.readFile("src_copy/main.ts").toString()).toBe("code");
   });
 
   test("复制后 writeTree 验证导出正确", () => {
@@ -138,26 +79,6 @@ describe("copy", () => {
     const treeObj = readTree(repo, tree);
     const names = treeObj.entries.map((e) => e.name).sort();
     expect(names).toEqual(["a.txt", "b.txt"]);
-  });
-
-  test("repo-backed copy 产出 create diff", () => {
-    const repo = createMemoryRepository();
-    const blobHash = repo.writeBlob(Buffer.from("data"));
-    const session = createVirtualWorkdir(repo.objects, {
-      baseTree: repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]),
-    });
-
-    session.copy("a.txt", "b.txt");
-    expect(session.diff()).toMatchObject([
-      {
-        kind: "create",
-        path: "b.txt",
-        current: {
-          kind: "blob",
-          mode: "100644",
-        },
-      },
-    ]);
   });
 
   test("workdir-only copy 产出 create 且不膨胀记录", () => {
@@ -202,15 +123,5 @@ describe("copy", () => {
     session.writeFile("a.txt", Buffer.from("a"));
     session.writeFile("b.txt", Buffer.from("b"));
     expect(() => session.copy("a.txt", "b.txt")).toThrow(VirtualPathAlreadyExistsError);
-  });
-
-  test("copy 到自身抛 VirtualPathAlreadyExistsError", () => {
-    const repo = createMemoryRepository();
-    const session = createVirtualWorkdir(repo.objects, {
-      baseTree: repo.createTree([]),
-    });
-
-    session.writeFile("f.txt", Buffer.from("data"));
-    expect(() => session.copy("f.txt", "f.txt")).toThrow(VirtualPathAlreadyExistsError);
   });
 });

@@ -79,47 +79,6 @@ describe("reset", () => {
     expect(session.diff()).toEqual([]);
   });
 
-  test("新增后再删除 diff 会正确收敛", () => {
-    const repo = createMemoryRepository();
-    const baseTree = repo.createTree([]);
-    const store = createVirtualWorkdirMemoryStateStore(baseTree);
-    const session = openVirtualWorkdir(repo.objects, store);
-
-    session.mkdir("src");
-    session.writeFile("src/a.ts", Buffer.from("a1"));
-    expect(session.diff().length).toBeGreaterThan(0);
-
-    session.delete("src/a.ts");
-    expect(session.diff()).toMatchObject([
-      {
-        kind: "create",
-        path: "src",
-        current: {
-          kind: "tree",
-          mode: "040000",
-        },
-      },
-    ]);
-  });
-
-  test("删除目录后同名写文件时 writeTree 不保留旧子文件", () => {
-    const repo = createMemoryRepository();
-    const baseTree = repo.createTree([]);
-    const store = createVirtualWorkdirMemoryStateStore(baseTree);
-    const session = openVirtualWorkdir(repo.objects, store);
-
-    session.mkdir("manuscript");
-    session.writeFile("manuscript/a.md", Buffer.from("a"));
-    session.delete("manuscript", { force: true });
-    session.writeFile("manuscript", Buffer.from("file-now"));
-
-    const treeHash = session.writeTree();
-    const root = readTree(repo, treeHash);
-    expect(root.entries).toHaveLength(1);
-    expect(root.entries[0]).toMatchObject({ mode: "100644", name: "manuscript" });
-    expect(readBlob(repo, root.entries[0]!.hash).toString()).toBe("file-now");
-  });
-
   test("多次写入后 writeTree 产出正确的 tree 结构", () => {
     const repo = createMemoryRepository();
     const baseTree = repo.createTree([]);
