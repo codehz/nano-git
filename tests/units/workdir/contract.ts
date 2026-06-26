@@ -5,11 +5,7 @@
  */
 import { describe, test, expect } from "bun:test";
 
-import {
-  VirtualOriginUnavailableError,
-  VirtualPathNotFoundError,
-  VirtualRevertNotSupportedError,
-} from "@/core/errors.ts";
+import { VirtualOriginUnavailableError, VirtualPathNotFoundError } from "@/core/errors.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
 
 import type { SHA1 } from "@/core/types.ts";
@@ -129,27 +125,6 @@ export function runVirtualWorkdirContract(
 
       expect(session.readFile("src/main.ts").toString()).toBe("v2");
       expect(session.readFile("src-copy/main.ts").toString()).toBe("v1");
-    });
-
-    test("revert 可恢复 repo-backed 节点", () => {
-      const repo = createMemoryRepository();
-      const fileHash = repo.writeBlob(Buffer.from("base"));
-      const session = createWorkdir(repo, {
-        baseTree: repo.createTree([{ mode: "100644", name: "file.txt", hash: fileHash }]),
-      });
-
-      session.writeFile("file.txt", Buffer.from("edited"));
-      session.revert("file.txt");
-
-      expect(session.readFile("file.txt").toString()).toBe("base");
-    });
-
-    test("纯新建节点 revert 抛专用错误", () => {
-      const repo = createMemoryRepository();
-      const session = createWorkdir(repo, { baseTree: repo.createTree([]) });
-
-      session.writeFile("fresh.txt", Buffer.from("data"));
-      expect(() => session.revert("fresh.txt")).toThrow(VirtualRevertNotSupportedError);
     });
 
     test("reset 丢弃 overlay", () => {

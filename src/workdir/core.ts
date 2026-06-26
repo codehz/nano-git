@@ -20,7 +20,6 @@ export {
   VirtualNotFileError,
   VirtualNotSymlinkError,
   VirtualOriginUnavailableError,
-  VirtualRevertNotSupportedError,
 } from "../core/errors.ts";
 
 // ==================== 节点类型辅助 ====================
@@ -94,7 +93,7 @@ export interface CreateVirtualWorkdirOptions {
  *
  * 当前实例对 origin 仓库对象采用弱保证：
  * 如果 base tree / origin blob 在后续被移除、损坏或不可读取，
- * 相关读取、`revert()`、`writeTree()` 等操作会抛出 `VirtualOriginUnavailableError`。
+ * 相关读取、`writeTree()` 等操作会抛出 `VirtualOriginUnavailableError`。
  *
  * @example
  * ```ts
@@ -171,16 +170,6 @@ export interface VirtualWorkdir {
    * 任一副本下的子项被修改时才会真正分裂出独立副本。
    */
   copy(from: string, to: string): void;
-
-  // ==================== 状态恢复 ====================
-
-  /**
-   * 恢复路径到其 origin
-   *
-   * 仅对当前 CoW 节点恢复其 origin（repo-backed 版本）。
-   * 对纯新建节点抛出 VirtualRevertNotSupportedError。
-   */
-  revert(path: string): void;
 
   /**
    * 读取最终 diff

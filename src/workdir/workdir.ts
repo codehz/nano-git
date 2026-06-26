@@ -10,14 +10,13 @@ import {
   VirtualNotSymlinkError,
   VirtualPathAlreadyExistsError,
   VirtualPathNotFoundError,
-  VirtualRevertNotSupportedError,
 } from "../core/errors.ts";
 import { createChangeIndexPlanner } from "./change-index-plan.ts";
 import { rebuildNormalizedChangeIndex, replaceChangeRecords } from "./change-index.ts";
 import { computeVirtualDiff } from "./change-index.ts";
 import { createNodeId } from "./ids.ts";
 import { createVirtualWorkdirMemoryStateStore } from "./memory-backend.ts";
-import { revertNodeState, type WorkdirNode } from "./nodes.ts";
+import { type WorkdirNode } from "./nodes.ts";
 import { modeToVirtualEntryKind, readRepoBlobContent } from "./origin.ts";
 import { overlayBindEntry, overlayTombstoneEntry } from "./overlay.ts";
 import {
@@ -452,30 +451,6 @@ export function openVirtualWorkdir(
             toTarget.parentNode.id,
             overlayBindEntry(toTarget.parentNode.state.overlay, toTarget.name, newNodeId),
           );
-        },
-      );
-    },
-
-    revert(path: string): void {
-      runInWriteTransaction(
-        state,
-        () => {
-          changeIndexPlanner.apply(changeIndexPlanner.planRefreshForPath(path));
-        },
-        invalidateDiffCaches,
-        () => {
-          assertValidVirtualPath(path);
-          const resolved = resolvePath(source, state, path);
-          if (!resolved.found || resolved.node === null) {
-            throw new VirtualPathNotFoundError(path);
-          }
-
-          const node = resolved.node;
-          const reverted = revertNodeState(node);
-          if (reverted === node) {
-            throw new VirtualRevertNotSupportedError(path);
-          }
-          state.setNode(reverted);
         },
       );
     },

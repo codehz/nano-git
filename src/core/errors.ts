@@ -278,19 +278,3 @@ export class VirtualOriginUnavailableError extends GitError {
     this.path = path;
   }
 }
-
-/**
- * 虚拟工作目录 revert 不支持错误
- *
- * 当对纯新建节点调用 revert 时抛出，因为其没有可恢复的 origin。
- */
-export class VirtualRevertNotSupportedError extends GitError {
-  /** 路径 */
-  path: string;
-
-  constructor(path: string, message?: string) {
-    super(message ?? `Virtual revert not supported for purely new path: ${path}`);
-    this.name = "VirtualRevertNotSupportedError";
-    this.path = path;
-  }
-}

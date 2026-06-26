@@ -1,9 +1,8 @@
 /**
  * workdir/workdir.ts reset 操作单元测试
  *
- * 注意：最后两个测试（"repo-backed 文件 revert 到 clean 后 diff 为空" 和
- * "多次写入后 writeTree 产出正确的 tree 结构"）虽然位于 reset describe 内，
- * 但实际测试的是 revert 和 writeTree 语义。保留在此避免历史变动影响。
+ * 注意：最后一个测试虽然位于 reset describe 内，
+ * 但实际测试的是 writeTree 语义。保留在此避免历史变动影响。
  */
 import { describe, test, expect } from "bun:test";
 
@@ -119,21 +118,6 @@ describe("reset", () => {
     expect(root.entries).toHaveLength(1);
     expect(root.entries[0]).toMatchObject({ mode: "100644", name: "manuscript" });
     expect(readBlob(repo, root.entries[0]!.hash).toString()).toBe("file-now");
-  });
-
-  test("repo-backed 文件 revert 到 clean 后 diff 为空", () => {
-    const repo = createMemoryRepository();
-    const blobHash = repo.writeBlob(Buffer.from("base"));
-    const srcTree = repo.createTree([{ mode: "100644", name: "a.ts", hash: blobHash }]);
-    const baseTree = repo.createTree([{ mode: "040000", name: "src", hash: srcTree }]);
-    const store = createVirtualWorkdirMemoryStateStore(baseTree);
-    const session = openVirtualWorkdir(repo.objects, store);
-
-    session.writeFile("src/a.ts", Buffer.from("next"));
-    expect(session.diff().length).toBeGreaterThan(0);
-
-    session.revert("src/a.ts");
-    expect(session.diff()).toEqual([]);
   });
 
   test("多次写入后 writeTree 产出正确的 tree 结构", () => {

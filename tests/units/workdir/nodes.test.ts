@@ -15,8 +15,6 @@ import {
   createNewDirectoryNode,
   createRootDirectoryNode,
   isNodeDirty,
-  nodeHasRepoOrigin,
-  revertNodeState,
 } from "@/workdir/nodes.ts";
 import { overlayBindEntry } from "@/workdir/overlay.ts";
 
@@ -34,22 +32,7 @@ describe("createRootDirectoryNode()", () => {
   });
 });
 
-describe("revert / copy 节点语义", () => {
-  test("revert 清空目录 overlay", () => {
-    resetNodeIdCounterForTests();
-    const tree = sha1("95d09f2b10159347eece71399a7e2e907ea3df4f");
-    const root = createRootDirectoryNode(tree);
-    if (root.state.kind !== "directory") {
-      throw new Error("expected directory root");
-    }
-    const dirtyOverlay = overlayBindEntry(root.state.overlay, "a", createNodeId());
-    const dirty = { ...root, state: { kind: "directory" as const, overlay: dirtyOverlay } };
-    expect(isNodeDirty(dirty)).toBe(true);
-    const reverted = revertNodeState(dirty);
-    expect(isNodeDirty(reverted)).toBe(false);
-    expect(nodeHasRepoOrigin(reverted)).toBe(true);
-  });
-
+describe("copy 节点语义", () => {
   test("cloneWorkdirNodeForCopy 目录浅复制且共享 origin", () => {
     resetNodeIdCounterForTests();
     const tree = sha1("95d09f2b10159347eece71399a7e2e907ea3df4f");
@@ -64,10 +47,14 @@ describe("revert / copy 节点语义", () => {
     }
   });
 
-  test("无 origin 的新建目录不可 revert 为 repo 状态", () => {
+  test("新建目录带脏 overlay 时可被识别为 dirty", () => {
     resetNodeIdCounterForTests();
     const fresh = createNewDirectoryNode(createNodeId());
-    expect(nodeHasRepoOrigin(fresh)).toBe(false);
-    expect(revertNodeState(fresh)).toBe(fresh);
+    if (fresh.state.kind !== "directory") {
+      throw new Error("expected directory node");
+    }
+    const dirtyOverlay = overlayBindEntry(fresh.state.overlay, "a", createNodeId());
+    const dirty = { ...fresh, state: { kind: "directory" as const, overlay: dirtyOverlay } };
+    expect(isNodeDirty(dirty)).toBe(true);
   });
 });

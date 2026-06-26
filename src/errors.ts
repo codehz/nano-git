@@ -22,5 +22,4 @@ export {
   VirtualNotFileError,
   VirtualNotSymlinkError,
   VirtualOriginUnavailableError,
-  VirtualRevertNotSupportedError,
 } from "./core/errors.ts";

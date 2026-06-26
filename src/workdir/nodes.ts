@@ -8,7 +8,7 @@
  * - 多个路径可以共享同一个 origin hash
  * - 但这些路径在 workdir 中必须拥有各自独立的 NodeId
  *
- * 否则单路径写入、revert、copy 等操作会错误串改兄弟路径。
+ * 否则单路径写入、copy 等操作会错误串改兄弟路径。
  */
 
 import { VIRTUAL_ROOT_NODE_ID, type NodeId } from "./ids.ts";
@@ -105,13 +105,6 @@ export function createNewDirectoryNode(id: NodeId): WorkdirNode {
 }
 
 /**
- * 节点是否携带可 revert 的 repo origin
- */
-export function nodeHasRepoOrigin(node: WorkdirNode): boolean {
-  return node.origin.kind === "repo-tree" || node.origin.kind === "repo-blob";
-}
-
-/**
  * 文件/符号链接是否已 materialize（存在 overlay 内容）
  */
 export function isBlobStateMaterialized(state: FileNodeState | SymlinkNodeState): boolean {
@@ -129,7 +122,7 @@ export function isDirectoryOverlayDirty(overlay: DirectoryOverlay): boolean {
 }
 
 /**
- * 节点是否存在 workdir 层 CoW 修改（可尝试 revert）
+ * 节点是否存在 workdir 层 CoW 修改
  */
 export function isNodeDirty(node: WorkdirNode): boolean {
   if (node.state.kind === "directory") {
@@ -139,37 +132,6 @@ export function isNodeDirty(node: WorkdirNode): boolean {
     return isBlobStateMaterialized(node.state);
   }
   return false;
-}
-
-/**
- * 将节点状态恢复到 origin 语义（丢弃 materialize / 目录 overlay）
- *
- * 无 repo origin 时返回原状态引用，由上层决定是否抛错。
- */
-export function revertNodeState(node: WorkdirNode): WorkdirNode {
-  if (!nodeHasRepoOrigin(node)) {
-    return node;
-  }
-
-  if (node.state.kind === "directory") {
-    return {
-      ...node,
-      state: { kind: "directory", overlay: createEmptyDirectoryOverlay() },
-    };
-  }
-
-  if (node.state.kind === "file") {
-    const mode = node.state.mode;
-    return {
-      ...node,
-      state: { kind: "file", mode },
-    };
-  }
-
-  return {
-    ...node,
-    state: { kind: "symlink", mode: "120000" },
-  };
 }
 
 /**

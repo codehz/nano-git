@@ -3,7 +3,7 @@
  *
  * 验证错误类型可正确导入和实例化。
  * 所有导入来自 workdir/core，不直接依赖 errors 入口。
- * 覆盖计划中定义的全部 7 个专用错误。
+ * 覆盖当前公开的全部专用错误。
  */
 import { describe, test, expect } from "bun:test";
 
@@ -15,7 +15,6 @@ import {
   VirtualNotFileError,
   VirtualNotSymlinkError,
   VirtualOriginUnavailableError,
-  VirtualRevertNotSupportedError,
 } from "@/workdir/core.ts";
 describe("VirtualPathNotFoundError", () => {
   test("继承 GitError", () => {
@@ -132,22 +131,5 @@ describe("VirtualOriginUnavailableError", () => {
   test("name 为类名", () => {
     const err = new VirtualOriginUnavailableError("/x");
     expect(err.name).toBe("VirtualOriginUnavailableError");
-  });
-});
-
-describe("VirtualRevertNotSupportedError", () => {
-  test("继承 GitError", () => {
-    const err = new VirtualRevertNotSupportedError("/foo");
-    expect(err).toBeInstanceOf(GitError);
-  });
-
-  test("携带 path 属性", () => {
-    const err = new VirtualRevertNotSupportedError("/foo");
-    expect(err.path).toBe("/foo");
-  });
-
-  test("name 为类名", () => {
-    const err = new VirtualRevertNotSupportedError("/x");
-    expect(err.name).toBe("VirtualRevertNotSupportedError");
   });
 });
