@@ -150,10 +150,6 @@
       "types": "./dist/transport/upload-pack.d.mts",
       "default": "./dist/transport/upload-pack.mjs"
     },
-    "./types/diff": {
-      "types": "./dist/types/diff.d.mts",
-      "default": "./dist/types/diff.mjs"
-    },
     "./workdir/core": {
       "types": "./dist/workdir/core.d.mts",
       "default": "./dist/workdir/core.mjs"

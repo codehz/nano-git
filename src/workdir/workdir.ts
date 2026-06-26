@@ -45,9 +45,9 @@ import {
 } from "./workdir-transaction.ts";
 import { writeTreeFromSession } from "./write-tree.ts";
 
+import type { DiffEntry } from "../core/diff.ts";
 import type { SHA1 } from "../core/types.ts";
 import type { ObjectDatabase } from "../core/types/odb.ts";
-import type { DiffEntry } from "../types/diff.ts";
 import type {
   CreateVirtualWorkdirOptions,
   VirtualDirEntry,

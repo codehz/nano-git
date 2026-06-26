@@ -69,7 +69,7 @@ export type {
   DiffObject,
   DiffObjectKind,
   DiffObjectMode,
-} from "./types/diff.ts";
+} from "./core/diff.ts";
 export type { TreeSnapshotEntry } from "./repository/tree/tree-diff.ts";
 
 // ============================================================================

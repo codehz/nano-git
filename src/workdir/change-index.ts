@@ -16,9 +16,9 @@ import { readRepoBlobContent, readRepoTree } from "./origin.ts";
 import { VIRTUAL_ROOT_PATH } from "./path.ts";
 import { getDirectoryChildrenView, joinChildPath, resolvePath } from "./workdir-path.ts";
 
+import type { DiffChanges, DiffEntry, DiffObject, DiffSource } from "../core/diff.ts";
 import type { SHA1, TreeEntry } from "../core/types.ts";
 import type { ObjectSource } from "../core/types/odb.ts";
-import type { DiffChanges, DiffEntry, DiffObject, DiffSource } from "../types/diff.ts";
 import type { NodeId } from "./ids.ts";
 import type { WorkdirNode } from "./nodes.ts";
 import type { VirtualWorkdirStateStore } from "./state-store.ts";

@@ -17,9 +17,9 @@ import { sha1 } from "../core/types.ts";
 import { createRootDirectoryNode, type WorkdirNode } from "./nodes.ts";
 import { openVirtualWorkdir } from "./workdir.ts";
 
+import type { DiffObject, DiffSource } from "../core/diff.ts";
 import type { SHA1 } from "../core/types.ts";
 import type { ObjectDatabase } from "../core/types/odb.ts";
-import type { DiffObject, DiffSource } from "../types/diff.ts";
 import type { NormalizedChangeRecord } from "./change-index.ts";
 import type { CreateVirtualWorkdirOptions, VirtualWorkdir } from "./core.ts";
 import type { DirtyDirHashState, DirtyDirSummary } from "./dirty-dir.ts";

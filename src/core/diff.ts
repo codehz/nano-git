@@ -5,7 +5,7 @@
  * 当前描述的是“路径最终状态差异”，而非完整操作历史。
  */
 
-import type { SHA1 } from "../core/types.ts";
+import type { SHA1 } from "./types.ts";
 
 /**
  * diff 对象种类
