@@ -4,7 +4,7 @@
 import { describe, test, expect } from "bun:test";
 
 import { createMemoryRepository } from "@/repository/memory.ts";
-import { originBackedNodeId } from "@/workdir/ids.ts";
+import { originPathNodeId } from "@/workdir/ids.ts";
 import { createVirtualWorkdirMemoryStateStore } from "@/workdir/memory-backend.ts";
 import { createVirtualWorkdir } from "@/workdir/workdir.ts";
 import { openVirtualWorkdir } from "@/workdir/workdir.ts";
@@ -143,8 +143,8 @@ describe("writeTree object reuse", () => {
     const store = createVirtualWorkdirMemoryStateStore(baseTree);
     const session = openVirtualWorkdir(repo.objects, store);
 
-    const rightNodeId = originBackedNodeId(rightBlob);
-    const keepNodeId = originBackedNodeId(keepBlob);
+    const rightNodeId = originPathNodeId("right.txt");
+    const keepNodeId = originPathNodeId("keep.txt");
     store.deleteNode(rightNodeId);
     store.deleteNode(keepNodeId);
 

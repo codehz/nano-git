@@ -4,7 +4,7 @@
  * 供 workdir.ts 与 write-tree.ts 复用：
  * - 路径解析（resolvePath / resolveWriteTarget*）
  * - 目录子项展开（listDirectoryChildren / getDirectoryChildrenView）
- * - origin 节点懒注册（ensureNodeFromTreeEntry）
+ * - origin 路径节点懒注册（ensureNodeFromTreeEntry）
  *
  * 目录观察与编译计划相关的类型和函数已拆分到 directory-view.ts。
  */
@@ -15,7 +15,7 @@ import {
   VirtualPathAlreadyExistsError,
   VirtualPathNotFoundError,
 } from "../core/errors.ts";
-import { originBackedNodeId, VIRTUAL_ROOT_NODE_ID } from "./ids.ts";
+import { originPathNodeId, VIRTUAL_ROOT_NODE_ID } from "./ids.ts";
 import { readRepoTree, treeEntryToNodeOrigin } from "./origin.ts";
 import { mergeDirectoryChildren } from "./overlay.ts";
 import {
@@ -442,11 +442,12 @@ export function resolvePathByParentLookup(
   return { found: true, node: resolved.node };
 }
 
-/**
- * 确保 origin 条目对应的 workdir 节点已懒注册
- */
-export function ensureNodeFromTreeEntry(state: VirtualWorkdirStateStore, entry: TreeEntry): NodeId {
-  const id = originBackedNodeId(entry.hash);
+export function ensureNodeFromTreeEntry(
+  state: VirtualWorkdirStateStore,
+  path: string,
+  entry: TreeEntry,
+): NodeId {
+  const id = originPathNodeId(path);
   if (state.getNode(id) === null) {
     const origin = treeEntryToNodeOrigin(entry);
     let nodeState: WorkdirNode["state"];
@@ -483,7 +484,8 @@ export function listDirectoryChildren(
   if (dirNode.origin.kind === "repo-tree") {
     const tree = readRepoTree(source, dirNode.origin.hash, dirPath);
     originChildren = tree.entries.map((entry) => {
-      const childNodeId = ensureNodeFromTreeEntry(state, entry);
+      const childPath = joinChildPath(dirPath, entry.name);
+      const childNodeId = ensureNodeFromTreeEntry(state, childPath, entry);
       return { name: entry.name, mode: entry.mode, nodeId: childNodeId };
     });
   }

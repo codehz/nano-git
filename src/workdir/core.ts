@@ -156,6 +156,14 @@ export interface CreateVirtualWorkdirOptions {
  * 提供独立生命周期的可变 tree 视图，基于 `baseTree + CoW overlay` 模型。
  * 不绑定 commit，不涉及 Git index / 真实工作目录。
  *
+ * 关键模型边界：
+ * - 路径：定位当前 workdir 中的可见条目
+ * - 节点身份：workdir 内部可变实体，由 `NodeId` 表示
+ * - origin hash：Git ODB 中的不可变对象身份
+ *
+ * 同一个 origin hash 可以被多个路径引用；
+ * 这些路径在 workdir 中仍需拥有独立节点身份，避免单路径写入、恢复、复制时发生串改。
+ *
  * 当前实例对 origin 仓库对象采用弱保证：
  * 如果 base tree / origin blob 在后续被移除、损坏或不可读取，
  * 相关读取、`revert()`、`writeTree()` 等操作会抛出 `VirtualOriginUnavailableError`。

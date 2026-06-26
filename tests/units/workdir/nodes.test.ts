@@ -4,7 +4,12 @@
 import { describe, test, expect } from "bun:test";
 
 import { sha1 } from "@/core/types.ts";
-import { createNodeId, resetNodeIdCounterForTests, VIRTUAL_ROOT_NODE_ID } from "@/workdir/ids.ts";
+import {
+  createNodeId,
+  originPathNodeId,
+  resetNodeIdCounterForTests,
+  VIRTUAL_ROOT_NODE_ID,
+} from "@/workdir/ids.ts";
 import {
   cloneWorkdirNodeForCopy,
   createNewDirectoryNode,
@@ -21,6 +26,11 @@ describe("createRootDirectoryNode()", () => {
     const node = createRootDirectoryNode(tree);
     expect(node.id).toBe(VIRTUAL_ROOT_NODE_ID);
     expect(node.origin).toEqual({ kind: "repo-tree", hash: tree });
+  });
+
+  test("originPathNodeId 按路径分配稳定且隔离的节点身份", () => {
+    expect(originPathNodeId("a.txt")).toBe(originPathNodeId("a.txt"));
+    expect(originPathNodeId("a.txt")).not.toBe(originPathNodeId("b.txt"));
   });
 });
 

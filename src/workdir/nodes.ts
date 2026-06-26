@@ -1,7 +1,14 @@
 /**
  * Virtual Workdir 节点状态模型
  *
- * 节点身份（nodeId）与目录路径绑定分离；origin 描述 repo-backed 来源。
+ * `NodeId` 表示 workdir 中的可变节点身份；
+ * `origin.hash` 表示 Git 对象数据库里的不可变内容身份。
+ *
+ * 两者必须分离：
+ * - 多个路径可以共享同一个 origin hash
+ * - 但这些路径在 workdir 中必须拥有各自独立的 NodeId
+ *
+ * 否则单路径写入、revert、copy 等操作会错误串改兄弟路径。
  */
 
 import { VIRTUAL_ROOT_NODE_ID, type NodeId } from "./ids.ts";
@@ -23,6 +30,8 @@ export type BlobObjectMode = "100644" | "100755" | "120000";
 
 /**
  * 节点来源（repo 对象或纯 workdir 新建）
+ *
+ * 注意：这里记录的是“内容来源”而不是“节点身份来源”。
  */
 export type NodeOrigin =
   | { readonly kind: "none" }

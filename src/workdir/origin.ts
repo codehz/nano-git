@@ -6,13 +6,11 @@
 
 import { VirtualOriginUnavailableError } from "../core/errors.ts";
 import { tryReadObject } from "../objects/raw.ts";
-import { originBackedNodeId } from "./ids.ts";
 
 import type { GitTree, SHA1, TreeEntry } from "../core/types.ts";
 import type { ObjectSource } from "../core/types/odb.ts";
 import type { VirtualEntryKind } from "./core.ts";
 import type { BlobObjectMode, NodeOrigin } from "./nodes.ts";
-import type { OriginDirectoryChild } from "./overlay.ts";
 
 // ==================== 读取 ====================
 
@@ -42,17 +40,6 @@ export function readRepoBlobContent(source: ObjectSource, hash: SHA1, path: stri
     throw new VirtualOriginUnavailableError(path, `Expected blob at origin, got ${obj.type}`);
   }
   return obj.content;
-}
-
-/**
- * 将 tree 条目的子项转为 origin 目录子项（用于 overlay 合成）
- */
-export function treeEntriesToOriginChildren(entries: readonly TreeEntry[]): OriginDirectoryChild[] {
-  return entries.map((entry) => ({
-    name: entry.name,
-    mode: entry.mode,
-    nodeId: originBackedNodeId(entry.hash),
-  }));
 }
 
 /**

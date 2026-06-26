@@ -14,7 +14,7 @@
 
 import { writeObject } from "../objects/raw.ts";
 import { createNamedOriginChildLookup, resolveNamedChild } from "./directory-view.ts";
-import { originBackedNodeId } from "./ids.ts";
+import { originPathNodeId } from "./ids.ts";
 import { readRepoTree } from "./origin.ts";
 import { VIRTUAL_ROOT_PATH } from "./path.ts";
 import { joinChildPath } from "./workdir-path.ts";
@@ -43,6 +43,7 @@ interface CompileContext {
  *
  * 只重写受 overlay 影响的目录；文件/符号链接仅在 materialized 时写新 blob。
  * 未修改的 repo-backed 条目直接复用 origin hash。
+ * 已解析节点是否存在则按“origin 路径节点身份”判断，而不是按对象 hash 判断。
  *
  * @param source - 可写对象数据库（用于写入新 blob/tree）
  * @param state - workdir 内部状态
@@ -152,10 +153,9 @@ function walkResolvedOverlayNodes(
     const tree = readRepoTree(source, node.origin.hash, dirPath);
     for (const entry of tree.entries) {
       if (entry.mode !== "040000") continue;
-      const childId = originBackedNodeId(entry.hash);
-      const childNode = state.getNode(childId);
-      if (childNode === null) continue; // 未解析 → 不可能有 overlay 修改
       const childPath = joinChildPath(dirPath, entry.name);
+      const childNode = state.getNode(originPathNodeId(childPath));
+      if (childNode === null) continue; // 未解析 → 不可能有 overlay 修改
       walkResolvedOverlayNodes(source, state, childNode, childPath, dirty);
     }
   }
@@ -219,7 +219,7 @@ function compileDirectory(ctx: CompileContext, dirNode: WorkdirNode, dirPath: st
 
       if (originEntry.mode === "040000") {
         // —— 子目录 ——
-        const resolved = resolveNamedChild(ctx.state, dirNode, lookup, originEntry.name);
+        const resolved = resolveNamedChild(ctx.state, dirNode, dirPath, lookup, originEntry.name);
         if (resolved.found && resolved.node.state.kind === "directory") {
           if (ctx.dirtyPaths.has(childPath) || isNodeOverlayDirty(resolved.node)) {
             const hash = compileDirectory(ctx, resolved.node, childPath);
@@ -239,7 +239,7 @@ function compileDirectory(ctx: CompileContext, dirNode: WorkdirNode, dirPath: st
       } else {
         // —— 文件/符号链接 ——
         if (ctx.changes.has(childPath)) {
-          const resolved = resolveNamedChild(ctx.state, dirNode, lookup, originEntry.name);
+          const resolved = resolveNamedChild(ctx.state, dirNode, dirPath, lookup, originEntry.name);
           if (resolved.found) {
             const compiled = compileNodeToEntry(ctx, resolved.node, childPath, originEntry.name);
             if (compiled !== null) treeEntries.push(compiled);

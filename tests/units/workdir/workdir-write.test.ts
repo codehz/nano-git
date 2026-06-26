@@ -142,6 +142,55 @@ describe("mkdir", () => {
 // ==================== writeFile ====================
 
 describe("writeFile", () => {
+  test("同一个 origin blob hash 的不同路径改写时互不影响", () => {
+    const repo = createMemoryRepository();
+    const sharedBlobHash = repo.writeBlob(Buffer.from("shared"));
+    const baseTree = repo.createTree([
+      { mode: "100644", name: "a.txt", hash: sharedBlobHash },
+      { mode: "100644", name: "b.txt", hash: sharedBlobHash },
+    ]);
+    const session = createVirtualWorkdir(repo.objects, { baseTree });
+
+    expect(session.readFile("a.txt").toString()).toBe("shared");
+    expect(session.readFile("b.txt").toString()).toBe("shared");
+
+    session.writeFile("a.txt", Buffer.from("edited-a"));
+
+    expect(session.readFile("a.txt").toString()).toBe("edited-a");
+    expect(session.readFile("b.txt").toString()).toBe("shared");
+    expect(session.diff()).toMatchObject([
+      {
+        kind: "update",
+        path: "a.txt",
+        previous: {
+          kind: "blob",
+          mode: "100644",
+        },
+        current: {
+          kind: "blob",
+          mode: "100644",
+        },
+      },
+    ]);
+  });
+
+  test("同一个 origin blob hash 在不同目录路径改写时互不影响", () => {
+    const repo = createMemoryRepository();
+    const sharedBlobHash = repo.writeBlob(Buffer.from("shared"));
+    const leftTree = repo.createTree([{ mode: "100644", name: "same.txt", hash: sharedBlobHash }]);
+    const rightTree = repo.createTree([{ mode: "100644", name: "same.txt", hash: sharedBlobHash }]);
+    const baseTree = repo.createTree([
+      { mode: "040000", name: "left", hash: leftTree },
+      { mode: "040000", name: "right", hash: rightTree },
+    ]);
+    const session = createVirtualWorkdir(repo.objects, { baseTree });
+
+    session.writeFile("left/same.txt", Buffer.from("left-only"));
+
+    expect(session.readFile("left/same.txt").toString()).toBe("left-only");
+    expect(session.readFile("right/same.txt").toString()).toBe("shared");
+  });
+
   test("新建文件并读取", () => {
     const repo = createMemoryRepository();
     const session = createVirtualWorkdir(repo.objects, {
@@ -275,6 +324,21 @@ describe("writeFile", () => {
 // ==================== writeLink ====================
 
 describe("writeLink", () => {
+  test("同一个 origin symlink blob hash 的不同路径改写时互不影响", () => {
+    const repo = createMemoryRepository();
+    const sharedLinkHash = repo.writeBlob(Buffer.from("target\n"));
+    const baseTree = repo.createTree([
+      { mode: "120000", name: "a", hash: sharedLinkHash },
+      { mode: "120000", name: "b", hash: sharedLinkHash },
+    ]);
+    const session = createVirtualWorkdir(repo.objects, { baseTree });
+
+    session.writeLink("a", "edited-target");
+
+    expect(session.readLink("a")).toBe("edited-target");
+    expect(session.readLink("b")).toBe("target\n");
+  });
+
   test("新建符号链接并读取", () => {
     const repo = createMemoryRepository();
     const session = createVirtualWorkdir(repo.objects, {
@@ -960,6 +1024,23 @@ describe("move", () => {
 // ==================== copy ====================
 
 describe("copy", () => {
+  test("共享同一个 origin blob hash 的兄弟路径在 copy 后仍互不串改", () => {
+    const repo = createMemoryRepository();
+    const sharedBlobHash = repo.writeBlob(Buffer.from("shared"));
+    const baseTree = repo.createTree([
+      { mode: "100644", name: "a.txt", hash: sharedBlobHash },
+      { mode: "100644", name: "b.txt", hash: sharedBlobHash },
+    ]);
+    const session = createVirtualWorkdir(repo.objects, { baseTree });
+
+    session.copy("a.txt", "a-copy.txt");
+    session.writeFile("a-copy.txt", Buffer.from("copy-only"));
+
+    expect(session.readFile("a.txt").toString()).toBe("shared");
+    expect(session.readFile("b.txt").toString()).toBe("shared");
+    expect(session.readFile("a-copy.txt").toString()).toBe("copy-only");
+  });
+
   test("目标父路径是文件时 copy 抛 VirtualNotDirectoryError", () => {
     const repo = createMemoryRepository();
     const session = createVirtualWorkdir(repo.objects, {
@@ -1145,6 +1226,24 @@ describe("copy", () => {
 // ==================== revert / reset ====================
 
 describe("revert", () => {
+  test("共享同一个 origin blob hash 的不同路径中 revert 只恢复目标路径", () => {
+    const repo = createMemoryRepository();
+    const sharedBlobHash = repo.writeBlob(Buffer.from("shared"));
+    const baseTree = repo.createTree([
+      { mode: "100644", name: "a.txt", hash: sharedBlobHash },
+      { mode: "100644", name: "b.txt", hash: sharedBlobHash },
+    ]);
+    const session = createVirtualWorkdir(repo.objects, { baseTree });
+
+    session.writeFile("a.txt", Buffer.from("edited-a"));
+    session.writeFile("b.txt", Buffer.from("edited-b"));
+
+    session.revert("a.txt");
+
+    expect(session.readFile("a.txt").toString()).toBe("shared");
+    expect(session.readFile("b.txt").toString()).toBe("edited-b");
+  });
+
   test("revert 根路径抛错误", () => {
     const repo = createMemoryRepository();
     const session = createVirtualWorkdir(repo.objects, {

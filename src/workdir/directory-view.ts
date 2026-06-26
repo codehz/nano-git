@@ -76,6 +76,7 @@ export interface ObservedDirectoryChildNode {
 export function resolveNamedChild(
   state: VirtualWorkdirStateStore,
   dirNode: WorkdirNode,
+  dirPath: string,
   originLookup: NamedOriginChildLookup,
   name: string,
 ): { found: false; node: null } | { found: true; node: WorkdirNode } {
@@ -96,7 +97,7 @@ export function resolveNamedChild(
   if (originEntry === undefined) {
     return { found: false, node: null };
   }
-  const originNodeId = ensureNodeFromTreeEntry(state, originEntry);
+  const originNodeId = ensureNodeFromTreeEntry(state, joinChildPath(dirPath, name), originEntry);
   const originNode = state.getNode(originNodeId);
   return originNode === null ? { found: false, node: null } : { found: true, node: originNode };
 }
@@ -153,7 +154,7 @@ export function observeNamedDirectoryChild(
   if (dirNode.state.kind !== "directory") {
     return null;
   }
-  const resolved = resolveNamedChild(state, dirNode, originLookup, name);
+  const resolved = resolveNamedChild(state, dirNode, dirPath, originLookup, name);
   if (!resolved.found) {
     return null;
   }
