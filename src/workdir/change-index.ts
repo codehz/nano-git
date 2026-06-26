@@ -18,12 +18,7 @@ import { getDirectoryChildrenView, joinChildPath, resolvePath } from "./workdir-
 
 import type { SHA1, TreeEntry } from "../core/types.ts";
 import type { ObjectSource } from "../core/types/odb.ts";
-import type {
-  VirtualDiffChanges,
-  VirtualDiffEntry,
-  VirtualDiffObject,
-  VirtualDiffSource,
-} from "./core.ts";
+import type { DiffChanges, DiffEntry, DiffObject, DiffSource } from "../types/diff.ts";
 import type { NodeId } from "./ids.ts";
 import type { WorkdirNode } from "./nodes.ts";
 import type { VirtualWorkdirStateStore } from "./state-store.ts";
@@ -38,16 +33,16 @@ export interface NormalizedChangeRecord {
   /** 当前路径 */
   readonly path: string;
   /** 变更前对象 */
-  readonly previous: VirtualDiffObject | null;
+  readonly previous: DiffObject | null;
   /** 变更后对象 */
-  readonly current: VirtualDiffObject | null;
+  readonly current: DiffObject | null;
   /** move/copy 来源 */
-  readonly source: VirtualDiffSource | null;
+  readonly source: DiffSource | null;
 }
 
 interface SnapshotEntry {
   readonly path: string;
-  readonly object: VirtualDiffObject;
+  readonly object: DiffObject;
   readonly originSignature: string | null;
 }
 
@@ -185,7 +180,7 @@ export function rebuildNormalizedChangeIndex(
  */
 export function exportVirtualDiffFromChangeRecords(
   records: readonly NormalizedChangeRecord[],
-): VirtualDiffEntry[] {
+): DiffEntry[] {
   return records
     .map((record) => {
       if (record.previous === null && record.current !== null) {
@@ -194,7 +189,7 @@ export function exportVirtualDiffFromChangeRecords(
           path: record.path,
           current: record.current,
           source: record.source ?? undefined,
-        } satisfies VirtualDiffEntry;
+        } satisfies DiffEntry;
       }
 
       if (record.previous !== null && record.current === null) {
@@ -202,7 +197,7 @@ export function exportVirtualDiffFromChangeRecords(
           kind: "remove",
           path: record.path,
           previous: record.previous,
-        } satisfies VirtualDiffEntry;
+        } satisfies DiffEntry;
       }
 
       if (record.previous !== null && record.current !== null) {
@@ -213,7 +208,7 @@ export function exportVirtualDiffFromChangeRecords(
           current: record.current,
           changes: diffChanges(record.previous, record.current),
           source: record.source ?? undefined,
-        } satisfies VirtualDiffEntry;
+        } satisfies DiffEntry;
       }
 
       throw new Error(`Invalid normalized change record at path: ${record.path}`);
@@ -575,7 +570,7 @@ function deriveCopySource(
   sourceRecord: NormalizedChangeRecord | null,
   source: ObjectSource,
   state: VirtualWorkdirStateStore,
-): VirtualDiffSource | null {
+): DiffSource | null {
   const fromRecordSource = sourceRecord?.source;
   if (fromRecordSource !== null && fromRecordSource !== undefined) {
     return createDiffSource("copy", fromRecordSource.path);
@@ -686,9 +681,9 @@ function snapshotCurrentLeafNode(
 
 function createNormalizedChangeRecord(
   path: string,
-  previous: VirtualDiffObject | null,
-  current: VirtualDiffObject | null,
-  source: VirtualDiffSource | null = null,
+  previous: DiffObject | null,
+  current: DiffObject | null,
+  source: DiffSource | null = null,
 ): NormalizedChangeRecord {
   return {
     path,
@@ -698,14 +693,11 @@ function createNormalizedChangeRecord(
   };
 }
 
-function createDiffSource(kind: "move" | "copy", path: string): VirtualDiffSource {
+function createDiffSource(kind: "move" | "copy", path: string): DiffSource {
   return { kind, path };
 }
 
-function createDiffObject(
-  mode: "100644" | "100755" | "040000" | "120000",
-  hash: SHA1,
-): VirtualDiffObject {
+function createDiffObject(mode: "100644" | "100755" | "040000" | "120000", hash: SHA1): DiffObject {
   return {
     kind: modeKind(mode),
     mode,
@@ -713,7 +705,7 @@ function createDiffObject(
   };
 }
 
-function diffChanges(previous: VirtualDiffObject, current: VirtualDiffObject): VirtualDiffChanges {
+function diffChanges(previous: DiffObject, current: DiffObject): DiffChanges {
   return {
     kindChanged: previous.kind !== current.kind,
     modeChanged: previous.mode !== current.mode,
@@ -721,7 +713,7 @@ function diffChanges(previous: VirtualDiffObject, current: VirtualDiffObject): V
   };
 }
 
-function isSameObject(previous: VirtualDiffObject, current: VirtualDiffObject): boolean {
+function isSameObject(previous: DiffObject, current: DiffObject): boolean {
   return (
     previous.kind === current.kind &&
     previous.mode === current.mode &&
@@ -814,6 +806,6 @@ function modeKind(mode: TreeEntry["mode"]): "blob" | "tree" | "symlink" {
  * expect(diff.map((entry) => entry.path)).toEqual(["hello.txt"]);
  * ```
  */
-export function computeVirtualDiff(state: VirtualWorkdirStateStore): VirtualDiffEntry[] {
+export function computeVirtualDiff(state: VirtualWorkdirStateStore): DiffEntry[] {
   return exportVirtualDiffFromChangeRecords(state.listChangeRecords());
 }

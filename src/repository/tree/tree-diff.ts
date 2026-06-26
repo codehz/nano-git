@@ -12,23 +12,7 @@ import { readObject } from "../../objects/raw.ts";
 
 import type { SHA1, TreeEntry } from "../../core/types.ts";
 import type { ObjectDatabase } from "../../odb/types.ts";
-
-/**
- * tree 快照中的对象种类
- */
-export type TreeSnapshotKind = "blob" | "tree" | "symlink";
-
-/**
- * tree 快照中的对象描述
- */
-export interface TreeSnapshotObject {
-  /** 条目种类 */
-  readonly kind: TreeSnapshotKind;
-  /** Git 文件模式 */
-  readonly mode: "100644" | "100755" | "040000" | "120000";
-  /** 对象哈希 */
-  readonly hash: SHA1;
-}
+import type { DiffEntry, DiffObject, DiffObjectKind } from "../../types/diff.ts";
 
 /**
  * tree 快照条目
@@ -37,53 +21,8 @@ export interface TreeSnapshotEntry {
   /** 相对根 tree 的完整路径 */
   readonly path: string;
   /** 当前对象 */
-  readonly object: TreeSnapshotObject;
+  readonly object: DiffObject;
 }
-
-/**
- * 同路径更新的变化维度
- */
-export interface TreeDiffChanges {
-  /** 条目种类是否变化 */
-  readonly kindChanged: boolean;
-  /** mode 是否变化 */
-  readonly modeChanged: boolean;
-  /** 内容哈希是否变化 */
-  readonly contentChanged: boolean;
-}
-
-/**
- * tree diff 条目
- */
-export type TreeDiffEntry =
-  | {
-      /** 新建路径 */
-      readonly kind: "create";
-      /** 当前路径 */
-      readonly path: string;
-      /** 当前对象 */
-      readonly current: TreeSnapshotObject;
-    }
-  | {
-      /** 删除路径 */
-      readonly kind: "remove";
-      /** 当前路径 */
-      readonly path: string;
-      /** 删除前对象 */
-      readonly previous: TreeSnapshotObject;
-    }
-  | {
-      /** 同路径更新 */
-      readonly kind: "update";
-      /** 当前路径 */
-      readonly path: string;
-      /** 更新前对象 */
-      readonly previous: TreeSnapshotObject;
-      /** 更新后对象 */
-      readonly current: TreeSnapshotObject;
-      /** 变化维度 */
-      readonly changes: TreeDiffChanges;
-    };
 
 /**
  * 带完整路径的 tree 条目
@@ -135,14 +74,14 @@ export function diffTrees(
   objects: ObjectDatabase,
   previousTree: SHA1,
   currentTree: SHA1,
-): TreeDiffEntry[] {
+): DiffEntry[] {
   const previousSnapshot = readTreeSnapshot(objects, previousTree);
   const currentSnapshot = readTreeSnapshot(objects, currentTree);
 
   const previousByPath = new Map(previousSnapshot.map((entry) => [entry.path, entry.object]));
   const currentByPath = new Map(currentSnapshot.map((entry) => [entry.path, entry.object]));
   const allPaths = new Set<string>([...previousByPath.keys(), ...currentByPath.keys()]);
-  const diff: TreeDiffEntry[] = [];
+  const diff: DiffEntry[] = [];
 
   for (const path of Array.from(allPaths).sort((left, right) => left.localeCompare(right))) {
     const previous = previousByPath.get(path) ?? null;
@@ -251,7 +190,7 @@ function walkTreeRecursive(
   }
 }
 
-function treeEntryToSnapshotObject(entry: TreeEntry): TreeSnapshotObject {
+function treeEntryToSnapshotObject(entry: TreeEntry): DiffObject {
   return {
     kind: modeToTreeSnapshotKind(entry.mode),
     mode: assertSnapshotMode(entry.mode),
@@ -259,7 +198,7 @@ function treeEntryToSnapshotObject(entry: TreeEntry): TreeSnapshotObject {
   };
 }
 
-function modeToTreeSnapshotKind(mode: string): TreeSnapshotKind {
+function modeToTreeSnapshotKind(mode: string): DiffObjectKind {
   if (mode === "040000") {
     return "tree";
   }
@@ -272,14 +211,14 @@ function modeToTreeSnapshotKind(mode: string): TreeSnapshotKind {
   throw new Error(`Unsupported tree entry mode for snapshot diff: ${mode}`);
 }
 
-function assertSnapshotMode(mode: string): TreeSnapshotObject["mode"] {
+function assertSnapshotMode(mode: string): DiffObject["mode"] {
   if (mode === "100644" || mode === "100755" || mode === "040000" || mode === "120000") {
     return mode;
   }
   throw new Error(`Unsupported tree entry mode for snapshot diff: ${mode}`);
 }
 
-function isSameObject(previous: TreeSnapshotObject, current: TreeSnapshotObject): boolean {
+function isSameObject(previous: DiffObject, current: DiffObject): boolean {
   return (
     previous.kind === current.kind &&
     previous.mode === current.mode &&

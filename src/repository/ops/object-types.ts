@@ -3,7 +3,8 @@
  */
 
 import type { GitAuthor, GitObject, SHA1, TreeEntry } from "../../core/types.ts";
-import type { TreeDiffEntry, TreeSnapshotEntry } from "../tree/tree-diff.ts";
+import type { DiffEntry } from "../../types/diff.ts";
+import type { TreeSnapshotEntry } from "../tree/tree-diff.ts";
 import type { TreePatchOp, TreePatchResult } from "../tree/tree-patch.ts";
 
 /**
@@ -97,7 +98,7 @@ export interface RepositoryObjectOperations {
    * 当前只提供同路径 create / remove / update 语义，
    * 不分析 move / copy。
    */
-  diffTrees(previousTree: SHA1, currentTree: SHA1): TreeDiffEntry[];
+  diffTrees(previousTree: SHA1, currentTree: SHA1): DiffEntry[];
 }
 
 /**

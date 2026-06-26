@@ -47,10 +47,10 @@ import { writeTreeFromSession } from "./write-tree.ts";
 
 import type { SHA1 } from "../core/types.ts";
 import type { ObjectDatabase } from "../core/types/odb.ts";
+import type { DiffEntry } from "../types/diff.ts";
 import type {
   CreateVirtualWorkdirOptions,
   VirtualDirEntry,
-  VirtualDiffEntry,
   VirtualEntryStat,
   VirtualWorkdir,
 } from "./core.ts";
@@ -486,7 +486,7 @@ export function openVirtualWorkdir(
       );
     },
 
-    diff(): VirtualDiffEntry[] {
+    diff(): DiffEntry[] {
       return computeVirtualDiff(state);
     },
 

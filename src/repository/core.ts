@@ -7,9 +7,10 @@
 export { createRepository } from "./create.ts";
 export type { Repository, FileRepository } from "./types.ts";
 export type {
-  TreeDiffEntry,
-  TreeDiffChanges,
-  TreeSnapshotEntry,
-  TreeSnapshotKind,
-  TreeSnapshotObject,
-} from "./tree/tree-diff.ts";
+  DiffEntry,
+  DiffChanges,
+  DiffObject,
+  DiffObjectKind,
+  DiffObjectMode,
+} from "../types/diff.ts";
+export type { TreeSnapshotEntry } from "./tree/tree-diff.ts";

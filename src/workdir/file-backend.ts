@@ -19,8 +19,9 @@ import { openVirtualWorkdir } from "./workdir.ts";
 
 import type { SHA1 } from "../core/types.ts";
 import type { ObjectDatabase } from "../core/types/odb.ts";
+import type { DiffObject, DiffSource } from "../types/diff.ts";
 import type { NormalizedChangeRecord } from "./change-index.ts";
-import type { CreateVirtualWorkdirOptions, VirtualDiffSource, VirtualWorkdir } from "./core.ts";
+import type { CreateVirtualWorkdirOptions, VirtualWorkdir } from "./core.ts";
 import type { DirtyDirHashState, DirtyDirSummary } from "./dirty-dir.ts";
 import type { NodeId } from "./ids.ts";
 import type { VirtualWorkdirStateStore } from "./state-store.ts";
@@ -38,16 +39,8 @@ interface FileSessionManifest {
 
 interface FileChangeRecord {
   readonly path: string;
-  readonly previous: {
-    readonly kind: "blob" | "tree" | "symlink";
-    readonly mode: "100644" | "100755" | "040000" | "120000";
-    readonly hash: string;
-  } | null;
-  readonly current: {
-    readonly kind: "blob" | "tree" | "symlink";
-    readonly mode: "100644" | "100755" | "040000" | "120000";
-    readonly hash: string;
-  } | null;
+  readonly previous: DiffObject | null;
+  readonly current: DiffObject | null;
   /** move/copy 来源 */
   readonly source: {
     readonly kind: "move" | "copy";
@@ -628,7 +621,7 @@ function restoreChangeRecord(record: FileChangeRecord): NormalizedChangeRecord {
   };
 }
 
-function readFileDiffSource(source: NonNullable<FileChangeRecord["source"]>): VirtualDiffSource {
+function readFileDiffSource(source: NonNullable<FileChangeRecord["source"]>): DiffSource {
   if (source.kind === "copy") {
     return { kind: "copy", path: source.path };
   }

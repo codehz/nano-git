@@ -58,6 +58,7 @@ export default defineConfig({
     "src/repository/memory.ts",
     "src/repository/file.ts",
     "src/repository/sqlite.ts",
+    "src/types/diff.ts",
     "src/repository/tree/tree-diff.ts",
     "src/repository/tree/tree-patch.ts",
     "src/transport/index.ts",

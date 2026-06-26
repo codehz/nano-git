@@ -11,6 +11,7 @@
  */
 
 import type { SHA1 } from "../core/types.ts";
+import type { DiffEntry } from "../types/diff.ts";
 
 export {
   VirtualPathNotFoundError,
@@ -66,79 +67,6 @@ export interface VirtualDirEntry {
 }
 
 // ==================== Diff 类型 ====================
-
-/**
- * diff 中的对象描述
- */
-export interface VirtualDiffObject {
-  /** 条目种类 */
-  readonly kind: "blob" | "tree" | "symlink";
-  /** Git 文件模式 */
-  readonly mode: "100644" | "100755" | "040000" | "120000";
-  /** 对象哈希 */
-  readonly hash: SHA1;
-}
-
-/**
- * move/copy 来源描述
- */
-export interface VirtualDiffSource {
-  /** 来源类型 */
-  readonly kind: "move" | "copy";
-  /** 来源路径 */
-  readonly path: string;
-}
-
-/**
- * 同路径更新的变化维度
- */
-export interface VirtualDiffChanges {
-  /** 条目种类是否变化 */
-  readonly kindChanged: boolean;
-  /** mode 是否变化 */
-  readonly modeChanged: boolean;
-  /** 内容哈希是否变化 */
-  readonly contentChanged: boolean;
-}
-
-/**
- * 单条 diff 条目
- *
- * 仅描述最终状态，不表达完整会话内操作历史。
- */
-export type VirtualDiffEntry =
-  | {
-      /** 新建路径 */
-      readonly kind: "create";
-      /** 当前路径 */
-      readonly path: string;
-      /** 当前对象 */
-      readonly current: VirtualDiffObject;
-      /** move/copy 的来源 */
-      readonly source?: VirtualDiffSource;
-    }
-  | {
-      /** 删除路径 */
-      readonly kind: "remove";
-      /** 当前路径 */
-      readonly path: string;
-      /** 删除前对象 */
-      readonly previous: VirtualDiffObject;
-    }
-  | {
-      /** 同路径更新 */
-      readonly kind: "update";
-      /** 当前路径 */
-      readonly path: string;
-      /** 更新前对象 */
-      readonly previous: VirtualDiffObject;
-      /** 更新后对象 */
-      readonly current: VirtualDiffObject;
-      /** 变化维度 */
-      readonly changes: VirtualDiffChanges;
-      /** move/copy 的来源 */
-      readonly source?: VirtualDiffSource;
-    };
 
 // ==================== Workdir 工厂选项 ====================
 
@@ -260,7 +188,7 @@ export interface VirtualWorkdir {
    *
    * 输出按路径稳定排序，包含文件、目录与符号链接条目。
    */
-  diff(): VirtualDiffEntry[];
+  diff(): DiffEntry[];
 
   /**
    * 导出当前 overlay 为新 tree
