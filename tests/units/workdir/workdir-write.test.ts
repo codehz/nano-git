@@ -311,6 +311,15 @@ describe("writeLink", () => {
 // ==================== delete ====================
 
 describe("delete", () => {
+  test("删除根路径抛错误", () => {
+    const repo = createMemoryRepository();
+    const session = createVirtualWorkdir(repo.objects, {
+      baseTree: repo.createTree([]),
+    });
+
+    expect(() => session.delete("")).toThrow(/Path must not be empty/);
+  });
+
   test("删除新建文件", () => {
     const repo = createMemoryRepository();
     const session = createVirtualWorkdir(repo.objects, {
@@ -680,6 +689,32 @@ describe("diff（写入操作）", () => {
 // ==================== move ====================
 
 describe("move", () => {
+  test("将目录移动到自己的子目录抛错误", () => {
+    const repo = createMemoryRepository();
+    const session = createVirtualWorkdir(repo.objects, {
+      baseTree: repo.createTree([]),
+    });
+
+    session.mkdir("src");
+    session.writeFile("src/main.ts", Buffer.from("code"));
+
+    expect(() => session.move("src", "src/nested")).toThrow(
+      /destination is a subdirectory of source/,
+    );
+  });
+
+  test("目标父路径是文件时 move 抛 VirtualNotDirectoryError", () => {
+    const repo = createMemoryRepository();
+    const session = createVirtualWorkdir(repo.objects, {
+      baseTree: repo.createTree([]),
+    });
+
+    session.writeFile("from.txt", Buffer.from("data"));
+    session.writeFile("target", Buffer.from("blocking parent"));
+
+    expect(() => session.move("from.txt", "target/child.txt")).toThrow(VirtualNotDirectoryError);
+  });
+
   test("同目录下移动文件", () => {
     const repo = createMemoryRepository();
     const session = createVirtualWorkdir(repo.objects, {
@@ -925,6 +960,33 @@ describe("move", () => {
 // ==================== copy ====================
 
 describe("copy", () => {
+  test("目标父路径是文件时 copy 抛 VirtualNotDirectoryError", () => {
+    const repo = createMemoryRepository();
+    const session = createVirtualWorkdir(repo.objects, {
+      baseTree: repo.createTree([]),
+    });
+
+    session.writeFile("from.txt", Buffer.from("data"));
+    session.writeFile("target", Buffer.from("blocking parent"));
+
+    expect(() => session.copy("from.txt", "target/child.txt")).toThrow(VirtualNotDirectoryError);
+  });
+
+  test("复制目录到自己的子目录会保留源目录可读", () => {
+    const repo = createMemoryRepository();
+    const session = createVirtualWorkdir(repo.objects, {
+      baseTree: repo.createTree([]),
+    });
+
+    session.mkdir("src");
+    session.writeFile("src/main.ts", Buffer.from("code"));
+
+    session.copy("src", "src/nested");
+
+    expect(session.readFile("src/main.ts").toString()).toBe("code");
+    expect(session.readFile("src/nested/main.ts").toString()).toBe("code");
+  });
+
   test("复制文件", () => {
     const repo = createMemoryRepository();
     const session = createVirtualWorkdir(repo.objects, {
@@ -1083,6 +1145,15 @@ describe("copy", () => {
 // ==================== revert / reset ====================
 
 describe("revert", () => {
+  test("revert 根路径抛错误", () => {
+    const repo = createMemoryRepository();
+    const session = createVirtualWorkdir(repo.objects, {
+      baseTree: repo.createTree([]),
+    });
+
+    expect(() => session.revert("")).toThrow(/Path must not be empty/);
+  });
+
   test("恢复 repo-backed 文件内容", () => {
     const repo = createMemoryRepository();
     const blobHash = repo.writeBlob(Buffer.from("old"));
@@ -1163,6 +1234,20 @@ describe("revert", () => {
 
     session.revert("dir");
     expect(session.readdir("dir").map((entry) => entry.name)).toEqual(["base.txt"]);
+  });
+
+  test("恢复目录 overlay 后新增子路径不可见", () => {
+    const repo = createMemoryRepository();
+    const childHash = repo.writeBlob(Buffer.from("base"));
+    const dirHash = repo.createTree([{ mode: "100644", name: "base.txt", hash: childHash }]);
+    const baseTree = repo.createTree([{ mode: "040000", name: "dir", hash: dirHash }]);
+    const session = createVirtualWorkdir(repo.objects, { baseTree });
+
+    session.writeFile("dir/new.txt", Buffer.from("new"));
+    session.revert("dir");
+
+    expect(session.exists("dir/new.txt")).toBe(false);
+    expect(() => session.readFile("dir/new.txt")).toThrow(VirtualPathNotFoundError);
   });
 
   test("恢复纯新建节点抛 VirtualRevertNotSupportedError", () => {
