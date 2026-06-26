@@ -4,6 +4,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { virtualWorkdirBackends } from "./contract.ts";
+import { VirtualPathNotFoundError } from "@/core/errors.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
 
 describe("VirtualWorkdir contract: state", () => {
@@ -21,6 +22,19 @@ describe("VirtualWorkdir contract: state", () => {
       expect(session.diff()).toEqual([]);
     });
 
+    test("restore 可恢复被删除的 repo-backed 路径", () => {
+      const repo = createMemoryRepository();
+      const fileHash = repo.writeBlob(Buffer.from("base"));
+      const baseTree = repo.createTree([{ mode: "100644", name: "file.txt", hash: fileHash }]);
+      const session = createWorkdir(repo, { baseTree });
+
+      session.delete("file.txt");
+      session.restore("file.txt");
+
+      expect(session.readFile("file.txt").toString()).toBe("base");
+      expect(session.diff()).toEqual([]);
+    });
+
     test("目录 restore 默认不递归恢复子树修改", () => {
       const repo = createMemoryRepository();
       const fileHash = repo.writeBlob(Buffer.from("base"));
@@ -32,6 +46,59 @@ describe("VirtualWorkdir contract: state", () => {
       session.restore("dir");
 
       expect(session.readFile("dir/nested.txt").toString()).toBe("edited");
+    });
+
+    test("recursive restore 会恢复目录子树修改", () => {
+      const repo = createMemoryRepository();
+      const fileHash = repo.writeBlob(Buffer.from("base"));
+      const dirTree = repo.createTree([{ mode: "100644", name: "nested.txt", hash: fileHash }]);
+      const baseTree = repo.createTree([{ mode: "040000", name: "dir", hash: dirTree }]);
+      const session = createWorkdir(repo, { baseTree });
+
+      session.writeFile("dir/nested.txt", Buffer.from("edited"));
+      session.restore("dir", { recursive: true });
+
+      expect(session.readFile("dir/nested.txt").toString()).toBe("base");
+      expect(session.diff()).toEqual([]);
+    });
+
+    test("restore 基线不存在路径且未启用 force 时抛 VirtualPathNotFoundError", () => {
+      const repo = createMemoryRepository();
+      const session = createWorkdir(repo, { baseTree: repo.createTree([]) });
+
+      session.writeFile("temp.txt", Buffer.from("temp"));
+
+      expect(() => session.restore("temp.txt")).toThrow(VirtualPathNotFoundError);
+      expect(session.readFile("temp.txt").toString()).toBe("temp");
+    });
+
+    test("restore 基线不存在路径且启用 force 时等价删除", () => {
+      const repo = createMemoryRepository();
+      const session = createWorkdir(repo, { baseTree: repo.createTree([]) });
+
+      session.mkdir("dir");
+      session.writeFile("dir/temp.txt", Buffer.from("temp"));
+      session.restore("dir", { force: true });
+
+      expect(session.exists("dir")).toBe(false);
+      expect(session.diff()).toEqual([]);
+    });
+
+    test("restore 会按基线重建祖先目录链", () => {
+      const repo = createMemoryRepository();
+      const fileHash = repo.writeBlob(Buffer.from("base"));
+      const nestedTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: fileHash }]);
+      const parentTree = repo.createTree([{ mode: "040000", name: "nested", hash: nestedTree }]);
+      const baseTree = repo.createTree([{ mode: "040000", name: "src", hash: parentTree }]);
+      const session = createWorkdir(repo, { baseTree });
+
+      session.delete("src");
+      session.writeFile("src", Buffer.from("blocking file"));
+      session.restore("src/nested/a.txt", { recursive: true });
+
+      expect(session.stat("src")).toMatchObject({ kind: "tree", mode: "040000" });
+      expect(session.readFile("src/nested/a.txt").toString()).toBe("base");
+      expect(session.diff()).toEqual([]);
     });
 
     test("重复 diff 结果稳定", () => {
@@ -61,6 +128,26 @@ describe("VirtualWorkdir contract: state", () => {
       expect(session.exists("before.txt")).toBe(false);
       expect(session.readFile("after.txt").toString()).toBe("after");
       expect(session.diff()).toEqual([]);
+    });
+
+    test("新增后再删除时 diff 正确收敛到剩余目录创建", () => {
+      const repo = createMemoryRepository();
+      const session = createWorkdir(repo, { baseTree: repo.createTree([]) });
+
+      session.mkdir("src");
+      session.writeFile("src/a.ts", Buffer.from("a1"));
+      session.delete("src/a.ts");
+
+      expect(session.diff()).toMatchObject([
+        {
+          kind: "create",
+          path: "src",
+          current: {
+            kind: "tree",
+            mode: "040000",
+          },
+        },
+      ]);
     });
   });
 });
