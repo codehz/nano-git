@@ -48,9 +48,9 @@ interface FileChangeRecord {
     readonly mode: "100644" | "100755" | "040000" | "120000";
     readonly hash: string;
   } | null;
-  /** move/copy 来源；`rename` 为旧版磁盘格式，读入时规范为 `move` */
+  /** move/copy 来源 */
   readonly source: {
-    readonly kind: "move" | "copy" | "rename";
+    readonly kind: "move" | "copy";
     readonly path: string;
   } | null;
 }
@@ -632,7 +632,7 @@ function readFileDiffSource(source: NonNullable<FileChangeRecord["source"]>): Vi
   if (source.kind === "copy") {
     return { kind: "copy", path: source.path };
   }
-  if (source.kind === "move" || source.kind === "rename") {
+  if (source.kind === "move") {
     return { kind: "move", path: source.path };
   }
   throw new Error(`Invalid file workdir diff source kind: ${String(source.kind)}`);

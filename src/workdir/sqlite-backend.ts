@@ -666,13 +666,10 @@ function readDiffObjectMode(raw: string): "100644" | "100755" | "040000" | "1200
   throw new Error(`Invalid SQLite workdir diff object mode: ${raw}`);
 }
 
-/** 解析 diff 来源种类；旧版 `rename` 读入时规范为 `move`。 */
+/** 解析 diff 来源种类。 */
 function readDiffSourceKind(raw: string): "move" | "copy" {
   if (raw === "move" || raw === "copy") {
     return raw;
-  }
-  if (raw === "rename") {
-    return "move";
   }
   throw new Error(`Invalid SQLite workdir diff source kind: ${raw}`);
 }
