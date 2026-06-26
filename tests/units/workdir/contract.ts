@@ -75,6 +75,19 @@ export function runVirtualWorkdirContract(
       expect(() => session.readFile("file.txt")).toThrow(VirtualPathNotFoundError);
     });
 
+    test("restore 可恢复到基线内容", () => {
+      const repo = createMemoryRepository();
+      const fileHash = repo.writeBlob(Buffer.from("base"));
+      const baseTree = repo.createTree([{ mode: "100644", name: "file.txt", hash: fileHash }]);
+      const session = createWorkdir(repo, { baseTree });
+
+      session.writeFile("file.txt", Buffer.from("edited"));
+      session.restore("file.txt");
+
+      expect(session.readFile("file.txt").toString()).toBe("base");
+      expect(session.diff()).toEqual([]);
+    });
+
     test("重复 writeTree 结果稳定", () => {
       const repo = createMemoryRepository();
       const session = createWorkdir(repo, { baseTree: repo.createTree([]) });

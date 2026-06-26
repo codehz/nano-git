@@ -152,6 +152,15 @@ export interface VirtualWorkdir {
    */
   delete(path: string, options?: { readonly force?: boolean }): void;
 
+  /**
+   * 从基线 tree 恢复指定路径
+   *
+   * - 若路径存在于基线 tree，则恢复该路径在基线中的内容与类型
+   * - 若路径不存在于基线 tree，`force: true` 时等价于删除当前路径
+   * - 若路径不存在于基线 tree 且未启用 `force`，则报错且不执行删除
+   */
+  restore(path: string, options?: { readonly force?: boolean }): void;
+
   // ==================== 结构操作 ====================
 
   /**
