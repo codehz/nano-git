@@ -1,5 +1,5 @@
 /**
- * workdir/workdir.ts 只读视图单元测试（Phase 3）
+ * workdir/workdir.ts 只读视图单元测试
  */
 import { describe, test, expect } from "bun:test";
 

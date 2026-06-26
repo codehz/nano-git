@@ -35,7 +35,7 @@ describe("change-index", () => {
     });
   });
 
-  test("rebuildNormalizedChangeIndex() 将 move/copy 视为最终 create/remove", () => {
+  test("rebuildNormalizedChangeIndex() 将路径变更收敛为最终 create/remove", () => {
     const repo = createMemoryRepository();
     const blobHash = repo.writeBlob(Buffer.from("data"));
     const baseTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]);

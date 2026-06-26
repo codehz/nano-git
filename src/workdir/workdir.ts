@@ -1,7 +1,7 @@
 /**
  * VirtualWorkdir 行为编排
  *
- * Phase 5：完整文件/目录 move 与 copy 语义。
+ * 负责组装 VirtualWorkdir 的读写、结构变更与导出行为。
  */
 
 import {

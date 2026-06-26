@@ -4,8 +4,7 @@
  * 将 Git tree 视为不可变目录快照，
  * 提供“读取完整快照”和“比较两个快照”的一等能力。
  *
- * 当前语义只关注路径最终状态，
- * 不尝试推断 move / copy 来源。
+ * 当前语义只关注路径最终状态。
  */
 
 import { readObject } from "../../objects/raw.ts";
@@ -61,8 +60,6 @@ export function readTreeSnapshot(objects: ObjectDatabase, rootHash: SHA1): TreeS
  * - 新路径 => create
  * - 消失路径 => remove
  * - 同路径对象不同 => update
- *
- * 不分析 move / copy 来源。
  *
  * @example
  * ```ts

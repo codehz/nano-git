@@ -95,8 +95,7 @@ export interface RepositoryObjectOperations {
   /**
    * 比较两个 tree 的快照差异
    *
-   * 当前只提供同路径 create / remove / update 语义，
-   * 不分析 move / copy。
+   * 当前只提供路径最终状态上的 create / remove / update 语义。
    */
   diffTrees(previousTree: SHA1, currentTree: SHA1): DiffEntry[];
 }

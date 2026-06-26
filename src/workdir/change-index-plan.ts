@@ -40,7 +40,9 @@ export interface ChangeIndexPlanner {
   apply(plan: ChangeIndexUpdatePlan): void;
   planRefreshForPath(path: string, options?: ChangeIndexPathRefreshOptions): ChangeIndexUpdatePlan;
   planDeletePath(path: string, options?: ChangeIndexPathRefreshOptions): ChangeIndexUpdatePlan;
+  /** move 当前总是回退到全量重建。 */
   planMove(from: string, to: string): ChangeIndexUpdatePlan;
+  /** copy 当前总是回退到全量重建。 */
   planCopy(from: string, to: string): ChangeIndexUpdatePlan;
 }
 
@@ -72,14 +74,6 @@ export function createChangeIndexPlanner(
     return resolved.node.state.kind !== "directory";
   };
 
-  const canIncrementallyWriteCopy = (from: string): boolean => {
-    const resolved = resolvePath(source, state, from);
-    if (!resolved.found || resolved.node === null) {
-      return false;
-    }
-    return resolved.node.state.kind !== "directory";
-  };
-
   return {
     apply(plan): void {
       switch (plan.kind) {
@@ -107,17 +101,15 @@ export function createChangeIndexPlanner(
     },
 
     planMove(from, to): ChangeIndexUpdatePlan {
-      return canIncrementallyRefreshPath(from) &&
-        canIncrementallyRefreshPath(to, { treatMissingAsIncremental: true })
-        ? { kind: "rebuild-all" }
-        : { kind: "rebuild-all" };
+      void from;
+      void to;
+      return { kind: "rebuild-all" };
     },
 
     planCopy(from, to): ChangeIndexUpdatePlan {
-      return canIncrementallyWriteCopy(from) &&
-        canIncrementallyRefreshPath(to, { treatMissingAsIncremental: true })
-        ? { kind: "rebuild-all" }
-        : { kind: "rebuild-all" };
+      void from;
+      void to;
+      return { kind: "rebuild-all" };
     },
   };
 }

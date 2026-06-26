@@ -1,5 +1,5 @@
 /**
- * workdir/workdir.ts 写入操作单元测试（Phase 4）
+ * workdir/workdir.ts 写入操作单元测试
  */
 import { describe, test, expect } from "bun:test";
 
@@ -1199,7 +1199,7 @@ describe("copy", () => {
     expect(names).toEqual(["a.txt", "b.txt"]);
   });
 
-  test("repo-backed copy 产出 copy diff", () => {
+  test("repo-backed copy 产出 create diff", () => {
     const repo = createMemoryRepository();
     const blobHash = repo.writeBlob(Buffer.from("data"));
     const session = createVirtualWorkdir(repo.objects, {
@@ -1219,7 +1219,7 @@ describe("copy", () => {
     ]);
   });
 
-  test("workdir-only copy 退化为 create 且不膨胀记录", () => {
+  test("workdir-only copy 产出 create 且不膨胀记录", () => {
     const repo = createMemoryRepository();
     const baseTree = repo.createTree([]);
     const store = createVirtualWorkdirMemoryStateStore(baseTree);
