@@ -210,6 +210,17 @@ export function openVirtualWorkdir(
     };
   };
 
+  const restoreBaseSubtreeRecursively = (path: string, entry: TreeEntry): void => {
+    state.setNode(createRestoredNodeFromBaseEntry(path, entry));
+    if (entry.mode !== "040000") {
+      return;
+    }
+    const tree = readRepoTree(source, entry.hash, path);
+    for (const childEntry of tree.entries) {
+      restoreBaseSubtreeRecursively(joinPath(path, childEntry.name), childEntry);
+    }
+  };
+
   const ensureBaseDirectoryChain = (path: string): void => {
     const segments = splitPathSegments(path);
     let currentPath = VIRTUAL_ROOT_PATH;
@@ -261,7 +272,10 @@ export function openVirtualWorkdir(
     }
   };
 
-  const restorePathFromBase = (path: string, options?: { readonly force?: boolean }): void => {
+  const restorePathFromBase = (
+    path: string,
+    options?: { readonly force?: boolean; readonly recursive?: boolean },
+  ): void => {
     const baseEntry = findBaseEntry(path);
     if (baseEntry === null) {
       if (options?.force === true) {
@@ -283,7 +297,22 @@ export function openVirtualWorkdir(
       );
     }
 
+    const recursive = options?.recursive === true;
     ensureBaseDirectoryChain(path);
+
+    if (baseEntry.mode === "040000" && !recursive) {
+      const resolved = resolvePath(source, state, path);
+      if (resolved.found) {
+        const node = resolved.node;
+        if (node === null) {
+          throw new Error(`Cannot restore '${path}': resolved node is missing`);
+        }
+        if (node.state.kind === "directory") {
+          return;
+        }
+      }
+    }
+
     const parent = parentPath(path);
     const parentNode =
       parent === null ? getRootNode(state) : resolvePath(source, state, parent).node;
@@ -291,12 +320,15 @@ export function openVirtualWorkdir(
       throw new Error(`Cannot restore '${path}': parent directory is unavailable`);
     }
 
-    const restoredNode = createRestoredNodeFromBaseEntry(path, baseEntry);
-    state.setNode(restoredNode);
+    if (baseEntry.mode === "040000" && recursive) {
+      restoreBaseSubtreeRecursively(path, baseEntry);
+    } else {
+      state.setNode(createRestoredNodeFromBaseEntry(path, baseEntry));
+    }
     updateParentOverlay(
       state,
       parentNode.id,
-      overlayBindEntry(parentNode.state.overlay, baseName(path), restoredNode.id),
+      overlayBindEntry(parentNode.state.overlay, baseName(path), originPathNodeId(path)),
     );
   };
 
@@ -506,7 +538,10 @@ export function openVirtualWorkdir(
       );
     },
 
-    restore(path: string, options?: { readonly force?: boolean }): void {
+    restore(
+      path: string,
+      options?: { readonly force?: boolean; readonly recursive?: boolean },
+    ): void {
       runInWriteTransaction(
         state,
         () => {
