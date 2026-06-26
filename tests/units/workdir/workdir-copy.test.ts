@@ -23,23 +23,6 @@ function readTree(repo: Repository, hash: string): GitTree {
 }
 
 describe("copy", () => {
-  test("共享同一个 origin blob hash 的兄弟路径在 copy 后仍互不串改", () => {
-    const repo = createMemoryRepository();
-    const sharedBlobHash = repo.writeBlob(Buffer.from("shared"));
-    const baseTree = repo.createTree([
-      { mode: "100644", name: "a.txt", hash: sharedBlobHash },
-      { mode: "100644", name: "b.txt", hash: sharedBlobHash },
-    ]);
-    const session = createVirtualWorkdir(repo.objects, { baseTree });
-
-    session.copy("a.txt", "a-copy.txt");
-    session.writeFile("a-copy.txt", Buffer.from("copy-only"));
-
-    expect(session.readFile("a.txt").toString()).toBe("shared");
-    expect(session.readFile("b.txt").toString()).toBe("shared");
-    expect(session.readFile("a-copy.txt").toString()).toBe("copy-only");
-  });
-
   test("目标父路径是文件时 copy 抛 VirtualNotDirectoryError", () => {
     const repo = createMemoryRepository();
     const session = createVirtualWorkdir(repo.objects, {
@@ -50,20 +33,6 @@ describe("copy", () => {
     session.writeFile("target", Buffer.from("blocking parent"));
 
     expect(() => session.copy("from.txt", "target/child.txt")).toThrow(VirtualNotDirectoryError);
-  });
-
-  test("复制后源和目标可独立修改", () => {
-    const repo = createMemoryRepository();
-    const session = createVirtualWorkdir(repo.objects, {
-      baseTree: repo.createTree([]),
-    });
-
-    session.writeFile("a.txt", Buffer.from("original"));
-    session.copy("a.txt", "b.txt");
-    session.writeFile("a.txt", Buffer.from("modified"));
-
-    expect(session.readFile("a.txt").toString()).toBe("modified");
-    expect(session.readFile("b.txt").toString()).toBe("original");
   });
 
   test("复制后 writeTree 验证导出正确", () => {
@@ -103,25 +72,5 @@ describe("copy", () => {
     ]);
     const copyEntry = session.diff()[1];
     expect(copyEntry?.kind).toBe("create");
-  });
-
-  test("源不存在抛 VirtualPathNotFoundError", () => {
-    const repo = createMemoryRepository();
-    const session = createVirtualWorkdir(repo.objects, {
-      baseTree: repo.createTree([]),
-    });
-
-    expect(() => session.copy("noexist", "dest")).toThrow(VirtualPathNotFoundError);
-  });
-
-  test("目标已存在抛 VirtualPathAlreadyExistsError", () => {
-    const repo = createMemoryRepository();
-    const session = createVirtualWorkdir(repo.objects, {
-      baseTree: repo.createTree([]),
-    });
-
-    session.writeFile("a.txt", Buffer.from("a"));
-    session.writeFile("b.txt", Buffer.from("b"));
-    expect(() => session.copy("a.txt", "b.txt")).toThrow(VirtualPathAlreadyExistsError);
   });
 });

@@ -29,6 +29,117 @@ describe("VirtualWorkdir contract: read/write", () => {
       expect(session.readdir().map((entry) => entry.name)).toEqual(["dir", "link"]);
     });
 
+    test("writeFile 支持新建、覆盖与可执行 mode", () => {
+      const repo = createMemoryRepository();
+      const original = repo.writeBlob(Buffer.from("old"));
+      const session = createWorkdir(repo, {
+        baseTree: repo.createTree([{ mode: "100644", name: "file.txt", hash: original }]),
+      });
+
+      session.writeFile("new.txt", Buffer.from("new"));
+      session.writeFile("script.sh", Buffer.from("#!/bin/sh"), { mode: "100755" });
+      session.writeFile("file.txt", Buffer.from("updated"));
+
+      expect(session.readFile("new.txt").toString()).toBe("new");
+      expect(session.stat("script.sh")).toMatchObject({ kind: "blob", mode: "100755" });
+      expect(session.readFile("file.txt").toString()).toBe("updated");
+    });
+
+    test("writeFile 在共享 origin blob 的路径上修改时互不影响", () => {
+      const repo = createMemoryRepository();
+      const sharedBlobHash = repo.writeBlob(Buffer.from("shared"));
+      const baseTree = repo.createTree([
+        { mode: "100644", name: "a.txt", hash: sharedBlobHash },
+        { mode: "100644", name: "b.txt", hash: sharedBlobHash },
+      ]);
+      const session = createWorkdir(repo, { baseTree });
+
+      session.writeFile("a.txt", Buffer.from("edited-a"));
+
+      expect(session.readFile("a.txt").toString()).toBe("edited-a");
+      expect(session.readFile("b.txt").toString()).toBe("shared");
+    });
+
+    test("writeFile 在共享 origin blob 的不同目录路径上修改时互不影响", () => {
+      const repo = createMemoryRepository();
+      const sharedBlobHash = repo.writeBlob(Buffer.from("shared"));
+      const leftTree = repo.createTree([
+        { mode: "100644", name: "same.txt", hash: sharedBlobHash },
+      ]);
+      const rightTree = repo.createTree([
+        { mode: "100644", name: "same.txt", hash: sharedBlobHash },
+      ]);
+      const baseTree = repo.createTree([
+        { mode: "040000", name: "left", hash: leftTree },
+        { mode: "040000", name: "right", hash: rightTree },
+      ]);
+      const session = createWorkdir(repo, { baseTree });
+
+      session.writeFile("left/same.txt", Buffer.from("left-only"));
+
+      expect(session.readFile("left/same.txt").toString()).toBe("left-only");
+      expect(session.readFile("right/same.txt").toString()).toBe("shared");
+    });
+
+    test("writeFile 嵌套写入需要已有父目录", () => {
+      const repo = createMemoryRepository();
+      const session = createWorkdir(repo, { baseTree: repo.createTree([]) });
+
+      expect(() => session.writeFile("no/such.txt", Buffer.from("x"))).toThrow(
+        VirtualPathNotFoundError,
+      );
+
+      session.mkdir("a/b", { recursive: true });
+      session.writeFile("a/b/file.txt", Buffer.from("deep"));
+      expect(session.readFile("a/b/file.txt").toString()).toBe("deep");
+    });
+
+    test("writeFile 在目录路径上报 VirtualNotFileError", () => {
+      const repo = createMemoryRepository();
+      const session = createWorkdir(repo, { baseTree: repo.createTree([]) });
+
+      session.mkdir("dir");
+      expect(() => session.writeFile("dir", Buffer.from("x"))).toThrow(VirtualNotFileError);
+    });
+
+    test("writeLink 支持新建、覆盖与共享 origin 独立修改", () => {
+      const repo = createMemoryRepository();
+      const sharedLinkHash = repo.writeBlob(Buffer.from("target\n"));
+      const session = createWorkdir(repo, {
+        baseTree: repo.createTree([
+          { mode: "120000", name: "a", hash: sharedLinkHash },
+          { mode: "120000", name: "b", hash: sharedLinkHash },
+        ]),
+      });
+
+      session.writeLink("a", "edited-target");
+      session.writeLink("link", "target/path");
+
+      expect(session.readLink("a")).toBe("edited-target");
+      expect(session.readLink("b")).toBe("target\n");
+      expect(session.readLink("link")).toBe("target/path");
+      expect(session.stat("link")).toMatchObject({ kind: "symlink", mode: "120000" });
+    });
+
+    test("writeLink 可覆盖已有符号链接", () => {
+      const repo = createMemoryRepository();
+      const linkHash = repo.writeBlob(Buffer.from("old-target"));
+      const session = createWorkdir(repo, {
+        baseTree: repo.createTree([{ mode: "120000", name: "link", hash: linkHash }]),
+      });
+
+      session.writeLink("link", "new-target");
+      expect(session.readLink("link")).toBe("new-target");
+    });
+
+    test("writeLink 在目录路径上报 VirtualNotFileError", () => {
+      const repo = createMemoryRepository();
+      const session = createWorkdir(repo, { baseTree: repo.createTree([]) });
+
+      session.mkdir("dir");
+      expect(() => session.writeLink("dir", "x")).toThrow(VirtualNotFileError);
+    });
+
     test("从非空 tree 打开并读取 repo-backed 文件、目录、符号链接", () => {
       const repo = createMemoryRepository();
       const fileHash = repo.writeBlob(Buffer.from("hello"));

@@ -30,32 +30,6 @@ function readBlob(repo: Repository, hash: string): Buffer {
 }
 
 describe("move", () => {
-  test("将目录移动到自己的子目录抛错误", () => {
-    const repo = createMemoryRepository();
-    const session = createVirtualWorkdir(repo.objects, {
-      baseTree: repo.createTree([]),
-    });
-
-    session.mkdir("src");
-    session.writeFile("src/main.ts", Buffer.from("code"));
-
-    expect(() => session.move("src", "src/nested")).toThrow(
-      /destination is a subdirectory of source/,
-    );
-  });
-
-  test("目标父路径是文件时 move 抛 VirtualNotDirectoryError", () => {
-    const repo = createMemoryRepository();
-    const session = createVirtualWorkdir(repo.objects, {
-      baseTree: repo.createTree([]),
-    });
-
-    session.writeFile("from.txt", Buffer.from("data"));
-    session.writeFile("target", Buffer.from("blocking parent"));
-
-    expect(() => session.move("from.txt", "target/child.txt")).toThrow(VirtualNotDirectoryError);
-  });
-
   test("move 空目录产出 remove + create diff", () => {
     const repo = createMemoryRepository();
     const emptyTree = repo.createTree([]);
@@ -151,26 +125,6 @@ describe("move", () => {
         },
       },
     ]);
-  });
-
-  test("源不存在抛 VirtualPathNotFoundError", () => {
-    const repo = createMemoryRepository();
-    const session = createVirtualWorkdir(repo.objects, {
-      baseTree: repo.createTree([]),
-    });
-
-    expect(() => session.move("noexist", "dest")).toThrow(VirtualPathNotFoundError);
-  });
-
-  test("目标已存在抛 VirtualPathAlreadyExistsError", () => {
-    const repo = createMemoryRepository();
-    const session = createVirtualWorkdir(repo.objects, {
-      baseTree: repo.createTree([]),
-    });
-
-    session.writeFile("a.txt", Buffer.from("a"));
-    session.writeFile("b.txt", Buffer.from("b"));
-    expect(() => session.move("a.txt", "b.txt")).toThrow(VirtualPathAlreadyExistsError);
   });
 
   test("move 到自身为无操作", () => {

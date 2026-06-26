@@ -116,6 +116,68 @@ describe("VirtualWorkdir contract: state", () => {
       expect(diff2).toEqual(diff1);
     });
 
+    test("diff 正确表示 create / update / remove / kindChanged", () => {
+      const repo = createMemoryRepository();
+      const fileHash = repo.writeBlob(Buffer.from("old"));
+      const dirTree = repo.createTree([]);
+      const baseTree = repo.createTree([
+        { mode: "100644", name: "file.txt", hash: fileHash },
+        { mode: "040000", name: "dir", hash: dirTree },
+      ]);
+      const session = createWorkdir(repo, { baseTree });
+
+      session.writeFile("fresh.txt", Buffer.from("fresh"));
+      session.writeFile("file.txt", Buffer.from("new"));
+      session.delete("dir");
+
+      const diff = session.diff();
+      expect(diff.find((entry) => entry.path === "fresh.txt")).toMatchObject({
+        kind: "create",
+        path: "fresh.txt",
+        current: { kind: "blob", mode: "100644" },
+      });
+      expect(diff.find((entry) => entry.path === "file.txt")).toMatchObject({
+        kind: "update",
+        path: "file.txt",
+        previous: { kind: "blob", mode: "100644" },
+        current: { kind: "blob", mode: "100644" },
+        changes: {
+          kindChanged: false,
+          modeChanged: false,
+          contentChanged: true,
+        },
+      });
+      expect(diff.find((entry) => entry.path === "dir")).toMatchObject({
+        kind: "remove",
+        path: "dir",
+        previous: { kind: "tree", mode: "040000" },
+      });
+    });
+
+    test("diff 在文件与符号链接互换时标记 kindChanged", () => {
+      const repo = createMemoryRepository();
+      const fileHash = repo.writeBlob(Buffer.from("data"));
+      const session = createWorkdir(repo, {
+        baseTree: repo.createTree([{ mode: "100644", name: "file.txt", hash: fileHash }]),
+      });
+
+      session.writeLink("file.txt", "target");
+
+      expect(session.diff()).toMatchObject([
+        {
+          kind: "update",
+          path: "file.txt",
+          previous: { kind: "blob", mode: "100644" },
+          current: { kind: "symlink", mode: "120000" },
+          changes: {
+            kindChanged: true,
+            modeChanged: true,
+            contentChanged: true,
+          },
+        },
+      ]);
+    });
+
     test("reset 丢弃 overlay", () => {
       const repo = createMemoryRepository();
       const fileHash = repo.writeBlob(Buffer.from("after"));
