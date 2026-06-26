@@ -57,7 +57,7 @@ bun test tests/units/
 
 # 运行特定模块测试
 bun test tests/units/objects/
-bun test tests/units/odb/pack/
+bun test tests/units/pack/
 
 # 运行 E2E 测试（需要系统安装 git）
 bun test tests/e2e/
