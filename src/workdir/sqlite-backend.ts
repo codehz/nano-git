@@ -728,7 +728,13 @@ function readBlobColumn(raw: unknown, column: "content" | "target"): Buffer | un
     return undefined;
   }
   if (!(raw instanceof Uint8Array)) {
-    throw new Error(`Invalid SQLite workdir ${column} column type`);
+    const ctorName =
+      raw !== null && raw !== undefined && typeof raw === "object"
+        ? (raw as object).constructor?.name
+        : "N/A";
+    throw new Error(
+      `Invalid SQLite workdir ${column} column type: expected Uint8Array, got ${typeof raw} (constructor=${ctorName}, value=${JSON.stringify(raw)})`,
+    );
   }
   return Buffer.from(raw);
 }
