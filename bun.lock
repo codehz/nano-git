@@ -4,6 +4,9 @@
   "workspaces": {
     "": {
       "name": "nano-git",
+      "dependencies": {
+        "native-sqlite": "^0.1.0",
+      },
       "devDependencies": {
         "@types/bun": "latest",
         "husky": "^9.1.7",
@@ -236,6 +239,8 @@
     "log-update": ["log-update@6.1.0", "", { "dependencies": { "ansi-escapes": "^7.0.0", "cli-cursor": "^5.0.0", "slice-ansi": "^7.1.0", "strip-ansi": "^7.1.0", "wrap-ansi": "^9.0.0" } }, "sha512-9ie8ItPR6tjY5uYJh8K/Zrv/RMZ5VOlOWvtZdEHYSTFKZfIBPQa9tOAEeAWhd+AnIneLJ22w5fjOYtoutpWq5w=="],
 
     "mimic-function": ["mimic-function@5.0.1", "", {}, "sha512-VP79XUPxV2CigYP3jWwAUFSku2aKqBH7uTAapFWCBqutsbmDo96KY5o8uh6U+/YSIn5OxJnXp73beVkpqMIGhA=="],
+
+    "native-sqlite": ["native-sqlite@0.1.0", "", { "peerDependencies": { "typescript": "^5" } }, "sha512-91jBV+bm/Yw/Xyg6bdiolFCR4QhAFTEQNqGwAGMKR6Lgg1EnRVv+RannINOQ4YsP9mLGxWUd2skbR0gwZ2/Ntw=="],
 
     "obug": ["obug@2.1.3", "", {}, "sha512-9miFgM2OFba7hB+pRgvtV84pYTBaoTHohvmIgiRt6dRIzbwEOIaNaP+dIlGs2fNFoB0SeISs0Jz5WFVRid6Xyg=="],
 

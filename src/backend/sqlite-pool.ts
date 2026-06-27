@@ -14,9 +14,9 @@
  * ```
  */
 
-import { Database } from "bun:sqlite";
+import { Database } from "native-sqlite";
 
-import type { Statement } from "bun:sqlite";
+import type { Statement } from "native-sqlite";
 
 /** 连接池条目 */
 interface PoolEntry {

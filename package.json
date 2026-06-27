@@ -177,6 +177,9 @@
     "prepublishOnly": "bun run build",
     "prepare": "husky"
   },
+  "dependencies": {
+    "native-sqlite": "^0.1.0"
+  },
   "devDependencies": {
     "@types/bun": "latest",
     "husky": "^9.1.7",

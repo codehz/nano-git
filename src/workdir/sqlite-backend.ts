@@ -15,7 +15,7 @@ import type { DirtyDirHashState, DirtyDirSummary } from "./dirty-dir.ts";
 import type { NodeId } from "./ids.ts";
 import type { DirectoryOverlay } from "./overlay.ts";
 import type { VirtualWorkdirStateStore } from "./state-store.ts";
-import type { Database } from "bun:sqlite";
+import type { Database } from "native-sqlite";
 
 /** SQLite 连接层的可选参数 */
 export interface SqliteVirtualWorkdirConnectionOptions {
