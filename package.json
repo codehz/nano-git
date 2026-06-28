@@ -2,7 +2,9 @@
   "name": "nano-git",
   "version": "0.7.0",
   "files": [
-    "dist"
+    "dist",
+    "src",
+    "tsconfig.json"
   ],
   "type": "module",
   "sideEffects": false,
@@ -12,158 +14,197 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.mts",
+      "perry": "./src/index.ts",
       "default": "./dist/index.mjs"
     },
     "./backend": {
       "types": "./dist/backend/index.d.mts",
+      "perry": "./src/backend/index.ts",
       "default": "./dist/backend/index.mjs"
     },
     "./backend/file": {
       "types": "./dist/backend/file.d.mts",
+      "perry": "./src/backend/file.ts",
       "default": "./dist/backend/file.mjs"
     },
     "./backend/memory": {
       "types": "./dist/backend/memory.d.mts",
+      "perry": "./src/backend/memory.ts",
       "default": "./dist/backend/memory.mjs"
     },
     "./backend/sqlite": {
       "types": "./dist/backend/sqlite.d.mts",
+      "perry": "./src/backend/sqlite.ts",
       "default": "./dist/backend/sqlite.mjs"
     },
     "./errors": {
       "types": "./dist/errors.d.mts",
+      "perry": "./src/errors.ts",
       "default": "./dist/errors.mjs"
     },
     "./hash-file": {
       "types": "./dist/hash-file.d.mts",
+      "perry": "./src/hash-file.ts",
       "default": "./dist/hash-file.mjs"
     },
     "./log": {
       "types": "./dist/log/index.d.mts",
+      "perry": "./src/log/index.ts",
       "default": "./dist/log/index.mjs"
     },
     "./objects": {
       "types": "./dist/objects/index.d.mts",
+      "perry": "./src/objects/index.ts",
       "default": "./dist/objects/index.mjs"
     },
     "./odb/file": {
       "types": "./dist/odb/file.d.mts",
+      "perry": "./src/odb/file.ts",
       "default": "./dist/odb/file.mjs"
     },
     "./odb/memory": {
       "types": "./dist/odb/memory.d.mts",
+      "perry": "./src/odb/memory.ts",
       "default": "./dist/odb/memory.mjs"
     },
     "./odb/sqlite": {
       "types": "./dist/odb/sqlite.d.mts",
+      "perry": "./src/odb/sqlite.ts",
       "default": "./dist/odb/sqlite.mjs"
     },
     "./pack": {
       "types": "./dist/pack/index.d.mts",
+      "perry": "./src/pack/index.ts",
       "default": "./dist/pack/index.mjs"
     },
     "./refs/file": {
       "types": "./dist/refs/file.d.mts",
+      "perry": "./src/refs/file.ts",
       "default": "./dist/refs/file.mjs"
     },
     "./refs/memory": {
       "types": "./dist/refs/memory.d.mts",
+      "perry": "./src/refs/memory.ts",
       "default": "./dist/refs/memory.mjs"
     },
     "./refs/names": {
       "types": "./dist/refs/names.d.mts",
+      "perry": "./src/refs/names.ts",
       "default": "./dist/refs/names.mjs"
     },
     "./refs/resolve": {
       "types": "./dist/refs/resolve.d.mts",
+      "perry": "./src/refs/resolve.ts",
       "default": "./dist/refs/resolve.mjs"
     },
     "./refs/shallow/file": {
       "types": "./dist/refs/shallow/file.d.mts",
+      "perry": "./src/refs/shallow/file.ts",
       "default": "./dist/refs/shallow/file.mjs"
     },
     "./refs/shallow/memory": {
       "types": "./dist/refs/shallow/memory.d.mts",
+      "perry": "./src/refs/shallow/memory.ts",
       "default": "./dist/refs/shallow/memory.mjs"
     },
     "./refs/shallow/sqlite": {
       "types": "./dist/refs/shallow/sqlite.d.mts",
+      "perry": "./src/refs/shallow/sqlite.ts",
       "default": "./dist/refs/shallow/sqlite.mjs"
     },
     "./refs/sqlite": {
       "types": "./dist/refs/sqlite.d.mts",
+      "perry": "./src/refs/sqlite.ts",
       "default": "./dist/refs/sqlite.mjs"
     },
     "./remote/http": {
       "types": "./dist/remote/http.d.mts",
+      "perry": "./src/remote/http.ts",
       "default": "./dist/remote/http.mjs"
     },
     "./repository/core": {
       "types": "./dist/repository/core.d.mts",
+      "perry": "./src/repository/core.ts",
       "default": "./dist/repository/core.mjs"
     },
     "./repository/file": {
       "types": "./dist/repository/file.d.mts",
+      "perry": "./src/repository/file.ts",
       "default": "./dist/repository/file.mjs"
     },
     "./repository/memory": {
       "types": "./dist/repository/memory.d.mts",
+      "perry": "./src/repository/memory.ts",
       "default": "./dist/repository/memory.mjs"
     },
     "./repository/sqlite": {
       "types": "./dist/repository/sqlite.d.mts",
+      "perry": "./src/repository/sqlite.ts",
       "default": "./dist/repository/sqlite.mjs"
     },
     "./repository/tree/tree-diff": {
       "types": "./dist/repository/tree/tree-diff.d.mts",
+      "perry": "./src/repository/tree/tree-diff.ts",
       "default": "./dist/repository/tree/tree-diff.mjs"
     },
     "./repository/tree/tree-patch": {
       "types": "./dist/repository/tree/tree-patch.d.mts",
+      "perry": "./src/repository/tree/tree-patch.ts",
       "default": "./dist/repository/tree/tree-patch.mjs"
     },
     "./sha1": {
       "types": "./dist/sha1.d.mts",
+      "perry": "./src/sha1.ts",
       "default": "./dist/sha1.mjs"
     },
     "./transport": {
       "types": "./dist/transport/index.d.mts",
+      "perry": "./src/transport/index.ts",
       "default": "./dist/transport/index.mjs"
     },
     "./transport/http": {
       "types": "./dist/transport/http/index.d.mts",
+      "perry": "./src/transport/http/index.ts",
       "default": "./dist/transport/http/index.mjs"
     },
     "./transport/receive-pack": {
       "types": "./dist/transport/receive-pack.d.mts",
+      "perry": "./src/transport/receive-pack.ts",
       "default": "./dist/transport/receive-pack.mjs"
     },
     "./transport/server/receive-pack": {
       "types": "./dist/transport/server/receive-pack/index.d.mts",
+      "perry": "./src/transport/server/receive-pack/index.ts",
       "default": "./dist/transport/server/receive-pack/index.mjs"
     },
     "./transport/server/upload-pack": {
       "types": "./dist/transport/server/upload-pack/index.d.mts",
+      "perry": "./src/transport/server/upload-pack/index.ts",
       "default": "./dist/transport/server/upload-pack/index.mjs"
     },
     "./transport/upload-pack": {
       "types": "./dist/transport/upload-pack.d.mts",
+      "perry": "./src/transport/upload-pack.ts",
       "default": "./dist/transport/upload-pack.mjs"
     },
     "./workdir/core": {
       "types": "./dist/workdir/core.d.mts",
+      "perry": "./src/workdir/core.ts",
       "default": "./dist/workdir/core.mjs"
     },
     "./workdir/file": {
       "types": "./dist/workdir/file.d.mts",
+      "perry": "./src/workdir/file.ts",
       "default": "./dist/workdir/file.mjs"
     },
     "./workdir/memory": {
       "types": "./dist/workdir/memory.d.mts",
+      "perry": "./src/workdir/memory.ts",
       "default": "./dist/workdir/memory.mjs"
     },
     "./workdir/sqlite": {
       "types": "./dist/workdir/sqlite.d.mts",
+      "perry": "./src/workdir/sqlite.ts",
       "default": "./dist/workdir/sqlite.mjs"
     }
   },

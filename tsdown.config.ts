@@ -15,6 +15,7 @@ function addTypesExport(exports: Record<string, unknown>): Record<string, unknow
           key,
           {
             types: value.replace(/\.mjs$/u, ".d.mts"),
+            perry: value.replace(/^\.\/dist\//, "./src/").replace(/\.mjs$/u, ".ts"),
             default: value,
           },
         ];
