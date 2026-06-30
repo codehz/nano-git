@@ -6,13 +6,19 @@ import { acquireConnection, type SqliteConnectionHandle } from "../../backend/sq
 import { sha1 } from "../../core/types.ts";
 import { openVirtualWorktree } from "../engine/worktree.ts";
 import { createRootDirectoryNode, type WorktreeNode } from "../model/nodes.ts";
+import { parseChangeRecordFromSqlite } from "./persist/change-codec.ts";
+import { parseNodeOriginFromSqliteColumns } from "./persist/origin-codec.ts";
+import {
+  parseDirectoryOverlay,
+  serializeDirectoryOverlayPayload,
+} from "./persist/overlay-codec.ts";
 
 import type { SHA1 } from "../../core/types.ts";
 import type { ObjectDatabase } from "../../core/types/odb.ts";
 import type { CreateVirtualWorktreeOptions, VirtualWorktree } from "../core.ts";
 import type { NormalizedChangeRecord } from "../engine/change-index.ts";
 import type { NodeId } from "../model/ids.ts";
-import type { DirectoryOverlay } from "../model/overlay.ts";
+import type { SqliteChangeRow } from "./persist/change-codec.ts";
 import type { VirtualWorktreeStateStore } from "./state-store.ts";
 import type { Database } from "native-sqlite";
 
@@ -53,16 +59,6 @@ interface NodeRow {
   content: Uint8Array | null;
   target: Uint8Array | null;
   directory_overlay: string | null;
-}
-
-interface ChangeRow {
-  path: string;
-  previous_kind: string | null;
-  previous_mode: string | null;
-  previous_hash: string | null;
-  current_kind: string | null;
-  current_mode: string | null;
-  current_hash: string | null;
 }
 
 /**
@@ -182,13 +178,13 @@ export function createSqliteVirtualWorktreeStateStore(
     "DELETE FROM worktree_nodes WHERE worktree_key = ? AND node_id = ?",
   );
   const clearNodesStmt = conn.prepare<void>("DELETE FROM worktree_nodes WHERE worktree_key = ?");
-  const listChangesStmt = conn.prepare<ChangeRow>(
+  const listChangesStmt = conn.prepare<SqliteChangeRow>(
     `SELECT path, previous_kind, previous_mode, previous_hash, current_kind, current_mode, current_hash
      FROM worktree_changes
      WHERE worktree_key = ?
      ORDER BY path`,
   );
-  const getChangeStmt = conn.prepare<ChangeRow | null>(
+  const getChangeStmt = conn.prepare<SqliteChangeRow | null>(
     `SELECT path, previous_kind, previous_mode, previous_hash, current_kind, current_mode, current_hash
      FROM worktree_changes
      WHERE worktree_key = ? AND path = ?`,
@@ -256,12 +252,12 @@ export function createSqliteVirtualWorktreeStateStore(
     },
 
     listChangeRecords(): readonly NormalizedChangeRecord[] {
-      return listChangesStmt.all(worktreeKey).map(readChangeRecord);
+      return listChangesStmt.all(worktreeKey).map(parseChangeRecordFromSqlite);
     },
 
     getChangeRecord(path: string): NormalizedChangeRecord | null {
       const row = getChangeStmt.get(worktreeKey, path);
-      return row === null ? null : readChangeRecord(row);
+      return row === null ? null : parseChangeRecordFromSqlite(row);
     },
 
     setChangeRecord(record: NormalizedChangeRecord): void {
@@ -423,10 +419,7 @@ function writeNode(
       null,
       null,
       null,
-      JSON.stringify({
-        addedEntries: Array.from(node.state.overlay.addedEntries.entries()),
-        deletedNames: Array.from(node.state.overlay.deletedNames.values()),
-      }),
+      JSON.stringify(serializeDirectoryOverlayPayload(node.state.overlay)),
     );
     return;
   }
@@ -462,13 +455,17 @@ function writeNode(
 }
 
 function readNode(row: NodeRow): WorktreeNode {
-  const origin = readNodeOrigin(row);
+  const origin = parseNodeOriginFromSqliteColumns(
+    row.origin_kind,
+    row.origin_hash,
+    row.origin_mode,
+  );
 
   if (row.state_kind === "directory") {
     if (row.state_mode !== null || row.content !== null || row.target !== null) {
       throw new Error("Invalid SQLite worktree directory node payload columns");
     }
-    const overlay = readDirectoryOverlay(row.directory_overlay);
+    const overlay = parseDirectoryOverlay(row.directory_overlay);
     return {
       id: row.node_id as NodeId,
       origin,
@@ -515,106 +512,6 @@ function readNode(row: NodeRow): WorktreeNode {
   };
 }
 
-function readNodeOrigin(row: NodeRow): WorktreeNode["origin"] {
-  if (row.origin_kind === "none") {
-    return { kind: "none" };
-  }
-
-  if (row.origin_kind === "repo-tree") {
-    if (row.origin_hash === null) {
-      throw new Error("Invalid SQLite worktree node: repo-tree origin is missing hash");
-    }
-    return { kind: "repo-tree", hash: row.origin_hash as SHA1 };
-  }
-
-  if (row.origin_kind === "repo-blob") {
-    if (row.origin_hash === null) {
-      throw new Error("Invalid SQLite worktree node: repo-blob origin is missing hash");
-    }
-    if (
-      row.origin_mode !== "100644" &&
-      row.origin_mode !== "100755" &&
-      row.origin_mode !== "120000"
-    ) {
-      throw new Error(`Invalid SQLite worktree node origin mode: ${row.origin_mode ?? "null"}`);
-    }
-    return {
-      kind: "repo-blob",
-      mode: row.origin_mode,
-      hash: row.origin_hash as SHA1,
-    };
-  }
-
-  throw new Error(`Invalid SQLite worktree node origin kind: ${row.origin_kind}`);
-}
-
-function readChangeRecord(row: ChangeRow): NormalizedChangeRecord {
-  return {
-    path: row.path,
-    previous:
-      row.previous_kind === null || row.previous_mode === null || row.previous_hash === null
-        ? null
-        : {
-            kind: readDiffObjectKind(row.previous_kind),
-            mode: readDiffObjectMode(row.previous_mode),
-            hash: row.previous_hash as SHA1,
-          },
-    current:
-      row.current_kind === null || row.current_mode === null || row.current_hash === null
-        ? null
-        : {
-            kind: readDiffObjectKind(row.current_kind),
-            mode: readDiffObjectMode(row.current_mode),
-            hash: row.current_hash as SHA1,
-          },
-  };
-}
-
-function readDiffObjectKind(raw: string): "blob" | "tree" | "symlink" {
-  if (raw === "blob" || raw === "tree" || raw === "symlink") {
-    return raw;
-  }
-  throw new Error(`Invalid SQLite worktree diff object kind: ${raw}`);
-}
-
-function readDiffObjectMode(raw: string): "100644" | "100755" | "040000" | "120000" {
-  if (raw === "100644" || raw === "100755" || raw === "040000" || raw === "120000") {
-    return raw;
-  }
-  throw new Error(`Invalid SQLite worktree diff object mode: ${raw}`);
-}
-
-function readDirectoryOverlay(raw: unknown): DirectoryOverlay {
-  if (raw === null) {
-    return { addedEntries: new Map(), deletedNames: new Set() };
-  }
-  if (typeof raw !== "string") {
-    throw new Error("Invalid SQLite worktree directory overlay column type");
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (error) {
-    throw new Error(
-      `Invalid SQLite worktree directory overlay JSON: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
-
-  if (!isDirectoryOverlayPayload(parsed)) {
-    throw new Error("Invalid SQLite worktree directory overlay payload");
-  }
-
-  const addedEntries: Array<[string, NodeId]> = parsed.addedEntries.map(([name, nodeId]) => [
-    name,
-    nodeId as NodeId,
-  ]);
-  return {
-    addedEntries: new Map(addedEntries),
-    deletedNames: new Set(parsed.deletedNames),
-  };
-}
-
 function readBlobColumn(raw: unknown, column: "content" | "target"): Buffer | undefined {
   if (raw === null) {
     return undefined;
@@ -640,30 +537,4 @@ function readBaseTreeValue(raw: unknown): SHA1 {
   } catch {
     throw new Error("Invalid SQLite worktree base_tree");
   }
-}
-
-function isDirectoryOverlayPayload(
-  value: unknown,
-): value is { addedEntries: Array<[string, string]>; deletedNames: string[] } {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-
-  const maybe = value as {
-    addedEntries?: unknown;
-    deletedNames?: unknown;
-  };
-  if (!Array.isArray(maybe.addedEntries) || !Array.isArray(maybe.deletedNames)) {
-    return false;
-  }
-
-  const hasValidAddedEntries = maybe.addedEntries.every(
-    (entry) =>
-      Array.isArray(entry) &&
-      entry.length === 2 &&
-      typeof entry[0] === "string" &&
-      typeof entry[1] === "string",
-  );
-  const hasValidDeletedNames = maybe.deletedNames.every((name) => typeof name === "string");
-  return hasValidAddedEntries && hasValidDeletedNames;
 }

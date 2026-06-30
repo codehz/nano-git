@@ -15,60 +15,30 @@ import { dirname, join } from "node:path";
 
 import { openVirtualWorktree } from "../engine/worktree.ts";
 import { createRootDirectoryNode, type WorktreeNode } from "../model/nodes.ts";
+import {
+  parseChangeRecordFromManifest,
+  serializeChangeRecordToManifest,
+} from "./persist/change-codec.ts";
+import { parseNodeOrigin } from "./persist/origin-codec.ts";
+import {
+  parseDirectoryOverlay,
+  serializeDirectoryOverlayPayload,
+} from "./persist/overlay-codec.ts";
 
-import type { DiffObject } from "../../core/diff.ts";
 import type { SHA1 } from "../../core/types.ts";
 import type { ObjectDatabase } from "../../core/types/odb.ts";
 import type { CreateVirtualWorktreeOptions, VirtualWorktree } from "../core.ts";
 import type { NormalizedChangeRecord } from "../engine/change-index.ts";
 import type { NodeId } from "../model/ids.ts";
+import type { PersistedChangeRecord } from "./persist/change-codec.ts";
+import type { FileWorktreeManifest, PersistedFileNodeRecord } from "./persist/node-wire.ts";
 import type { VirtualWorktreeStateStore } from "./state-store.ts";
 
 const FILE_WORKTREE_MANIFEST_VERSION = 7;
 const FILE_WORKTREE_TRANSACTION_SNAPSHOT_SUFFIX = ".txn-snapshot";
 
-interface FileSessionManifest {
-  readonly formatVersion: number;
-  readonly baseTree: string;
-  readonly nodes: Readonly<Record<string, FileNodeRecord>>;
-  readonly changeRecords: readonly FileChangeRecord[];
-}
-
-interface FileChangeRecord {
-  readonly path: string;
-  readonly previous: DiffObject | null;
-  readonly current: DiffObject | null;
-}
-
-interface FileNodeRecord {
-  readonly id: string;
-  readonly origin:
-    | { readonly kind: "none" }
-    | { readonly kind: "repo-tree"; readonly hash: string }
-    | {
-        readonly kind: "repo-blob";
-        readonly mode: "100644" | "100755" | "120000";
-        readonly hash: string;
-      };
-  readonly state:
-    | {
-        readonly kind: "directory";
-        readonly overlay: {
-          readonly addedEntries: Array<[string, string]>;
-          readonly deletedNames: string[];
-        };
-      }
-    | {
-        readonly kind: "file";
-        readonly mode: "100644" | "100755";
-        readonly contentRef: string | null;
-      }
-    | {
-        readonly kind: "symlink";
-        readonly mode: "120000";
-        readonly targetRef: string | null;
-      };
-}
+type FileSessionManifest = FileWorktreeManifest;
+type FileNodeRecord = PersistedFileNodeRecord;
 
 /** 打开文件系统 VirtualWorktree 的可选参数 */
 export interface OpenFileVirtualWorktreeOptions extends CreateVirtualWorktreeOptions {
@@ -199,13 +169,13 @@ export function createFileVirtualWorktreeStateStore(
     },
 
     listChangeRecords(): readonly NormalizedChangeRecord[] {
-      return readManifest(manifestPath).changeRecords.map(restoreChangeRecord);
+      return readManifest(manifestPath).changeRecords.map(parseChangeRecordFromManifest);
     },
 
     getChangeRecord(path: string): NormalizedChangeRecord | null {
       return (
         readManifest(manifestPath)
-          .changeRecords.map(restoreChangeRecord)
+          .changeRecords.map(parseChangeRecordFromManifest)
           .find((record) => record.path === path) ?? null
       );
     },
@@ -215,7 +185,7 @@ export function createFileVirtualWorktreeStateStore(
         const others = manifest.changeRecords.filter((item) => item.path !== record.path);
         return {
           ...manifest,
-          changeRecords: [...others, serializeChangeRecord(record)].sort((left, right) =>
+          changeRecords: [...others, serializeChangeRecordToManifest(record)].sort((left, right) =>
             left.path.localeCompare(right.path),
           ),
         };
@@ -397,10 +367,7 @@ function serializeDirectoryNode(node: WorktreeNode): FileNodeRecord {
     origin: node.origin,
     state: {
       kind: "directory",
-      overlay: {
-        addedEntries: Array.from(node.state.overlay.addedEntries.entries()),
-        deletedNames: Array.from(node.state.overlay.deletedNames.values()),
-      },
+      overlay: serializeDirectoryOverlayPayload(node.state.overlay),
     },
   };
 }
@@ -413,14 +380,14 @@ function persistPayload(contentDir: string, nodeId: NodeId, payload: Buffer): st
 }
 
 function restoreNode(record: FileNodeRecord, contentDir: string): WorktreeNode {
-  const origin = restoreOrigin(record.origin);
+  const origin = parseNodeOrigin(record.origin);
   if (record.state.kind === "directory") {
     return {
       id: record.id as NodeId,
       origin,
       state: {
         kind: "directory",
-        overlay: readDirectoryOverlayRecord(record.state.overlay),
+        overlay: parseDirectoryOverlay(record.state.overlay),
       },
     };
   }
@@ -475,98 +442,6 @@ function restoreNode(record: FileNodeRecord, contentDir: string): WorktreeNode {
           ? undefined
           : readPayload(contentDir, targetRef),
     },
-  };
-}
-
-function readDirectoryOverlayRecord(value: unknown): {
-  readonly addedEntries: Map<string, NodeId>;
-  readonly deletedNames: Set<string>;
-} {
-  if (!isFileDirectoryOverlayPayload(value)) {
-    throw new Error("Invalid file worktree directory overlay payload");
-  }
-
-  return {
-    addedEntries: new Map(
-      value.addedEntries.map(([name, nodeId]: [string, string]) => [name, nodeId as NodeId]),
-    ),
-    deletedNames: new Set(value.deletedNames),
-  };
-}
-
-function isFileDirectoryOverlayPayload(
-  value: unknown,
-): value is { addedEntries: Array<[string, string]>; deletedNames: string[] } {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-
-  const maybe = value as {
-    addedEntries?: unknown;
-    deletedNames?: unknown;
-  };
-  if (!Array.isArray(maybe.addedEntries) || !Array.isArray(maybe.deletedNames)) {
-    return false;
-  }
-
-  const hasValidAddedEntries = maybe.addedEntries.every(
-    (entry) =>
-      Array.isArray(entry) &&
-      entry.length === 2 &&
-      typeof entry[0] === "string" &&
-      typeof entry[1] === "string",
-  );
-  const hasValidDeletedNames = maybe.deletedNames.every((name) => typeof name === "string");
-  return hasValidAddedEntries && hasValidDeletedNames;
-}
-
-function restoreOrigin(record: FileNodeRecord["origin"]): WorktreeNode["origin"] {
-  const origin = record as
-    | { readonly kind: "none" }
-    | { readonly kind: "repo-tree"; readonly hash: string }
-    | { readonly kind: "repo-blob"; readonly mode: string; readonly hash: string }
-    | { readonly kind: string; readonly mode?: string; readonly hash?: string };
-
-  if (origin.kind === "none") {
-    return { kind: "none" };
-  }
-  if (origin.kind === "repo-tree") {
-    if (typeof origin.hash !== "string" || origin.hash.length === 0) {
-      throw new Error("Invalid file worktree node: repo-tree origin is missing hash");
-    }
-    return { kind: "repo-tree", hash: origin.hash as SHA1 };
-  }
-  if (origin.kind !== "repo-blob") {
-    throw new Error(`Invalid file worktree node origin kind: ${String(origin.kind)}`);
-  }
-  if (typeof origin.hash !== "string" || origin.hash.length === 0) {
-    throw new Error("Invalid file worktree node: repo-blob origin is missing hash");
-  }
-  if (origin.mode !== "100644" && origin.mode !== "100755" && origin.mode !== "120000") {
-    throw new Error(`Invalid file worktree node origin mode: ${String(origin.mode)}`);
-  }
-  return {
-    kind: "repo-blob",
-    mode: origin.mode,
-    hash: origin.hash as SHA1,
-  };
-}
-
-function serializeChangeRecord(record: NormalizedChangeRecord): FileChangeRecord {
-  return {
-    path: record.path,
-    previous: record.previous,
-    current: record.current,
-  };
-}
-
-function restoreChangeRecord(record: FileChangeRecord): NormalizedChangeRecord {
-  return {
-    path: record.path,
-    previous:
-      record.previous === null ? null : { ...record.previous, hash: record.previous.hash as SHA1 },
-    current:
-      record.current === null ? null : { ...record.current, hash: record.current.hash as SHA1 },
   };
 }
 
