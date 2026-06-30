@@ -1,7 +1,7 @@
 /**
  * 通用 diff 结果类型
  *
- * 作为 repo tree diff 与 workdir diff 的共享语言层。
+ * 作为 repo tree diff 与 worktree diff 的共享语言层。
  * 当前描述的是“路径最终状态差异”，而非完整操作历史。
  */
 

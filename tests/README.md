@@ -35,6 +35,7 @@ tests/
 │       ├── init-open.test.ts        # init/create/open
 │       ├── fs-refs.test.ts          # 文件系统 ref 操作
 │       └── fs-objects.test.ts       # 文件系统对象操作
+│   └── worktree/       # Virtual Worktree（内存 / file / sqlite 契约与单元测试）
 └── e2e/                # 端到端兼容性测试（需要系统安装 git）
     ├── helpers.ts      # Git CLI 封装工具
     ├── blob.test.ts    # Blob 兼容性

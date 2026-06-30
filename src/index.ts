@@ -35,6 +35,10 @@
  * | `nano-git/transport/receive-pack` | receive-pack 客户端 | `node:crypto` + `node:zlib` |
  * | `nano-git/transport/http` | Smart HTTP 服务端适配 | `node:http` + `node:fs` + `node:zlib` |
  * | `nano-git/log` | 提交历史遍历（git-log 风格） | `node:crypto` |
+ * | `nano-git/worktree/core` | Virtual Worktree 类型与错误 | 纯 TS |
+ * | `nano-git/worktree/memory` | 内存 Virtual Worktree | 纯 TS |
+ * | `nano-git/worktree/file` | 目录持久化 Virtual Worktree | `node:fs` |
+ * | `nano-git/worktree/sqlite` | SQLite 持久化 Virtual Worktree | `bun:sqlite` |
  */
 
 // ============================================================================

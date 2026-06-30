@@ -187,30 +187,30 @@
       "perry": "./src/transport/upload-pack.ts",
       "default": "./dist/transport/upload-pack.mjs"
     },
-    "./workdir/core": {
-      "types": "./dist/workdir/core.d.mts",
-      "perry": "./src/workdir/core.ts",
-      "default": "./dist/workdir/core.mjs"
+    "./worktree/core": {
+      "types": "./dist/worktree/core.d.mts",
+      "perry": "./src/worktree/core.ts",
+      "default": "./dist/worktree/core.mjs"
     },
-    "./workdir/file": {
-      "types": "./dist/workdir/file.d.mts",
-      "perry": "./src/workdir/file.ts",
-      "default": "./dist/workdir/file.mjs"
+    "./worktree/file": {
+      "types": "./dist/worktree/file.d.mts",
+      "perry": "./src/worktree/file.ts",
+      "default": "./dist/worktree/file.mjs"
     },
-    "./workdir/memory": {
-      "types": "./dist/workdir/memory.d.mts",
-      "perry": "./src/workdir/memory.ts",
-      "default": "./dist/workdir/memory.mjs"
+    "./worktree/memory": {
+      "types": "./dist/worktree/memory.d.mts",
+      "perry": "./src/worktree/memory.ts",
+      "default": "./dist/worktree/memory.mjs"
     },
-    "./workdir/sqlite": {
-      "types": "./dist/workdir/sqlite.d.mts",
-      "perry": "./src/workdir/sqlite.ts",
-      "default": "./dist/workdir/sqlite.mjs"
+    "./worktree/sqlite": {
+      "types": "./dist/worktree/sqlite.d.mts",
+      "perry": "./src/worktree/sqlite.ts",
+      "default": "./dist/worktree/sqlite.mjs"
     }
   },
   "scripts": {
     "build": "tsdown",
-    "bench:workdir-diff": "bun run examples/workdir-diff-benchmark.ts",
+    "bench:worktree-diff": "bun run examples/worktree-diff-benchmark.ts",
     "lint": "oxlint .",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",

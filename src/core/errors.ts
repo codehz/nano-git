@@ -181,7 +181,7 @@ export class PreconditionCheckError extends GitError {
   }
 }
 
-// ==================== Virtual Workdir（虚拟工作目录）错误类型 ====================
+// ==================== Virtual Worktree（虚拟工作目录）错误类型 ====================
 
 /**
  * 虚拟路径未找到错误

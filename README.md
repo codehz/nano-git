@@ -18,6 +18,7 @@
 - ✅ **远端查询 API** — 将 refs 快照、`object-info` 等纯远端能力独立出 `Repository`
 - ✅ **类型安全** — 完整的 TypeScript 类型定义
 - ✅ **Reference Transaction** — 批量 ref 更新的原子性保障，支持 Hooks 回调与自动回滚
+- ✅ **Virtual Worktree** — 基于 `baseTree` 的虚拟工作树（读写、diff、`writeTree`），支持内存 / 目录 / SQLite 持久化（`nano-git/worktree/*`）
 
 ## 安装
 
@@ -341,16 +342,43 @@ const obj = deserialize(data);
 console.log(obj.type); // => "blob"
 ```
 
+### Virtual Worktree（虚拟工作树）
+
+在不操作真实工作目录的前提下，在某一 `baseTree` 之上叠加可写视图：修改可 `writeTree()` 导出为新 tree，并与仓库 `diff` 语义对齐。
+
+| 子路径                     | 用途                                              |
+| -------------------------- | ------------------------------------------------- |
+| `nano-git/worktree/core`   | `VirtualWorktree` 类型与公开错误                  |
+| `nano-git/worktree/memory` | 内存实例（`createVirtualWorktree`）               |
+| `nano-git/worktree/file`   | 目录持久化（`openFileVirtualWorktree`）           |
+| `nano-git/worktree/sqlite` | SQLite 持久化（`openSqliteVirtualWorktree`，Bun） |
+
+```typescript
+import { createMemoryRepository } from "nano-git/repository/memory";
+import { createVirtualWorktree } from "nano-git/worktree/memory";
+
+const repo = createMemoryRepository();
+const baseTree = repo.createTree([]);
+
+const worktree = createVirtualWorktree(repo.objects, { baseTree });
+worktree.writeFile("hello.txt", Buffer.from("world"));
+const newTree = worktree.writeTree();
+
+console.log(worktree.diff().length); // 相对 baseTree 的净变更
+```
+
+持久化示例见 `examples/worktree-persistence.ts`；diff 基准见 `bun run bench:worktree-diff`。
+
 ## 运行演示
 
 ```bash
 bun run examples/demo.ts
 ```
 
-运行 Virtual Workdir diff 基准：
+运行 Virtual Worktree diff 基准：
 
 ```bash
-bun run bench:workdir-diff
+bun run bench:worktree-diff
 ```
 
 演示脚本展示了：
@@ -367,6 +395,7 @@ bun run bench:workdir-diff
 带 `node:fs` / `node:zlib` 的运行时能力通过子路径显式导入，例如 `nano-git/repository/file`、`nano-git/pack`、`nano-git/transport/http`。
 纯远端查询能力通过 `nano-git/remote/http` 导入。
 基于 `bun:sqlite` 的存储后端通过 `nano-git/odb/sqlite`、`nano-git/refs/sqlite`、`nano-git/backend/sqlite`、`nano-git/repository/sqlite` 等子路径导入。
+Virtual Worktree 通过 `nano-git/worktree/core`、`nano-git/worktree/memory`、`nano-git/worktree/file`、`nano-git/worktree/sqlite` 导入（后两者为持久化后端）。
 tree-shaking 主要依赖模块本身的无副作用结构，而不是把所有 API 都拆成叶子级子路径。完整入口表见 `package.json` 的 `exports` 与 `src/index.ts` 的 JSDoc。
 
 ## Git 对象模型
