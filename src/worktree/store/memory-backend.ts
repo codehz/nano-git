@@ -24,6 +24,9 @@ interface VirtualWorktreeMemoryState {
 /**
  * 创建内存版状态存储
  *
+ * @param baseTree - 初始基线 tree 哈希
+ * @returns 进程内可变状态存储，需配合 `openVirtualWorktree` 或 `createVirtualWorktree` 使用
+ *
  * @example
  * ```ts
  * const store = createVirtualWorktreeMemoryStateStore(tree);

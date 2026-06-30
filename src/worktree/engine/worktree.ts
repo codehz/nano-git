@@ -60,7 +60,11 @@ import type { VirtualWorktreeStateStore } from "../store/state-store.ts";
 // ==================== 工厂 ====================
 
 /**
- * 基于 ObjectDatabase 创建 VirtualWorktree
+ * 基于 ObjectDatabase 创建内存版 VirtualWorktree
+ *
+ * @param source - 用于读取基线 tree / blob 的对象库
+ * @param options - 创建选项（`baseTree` 为初始基线）
+ * @returns 可读写路径与导出 tree 的 VirtualWorktree 实例
  *
  * @example
  * ```ts
@@ -82,6 +86,12 @@ export function createVirtualWorktree(
 
 /**
  * 基于已有状态存储打开 VirtualWorktree
+ *
+ * 供内存、文件、SQLite 等持久化后端在绑定 `VirtualWorktreeStateStore` 后复用同一套行为实现。
+ *
+ * @param source - 用于读取 origin 对象的 ODB
+ * @param state - 已初始化的状态存储（含 `baseTree` 与可选 overlay）
+ * @returns 与 `createVirtualWorktree` 相同 API 的 VirtualWorktree 实例
  *
  * @example
  * ```ts

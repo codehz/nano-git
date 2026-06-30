@@ -48,6 +48,12 @@ export interface OpenFileVirtualWorktreeOptions extends CreateVirtualWorktreeOpt
 /**
  * 打开基于目录持久化的 VirtualWorktree
  *
+ * @param source - 用于解析 origin 对象的 ODB
+ * @param worktreeDir - 持久化目录路径
+ * @param options - `baseTree` 必填；`create: true` 时目录不存在则初始化
+ * @returns 绑定该目录 manifest 的 VirtualWorktree
+ * @throws 目录不存在且未设置 `create: true` 时
+ *
  * @example
  * ```ts
  * const worktree = openFileVirtualWorktree(repo.objects, "/tmp/worktree", {
@@ -76,6 +82,9 @@ export function openFileVirtualWorktree(
 /**
  * 删除指定目录上的持久化 VirtualWorktree
  *
+ * @param worktreeDir - 含 manifest 的 worktree 目录
+ * @throws 若目录上不存在有效的 VirtualWorktree
+ *
  * @example
  * ```ts
  * deleteFileVirtualWorktree("/tmp/worktree");
@@ -90,6 +99,11 @@ export function deleteFileVirtualWorktree(worktreeDir: string): void {
 
 /**
  * 创建单个文件系统 VirtualWorktree 的状态存储
+ *
+ * 低级 API：一般优先使用 `openFileVirtualWorktree`；需要自定义打开流程时可单独使用 store。
+ *
+ * @param worktreeDir - 持久化目录（写入 manifest 与内容文件）
+ * @returns `kind: "file"` 的状态存储，需配合 `openVirtualWorktree` 使用
  *
  * @example
  * ```ts
