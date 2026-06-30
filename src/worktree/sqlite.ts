@@ -6,8 +6,8 @@
  */
 
 export {
-  deleteSqliteVirtualWorktree,
-  type OpenSqliteVirtualWorktreeOptions,
-  openSqliteVirtualWorktree,
-  type SqliteVirtualWorktree,
+  type OpenSqliteVirtualWorktreeDatabaseOptions,
+  openSqliteVirtualWorktreeDatabase,
+  type SqliteVirtualWorktreeDatabase,
+  type SqliteVirtualWorktreeEntrySummary,
 } from "./store/sqlite-backend.ts";

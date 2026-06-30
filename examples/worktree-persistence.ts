@@ -8,7 +8,7 @@
 
 import { createMemoryRepository } from "nano-git/repository/memory";
 import { deleteFileVirtualWorktree, openFileVirtualWorktree } from "nano-git/worktree/file";
-import { deleteSqliteVirtualWorktree, openSqliteVirtualWorktree } from "nano-git/worktree/sqlite";
+import { openSqliteVirtualWorktreeDatabase } from "nano-git/worktree/sqlite";
 
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -54,22 +54,22 @@ function runSqliteDemo(): void {
   const { repo, baseTree } = createFixture();
 
   try {
-    using worktree = openSqliteVirtualWorktree(repo.objects, dbPath, "demo", {
-      baseTree,
-      create: true,
-    });
+    using db = openSqliteVirtualWorktreeDatabase(dbPath);
+    db.createWorktree("demo", { baseTree });
+    const worktree = db.openWorktree(repo.objects, "demo", { baseTree });
 
     worktree.writeFile("README.md", Buffer.from("sqlite backend\n"));
     worktree.writeLink("current", "README.md");
 
     console.log("=== sqlite worktree ===");
     console.log(`writeTree(): ${worktree.writeTree()}`);
+    console.log(`keys: ${db.listWorktreeKeys().join(", ")}`);
 
-    using reopened = openSqliteVirtualWorktree(repo.objects, dbPath, "demo", { baseTree });
+    const reopened = db.openWorktree(repo.objects, "demo", { baseTree });
     console.log(`reopen README.md: ${reopened.readFile("README.md").toString().trim()}`);
     console.log(`reopen current -> ${reopened.readLink("current")}`);
 
-    deleteSqliteVirtualWorktree(dbPath, "demo");
+    db.deleteWorktree("demo");
   } finally {
     rmSync(rootDir, { recursive: true, force: true });
   }

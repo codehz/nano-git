@@ -346,12 +346,12 @@ console.log(obj.type); // => "blob"
 
 在不操作真实工作目录的前提下，在某一 `baseTree` 之上叠加可写视图：修改可 `writeTree()` 导出为新 tree，并与仓库 `diff` 语义对齐。
 
-| 子路径                     | 用途                                              |
-| -------------------------- | ------------------------------------------------- |
-| `nano-git/worktree/core`   | `VirtualWorktree` 类型与公开错误                  |
-| `nano-git/worktree/memory` | 内存实例（`createVirtualWorktree`）               |
-| `nano-git/worktree/file`   | 目录持久化（`openFileVirtualWorktree`）           |
-| `nano-git/worktree/sqlite` | SQLite 持久化（`openSqliteVirtualWorktree`，Bun） |
+| 子路径                     | 用途                                                 |
+| -------------------------- | ---------------------------------------------------- |
+| `nano-git/worktree/core`   | `VirtualWorktree` 类型与公开错误                     |
+| `nano-git/worktree/memory` | 内存实例（`createVirtualWorktree`）                  |
+| `nano-git/worktree/file`   | 目录持久化（`openFileVirtualWorktree`）              |
+| `nano-git/worktree/sqlite` | SQLite 持久化（`openSqliteVirtualWorktreeDatabase`） |
 
 ```typescript
 import { createMemoryRepository } from "nano-git/repository/memory";

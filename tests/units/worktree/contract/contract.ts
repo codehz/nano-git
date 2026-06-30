@@ -11,7 +11,10 @@ import { join } from "node:path";
 
 import { openFileVirtualWorktree } from "@/worktree/file.ts";
 import { createVirtualWorktree } from "@/worktree/memory.ts";
-import { openSqliteVirtualWorktree } from "@/worktree/sqlite.ts";
+import {
+  openSqliteVirtualWorktreeDatabase,
+  type SqliteVirtualWorktreeDatabase,
+} from "@/worktree/sqlite.ts";
 
 import type { Repository } from "@/repository/types.ts";
 import type { CreateVirtualWorktreeOptions, VirtualWorktree } from "@/worktree/core.ts";
@@ -27,8 +30,13 @@ export type VirtualWorktreeFactory = (
 ) => VirtualWorktree;
 
 const tempRoots: string[] = [];
+const sqliteDatabases: SqliteVirtualWorktreeDatabase[] = [];
+let sqliteContractCounter = 0;
 
 afterAll(() => {
+  for (const db of sqliteDatabases) {
+    db[Symbol.dispose]();
+  }
   for (const root of tempRoots) {
     rmSync(root, { recursive: true, force: true });
   }
@@ -62,10 +70,13 @@ export const virtualWorktreeBackends = [
   },
   {
     name: "sqlite",
-    createWorktree: (repo, options) =>
-      openSqliteVirtualWorktree(repo.objects, ":memory:", "demo", {
-        ...options,
-        create: true,
-      }),
+    createWorktree: (repo, options) => {
+      const db = openSqliteVirtualWorktreeDatabase(":memory:");
+      sqliteDatabases.push(db);
+      sqliteContractCounter += 1;
+      const key = `demo-${sqliteContractCounter}`;
+      db.createWorktree(key, options);
+      return db.openWorktree(repo.objects, key, options);
+    },
   },
 ] satisfies VirtualWorktreeBackend[];
