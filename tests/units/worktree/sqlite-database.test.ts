@@ -70,4 +70,35 @@ describe("openSqliteVirtualWorktreeDatabase", () => {
 
     expect(db.deleteWorktreesByPrefix("missing/")).toBe(0);
   });
+
+  test("renameWorktree 迁移 key 并保留数据", () => {
+    const repo = createMemoryRepository();
+    const baseTree = repo.createTree([]);
+
+    using db = openSqliteVirtualWorktreeDatabase(":memory:");
+    db.createWorktree("old", { baseTree });
+    const worktree = db.openWorktree(repo.objects, "old", { baseTree });
+    worktree.writeFile("keep.txt", Buffer.from("data"));
+
+    db.renameWorktree("old", "new");
+    expect(db.listWorktreeKeys()).toEqual(["new"]);
+    expect(db.hasWorktree("old")).toBe(false);
+    expect(db.hasWorktree("new")).toBe(true);
+
+    const reopened = db.openWorktree(repo.objects, "new", { baseTree });
+    expect(reopened.readFile("keep.txt")).toEqual(Buffer.from("data"));
+  });
+
+  test("renameWorktree 在源不存在或目标已占用时失败", () => {
+    const repo = createMemoryRepository();
+    const baseTree = repo.createTree([]);
+
+    using db = openSqliteVirtualWorktreeDatabase(":memory:");
+    db.createWorktree("a", { baseTree });
+    db.createWorktree("b", { baseTree });
+
+    expect(() => db.renameWorktree("missing", "x")).toThrow(/Virtual worktree not found/);
+    expect(() => db.renameWorktree("a", "b")).toThrow(/Virtual worktree already exists/);
+    expect(db.listWorktreeKeys()).toEqual(["a", "b"]);
+  });
 });

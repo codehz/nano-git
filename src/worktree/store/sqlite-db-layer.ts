@@ -46,6 +46,8 @@ export interface SqliteVirtualWorktreeDbLayer {
   listWorktreeRows(prefix?: string): readonly WorktreeRow[];
   hasWorktree(worktreeKey: string): boolean;
   deleteWorktree(worktreeKey: string): void;
+  /** 将已有 worktree 的 key 从 `fromKey` 改为 `toKey`（`fromKey` 与 `toKey` 相同时无操作） */
+  renameWorktree(fromKey: string, toKey: string): void;
   /** 删除所有 `worktree_key` 以 `prefix` 开头的条目，返回删除数量 */
   deleteWorktreesByPrefix(prefix: string): number;
   validateWorktreeIntegrity(worktreeKey: string): void;
@@ -104,6 +106,15 @@ export function createSqliteVirtualWorktreeDbLayer(
     "INSERT INTO worktrees (worktree_key, base_tree) VALUES (?, ?) ON CONFLICT(worktree_key) DO UPDATE SET base_tree = excluded.base_tree",
   );
   const deleteWorktreeMetaStmt = conn.prepare<void>("DELETE FROM worktrees WHERE worktree_key = ?");
+  const renameWorktreeMetaStmt = conn.prepare<void>(
+    "UPDATE worktrees SET worktree_key = ? WHERE worktree_key = ?",
+  );
+  const renameNodesWorktreeKeyStmt = conn.prepare<void>(
+    "UPDATE worktree_nodes SET worktree_key = ? WHERE worktree_key = ?",
+  );
+  const renameChangesWorktreeKeyStmt = conn.prepare<void>(
+    "UPDATE worktree_changes SET worktree_key = ? WHERE worktree_key = ?",
+  );
   const getNodeStmt = conn.prepare<NodeRow | null>(
     `SELECT node_id, origin_kind, origin_hash, origin_mode, state_kind, state_mode, content, target, directory_overlay
      FROM worktree_nodes
@@ -206,6 +217,24 @@ export function createSqliteVirtualWorktreeDbLayer(
 
     deleteWorktree(worktreeKey: string): void {
       deleteWorktreeTx(worktreeKey);
+    },
+
+    renameWorktree(fromKey: string, toKey: string): void {
+      if (fromKey === toKey) {
+        return;
+      }
+      if (!existsWorktreeStmt.get(fromKey)) {
+        throw new Error(`Virtual worktree not found: ${fromKey}`);
+      }
+      if (existsWorktreeStmt.get(toKey)) {
+        throw new Error(`Virtual worktree already exists: ${toKey}`);
+      }
+      const renameTx = conn.db.transaction(() => {
+        renameChangesWorktreeKeyStmt.run(toKey, fromKey);
+        renameNodesWorktreeKeyStmt.run(toKey, fromKey);
+        renameWorktreeMetaStmt.run(toKey, fromKey);
+      });
+      renameTx();
     },
 
     deleteWorktreesByPrefix(prefix: string): number {

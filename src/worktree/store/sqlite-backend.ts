@@ -45,6 +45,10 @@ export interface SqliteVirtualWorktreeDatabase {
   createWorktree(worktreeKey: string, options: CreateVirtualWorktreeOptions): void;
   deleteWorktree(worktreeKey: string): void;
   /**
+   * 将已有 worktree 的 key 从 `fromKey` 改为 `toKey`（`fromKey` 与 `toKey` 相同时无操作）
+   */
+  renameWorktree(fromKey: string, toKey: string): void;
+  /**
    * 删除所有 key 以 `prefix` 开头的 worktree（含节点与变更表），返回删除数量
    */
   deleteWorktreesByPrefix(prefix: string): number;
@@ -123,6 +127,13 @@ export function openSqliteVirtualWorktreeDatabase(
         throw new Error(`Virtual worktree not found: ${worktreeKey}`);
       }
       layer.deleteWorktree(worktreeKey);
+    },
+
+    renameWorktree(fromKey: string, toKey: string): void {
+      layer.renameWorktree(fromKey, toKey);
+      if (fromKey !== toKey) {
+        layer.validateWorktreeIntegrity(toKey);
+      }
     },
 
     deleteWorktreesByPrefix(prefix: string): number {
