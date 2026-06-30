@@ -15,7 +15,6 @@ import {
 } from "@/worktree/engine/worktree-transaction.ts";
 import { openVirtualWorktree } from "@/worktree/engine/worktree.ts";
 import {
-  createNewDirectoryNode,
   createNodeId,
   createRootDirectoryNode,
   VIRTUAL_ROOT_NODE_ID,

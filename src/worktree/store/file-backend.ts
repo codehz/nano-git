@@ -30,7 +30,6 @@ import type { ObjectDatabase } from "../../core/types/odb.ts";
 import type { CreateVirtualWorktreeOptions, VirtualWorktree } from "../core.ts";
 import type { NormalizedChangeRecord } from "../engine/change-index.ts";
 import type { NodeId } from "../model/ids.ts";
-import type { PersistedChangeRecord } from "./persist/change-codec.ts";
 import type { FileWorktreeManifest, PersistedFileNodeRecord } from "./persist/node-wire.ts";
 import type { VirtualWorktreeStateStore } from "./state-store.ts";
 

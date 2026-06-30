@@ -13,7 +13,6 @@ import {
 } from "@/core/errors.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
 import {
-  getDirectoryChildrenView,
   joinChildPath,
   requireExistingWriteTarget,
   requireMissingWriteTarget,
@@ -26,16 +25,6 @@ import {
 } from "@/worktree/engine/worktree-path.ts";
 import { openVirtualWorktree } from "@/worktree/engine/worktree.ts";
 import { createVirtualWorktreeMemoryStateStore } from "@/worktree/store/memory-backend.ts";
-
-import type { GitTree } from "@/core/types.ts";
-
-function readTree(repo: ReturnType<typeof createMemoryRepository>, hash: string): GitTree {
-  const object = repo.catFile(hash as import("@/core/types.ts").SHA1);
-  if (object.type !== "tree") {
-    throw new Error(`Expected tree, got ${object.type}`);
-  }
-  return object;
-}
 
 describe("joinChildPath()", () => {
   test("根目录下直接返回子项名称", () => {

@@ -4,7 +4,7 @@
 import { describe, test, expect } from "bun:test";
 
 import { createMemoryRepository } from "@/repository/memory.ts";
-import { createVirtualWorktree, openVirtualWorktree } from "@/worktree/engine/worktree.ts";
+import { openVirtualWorktree } from "@/worktree/engine/worktree.ts";
 import { createVirtualWorktreeMemoryStateStore } from "@/worktree/store/memory-backend.ts";
 
 describe("diff（写入操作）", () => {
