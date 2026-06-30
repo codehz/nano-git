@@ -6,7 +6,11 @@ import { describe, test, expect } from "bun:test";
 import { VirtualOriginUnavailableError } from "@/core/errors.ts";
 import { sha1 } from "@/core/types.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
-import { readRepoBlobContent, readRepoTree, treeEntryToNodeOrigin } from "@/worktree/origin.ts";
+import {
+  readRepoBlobContent,
+  readRepoTree,
+  treeEntryToNodeOrigin,
+} from "@/worktree/model/origin.ts";
 
 describe("readRepoTree / readRepoBlobContent", () => {
   test("缺失对象抛 VirtualOriginUnavailableError", () => {

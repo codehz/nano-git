@@ -9,14 +9,14 @@ import {
   originPathNodeId,
   resetNodeIdCounterForTests,
   VIRTUAL_ROOT_NODE_ID,
-} from "@/worktree/ids.ts";
+} from "@/worktree/model/ids.ts";
 import {
   cloneWorktreeNodeForCopy,
   createNewDirectoryNode,
   createRootDirectoryNode,
   isNodeDirty,
-} from "@/worktree/nodes.ts";
-import { overlayBindEntry } from "@/worktree/overlay.ts";
+} from "@/worktree/model/nodes.ts";
+import { overlayBindEntry } from "@/worktree/model/overlay.ts";
 
 describe("createRootDirectoryNode()", () => {
   test("根节点使用稳定 ID", () => {

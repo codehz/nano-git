@@ -6,8 +6,8 @@
 import { describe, test, expect } from "bun:test";
 
 import { createMemoryRepository } from "@/repository/memory.ts";
-import { createVirtualWorktreeMemoryStateStore } from "@/worktree/memory-backend.ts";
-import { openVirtualWorktree } from "@/worktree/worktree.ts";
+import { openVirtualWorktree } from "@/worktree/engine/worktree.ts";
+import { createVirtualWorktreeMemoryStateStore } from "@/worktree/store/memory-backend.ts";
 
 describe("copy", () => {
   test("worktree-only copy 产出 create 且不膨胀记录", () => {

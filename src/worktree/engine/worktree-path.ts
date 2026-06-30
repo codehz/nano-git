@@ -14,10 +14,10 @@ import {
   VirtualNotFileError,
   VirtualPathAlreadyExistsError,
   VirtualPathNotFoundError,
-} from "../core/errors.ts";
-import { originPathNodeId, VIRTUAL_ROOT_NODE_ID } from "./ids.ts";
-import { readRepoTree, treeEntryToNodeOrigin } from "./origin.ts";
-import { mergeDirectoryChildren } from "./overlay.ts";
+} from "../../core/errors.ts";
+import { originPathNodeId, VIRTUAL_ROOT_NODE_ID } from "../model/ids.ts";
+import { readRepoTree, treeEntryToNodeOrigin } from "../model/origin.ts";
+import { mergeDirectoryChildren } from "../model/overlay.ts";
 import {
   assertValidVirtualPath,
   baseName,
@@ -25,14 +25,19 @@ import {
   parentPath,
   splitPathSegments,
   VIRTUAL_ROOT_PATH,
-} from "./path.ts";
+} from "../model/path.ts";
 
-import type { TreeEntry } from "../core/types.ts";
-import type { ObjectSource } from "../core/types/odb.ts";
-import type { NodeId } from "./ids.ts";
-import type { DirectoryNodeState, FileNodeState, WorktreeNode, SymlinkNodeState } from "./nodes.ts";
-import type { MergedDirectoryChild, OriginDirectoryChild } from "./overlay.ts";
-import type { VirtualWorktreeStateStore } from "./state-store.ts";
+import type { TreeEntry } from "../../core/types.ts";
+import type { ObjectSource } from "../../core/types/odb.ts";
+import type { NodeId } from "../model/ids.ts";
+import type {
+  DirectoryNodeState,
+  FileNodeState,
+  WorktreeNode,
+  SymlinkNodeState,
+} from "../model/nodes.ts";
+import type { MergedDirectoryChild, OriginDirectoryChild } from "../model/overlay.ts";
+import type { VirtualWorktreeStateStore } from "../store/state-store.ts";
 
 type DirectoryWorktreeNode = WorktreeNode & { readonly state: DirectoryNodeState };
 type LeafWorktreeNode = WorktreeNode & { readonly state: FileNodeState | SymlinkNodeState };

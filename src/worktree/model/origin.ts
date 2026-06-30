@@ -4,12 +4,12 @@
  * 仅依赖 ObjectSource，不绑定具体 ODB 后端实现。
  */
 
-import { VirtualOriginUnavailableError } from "../core/errors.ts";
-import { tryReadObject } from "../objects/raw.ts";
+import { VirtualOriginUnavailableError } from "../../core/errors.ts";
+import { tryReadObject } from "../../objects/raw.ts";
 
-import type { GitTree, SHA1, TreeEntry } from "../core/types.ts";
-import type { ObjectSource } from "../core/types/odb.ts";
-import type { VirtualEntryKind } from "./core.ts";
+import type { GitTree, SHA1, TreeEntry } from "../../core/types.ts";
+import type { ObjectSource } from "../../core/types/odb.ts";
+import type { VirtualEntryKind } from "../core.ts";
 import type { BlobObjectMode, NodeOrigin } from "./nodes.ts";
 
 // ==================== 读取 ====================

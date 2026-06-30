@@ -12,4 +12,4 @@ export {
   openFileVirtualWorktree,
   createFileVirtualWorktreeStateStore,
   type OpenFileVirtualWorktreeOptions,
-} from "./file-backend.ts";
+} from "./store/file-backend.ts";

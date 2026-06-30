@@ -4,8 +4,8 @@
 import { describe, expect, test } from "bun:test";
 
 import { createMemoryRepository } from "@/repository/memory.ts";
-import { createChangeIndexPlanner } from "@/worktree/change-index-plan.ts";
-import { createVirtualWorktreeMemoryStateStore } from "@/worktree/memory-backend.ts";
+import { createChangeIndexPlanner } from "@/worktree/engine/change-index-plan.ts";
+import { createVirtualWorktreeMemoryStateStore } from "@/worktree/store/memory-backend.ts";
 
 describe("createChangeIndexPlanner()", () => {
   test("缺失路径是否允许增量刷新取决于 treatMissingAsIncremental", () => {

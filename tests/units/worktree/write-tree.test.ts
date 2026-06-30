@@ -4,10 +4,10 @@
 import { describe, test, expect } from "bun:test";
 
 import { createMemoryRepository } from "@/repository/memory.ts";
-import { originPathNodeId } from "@/worktree/ids.ts";
-import { createVirtualWorktreeMemoryStateStore } from "@/worktree/memory-backend.ts";
-import { createVirtualWorktree } from "@/worktree/worktree.ts";
-import { openVirtualWorktree } from "@/worktree/worktree.ts";
+import { createVirtualWorktree } from "@/worktree/engine/worktree.ts";
+import { openVirtualWorktree } from "@/worktree/engine/worktree.ts";
+import { originPathNodeId } from "@/worktree/model/ids.ts";
+import { createVirtualWorktreeMemoryStateStore } from "@/worktree/store/memory-backend.ts";
 
 import type { GitTree } from "@/core/types.ts";
 import type { ObjectDatabase } from "@/core/types/odb.ts";

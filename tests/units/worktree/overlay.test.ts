@@ -3,7 +3,7 @@
  */
 import { describe, test, expect } from "bun:test";
 
-import { createNodeId, resetNodeIdCounterForTests } from "@/worktree/ids.ts";
+import { createNodeId, resetNodeIdCounterForTests } from "@/worktree/model/ids.ts";
 import {
   createEmptyDirectoryOverlay,
   mergeDirectoryChildren,
@@ -11,7 +11,7 @@ import {
   overlayTombstoneEntry,
   resolveChildNodeId,
   type OriginDirectoryChild,
-} from "@/worktree/overlay.ts";
+} from "@/worktree/model/overlay.ts";
 
 function child(name: string, mode: string, nodeId = createNodeId()): OriginDirectoryChild {
   return { name, mode, nodeId };

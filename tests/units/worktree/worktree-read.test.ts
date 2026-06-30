@@ -7,7 +7,7 @@ import { describe, test, expect } from "bun:test";
 
 import { VirtualPathNotFoundError } from "@/core/errors.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
-import { createVirtualWorktree } from "@/worktree/worktree.ts";
+import { createVirtualWorktree } from "@/worktree/engine/worktree.ts";
 
 describe("createVirtualWorktree() 只读", () => {
   test("路径不存在时 readFile 抛 VirtualPathNotFoundError", () => {

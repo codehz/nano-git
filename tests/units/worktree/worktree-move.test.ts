@@ -6,8 +6,8 @@
 import { describe, test, expect } from "bun:test";
 
 import { createMemoryRepository } from "@/repository/memory.ts";
-import { createVirtualWorktreeMemoryStateStore } from "@/worktree/memory-backend.ts";
-import { openVirtualWorktree } from "@/worktree/worktree.ts";
+import { openVirtualWorktree } from "@/worktree/engine/worktree.ts";
+import { createVirtualWorktreeMemoryStateStore } from "@/worktree/store/memory-backend.ts";
 
 describe("move", () => {
   test("纯新增文件 move 后变更记录不膨胀", () => {

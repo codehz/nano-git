@@ -7,14 +7,14 @@
  * - 受影响子项编译计划（planAffectedDirectoryChildren）
  */
 
-import { VirtualNotDirectoryError } from "../core/errors.ts";
+import { VirtualNotDirectoryError } from "../../core/errors.ts";
 import { ensureNodeFromTreeEntry, joinChildPath, listDirectoryChildren } from "./worktree-path.ts";
 
-import type { TreeEntry } from "../core/types.ts";
-import type { ObjectSource } from "../core/types/odb.ts";
-import type { WorktreeNode } from "./nodes.ts";
-import type { MergedDirectoryChild } from "./overlay.ts";
-import type { VirtualWorktreeStateStore } from "./state-store.ts";
+import type { TreeEntry } from "../../core/types.ts";
+import type { ObjectSource } from "../../core/types/odb.ts";
+import type { WorktreeNode } from "../model/nodes.ts";
+import type { MergedDirectoryChild } from "../model/overlay.ts";
+import type { VirtualWorktreeStateStore } from "../store/state-store.ts";
 
 // ==================== 类型 ====================
 

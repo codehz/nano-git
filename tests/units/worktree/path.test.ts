@@ -11,7 +11,7 @@ import {
   normalizeDirectoryPath,
   parentPath,
   splitPathSegments,
-} from "@/worktree/path.ts";
+} from "@/worktree/model/path.ts";
 
 describe("normalizeDirectoryPath()", () => {
   test("undefined 与空串为根", () => {

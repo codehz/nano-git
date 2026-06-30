@@ -12,7 +12,6 @@ import {
   VirtualPathNotFoundError,
 } from "@/core/errors.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
-import { createVirtualWorktreeMemoryStateStore } from "@/worktree/memory-backend.ts";
 import {
   getDirectoryChildrenView,
   joinChildPath,
@@ -24,8 +23,9 @@ import {
   resolveWriteParentDirectory,
   resolveWriteTargetInParent,
   resolveWriteTransfer,
-} from "@/worktree/worktree-path.ts";
-import { openVirtualWorktree } from "@/worktree/worktree.ts";
+} from "@/worktree/engine/worktree-path.ts";
+import { openVirtualWorktree } from "@/worktree/engine/worktree.ts";
+import { createVirtualWorktreeMemoryStateStore } from "@/worktree/store/memory-backend.ts";
 
 import type { GitTree } from "@/core/types.ts";
 

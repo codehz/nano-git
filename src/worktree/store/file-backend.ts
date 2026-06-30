@@ -13,20 +13,18 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { sha1 } from "../core/types.ts";
-import { createRootDirectoryNode, type WorktreeNode } from "./nodes.ts";
-import { openVirtualWorktree } from "./worktree.ts";
+import { openVirtualWorktree } from "../engine/worktree.ts";
+import { createRootDirectoryNode, type WorktreeNode } from "../model/nodes.ts";
 
-import type { DiffObject } from "../core/diff.ts";
-import type { SHA1 } from "../core/types.ts";
-import type { ObjectDatabase } from "../core/types/odb.ts";
-import type { NormalizedChangeRecord } from "./change-index.ts";
-import type { CreateVirtualWorktreeOptions, VirtualWorktree } from "./core.ts";
-import type { DirtyDirHashState, DirtyDirSummary } from "./dirty-dir.ts";
-import type { NodeId } from "./ids.ts";
+import type { DiffObject } from "../../core/diff.ts";
+import type { SHA1 } from "../../core/types.ts";
+import type { ObjectDatabase } from "../../core/types/odb.ts";
+import type { CreateVirtualWorktreeOptions, VirtualWorktree } from "../core.ts";
+import type { NormalizedChangeRecord } from "../engine/change-index.ts";
+import type { NodeId } from "../model/ids.ts";
 import type { VirtualWorktreeStateStore } from "./state-store.ts";
 
-const FILE_WORKTREE_MANIFEST_VERSION = 6;
+const FILE_WORKTREE_MANIFEST_VERSION = 7;
 const FILE_WORKTREE_TRANSACTION_SNAPSHOT_SUFFIX = ".txn-snapshot";
 
 interface FileSessionManifest {
@@ -34,23 +32,12 @@ interface FileSessionManifest {
   readonly baseTree: string;
   readonly nodes: Readonly<Record<string, FileNodeRecord>>;
   readonly changeRecords: readonly FileChangeRecord[];
-  readonly dirtyDirSummaries: readonly FileDirtyDirSummary[];
 }
 
 interface FileChangeRecord {
   readonly path: string;
   readonly previous: DiffObject | null;
   readonly current: DiffObject | null;
-}
-
-interface FileDirtyDirSummary {
-  readonly path: string;
-  readonly isDirty: boolean;
-  readonly dirtyEntryCount: number;
-  readonly dirtyDescendantCount: number;
-  readonly affectedNames: readonly string[];
-  readonly currentTreeHash: string | null;
-  readonly hashState: DirtyDirHashState;
 }
 
 interface FileNodeRecord {
@@ -242,37 +229,6 @@ export function createFileVirtualWorktreeStateStore(
       }));
     },
 
-    listDirtyDirSummaries(): readonly DirtyDirSummary[] {
-      return readManifest(manifestPath).dirtyDirSummaries.map(restoreDirtyDirSummary);
-    },
-
-    getDirtyDirSummary(path: string): DirtyDirSummary | null {
-      return (
-        readManifest(manifestPath)
-          .dirtyDirSummaries.map(restoreDirtyDirSummary)
-          .find((summary) => summary.path === path) ?? null
-      );
-    },
-
-    setDirtyDirSummary(summary: DirtyDirSummary): void {
-      updateManifest(worktreeDir, (manifest) => {
-        const others = manifest.dirtyDirSummaries.filter((item) => item.path !== summary.path);
-        return {
-          ...manifest,
-          dirtyDirSummaries: [...others, serializeDirtyDirSummary(summary)].sort((left, right) =>
-            left.path.localeCompare(right.path),
-          ),
-        };
-      });
-    },
-
-    deleteDirtyDirSummary(path: string): void {
-      updateManifest(worktreeDir, (manifest) => ({
-        ...manifest,
-        dirtyDirSummaries: manifest.dirtyDirSummaries.filter((item) => item.path !== path),
-      }));
-    },
-
     reset(baseTree: SHA1): void {
       rmSync(worktreeDir, { recursive: true, force: true });
       ensureWorktreeDirs(worktreeDir, contentDir);
@@ -350,7 +306,6 @@ function createManifest(
     baseTree,
     nodes,
     changeRecords: [],
-    dirtyDirSummaries: [],
   };
 }
 
@@ -391,9 +346,6 @@ function validateManifest(manifest: FileSessionManifest): void {
   }
   if (!Array.isArray(manifest.changeRecords)) {
     throw new Error("Invalid virtual worktree manifest changeRecords");
-  }
-  if (!Array.isArray(manifest.dirtyDirSummaries)) {
-    throw new Error("Invalid virtual worktree manifest dirtyDirSummaries");
   }
   if (manifest.formatVersion !== FILE_WORKTREE_MANIFEST_VERSION) {
     throw new Error(
@@ -616,52 +568,6 @@ function restoreChangeRecord(record: FileChangeRecord): NormalizedChangeRecord {
     current:
       record.current === null ? null : { ...record.current, hash: record.current.hash as SHA1 },
   };
-}
-
-function serializeDirtyDirSummary(summary: DirtyDirSummary): FileDirtyDirSummary {
-  return {
-    path: summary.path,
-    isDirty: summary.isDirty,
-    dirtyEntryCount: summary.dirtyEntryCount,
-    dirtyDescendantCount: summary.dirtyDescendantCount,
-    affectedNames: [...summary.affectedNames],
-    currentTreeHash: summary.currentTreeHash,
-    hashState: summary.hashState,
-  };
-}
-
-function restoreDirtyDirSummary(summary: FileDirtyDirSummary): DirtyDirSummary {
-  return {
-    path: summary.path,
-    isDirty: summary.isDirty,
-    dirtyEntryCount: readDirtyDirCount(summary.dirtyEntryCount, "dirtyEntryCount"),
-    dirtyDescendantCount: readDirtyDirCount(summary.dirtyDescendantCount, "dirtyDescendantCount"),
-    affectedNames: readDirtyDirAffectedNames(summary.affectedNames),
-    currentTreeHash: summary.currentTreeHash === null ? null : sha1(summary.currentTreeHash),
-    hashState: readDirtyDirHashState(summary.hashState),
-  };
-}
-
-function readDirtyDirCount(raw: unknown, field: string): number {
-  if (typeof raw !== "number" || !Number.isInteger(raw) || raw < 0) {
-    throw new Error(`Invalid file worktree dirty dir summary ${field}`);
-  }
-  return raw;
-}
-
-function readDirtyDirAffectedNames(raw: unknown): readonly string[] {
-  if (!Array.isArray(raw) || raw.some((item) => typeof item !== "string")) {
-    throw new Error("Invalid file worktree dirty dir summary affectedNames");
-  }
-  const names = raw as string[];
-  return [...names].sort((left, right) => left.localeCompare(right));
-}
-
-function readDirtyDirHashState(raw: unknown): DirtyDirHashState {
-  if (raw === "stale" || raw === "materialized") {
-    return raw;
-  }
-  throw new Error(`Invalid file worktree dirty dir summary hashState: ${String(raw)}`);
 }
 
 function readPayload(contentDir: string, payloadRef: string): Buffer {

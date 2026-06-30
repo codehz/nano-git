@@ -5,4 +5,5 @@
  * 该入口不提供跨进程持久化与恢复能力。
  */
 
-export { createVirtualWorktree, openVirtualWorktree } from "./worktree.ts";
+export { createVirtualWorktree, openVirtualWorktree } from "./engine/worktree.ts";
+export { createVirtualWorktreeMemoryStateStore } from "./store/memory-backend.ts";

@@ -7,9 +7,9 @@ import { createMemoryRepository } from "@/repository/memory.ts";
 import {
   rebuildNormalizedChangeIndex,
   refreshChangeRecordForPath,
-} from "@/worktree/change-index.ts";
-import { createVirtualWorktreeMemoryStateStore } from "@/worktree/memory-backend.ts";
-import { openVirtualWorktree } from "@/worktree/worktree.ts";
+} from "@/worktree/engine/change-index.ts";
+import { openVirtualWorktree } from "@/worktree/engine/worktree.ts";
+import { createVirtualWorktreeMemoryStateStore } from "@/worktree/store/memory-backend.ts";
 
 describe("change-index", () => {
   test("refreshChangeRecordForPath() 基于当前最终状态重算记录", () => {

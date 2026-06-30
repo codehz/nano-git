@@ -4,9 +4,9 @@
 import { describe, test, expect } from "bun:test";
 
 import { createMemoryRepository } from "@/repository/memory.ts";
-import { createVirtualWorktreeMemoryStateStore } from "@/worktree/memory-backend.ts";
 import { createVirtualWorktree } from "@/worktree/memory.ts";
-import { VIRTUAL_ROOT_NODE_ID } from "@/worktree/nodes.ts";
+import { VIRTUAL_ROOT_NODE_ID } from "@/worktree/model/nodes.ts";
+import { createVirtualWorktreeMemoryStateStore } from "@/worktree/store/memory-backend.ts";
 
 describe("memory VirtualWorktree", () => {
   test("多个实例互不污染", () => {

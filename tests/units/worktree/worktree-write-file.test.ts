@@ -5,12 +5,12 @@ import { describe, test, expect } from "bun:test";
 
 import { VirtualNotFileError, VirtualPathNotFoundError } from "@/core/errors.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
-import { createVirtualWorktreeMemoryStateStore } from "@/worktree/memory-backend.ts";
-import { createVirtualWorktree, openVirtualWorktree } from "@/worktree/worktree.ts";
+import { openVirtualWorktree } from "@/worktree/engine/worktree.ts";
+import { createVirtualWorktreeMemoryStateStore } from "@/worktree/store/memory-backend.ts";
 
 import type { GitTree } from "@/core/types.ts";
 import type { Repository } from "@/repository/types.ts";
-import type { VirtualWorktreeStateStore } from "@/worktree/state-store.ts";
+import type { VirtualWorktreeStateStore } from "@/worktree/store/state-store.ts";
 
 /** 读取 tree 对象（类型断言辅助） */
 function readTree(repo: Repository, hash: string): GitTree {
@@ -67,18 +67,6 @@ describe("writeFile", () => {
       },
       deleteChangeRecord(path): void {
         inner.deleteChangeRecord(path);
-      },
-      listDirtyDirSummaries() {
-        return inner.listDirtyDirSummaries();
-      },
-      getDirtyDirSummary(path) {
-        return inner.getDirtyDirSummary(path);
-      },
-      setDirtyDirSummary(summary): void {
-        inner.setDirtyDirSummary(summary);
-      },
-      deleteDirtyDirSummary(path): void {
-        inner.deleteDirtyDirSummary(path);
       },
       reset(nextBaseTree): void {
         inner.reset(nextBaseTree);

@@ -4,8 +4,8 @@
 import { describe, test, expect } from "bun:test";
 
 import { createMemoryRepository } from "@/repository/memory.ts";
-import { createVirtualWorktreeMemoryStateStore } from "@/worktree/memory-backend.ts";
-import { createVirtualWorktree, openVirtualWorktree } from "@/worktree/worktree.ts";
+import { createVirtualWorktree, openVirtualWorktree } from "@/worktree/engine/worktree.ts";
+import { createVirtualWorktreeMemoryStateStore } from "@/worktree/store/memory-backend.ts";
 
 describe("diff（写入操作）", () => {
   test("重复修改同一路径时变更记录不膨胀", () => {

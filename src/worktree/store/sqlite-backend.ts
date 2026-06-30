@@ -2,18 +2,17 @@
  * Virtual Worktree SQLite backend
  */
 
-import { acquireConnection, type SqliteConnectionHandle } from "../backend/sqlite-pool.ts";
-import { sha1 } from "../core/types.ts";
-import { createRootDirectoryNode, type WorktreeNode } from "./nodes.ts";
-import { openVirtualWorktree } from "./worktree.ts";
+import { acquireConnection, type SqliteConnectionHandle } from "../../backend/sqlite-pool.ts";
+import { sha1 } from "../../core/types.ts";
+import { openVirtualWorktree } from "../engine/worktree.ts";
+import { createRootDirectoryNode, type WorktreeNode } from "../model/nodes.ts";
 
-import type { SHA1 } from "../core/types.ts";
-import type { ObjectDatabase } from "../core/types/odb.ts";
-import type { NormalizedChangeRecord } from "./change-index.ts";
-import type { CreateVirtualWorktreeOptions, VirtualWorktree } from "./core.ts";
-import type { DirtyDirHashState, DirtyDirSummary } from "./dirty-dir.ts";
-import type { NodeId } from "./ids.ts";
-import type { DirectoryOverlay } from "./overlay.ts";
+import type { SHA1 } from "../../core/types.ts";
+import type { ObjectDatabase } from "../../core/types/odb.ts";
+import type { CreateVirtualWorktreeOptions, VirtualWorktree } from "../core.ts";
+import type { NormalizedChangeRecord } from "../engine/change-index.ts";
+import type { NodeId } from "../model/ids.ts";
+import type { DirectoryOverlay } from "../model/overlay.ts";
 import type { VirtualWorktreeStateStore } from "./state-store.ts";
 import type { Database } from "native-sqlite";
 
@@ -37,7 +36,7 @@ export interface OpenSqliteVirtualWorktreeOptions
  */
 export type SqliteVirtualWorktree = VirtualWorktree & { [Symbol.dispose](): void };
 
-const WORKTREE_SQLITE_SCHEMA_VERSION = 7;
+const WORKTREE_SQLITE_SCHEMA_VERSION = 8;
 
 interface WorktreeRow {
   worktree_key: string;
@@ -64,16 +63,6 @@ interface ChangeRow {
   current_kind: string | null;
   current_mode: string | null;
   current_hash: string | null;
-}
-
-interface DirtyDirRow {
-  path: string;
-  is_dirty: number;
-  dirty_entry_count: number;
-  dirty_descendant_count: number;
-  affected_names: string;
-  current_tree_hash: string | null;
-  hash_state: string;
 }
 
 /**
@@ -223,43 +212,11 @@ export function createSqliteVirtualWorktreeStateStore(
   const clearChangesStmt = conn.prepare<void>(
     "DELETE FROM worktree_changes WHERE worktree_key = ?",
   );
-  const listDirtyDirsStmt = conn.prepare<DirtyDirRow>(
-    `SELECT path, is_dirty, dirty_entry_count, dirty_descendant_count, affected_names, current_tree_hash, hash_state
-     FROM worktree_dirty_dirs
-     WHERE worktree_key = ?
-     ORDER BY path`,
-  );
-  const getDirtyDirStmt = conn.prepare<DirtyDirRow | null>(
-    `SELECT path, is_dirty, dirty_entry_count, dirty_descendant_count, affected_names, current_tree_hash, hash_state
-     FROM worktree_dirty_dirs
-     WHERE worktree_key = ? AND path = ?`,
-  );
-  const upsertDirtyDirStmt = conn.prepare<void>(
-    `INSERT INTO worktree_dirty_dirs (
-      worktree_key, path, is_dirty, dirty_entry_count, dirty_descendant_count,
-      affected_names, current_tree_hash, hash_state
-    )
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(worktree_key, path) DO UPDATE SET
-       is_dirty = excluded.is_dirty,
-       dirty_entry_count = excluded.dirty_entry_count,
-       dirty_descendant_count = excluded.dirty_descendant_count,
-       affected_names = excluded.affected_names,
-       current_tree_hash = excluded.current_tree_hash,
-       hash_state = excluded.hash_state`,
-  );
-  const deleteDirtyDirStmt = conn.prepare<void>(
-    "DELETE FROM worktree_dirty_dirs WHERE worktree_key = ? AND path = ?",
-  );
-  const clearDirtyDirsStmt = conn.prepare<void>(
-    "DELETE FROM worktree_dirty_dirs WHERE worktree_key = ?",
-  );
 
   const resetTx = conn.db.transaction((baseTree: SHA1) => {
     upsertWorktreeStmt.run(worktreeKey, baseTree);
     clearNodesStmt.run(worktreeKey);
     clearChangesStmt.run(worktreeKey);
-    clearDirtyDirsStmt.run(worktreeKey);
     writeNode(setNodeStmt, worktreeKey, createRootDirectoryNode(baseTree));
   });
 
@@ -324,32 +281,6 @@ export function createSqliteVirtualWorktreeStateStore(
       deleteChangeStmt.run(worktreeKey, path);
     },
 
-    listDirtyDirSummaries(): readonly DirtyDirSummary[] {
-      return listDirtyDirsStmt.all(worktreeKey).map(readDirtyDirSummary);
-    },
-
-    getDirtyDirSummary(path: string): DirtyDirSummary | null {
-      const row = getDirtyDirStmt.get(worktreeKey, path);
-      return row === null ? null : readDirtyDirSummary(row);
-    },
-
-    setDirtyDirSummary(summary: DirtyDirSummary): void {
-      upsertDirtyDirStmt.run(
-        worktreeKey,
-        summary.path,
-        summary.isDirty ? 1 : 0,
-        summary.dirtyEntryCount,
-        summary.dirtyDescendantCount,
-        JSON.stringify(summary.affectedNames),
-        summary.currentTreeHash,
-        summary.hashState,
-      );
-    },
-
-    deleteDirtyDirSummary(path: string): void {
-      deleteDirtyDirStmt.run(worktreeKey, path);
-    },
-
     reset(baseTree: SHA1): void {
       resetTx(baseTree);
     },
@@ -358,7 +289,12 @@ export function createSqliteVirtualWorktreeStateStore(
 
 function ensureSchema(db: Database): void {
   const currentVersion = readSchemaVersion(db);
-  if (currentVersion !== 0 && currentVersion !== WORKTREE_SQLITE_SCHEMA_VERSION) {
+  const LEGACY_SCHEMA_VERSION = 7;
+  if (
+    currentVersion !== 0 &&
+    currentVersion !== LEGACY_SCHEMA_VERSION &&
+    currentVersion !== WORKTREE_SQLITE_SCHEMA_VERSION
+  ) {
     throw new Error(
       `Unsupported virtual worktree SQLite schema version: expected ${WORKTREE_SQLITE_SCHEMA_VERSION}, got ${currentVersion}`,
     );
@@ -398,20 +334,14 @@ function ensureSchema(db: Database): void {
       PRIMARY KEY (worktree_key, path)
     )
   `);
-  db.run(`
-    CREATE TABLE IF NOT EXISTS worktree_dirty_dirs (
-      worktree_key TEXT NOT NULL,
-      path TEXT NOT NULL,
-      is_dirty INTEGER NOT NULL,
-      dirty_entry_count INTEGER NOT NULL,
-      dirty_descendant_count INTEGER NOT NULL,
-      affected_names TEXT NOT NULL,
-      current_tree_hash TEXT,
-      hash_state TEXT NOT NULL,
-      PRIMARY KEY (worktree_key, path)
-    )
-  `);
-  writeSchemaVersion(db, WORKTREE_SQLITE_SCHEMA_VERSION);
+
+  if (currentVersion === LEGACY_SCHEMA_VERSION) {
+    db.run(`DROP TABLE IF EXISTS worktree_dirty_dirs`);
+  }
+
+  if (currentVersion !== WORKTREE_SQLITE_SCHEMA_VERSION) {
+    writeSchemaVersion(db, WORKTREE_SQLITE_SCHEMA_VERSION);
+  }
 }
 
 function hasWorktree(db: Database, worktreeKey: string): boolean {
@@ -423,9 +353,6 @@ function hasWorktree(db: Database, worktreeKey: string): boolean {
 
 function deleteWorktreeRows(db: Database, worktreeKey: string): void {
   const tx = db.transaction(() => {
-    db.query<void, [string]>("DELETE FROM worktree_dirty_dirs WHERE worktree_key = ?").run(
-      worktreeKey,
-    );
     db.query<void, [string]>("DELETE FROM worktree_changes WHERE worktree_key = ?").run(
       worktreeKey,
     );
@@ -655,47 +582,6 @@ function readDiffObjectMode(raw: string): "100644" | "100755" | "040000" | "1200
     return raw;
   }
   throw new Error(`Invalid SQLite worktree diff object mode: ${raw}`);
-}
-
-function readDirtyDirSummary(row: DirtyDirRow): DirtyDirSummary {
-  const affectedNames = readDirtyDirAffectedNames(row.affected_names);
-  return {
-    path: row.path,
-    isDirty: row.is_dirty !== 0,
-    dirtyEntryCount: readDirtyDirCount(row.dirty_entry_count, "dirty_entry_count"),
-    dirtyDescendantCount: readDirtyDirCount(row.dirty_descendant_count, "dirty_descendant_count"),
-    affectedNames,
-    currentTreeHash: row.current_tree_hash === null ? null : sha1(row.current_tree_hash),
-    hashState: readDirtyDirHashState(row.hash_state),
-  };
-}
-
-function readDirtyDirCount(raw: number, field: string): number {
-  if (!Number.isInteger(raw) || raw < 0) {
-    throw new Error(`Invalid SQLite worktree dirty dir ${field}: ${raw}`);
-  }
-  return raw;
-}
-
-function readDirtyDirAffectedNames(raw: string): readonly string[] {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new Error("Invalid SQLite worktree dirty dir affected_names JSON");
-  }
-  if (!Array.isArray(parsed) || parsed.some((item) => typeof item !== "string")) {
-    throw new Error("Invalid SQLite worktree dirty dir affected_names payload");
-  }
-  const names = parsed as string[];
-  return [...names].sort((left, right) => left.localeCompare(right));
-}
-
-function readDirtyDirHashState(raw: string): DirtyDirHashState {
-  if (raw === "stale" || raw === "materialized") {
-    return raw;
-  }
-  throw new Error(`Invalid SQLite worktree dirty dir hash state: ${raw}`);
 }
 
 function readDirectoryOverlay(raw: unknown): DirectoryOverlay {

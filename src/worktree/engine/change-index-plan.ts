@@ -7,8 +7,8 @@
 
 import { resolvePath } from "./worktree-path.ts";
 
-import type { ObjectSource } from "../core/types/odb.ts";
-import type { VirtualWorktreeStateStore } from "./state-store.ts";
+import type { ObjectSource } from "../../core/types/odb.ts";
+import type { VirtualWorktreeStateStore } from "../store/state-store.ts";
 
 /**
  * change-index 更新计划

@@ -13,10 +13,10 @@ import {
   observeListedDirectoryChild,
   observeNamedDirectoryChild,
   planAffectedDirectoryChildren,
-} from "@/worktree/directory-view.ts";
-import { createVirtualWorktreeMemoryStateStore } from "@/worktree/memory-backend.ts";
-import { getDirectoryChildrenView } from "@/worktree/worktree-path.ts";
-import { openVirtualWorktree } from "@/worktree/worktree.ts";
+} from "@/worktree/engine/directory-view.ts";
+import { getDirectoryChildrenView } from "@/worktree/engine/worktree-path.ts";
+import { openVirtualWorktree } from "@/worktree/engine/worktree.ts";
+import { createVirtualWorktreeMemoryStateStore } from "@/worktree/store/memory-backend.ts";
 
 import type { GitTree } from "@/core/types.ts";
 
@@ -88,7 +88,7 @@ describe("observeDirectoryChildren()", () => {
     const blobHash = repo.writeBlob(Buffer.from("a"));
     const store = createVirtualWorktreeMemoryStateStore(repo.createTree([]));
     const node = {
-      id: "file:standalone" as import("@/worktree/ids.ts").NodeId,
+      id: "file:standalone" as import("@/worktree/model/ids.ts").NodeId,
       origin: { kind: "repo-blob" as const, mode: "100644" as const, hash: blobHash },
       state: { kind: "file" as const, mode: "100644" as const },
     };
@@ -116,7 +116,7 @@ describe("observeDirectoryChildren()", () => {
     session.writeFile("src/a.txt", Buffer.from("next"));
     session.writeFile("new.txt", Buffer.from("created"));
 
-    const root = store.getNode("root" as import("@/worktree/ids.ts").NodeId);
+    const root = store.getNode("root" as import("@/worktree/model/ids.ts").NodeId);
     if (root === null || root.state.kind !== "directory") {
       throw new Error("Expected root directory node");
     }
@@ -145,7 +145,7 @@ describe("observeListedDirectoryChild()", () => {
     const blobHash = repo.writeBlob(Buffer.from("a"));
     const baseTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]);
     const store = createVirtualWorktreeMemoryStateStore(baseTree);
-    const root = store.getNode("root" as import("@/worktree/ids.ts").NodeId);
+    const root = store.getNode("root" as import("@/worktree/model/ids.ts").NodeId);
     if (root === null || root.state.kind !== "directory") {
       throw new Error("Expected root directory node");
     }
@@ -167,7 +167,7 @@ describe("observeListedDirectoryChild()", () => {
     const blobHash = repo.writeBlob(Buffer.from("a"));
     const baseTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]);
     const store = createVirtualWorktreeMemoryStateStore(baseTree);
-    const root = store.getNode("root" as import("@/worktree/ids.ts").NodeId);
+    const root = store.getNode("root" as import("@/worktree/model/ids.ts").NodeId);
     if (root === null || root.state.kind !== "directory") {
       throw new Error("Expected root directory node");
     }
@@ -190,7 +190,7 @@ describe("observeNamedDirectoryChild()", () => {
     const session = openVirtualWorktree(repo.objects, store);
 
     session.writeFile("a.txt", Buffer.from("a"));
-    const root = store.getNode("root" as import("@/worktree/ids.ts").NodeId);
+    const root = store.getNode("root" as import("@/worktree/model/ids.ts").NodeId);
     if (root === null || root.state.kind !== "directory") {
       throw new Error("Expected root directory node");
     }
@@ -212,7 +212,7 @@ describe("observeNamedDirectoryChild()", () => {
     const store = createVirtualWorktreeMemoryStateStore(baseTree);
     const session = openVirtualWorktree(repo.objects, store);
     session.delete("a.txt");
-    const root = store.getNode("root" as import("@/worktree/ids.ts").NodeId);
+    const root = store.getNode("root" as import("@/worktree/model/ids.ts").NodeId);
     if (root === null || root.state.kind !== "directory") {
       throw new Error("Expected root directory node");
     }
@@ -234,7 +234,7 @@ describe("observeNamedDirectoryChild()", () => {
     const blobHash = repo.writeBlob(Buffer.from("a"));
     const baseTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]);
     const store = createVirtualWorktreeMemoryStateStore(baseTree);
-    const root = store.getNode("root" as import("@/worktree/ids.ts").NodeId);
+    const root = store.getNode("root" as import("@/worktree/model/ids.ts").NodeId);
     if (root === null || root.state.kind !== "directory") {
       throw new Error("Expected root directory node");
     }
@@ -258,7 +258,7 @@ describe("observeNamedDirectoryChild()", () => {
     const blobHash = repo.writeBlob(Buffer.from("a"));
     const baseTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]);
     const store = createVirtualWorktreeMemoryStateStore(baseTree);
-    const root = store.getNode("root" as import("@/worktree/ids.ts").NodeId);
+    const root = store.getNode("root" as import("@/worktree/model/ids.ts").NodeId);
     if (root === null || root.state.kind !== "directory") {
       throw new Error("Expected root directory node");
     }
@@ -279,7 +279,7 @@ describe("observeNamedDirectoryChild()", () => {
     const repo = createMemoryRepository();
     const blobHash = repo.writeBlob(Buffer.from("a"));
     const node = {
-      id: "file:standalone" as import("@/worktree/ids.ts").NodeId,
+      id: "file:standalone" as import("@/worktree/model/ids.ts").NodeId,
       origin: { kind: "repo-blob" as const, mode: "100644" as const, hash: blobHash },
       state: { kind: "file" as const, mode: "100644" as const },
     };

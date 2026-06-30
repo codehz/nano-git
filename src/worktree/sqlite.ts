@@ -10,4 +10,4 @@ export {
   type OpenSqliteVirtualWorktreeOptions,
   openSqliteVirtualWorktree,
   type SqliteVirtualWorktree,
-} from "./sqlite-backend.ts";
+} from "./store/sqlite-backend.ts";

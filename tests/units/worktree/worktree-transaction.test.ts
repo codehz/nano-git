@@ -6,22 +6,22 @@ import { describe, expect, test } from "bun:test";
 import { VirtualOriginUnavailableError } from "@/core/errors.ts";
 import { sha1 } from "@/core/types.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
-import { createVirtualWorktreeMemoryStateStore } from "@/worktree/memory-backend.ts";
-import {
-  createNewDirectoryNode,
-  createNodeId,
-  createRootDirectoryNode,
-  VIRTUAL_ROOT_NODE_ID,
-} from "@/worktree/nodes.ts";
-import { overlayBindEntry } from "@/worktree/overlay.ts";
 import {
   cloneNodeGraphForCopy,
   runInWriteTransaction,
   statDirectoryNode,
   statNode,
   updateParentOverlay,
-} from "@/worktree/worktree-transaction.ts";
-import { openVirtualWorktree } from "@/worktree/worktree.ts";
+} from "@/worktree/engine/worktree-transaction.ts";
+import { openVirtualWorktree } from "@/worktree/engine/worktree.ts";
+import {
+  createNewDirectoryNode,
+  createNodeId,
+  createRootDirectoryNode,
+  VIRTUAL_ROOT_NODE_ID,
+} from "@/worktree/model/nodes.ts";
+import { overlayBindEntry } from "@/worktree/model/overlay.ts";
+import { createVirtualWorktreeMemoryStateStore } from "@/worktree/store/memory-backend.ts";
 
 describe("runInWriteTransaction()", () => {
   test("先执行提交前回调，再执行提交后回调", () => {

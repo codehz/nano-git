@@ -8,17 +8,17 @@
  * - 递归节点图克隆（copy）
  */
 
+import { createNodeId } from "../model/ids.ts";
+import { cloneWorktreeNodeForCopy, type WorktreeNode } from "../model/nodes.ts";
+import { readRepoBlobContent } from "../model/origin.ts";
+import { overlayBindEntry, type DirectoryOverlay } from "../model/overlay.ts";
 import { observeListedDirectoryChild } from "./directory-view.ts";
-import { createNodeId } from "./ids.ts";
-import { cloneWorktreeNodeForCopy, type WorktreeNode } from "./nodes.ts";
-import { readRepoBlobContent } from "./origin.ts";
-import { overlayBindEntry, type DirectoryOverlay } from "./overlay.ts";
 import { listDirectoryChildren } from "./worktree-path.ts";
 
-import type { ObjectDatabase } from "../core/types/odb.ts";
-import type { VirtualEntryStat } from "./core.ts";
-import type { NodeId } from "./ids.ts";
-import type { VirtualWorktreeStateStore } from "./state-store.ts";
+import type { ObjectDatabase } from "../../core/types/odb.ts";
+import type { VirtualEntryStat } from "../core.ts";
+import type { NodeId } from "../model/ids.ts";
+import type { VirtualWorktreeStateStore } from "../store/state-store.ts";
 
 /**
  * 在 state store 事务边界内执行写操作。

@@ -5,19 +5,19 @@
  * 并将目录本身纳入 diff 视图。
  */
 
-import { hashObject } from "../core/hash.ts";
-import { serializeTree } from "../objects/tree.ts";
+import { hashObject } from "../../core/hash.ts";
+import { serializeTree } from "../../objects/tree.ts";
+import { readRepoBlobContent, readRepoTree } from "../model/origin.ts";
+import { VIRTUAL_ROOT_PATH } from "../model/path.ts";
 import { observeListedDirectoryChild } from "./directory-view.ts";
-import { readRepoBlobContent, readRepoTree } from "./origin.ts";
-import { VIRTUAL_ROOT_PATH } from "./path.ts";
 import { getDirectoryChildrenView, joinChildPath, resolvePath } from "./worktree-path.ts";
 
-import type { DiffChanges, DiffEntry, DiffObject } from "../core/diff.ts";
-import type { SHA1, TreeEntry } from "../core/types.ts";
-import type { ObjectSource } from "../core/types/odb.ts";
-import type { NodeId } from "./ids.ts";
-import type { WorktreeNode } from "./nodes.ts";
-import type { VirtualWorktreeStateStore } from "./state-store.ts";
+import type { DiffChanges, DiffEntry, DiffObject } from "../../core/diff.ts";
+import type { SHA1, TreeEntry } from "../../core/types.ts";
+import type { ObjectSource } from "../../core/types/odb.ts";
+import type { NodeId } from "../model/ids.ts";
+import type { WorktreeNode } from "../model/nodes.ts";
+import type { VirtualWorktreeStateStore } from "../store/state-store.ts";
 
 /**
  * 规范化变更记录

@@ -12,19 +12,19 @@
  * writeTree() 成功后不清空 overlay，不推进 baseTree。
  */
 
-import { writeObject } from "../objects/raw.ts";
+import { writeObject } from "../../objects/raw.ts";
+import { originPathNodeId } from "../model/ids.ts";
+import { readRepoTree } from "../model/origin.ts";
+import { VIRTUAL_ROOT_PATH } from "../model/path.ts";
 import { createNamedOriginChildLookup, resolveNamedChild } from "./directory-view.ts";
-import { originPathNodeId } from "./ids.ts";
-import { readRepoTree } from "./origin.ts";
-import { VIRTUAL_ROOT_PATH } from "./path.ts";
 import { joinChildPath } from "./worktree-path.ts";
 
-import type { SHA1, TreeEntry } from "../core/types.ts";
-import type { ObjectDatabase, ObjectSource } from "../core/types/odb.ts";
+import type { SHA1, TreeEntry } from "../../core/types.ts";
+import type { ObjectDatabase, ObjectSource } from "../../core/types/odb.ts";
+import type { NodeId } from "../model/ids.ts";
+import type { WorktreeNode } from "../model/nodes.ts";
+import type { VirtualWorktreeStateStore } from "../store/state-store.ts";
 import type { NormalizedChangeRecord } from "./change-index.ts";
-import type { NodeId } from "./ids.ts";
-import type { WorktreeNode } from "./nodes.ts";
-import type { VirtualWorktreeStateStore } from "./state-store.ts";
 
 // ==================== 编译上下文 ====================
 

@@ -20,14 +20,14 @@ import { patchTree } from "../src/repository/tree/tree-patch.ts";
 import {
   exportVirtualDiffFromChangeRecords,
   rebuildNormalizedChangeIndex,
-} from "../src/worktree/change-index.ts";
-import { createVirtualWorktreeMemoryStateStore } from "../src/worktree/memory-backend.ts";
-import { openVirtualWorktree } from "../src/worktree/worktree.ts";
+} from "../src/worktree/engine/change-index.ts";
+import { openVirtualWorktree } from "../src/worktree/engine/worktree.ts";
+import { createVirtualWorktreeMemoryStateStore } from "../src/worktree/store/memory-backend.ts";
 
 import type { SHA1 } from "../src/core/types.ts";
 import type { Repository } from "../src/repository/types.ts";
 import type { VirtualWorktree } from "../src/worktree/core.ts";
-import type { VirtualWorktreeStateStore } from "../src/worktree/state-store.ts";
+import type { VirtualWorktreeStateStore } from "../src/worktree/store/state-store.ts";
 
 interface BenchOptions {
   readonly quick: boolean;

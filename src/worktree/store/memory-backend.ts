@@ -2,12 +2,11 @@
  * Virtual Worktree 内存状态存储
  */
 
-import { VIRTUAL_ROOT_NODE_ID, type NodeId } from "./ids.ts";
-import { createRootDirectoryNode, type WorktreeNode } from "./nodes.ts";
+import { VIRTUAL_ROOT_NODE_ID, type NodeId } from "../model/ids.ts";
+import { createRootDirectoryNode, type WorktreeNode } from "../model/nodes.ts";
 
-import type { SHA1 } from "../core/types.ts";
-import type { NormalizedChangeRecord } from "./change-index.ts";
-import type { DirtyDirSummary } from "./dirty-dir.ts";
+import type { SHA1 } from "../../core/types.ts";
+import type { NormalizedChangeRecord } from "../engine/change-index.ts";
 import type { VirtualWorktreeStateStore } from "./state-store.ts";
 
 /**
@@ -20,8 +19,6 @@ interface VirtualWorktreeMemoryState {
   readonly nodes: Map<NodeId, WorktreeNode>;
   /** path -> 规范化变更记录 */
   readonly changeRecords: Map<string, NormalizedChangeRecord>;
-  /** path -> 脏目录摘要 */
-  readonly dirtyDirSummaries: Map<string, DirtyDirSummary>;
 }
 
 /**
@@ -38,7 +35,6 @@ export function createVirtualWorktreeMemoryStateStore(baseTree: SHA1): VirtualWo
     baseTree,
     nodes: new Map<NodeId, WorktreeNode>(),
     changeRecords: new Map<string, NormalizedChangeRecord>(),
-    dirtyDirSummaries: new Map<string, DirtyDirSummary>(),
   };
 
   resetState(state, baseTree);
@@ -94,24 +90,6 @@ export function createVirtualWorktreeMemoryStateStore(baseTree: SHA1): VirtualWo
       state.changeRecords.delete(path);
     },
 
-    listDirtyDirSummaries(): readonly DirtyDirSummary[] {
-      return Array.from(state.dirtyDirSummaries.values()).sort((left, right) =>
-        left.path.localeCompare(right.path),
-      );
-    },
-
-    getDirtyDirSummary(path: string): DirtyDirSummary | null {
-      return state.dirtyDirSummaries.get(path) ?? null;
-    },
-
-    setDirtyDirSummary(summary: DirtyDirSummary): void {
-      state.dirtyDirSummaries.set(summary.path, summary);
-    },
-
-    deleteDirtyDirSummary(path: string): void {
-      state.dirtyDirSummaries.delete(path);
-    },
-
     reset(nextBaseTree: SHA1): void {
       resetState(state, nextBaseTree);
     },
@@ -122,7 +100,6 @@ function resetState(state: VirtualWorktreeMemoryState, baseTree: SHA1): void {
   state.baseTree = baseTree;
   state.nodes.clear();
   state.changeRecords.clear();
-  state.dirtyDirSummaries.clear();
   state.nodes.set(VIRTUAL_ROOT_NODE_ID, createRootDirectoryNode(baseTree));
 }
 
@@ -130,7 +107,6 @@ interface VirtualWorktreeMemoryStateSnapshot {
   readonly baseTree: SHA1;
   readonly nodes: ReadonlyMap<NodeId, WorktreeNode>;
   readonly changeRecords: ReadonlyMap<string, NormalizedChangeRecord>;
-  readonly dirtyDirSummaries: ReadonlyMap<string, DirtyDirSummary>;
 }
 
 function snapshotState(state: VirtualWorktreeMemoryState): VirtualWorktreeMemoryStateSnapshot {
@@ -142,7 +118,6 @@ function snapshotState(state: VirtualWorktreeMemoryState): VirtualWorktreeMemory
     baseTree: state.baseTree,
     nodes,
     changeRecords: new Map(state.changeRecords),
-    dirtyDirSummaries: new Map(state.dirtyDirSummaries),
   };
 }
 
@@ -153,15 +128,11 @@ function restoreState(
   state.baseTree = snapshot.baseTree;
   state.nodes.clear();
   state.changeRecords.clear();
-  state.dirtyDirSummaries.clear();
   for (const [nodeId, node] of snapshot.nodes) {
     state.nodes.set(nodeId, cloneWorktreeNode(node));
   }
   for (const [path, record] of snapshot.changeRecords) {
     state.changeRecords.set(path, record);
-  }
-  for (const [path, summary] of snapshot.dirtyDirSummaries) {
-    state.dirtyDirSummaries.set(path, summary);
   }
 }
 
