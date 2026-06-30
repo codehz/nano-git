@@ -42,12 +42,19 @@ interface NodeRow {
 export interface SqliteVirtualWorktreeDbLayer {
   readonly db: Database;
   transact<T>(fn: () => T): T;
-  listWorktreeKeys(): readonly string[];
-  listWorktreeRows(): readonly WorktreeRow[];
+  listWorktreeKeys(prefix?: string): readonly string[];
+  listWorktreeRows(prefix?: string): readonly WorktreeRow[];
   hasWorktree(worktreeKey: string): boolean;
   deleteWorktree(worktreeKey: string): void;
+  /** 删除所有 `worktree_key` 以 `prefix` 开头的条目，返回删除数量 */
+  deleteWorktreesByPrefix(prefix: string): number;
   validateWorktreeIntegrity(worktreeKey: string): void;
   bindStateStore(worktreeKey: string): VirtualWorktreeStateStore;
+}
+
+/** 前缀范围查询的上界（与 refs SQLite `list` 一致） */
+function worktreeKeyPrefixEnd(prefix: string): string {
+  return prefix + "\x7f";
 }
 
 /**
@@ -71,6 +78,21 @@ export function createSqliteVirtualWorktreeDbLayer(
   );
   const listWorktreeRowsStmt = conn.prepare<WorktreeRow>(
     "SELECT worktree_key, base_tree FROM worktrees ORDER BY worktree_key",
+  );
+  const listWorktreeKeysByPrefixStmt = conn.prepare<{ worktree_key: string }>(
+    "SELECT worktree_key FROM worktrees WHERE worktree_key >= ? AND worktree_key < ? ORDER BY worktree_key",
+  );
+  const listWorktreeRowsByPrefixStmt = conn.prepare<WorktreeRow>(
+    "SELECT worktree_key, base_tree FROM worktrees WHERE worktree_key >= ? AND worktree_key < ? ORDER BY worktree_key",
+  );
+  const deleteChangesByPrefixStmt = conn.prepare<void>(
+    "DELETE FROM worktree_changes WHERE worktree_key >= ? AND worktree_key < ?",
+  );
+  const deleteNodesByPrefixStmt = conn.prepare<void>(
+    "DELETE FROM worktree_nodes WHERE worktree_key >= ? AND worktree_key < ?",
+  );
+  const deleteWorktreesByPrefixStmt = conn.prepare<void>(
+    "DELETE FROM worktrees WHERE worktree_key >= ? AND worktree_key < ?",
   );
   const existsWorktreeStmt = conn.prepare<{ "1": number } | null>(
     "SELECT 1 FROM worktrees WHERE worktree_key = ?",
@@ -162,12 +184,20 @@ export function createSqliteVirtualWorktreeDbLayer(
       return transactImpl(fn) as T;
     },
 
-    listWorktreeKeys(): readonly string[] {
-      return listWorktreeKeysStmt.all().map((row) => row.worktree_key);
+    listWorktreeKeys(prefix?: string): readonly string[] {
+      if (prefix === undefined) {
+        return listWorktreeKeysStmt.all().map((row) => row.worktree_key);
+      }
+      const end = worktreeKeyPrefixEnd(prefix);
+      return listWorktreeKeysByPrefixStmt.all(prefix, end).map((row) => row.worktree_key);
     },
 
-    listWorktreeRows(): readonly WorktreeRow[] {
-      return listWorktreeRowsStmt.all();
+    listWorktreeRows(prefix?: string): readonly WorktreeRow[] {
+      if (prefix === undefined) {
+        return listWorktreeRowsStmt.all();
+      }
+      const end = worktreeKeyPrefixEnd(prefix);
+      return listWorktreeRowsByPrefixStmt.all(prefix, end);
     },
 
     hasWorktree(worktreeKey: string): boolean {
@@ -176,6 +206,21 @@ export function createSqliteVirtualWorktreeDbLayer(
 
     deleteWorktree(worktreeKey: string): void {
       deleteWorktreeTx(worktreeKey);
+    },
+
+    deleteWorktreesByPrefix(prefix: string): number {
+      const end = worktreeKeyPrefixEnd(prefix);
+      const keys = listWorktreeKeysByPrefixStmt.all(prefix, end).map((row) => row.worktree_key);
+      if (keys.length === 0) {
+        return 0;
+      }
+      const deleteByPrefixTx = conn.db.transaction(() => {
+        deleteChangesByPrefixStmt.run(prefix, end);
+        deleteNodesByPrefixStmt.run(prefix, end);
+        deleteWorktreesByPrefixStmt.run(prefix, end);
+      });
+      deleteByPrefixTx();
+      return keys.length;
     },
 
     validateWorktreeIntegrity(worktreeKey: string): void {

@@ -33,11 +33,21 @@ export interface SqliteVirtualWorktreeEntrySummary {
  */
 export interface SqliteVirtualWorktreeDatabase {
   readonly dbPath: string;
-  listWorktreeKeys(): readonly string[];
-  listWorktrees(): readonly SqliteVirtualWorktreeEntrySummary[];
+  /**
+   * 列举 worktree key；传入 `prefix` 时仅返回以该前缀开头的 key（按字典序）
+   */
+  listWorktreeKeys(prefix?: string): readonly string[];
+  /**
+   * 列举 worktree 摘要；传入 `prefix` 时仅返回以该前缀开头的条目
+   */
+  listWorktrees(prefix?: string): readonly SqliteVirtualWorktreeEntrySummary[];
   hasWorktree(worktreeKey: string): boolean;
   createWorktree(worktreeKey: string, options: CreateVirtualWorktreeOptions): void;
   deleteWorktree(worktreeKey: string): void;
+  /**
+   * 删除所有 key 以 `prefix` 开头的 worktree（含节点与变更表），返回删除数量
+   */
+  deleteWorktreesByPrefix(prefix: string): number;
   openWorktree(
     source: ObjectDatabase,
     worktreeKey: string,
@@ -84,12 +94,12 @@ export function openSqliteVirtualWorktreeDatabase(
   return {
     dbPath,
 
-    listWorktreeKeys(): readonly string[] {
-      return layer.listWorktreeKeys();
+    listWorktreeKeys(prefix?: string): readonly string[] {
+      return layer.listWorktreeKeys(prefix);
     },
 
-    listWorktrees(): readonly SqliteVirtualWorktreeEntrySummary[] {
-      return layer.listWorktreeRows().map((row) => ({
+    listWorktrees(prefix?: string): readonly SqliteVirtualWorktreeEntrySummary[] {
+      return layer.listWorktreeRows(prefix).map((row) => ({
         key: row.worktree_key,
         baseTree: readBaseTreeValue(row.base_tree),
       }));
@@ -113,6 +123,10 @@ export function openSqliteVirtualWorktreeDatabase(
         throw new Error(`Virtual worktree not found: ${worktreeKey}`);
       }
       layer.deleteWorktree(worktreeKey);
+    },
+
+    deleteWorktreesByPrefix(prefix: string): number {
+      return layer.deleteWorktreesByPrefix(prefix);
     },
 
     openWorktree(
