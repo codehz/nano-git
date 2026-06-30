@@ -3,8 +3,7 @@
   "version": "0.8.0",
   "files": [
     "dist",
-    "src",
-    "tsconfig.json"
+    "src"
   ],
   "type": "module",
   "sideEffects": false,
