@@ -9,7 +9,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { openFileVirtualWorktree } from "@/worktree/file.ts";
+import { createFileVirtualWorktree, openFileVirtualWorktree } from "@/worktree/file.ts";
 import { createVirtualWorktree } from "@/worktree/memory.ts";
 import {
   openSqliteVirtualWorktreeDatabase,
@@ -17,7 +17,7 @@ import {
 } from "@/worktree/sqlite.ts";
 
 import type { Repository } from "@/repository/types.ts";
-import type { CreateVirtualWorktreeOptions, VirtualWorktree } from "@/worktree/core.ts";
+import type { InitializeVirtualWorktreeOptions, VirtualWorktree } from "@/worktree/core.ts";
 
 export interface VirtualWorktreeBackend {
   readonly name: string;
@@ -26,7 +26,7 @@ export interface VirtualWorktreeBackend {
 
 export type VirtualWorktreeFactory = (
   repo: Repository,
-  options: CreateVirtualWorktreeOptions,
+  options: InitializeVirtualWorktreeOptions,
 ) => VirtualWorktree;
 
 const tempRoots: string[] = [];
@@ -62,10 +62,8 @@ export const virtualWorktreeBackends = [
     createWorktree: (repo, options) => {
       const root = mkdtempSync(join(tmpdir(), "nano-git-worktree-contract-file-"));
       tempRoots.push(root);
-      return openFileVirtualWorktree(repo.objects, root, {
-        ...options,
-        create: true,
-      });
+      createFileVirtualWorktree(root, options);
+      return openFileVirtualWorktree(repo.objects, root);
     },
   },
   {
@@ -76,7 +74,7 @@ export const virtualWorktreeBackends = [
       sqliteContractCounter += 1;
       const key = `demo-${sqliteContractCounter}`;
       db.createWorktree(key, options);
-      return db.openWorktree(repo.objects, key, options);
+      return db.openWorktree(repo.objects, key);
     },
   },
 ] satisfies VirtualWorktreeBackend[];

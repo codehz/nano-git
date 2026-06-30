@@ -27,7 +27,7 @@ import {
 
 import type { SHA1 } from "../../core/types.ts";
 import type { ObjectDatabase } from "../../core/types/odb.ts";
-import type { CreateVirtualWorktreeOptions, VirtualWorktree } from "../core.ts";
+import type { InitializeVirtualWorktreeOptions, VirtualWorktree } from "../core.ts";
 import type { NormalizedChangeRecord } from "../engine/change-index.ts";
 import type { NodeId } from "../model/ids.ts";
 import type { FileWorktreeManifest, PersistedFileNodeRecord } from "./persist/node-wire.ts";
@@ -39,43 +39,56 @@ const FILE_WORKTREE_TRANSACTION_SNAPSHOT_SUFFIX = ".txn-snapshot";
 type FileSessionManifest = FileWorktreeManifest;
 type FileNodeRecord = PersistedFileNodeRecord;
 
-/** 打开文件系统 VirtualWorktree 的可选参数 */
-export interface OpenFileVirtualWorktreeOptions extends CreateVirtualWorktreeOptions {
-  /** 不存在时按 baseTree 初始化 */
-  readonly create?: boolean;
+/**
+ * 在目录上注册并初始化 VirtualWorktree 持久化状态
+ *
+ * @param worktreeDir - 持久化目录路径
+ * @param options - 至少包含 `baseTree`
+ * @throws 若目录上已存在有效的 VirtualWorktree
+ *
+ * @example
+ * ```ts
+ * createFileVirtualWorktree("/tmp/worktree", { baseTree: tree });
+ * ```
+ */
+export function createFileVirtualWorktree(
+  worktreeDir: string,
+  options: InitializeVirtualWorktreeOptions,
+): void {
+  if (hasFileVirtualWorktree(worktreeDir)) {
+    throw new Error(`Virtual worktree already exists: ${worktreeDir}`);
+  }
+  const store = createFileVirtualWorktreeStateStore(worktreeDir);
+  store.reset(options.baseTree);
+  validateFileVirtualWorktreeIntegrity(worktreeDir);
 }
 
 /**
  * 打开基于目录持久化的 VirtualWorktree
  *
+ * `baseTree` 从 manifest 读取，无需调用方传入。须先 `createFileVirtualWorktree`。
+ *
  * @param source - 用于解析 origin 对象的 ODB
  * @param worktreeDir - 持久化目录路径
- * @param options - `baseTree` 必填；`create: true` 时目录不存在则初始化
  * @returns 绑定该目录 manifest 的 VirtualWorktree
- * @throws 目录不存在且未设置 `create: true` 时
+ * @throws 目录上不存在有效的 VirtualWorktree 时
  *
  * @example
  * ```ts
- * const worktree = openFileVirtualWorktree(repo.objects, "/tmp/worktree", {
- *   baseTree: tree,
- *   create: true,
- * });
+ * createFileVirtualWorktree("/tmp/worktree", { baseTree: tree });
+ * const worktree = openFileVirtualWorktree(repo.objects, "/tmp/worktree");
  * expect(worktree.baseTree).toBe(tree);
  * ```
  */
 export function openFileVirtualWorktree(
   source: ObjectDatabase,
   worktreeDir: string,
-  options: OpenFileVirtualWorktreeOptions,
 ): VirtualWorktree {
-  const store = createFileVirtualWorktreeStateStore(worktreeDir);
   if (!hasFileVirtualWorktree(worktreeDir)) {
-    if (options.create !== true) {
-      throw new Error(`Virtual worktree not found: ${worktreeDir}`);
-    }
-    store.reset(options.baseTree);
+    throw new Error(`Virtual worktree not found: ${worktreeDir}`);
   }
   validateFileVirtualWorktreeIntegrity(worktreeDir);
+  const store = createFileVirtualWorktreeStateStore(worktreeDir);
   return openVirtualWorktree(source, store);
 }
 
@@ -97,20 +110,7 @@ export function deleteFileVirtualWorktree(worktreeDir: string): void {
   rmSync(worktreeDir, { recursive: true, force: true });
 }
 
-/**
- * 创建单个文件系统 VirtualWorktree 的状态存储
- *
- * 低级 API：一般优先使用 `openFileVirtualWorktree`；需要自定义打开流程时可单独使用 store。
- *
- * @param worktreeDir - 持久化目录（写入 manifest 与内容文件）
- * @returns `kind: "file"` 的状态存储，需配合 `openVirtualWorktree` 使用
- *
- * @example
- * ```ts
- * const store = createFileVirtualWorktreeStateStore("/tmp/worktree");
- * expect(store.kind).toBe("file");
- * ```
- */
+/** @internal 供本包内 file 后端与测试使用 */
 export function createFileVirtualWorktreeStateStore(
   worktreeDir: string,
 ): VirtualWorktreeStateStore {

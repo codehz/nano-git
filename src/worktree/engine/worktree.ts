@@ -49,7 +49,7 @@ import type { DiffEntry } from "../../core/diff.ts";
 import type { SHA1 } from "../../core/types.ts";
 import type { ObjectDatabase } from "../../core/types/odb.ts";
 import type {
-  CreateVirtualWorktreeOptions,
+  InitializeVirtualWorktreeOptions,
   VirtualDirEntry,
   VirtualEntryStat,
   VirtualWorktree,
@@ -76,7 +76,7 @@ import type { VirtualWorktreeStateStore } from "../store/state-store.ts";
  */
 export function createVirtualWorktree(
   source: ObjectDatabase,
-  options: CreateVirtualWorktreeOptions,
+  options: InitializeVirtualWorktreeOptions,
 ): VirtualWorktree {
   const state = createVirtualWorktreeMemoryStateStore(options.baseTree);
   return openVirtualWorktree(source, state);

@@ -12,16 +12,13 @@
  *
  * const repo = createMemoryRepository();
  * const tree = repo.createTree([]);
- * const worktree = openFileVirtualWorktree(repo.objects, "/tmp/wt-demo", {
- *   baseTree: tree,
- *   create: true,
- * });
+ * createFileVirtualWorktree("/tmp/wt-demo", { baseTree: tree });
+ * const worktree = openFileVirtualWorktree(repo.objects, "/tmp/wt-demo");
  * ```
  */
 
 export {
+  createFileVirtualWorktree,
   deleteFileVirtualWorktree,
   openFileVirtualWorktree,
-  createFileVirtualWorktreeStateStore,
-  type OpenFileVirtualWorktreeOptions,
 } from "./store/file-backend.ts";

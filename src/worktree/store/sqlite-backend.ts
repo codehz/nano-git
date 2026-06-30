@@ -12,7 +12,7 @@ import {
 
 import type { SHA1 } from "../../core/types.ts";
 import type { ObjectDatabase } from "../../core/types/odb.ts";
-import type { CreateVirtualWorktreeOptions, VirtualWorktree } from "../core.ts";
+import type { InitializeVirtualWorktreeOptions, VirtualWorktree } from "../core.ts";
 
 /** 打开 SQLite VirtualWorktree 数据库的可选参数 */
 export interface OpenSqliteVirtualWorktreeDatabaseOptions {
@@ -62,7 +62,7 @@ export interface SqliteVirtualWorktreeDatabase {
    * @param options - 至少包含 `baseTree`
    * @throws 若 `worktreeKey` 已存在
    */
-  createWorktree(worktreeKey: string, options: CreateVirtualWorktreeOptions): void;
+  createWorktree(worktreeKey: string, options: InitializeVirtualWorktreeOptions): void;
   /**
    * 删除指定 worktree 及其节点、变更记录
    *
@@ -89,17 +89,14 @@ export interface SqliteVirtualWorktreeDatabase {
   /**
    * 打开已持久化的 VirtualWorktree，在内存中挂载为可读写实例
    *
+   * `baseTree` 从数据库读取，无需调用方传入。
+   *
    * @param source - 用于解析树/ blob 等对象的 ODB（通常为仓库 `objects`）
    * @param worktreeKey - 已存在的 worktree key
-   * @param options - 其中的 `baseTree` 必须与库中记录一致
    * @returns 绑定同一数据库连接的 VirtualWorktree 实例
-   * @throws 若 worktree 不存在、完整性校验失败或 `baseTree` 与库中不一致
+   * @throws 若 worktree 不存在或完整性校验失败
    */
-  openWorktree(
-    source: ObjectDatabase,
-    worktreeKey: string,
-    options: CreateVirtualWorktreeOptions,
-  ): VirtualWorktree;
+  openWorktree(source: ObjectDatabase, worktreeKey: string): VirtualWorktree;
   /** 释放数据库连接；重复调用安全 */
   [Symbol.dispose](): void;
 }
@@ -118,7 +115,7 @@ export interface SqliteVirtualWorktreeDatabase {
  * ```ts
  * using db = openSqliteVirtualWorktreeDatabase("/tmp/worktrees.sqlite");
  * db.createWorktree("demo", { baseTree: tree });
- * const worktree = db.openWorktree(repo.objects, "demo", { baseTree: tree });
+ * const worktree = db.openWorktree(repo.objects, "demo");
  * expect(db.listWorktreeKeys()).toEqual(["demo"]);
  * ```
  */
@@ -164,7 +161,7 @@ export function openSqliteVirtualWorktreeDatabase(
       return layer.hasWorktree(worktreeKey);
     },
 
-    createWorktree(worktreeKey: string, createOptions: CreateVirtualWorktreeOptions): void {
+    createWorktree(worktreeKey: string, createOptions: InitializeVirtualWorktreeOptions): void {
       if (layer.hasWorktree(worktreeKey)) {
         throw new Error(`Virtual worktree already exists: ${worktreeKey}`);
       }
@@ -191,22 +188,12 @@ export function openSqliteVirtualWorktreeDatabase(
       return layer.deleteWorktreesByPrefix(prefix);
     },
 
-    openWorktree(
-      source: ObjectDatabase,
-      worktreeKey: string,
-      openOptions: CreateVirtualWorktreeOptions,
-    ): VirtualWorktree {
+    openWorktree(source: ObjectDatabase, worktreeKey: string): VirtualWorktree {
       if (!layer.hasWorktree(worktreeKey)) {
         throw new Error(`Virtual worktree not found: ${worktreeKey}`);
       }
       layer.validateWorktreeIntegrity(worktreeKey);
-      const worktree = openVirtualWorktree(source, layer.bindStateStore(worktreeKey));
-      if (worktree.baseTree !== openOptions.baseTree) {
-        throw new Error(
-          `Virtual worktree baseTree mismatch for ${worktreeKey}: expected ${openOptions.baseTree}, got ${worktree.baseTree}`,
-        );
-      }
-      return worktree;
+      return openVirtualWorktree(source, layer.bindStateStore(worktreeKey));
     },
 
     [Symbol.dispose](): void {

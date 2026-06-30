@@ -70,9 +70,12 @@ export interface VirtualDirEntry {
 // ==================== Worktree 工厂选项 ====================
 
 /**
- * 创建 VirtualWorktree 的选项
+ * 注册或初始化 VirtualWorktree 持久化状态时的选项
+ *
+ * 仅用于 `createWorktree` / `createFileVirtualWorktree` / `createVirtualWorktree`（内存一步新建）。
+ * 打开已持久化的 worktree 时 `baseTree` 以存储为准，调用方无需再传。
  */
-export interface CreateVirtualWorktreeOptions {
+export interface InitializeVirtualWorktreeOptions {
   /** 基线 tree 的 SHA-1 哈希 */
   readonly baseTree: SHA1;
 }

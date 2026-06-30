@@ -346,12 +346,12 @@ console.log(obj.type); // => "blob"
 
 在不操作真实工作目录的前提下，在某一 `baseTree` 之上叠加可写视图：修改可 `writeTree()` 导出为新 tree，并与仓库 `diff` 语义对齐。
 
-| 子路径                     | 用途                                                 |
-| -------------------------- | ---------------------------------------------------- |
-| `nano-git/worktree/core`   | `VirtualWorktree` 类型与公开错误                     |
-| `nano-git/worktree/memory` | 内存实例（`createVirtualWorktree`）                  |
-| `nano-git/worktree/file`   | 目录持久化（`openFileVirtualWorktree`）              |
-| `nano-git/worktree/sqlite` | SQLite 持久化（`openSqliteVirtualWorktreeDatabase`） |
+| 子路径                     | 用途                                                                  |
+| -------------------------- | --------------------------------------------------------------------- |
+| `nano-git/worktree/core`   | `VirtualWorktree` 类型与公开错误                                      |
+| `nano-git/worktree/memory` | 内存实例（`createVirtualWorktree`）                                   |
+| `nano-git/worktree/file`   | 目录持久化（`createFileVirtualWorktree` + `openFileVirtualWorktree`） |
+| `nano-git/worktree/sqlite` | SQLite 持久化（`openSqliteVirtualWorktreeDatabase`）                  |
 
 ```typescript
 import { createMemoryRepository } from "nano-git/repository/memory";
@@ -367,7 +367,21 @@ const newTree = worktree.writeTree();
 console.log(worktree.diff().length); // 相对 baseTree 的净变更
 ```
 
-持久化示例见 `examples/worktree-persistence.ts`；diff 基准见 `bun run bench:worktree-diff`。
+持久化后端统一为 **注册（需 `baseTree`）→ 打开（`baseTree` 以存储为准）**：
+
+```typescript
+import { createFileVirtualWorktree, openFileVirtualWorktree } from "nano-git/worktree/file";
+import { openSqliteVirtualWorktreeDatabase } from "nano-git/worktree/sqlite";
+
+createFileVirtualWorktree("/tmp/wt", { baseTree });
+const fileWt = openFileVirtualWorktree(repo.objects, "/tmp/wt");
+
+using db = openSqliteVirtualWorktreeDatabase("/tmp/wt.sqlite");
+db.createWorktree("main", { baseTree });
+const sqliteWt = db.openWorktree(repo.objects, "main");
+```
+
+完整示例见 `examples/worktree-persistence.ts`；diff 基准见 `bun run bench:worktree-diff`。
 
 ## 运行演示
 

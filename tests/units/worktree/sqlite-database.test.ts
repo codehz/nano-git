@@ -19,8 +19,8 @@ describe("openSqliteVirtualWorktreeDatabase", () => {
     expect(db.listWorktreeKeys()).toEqual(["a", "b"]);
     expect(db.listWorktrees().map((entry) => entry.key)).toEqual(["a", "b"]);
 
-    const worktreeA = db.openWorktree(repo.objects, "a", { baseTree: baseA });
-    const worktreeB = db.openWorktree(repo.objects, "b", { baseTree: baseB });
+    const worktreeA = db.openWorktree(repo.objects, "a");
+    const worktreeB = db.openWorktree(repo.objects, "b");
 
     worktreeA.writeFile("only-a.txt", Buffer.from("a"));
     worktreeB.writeFile("only-b.txt", Buffer.from("b"));
@@ -44,9 +44,7 @@ describe("openSqliteVirtualWorktreeDatabase", () => {
     expect(() => db.createWorktree("demo", { baseTree })).toThrow(
       /Virtual worktree already exists/,
     );
-    expect(() => db.openWorktree(repo.objects, "missing", { baseTree })).toThrow(
-      /Virtual worktree not found/,
-    );
+    expect(() => db.openWorktree(repo.objects, "missing")).toThrow(/Virtual worktree not found/);
     expect(() => db.deleteWorktree("missing")).toThrow(/Virtual worktree not found/);
   });
 
@@ -77,7 +75,7 @@ describe("openSqliteVirtualWorktreeDatabase", () => {
 
     using db = openSqliteVirtualWorktreeDatabase(":memory:");
     db.createWorktree("old", { baseTree });
-    const worktree = db.openWorktree(repo.objects, "old", { baseTree });
+    const worktree = db.openWorktree(repo.objects, "old");
     worktree.writeFile("keep.txt", Buffer.from("data"));
 
     db.renameWorktree("old", "new");
@@ -85,7 +83,7 @@ describe("openSqliteVirtualWorktreeDatabase", () => {
     expect(db.hasWorktree("old")).toBe(false);
     expect(db.hasWorktree("new")).toBe(true);
 
-    const reopened = db.openWorktree(repo.objects, "new", { baseTree });
+    const reopened = db.openWorktree(repo.objects, "new");
     expect(reopened.readFile("keep.txt")).toEqual(Buffer.from("data"));
   });
 

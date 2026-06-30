@@ -7,7 +7,11 @@
  */
 
 import { createMemoryRepository } from "nano-git/repository/memory";
-import { deleteFileVirtualWorktree, openFileVirtualWorktree } from "nano-git/worktree/file";
+import {
+  createFileVirtualWorktree,
+  deleteFileVirtualWorktree,
+  openFileVirtualWorktree,
+} from "nano-git/worktree/file";
 import { openSqliteVirtualWorktreeDatabase } from "nano-git/worktree/sqlite";
 
 import { mkdtempSync, rmSync } from "node:fs";
@@ -26,10 +30,8 @@ function runFileDemo(): void {
   const { repo, baseTree } = createFixture();
 
   try {
-    const worktree = openFileVirtualWorktree(repo.objects, rootDir, {
-      baseTree,
-      create: true,
-    });
+    createFileVirtualWorktree(rootDir, { baseTree });
+    const worktree = openFileVirtualWorktree(repo.objects, rootDir);
 
     worktree.writeFile("README.md", Buffer.from("file backend\n"));
     worktree.mkdir("src");
@@ -38,7 +40,7 @@ function runFileDemo(): void {
     console.log("=== file worktree ===");
     console.log(`writeTree(): ${worktree.writeTree()}`);
 
-    const reopened = openFileVirtualWorktree(repo.objects, rootDir, { baseTree });
+    const reopened = openFileVirtualWorktree(repo.objects, rootDir);
     console.log(`reopen README.md: ${reopened.readFile("README.md").toString().trim()}`);
     console.log(`reopen src/index.ts: ${reopened.readFile("src/index.ts").toString().trim()}`);
 
@@ -56,7 +58,7 @@ function runSqliteDemo(): void {
   try {
     using db = openSqliteVirtualWorktreeDatabase(dbPath);
     db.createWorktree("demo", { baseTree });
-    const worktree = db.openWorktree(repo.objects, "demo", { baseTree });
+    const worktree = db.openWorktree(repo.objects, "demo");
 
     worktree.writeFile("README.md", Buffer.from("sqlite backend\n"));
     worktree.writeLink("current", "README.md");
@@ -65,7 +67,7 @@ function runSqliteDemo(): void {
     console.log(`writeTree(): ${worktree.writeTree()}`);
     console.log(`keys: ${db.listWorktreeKeys().join(", ")}`);
 
-    const reopened = db.openWorktree(repo.objects, "demo", { baseTree });
+    const reopened = db.openWorktree(repo.objects, "demo");
     console.log(`reopen README.md: ${reopened.readFile("README.md").toString().trim()}`);
     console.log(`reopen current -> ${reopened.readLink("current")}`);
 

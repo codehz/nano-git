@@ -14,7 +14,7 @@
  * const tree = repo.createTree([]);
  * using db = openSqliteVirtualWorktreeDatabase("/tmp/wt.sqlite");
  * db.createWorktree("main", { baseTree: tree });
- * const wt = db.openWorktree(repo.objects, "main", { baseTree: tree });
+ * const wt = db.openWorktree(repo.objects, "main");
  * ```
  */
 

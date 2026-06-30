@@ -15,5 +15,4 @@
  * ```
  */
 
-export { createVirtualWorktree, openVirtualWorktree } from "./engine/worktree.ts";
-export { createVirtualWorktreeMemoryStateStore } from "./store/memory-backend.ts";
+export { createVirtualWorktree } from "./engine/worktree.ts";
