@@ -7,7 +7,7 @@
  * - 平均时间复杂度 O(B+T)，最坏 O(B×T×K)（K 为每桶候选数上限）
  */
 
-import { encodeVarint } from "./utils.ts";
+import { encodeVarint } from "../utils/utils.ts";
 
 interface Match {
   offset: number;

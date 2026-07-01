@@ -22,14 +22,14 @@ import {
 } from "./helpers.ts";
 import { walkLogEntries } from "@/log/walk.ts";
 import { encodeObject, readObject } from "@/objects/raw.ts";
+import { createPackBuilder } from "@/pack/builder/pack-builder.ts";
 import {
   loadPackMidxReader,
   tryLoadMidxBitmapAssist,
   tryLoadTipMidxBitmap,
-} from "@/pack/midx-bitmap.ts";
-import { writeMultiPackIndexFile } from "@/pack/midx-writer.ts";
-import { createPackBuilder } from "@/pack/pack-builder.ts";
-import { createPackObjectStore } from "@/pack/pack-store.ts";
+} from "@/pack/midx/midx-bitmap.ts";
+import { writeMultiPackIndexFile } from "@/pack/midx/midx-writer.ts";
+import { createPackObjectStore } from "@/pack/store/pack-store.ts";
 import { collectReachable } from "@/transport/protocol/object-graph.ts";
 
 import type { GitBlob, GitTree, GitCommit, GitAuthor, SHA1 } from "@/types/index.ts";

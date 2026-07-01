@@ -9,9 +9,9 @@ import { existsSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 
 import { createFileObjectStore } from "../odb/file.ts";
+import { createPackBuilder } from "../pack/builder/pack-builder.ts";
 import { createCompositeObjectDatabase } from "../pack/composite-store.ts";
-import { createPackBuilder } from "../pack/pack-builder.ts";
-import { createPackObjectStore } from "../pack/pack-store.ts";
+import { createPackObjectStore } from "../pack/store/pack-store.ts";
 import { createFileRefStore } from "../refs/file.ts";
 import { createFileShallowStore } from "../refs/shallow/file.ts";
 import { type RawGitObject, type SHA1 } from "../types/index.ts";

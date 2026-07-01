@@ -5,7 +5,7 @@
 import { describe, test, expect } from "bun:test";
 
 import { encodeObject } from "@/objects/raw.ts";
-import { toEncodedPackObject, buildEncodedPack } from "@/pack/pack-encoding.ts";
+import { toEncodedPackObject, buildEncodedPack } from "@/pack/writer/pack-encoding.ts";
 import { sha1, type GitBlob } from "@/types/index.ts";
 
 describe("toEncodedPackObject()", () => {

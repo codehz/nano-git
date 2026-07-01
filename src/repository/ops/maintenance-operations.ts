@@ -18,7 +18,7 @@ import type {
   RepositoryRepackOptions,
 } from "../../backend/types.ts";
 import type { ObjectDatabase } from "../../odb/types.ts";
-import type { PackBuildResult } from "../../pack/pack-builder.ts";
+import type { PackBuildResult } from "../../pack/builder/pack-builder.ts";
 import type { SHA1 } from "../../types/index.ts";
 import type { RefStore } from "../../types/refs.ts";
 import type { RepositoryMaintenanceOperations } from "./maintenance-types.ts";

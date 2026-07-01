@@ -5,8 +5,8 @@
 import { describe, test, expect } from "bun:test";
 
 import { DeltaError } from "@/errors.ts";
-import { applyDelta, createDelta } from "@/pack/delta.ts";
-import { encodeVarint } from "@/pack/utils.ts";
+import { applyDelta, createDelta } from "@/pack/delta/delta.ts";
+import { encodeVarint } from "@/pack/utils/utils.ts";
 
 describe("Delta 编解码", () => {
   test("创建和应用 delta（简单修改）", () => {

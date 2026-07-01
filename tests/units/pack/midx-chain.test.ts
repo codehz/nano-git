@@ -8,10 +8,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { encodeObject } from "@/objects/raw.ts";
-import { loadIncrementalMidxChain, tryLoadMidxChainTip } from "@/pack/midx-chain.ts";
-import { writeMultiPackIndex, writeIncrementalMultiPackIndexFile } from "@/pack/midx-writer.ts";
-import { createPackBuilder } from "@/pack/pack-builder.ts";
-import { loadPackPairs } from "@/pack/pack-store-loader.ts";
+import { createPackBuilder } from "@/pack/builder/pack-builder.ts";
+import { loadIncrementalMidxChain, tryLoadMidxChainTip } from "@/pack/midx/midx-chain.ts";
+import {
+  writeMultiPackIndex,
+  writeIncrementalMultiPackIndexFile,
+} from "@/pack/midx/midx-writer.ts";
+import { loadPackPairs } from "@/pack/store/pack-store-loader.ts";
 
 import type { GitBlob } from "@/types/index.ts";
 

@@ -8,9 +8,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { encodeObject } from "@/objects/raw.ts";
-import { createMidxReader } from "@/pack/midx-reader.ts";
-import { createPackBuilder } from "@/pack/pack-builder.ts";
-import { createPackObjectStore } from "@/pack/pack-store.ts";
+import { createPackBuilder } from "@/pack/builder/pack-builder.ts";
+import { createMidxReader } from "@/pack/midx/midx-reader.ts";
+import { createPackObjectStore } from "@/pack/store/pack-store.ts";
 import { sha1 } from "@/types/index.ts";
 
 import type { GitBlob } from "@/types/index.ts";

@@ -5,7 +5,7 @@
 import { describe, test, expect } from "bun:test";
 import { deflateSync } from "node:zlib";
 
-import { resolvePlainPackObject } from "@/pack/pack-reader-resolver.ts";
+import { resolvePlainPackObject } from "@/pack/reader/pack-reader-resolver.ts";
 import { sha1 } from "@/types/index.ts";
 
 describe("resolvePlainPackObject()", () => {

@@ -37,7 +37,7 @@
  */
 
 import { GitError } from "../../../errors.ts";
-import { createPackReader, packObjectToRaw } from "../../../pack/pack-reader.ts";
+import { createPackReader, packObjectToRaw } from "../../../pack/reader/pack-reader.ts";
 import { splitPktLinesFromBuffer } from "../../protocol/pkt-line.ts";
 
 import type { ObjectDatabase } from "../../../odb/types.ts";

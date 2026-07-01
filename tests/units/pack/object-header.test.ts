@@ -5,7 +5,7 @@
 import { describe, test, expect } from "bun:test";
 
 import { InvalidPackError } from "@/errors.ts";
-import { decodeObjectHeader, encodeObjectHeader } from "@/pack/object-header.ts";
+import { decodeObjectHeader, encodeObjectHeader } from "@/pack/utils/object-header.ts";
 
 describe("decodeObjectHeader()", () => {
   test("解码单字节头部（小对象）", () => {

@@ -5,7 +5,7 @@
 import { describe, test, expect } from "bun:test";
 
 import { InvalidPackError } from "@/errors.ts";
-import { decodeOfsDeltaOffset, encodeOfsDeltaOffset } from "@/pack/ofs-delta-offset.ts";
+import { decodeOfsDeltaOffset, encodeOfsDeltaOffset } from "@/pack/utils/ofs-delta-offset.ts";
 
 describe("decodeOfsDeltaOffset()", () => {
   test("解码单字节偏移量", () => {

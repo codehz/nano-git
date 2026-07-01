@@ -7,8 +7,8 @@ import { mkdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createPackIndexWriter } from "@/pack/pack-index.ts";
-import { loadPackPairs } from "@/pack/pack-store-loader.ts";
+import { createPackIndexWriter } from "@/pack/idx/pack-index.ts";
+import { loadPackPairs } from "@/pack/store/pack-store-loader.ts";
 import { sha1 } from "@/types/index.ts";
 
 describe("loadPackPairs()", () => {

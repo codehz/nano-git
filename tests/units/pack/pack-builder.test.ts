@@ -8,8 +8,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { encodeObject, readObject } from "@/objects/raw.ts";
-import { createPackBuilder } from "@/pack/pack-builder.ts";
-import { createPackObjectStore } from "@/pack/pack-store.ts";
+import { createPackBuilder } from "@/pack/builder/pack-builder.ts";
+import { createPackObjectStore } from "@/pack/store/pack-store.ts";
 
 import type { GitBlob, GitTag, GitAuthor } from "@/types/index.ts";
 

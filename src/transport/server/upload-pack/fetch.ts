@@ -6,7 +6,7 @@
  * @see https://git-scm.com/docs/protocol-v2#_fetch
  */
 
-import { createPackWriter } from "../../../pack/pack-writer.ts";
+import { createPackWriter } from "../../../pack/writer/pack-writer.ts";
 import { resolveRefHash } from "../../../refs/resolve.ts";
 import { sha1 } from "../../../types/index.ts";
 import { collectReachable } from "../../protocol/object-graph.ts";

@@ -15,9 +15,9 @@ import {
   OBJ_REF_DELTA,
   numberToObjectType,
 } from "../../../pack/constants.ts";
-import { applyDelta } from "../../../pack/delta.ts";
-import { readCompressedData, parsePackHeader } from "../../../pack/pack-reader-utils.ts";
-import { decodeObjectHeader, decodeOfsDeltaOffset } from "../../../pack/utils.ts";
+import { applyDelta } from "../../../pack/delta/delta.ts";
+import { readCompressedData, parsePackHeader } from "../../../pack/reader/pack-reader-utils.ts";
+import { decodeObjectHeader, decodeOfsDeltaOffset } from "../../../pack/utils/utils.ts";
 import { sha1 } from "../../../types/index.ts";
 import { ReceivePackServiceError } from "./types.ts";
 

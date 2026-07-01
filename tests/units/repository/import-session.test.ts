@@ -9,7 +9,7 @@ import { describe, test, expect } from "bun:test";
 import { createMemoryRepositoryBackend } from "@/backend/memory.ts";
 import { writeObject } from "@/objects/raw.ts";
 import { encodeObject } from "@/objects/raw.ts";
-import { createPackWriter } from "@/pack/pack-writer.ts";
+import { createPackWriter } from "@/pack/writer/pack-writer.ts";
 import { matchRefGlob } from "@/repository/import/import-glob.ts";
 import {
   createImportSession,

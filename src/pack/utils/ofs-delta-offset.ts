@@ -2,7 +2,7 @@
  * Packfile ofs_delta 偏移量编码/解码
  */
 
-import { InvalidPackError } from "../errors.ts";
+import { InvalidPackError } from "../../errors.ts";
 
 /**
  * 解码 ofs_delta 的负偏移量

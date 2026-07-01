@@ -4,7 +4,7 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { decodeEwahBitmap } from "@/pack/ewah-bitmap.ts";
+import { decodeEwahBitmap } from "@/pack/bitmap/ewah-bitmap.ts";
 
 /** 构造仅含一个 RLW（run of 3 zeros）的 EWAH 块 */
 function buildEwahRunZeros(bitCount: number, runLength: number): Buffer {

@@ -2,8 +2,8 @@
  * Delta 应用（解码）
  */
 
-import { DeltaError } from "../errors.ts";
-import { decodeVarint } from "./utils.ts";
+import { DeltaError } from "../../errors.ts";
+import { decodeVarint } from "../utils/utils.ts";
 
 /**
  * 将 delta 数据应用到 base object，生成目标对象

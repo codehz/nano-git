@@ -4,7 +4,7 @@
 
 import { createHash } from "node:crypto";
 
-import { PackIndexError } from "../errors.ts";
+import { PackIndexError } from "../../errors.ts";
 import { decodeEwahBitmap, xorUnpackedBitmaps } from "./ewah-bitmap.ts";
 
 import type { UnpackedBitmap } from "./ewah-bitmap.ts";

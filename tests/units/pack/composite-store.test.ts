@@ -10,9 +10,9 @@ import { join } from "node:path";
 import { encodeObject, writeObject } from "@/objects/raw.ts";
 import { createFileObjectStore } from "@/odb/file.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
+import { createPackBuilder } from "@/pack/builder/pack-builder.ts";
 import { createCompositeObjectDatabase } from "@/pack/composite-store.ts";
-import { createPackBuilder } from "@/pack/pack-builder.ts";
-import { createPackObjectStore } from "@/pack/pack-store.ts";
+import { createPackObjectStore } from "@/pack/store/pack-store.ts";
 
 import type { GitBlob } from "@/types/index.ts";
 

@@ -9,7 +9,7 @@ import { join } from "node:path";
 
 import { hashToPath } from "@/hash/index.ts";
 import { encodeObject } from "@/objects/raw.ts";
-import { createPackBuilder } from "@/pack/pack-builder.ts";
+import { createPackBuilder } from "@/pack/builder/pack-builder.ts";
 import { initRepository } from "@/repository/file.ts";
 import { openRepository } from "@/repository/file.ts";
 

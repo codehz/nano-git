@@ -19,10 +19,14 @@
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
-import { buildEncodedPack, type EncodedPackObject, toEncodedPackObject } from "./pack-encoding.ts";
-import { createPackIndexWriter } from "./pack-index.ts";
+import { createPackIndexWriter } from "../idx/pack-index.ts";
+import {
+  buildEncodedPack,
+  type EncodedPackObject,
+  toEncodedPackObject,
+} from "../writer/pack-encoding.ts";
 
-import type { RawGitObject, SHA1 } from "../types/index.ts";
+import type { RawGitObject, SHA1 } from "../../types/index.ts";
 import type { PackBuildResult } from "./pack-builder-types.ts";
 
 export type { PackBuildResult } from "./pack-builder-types.ts";

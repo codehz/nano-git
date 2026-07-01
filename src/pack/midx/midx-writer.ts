@@ -16,12 +16,12 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { loadPackPairs } from "../store/pack-store-loader.ts";
 import { loadIncrementalMidxChain } from "./midx-chain.ts";
 import { createMidxReader } from "./midx-reader.ts";
-import { loadPackPairs } from "./pack-store-loader.ts";
 
-import type { SHA1 } from "../types/index.ts";
-import type { PackIndexReader } from "./pack-index.ts";
+import type { SHA1 } from "../../types/index.ts";
+import type { PackIndexReader } from "../idx/pack-index.ts";
 
 // ============================================================================
 // 类型

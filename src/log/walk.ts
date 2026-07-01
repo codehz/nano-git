@@ -22,10 +22,10 @@
  */
 
 import { tryReadObject } from "../objects/raw.ts";
-import { addReachableFromCommitBitmap } from "../pack/midx-bitmap.ts";
+import { addReachableFromCommitBitmap } from "../pack/midx/midx-bitmap.ts";
 
 import type { ObjectSource } from "../odb/types.ts";
-import type { MidxBitmapAssist } from "../pack/midx-bitmap.ts";
+import type { MidxBitmapAssist } from "../pack/midx/midx-bitmap.ts";
 import type { GitCommit, SHA1 } from "../types/index.ts";
 import type { CommitWalkOrder, LogEntry, LogWalkOptions } from "./types.ts";
 

@@ -4,7 +4,7 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { createPackIndexReader, createPackIndexWriter } from "@/pack/pack-index.ts";
+import { createPackIndexReader, createPackIndexWriter } from "@/pack/idx/pack-index.ts";
 import { sha1 } from "@/types/index.ts";
 
 describe("索引文件读写", () => {

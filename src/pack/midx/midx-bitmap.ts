@@ -5,13 +5,13 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { createPackBitmapReader } from "../bitmap/pack-bitmap-reader.ts";
 import { loadIncrementalMidxChain } from "./midx-chain.ts";
 import { createMidxReader } from "./midx-reader.ts";
-import { createPackBitmapReader } from "./pack-bitmap-reader.ts";
 
-import type { SHA1 } from "../types/index.ts";
+import type { SHA1 } from "../../types/index.ts";
+import type { PackBitmapReader } from "../bitmap/pack-bitmap-reader.ts";
 import type { MidxReader } from "./midx-types.ts";
-import type { PackBitmapReader } from "./pack-bitmap-reader.ts";
 
 const CHAIN_DIR = "multi-pack-index.d";
 

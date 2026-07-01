@@ -5,7 +5,7 @@
 import { describe, test, expect } from "bun:test";
 import { createHash } from "node:crypto";
 
-import { createPackBitmapReader } from "@/pack/pack-bitmap-reader.ts";
+import { createPackBitmapReader } from "@/pack/bitmap/pack-bitmap-reader.ts";
 
 function appendEwah(buf: Buffer[], bitCount: number, runZeros: number): void {
   const part = Buffer.alloc(8 + 8 + 4);

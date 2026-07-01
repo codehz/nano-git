@@ -2,7 +2,7 @@
  * Packfile 对象头部编码/解码
  */
 
-import { InvalidPackError } from "../errors.ts";
+import { InvalidPackError } from "../../errors.ts";
 
 /**
  * 解码 Packfile 对象头部的变长整数

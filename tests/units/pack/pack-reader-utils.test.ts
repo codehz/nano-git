@@ -8,7 +8,7 @@ import { deflateSync } from "node:zlib";
 
 import { InvalidPackError } from "@/errors.ts";
 import { PACK_SIGNATURE, PACK_VERSION } from "@/pack/constants.ts";
-import { parsePackHeader, readCompressedData } from "@/pack/pack-reader-utils.ts";
+import { parsePackHeader, readCompressedData } from "@/pack/reader/pack-reader-utils.ts";
 
 describe("parsePackHeader()", () => {
   function createValidPack(objectCount: number): Buffer {

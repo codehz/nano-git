@@ -4,7 +4,7 @@
  * 定义 MIDX 读取器对外暴露的数据结构。
  */
 
-import type { SHA1 } from "../types/index.ts";
+import type { SHA1 } from "../../types/index.ts";
 
 /**
  * MIDX 中单个对象的定位条目

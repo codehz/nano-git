@@ -11,7 +11,7 @@ import {
   decodeOfsDeltaOffset,
   encodeVarint,
   decodeVarint,
-} from "@/pack/utils.ts";
+} from "@/pack/utils/utils.ts";
 
 describe("变长整数编码", () => {
   test("编码和解码对象头部（小对象）", () => {

@@ -5,12 +5,12 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { loadIncrementalMidxChain } from "./midx-chain.ts";
-import { createMidxReader } from "./midx-reader.ts";
-import { createPackIndexReader } from "./pack-index.ts";
-import { PackReader } from "./pack-reader.ts";
+import { createPackIndexReader } from "../idx/pack-index.ts";
+import { loadIncrementalMidxChain } from "../midx/midx-chain.ts";
+import { createMidxReader } from "../midx/midx-reader.ts";
+import { PackReader } from "../reader/pack-reader.ts";
 
-import type { MidxReader } from "./midx-types.ts";
+import type { MidxReader } from "../midx/midx-types.ts";
 import type { PackFileInfo, PackPair, PackStoreLoadResult } from "./pack-store-types.ts";
 
 /**

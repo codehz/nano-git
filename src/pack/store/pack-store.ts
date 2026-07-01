@@ -17,13 +17,13 @@
 
 import { join } from "node:path";
 
-import { ObjectNotFoundError } from "../errors.ts";
-import { packObjectToRaw } from "./pack-reader-types.ts";
+import { ObjectNotFoundError } from "../../errors.ts";
+import { packObjectToRaw } from "../reader/pack-reader-types.ts";
 import { getPackReader, loadPackPairs, toPackFileInfo } from "./pack-store-loader.ts";
 
-import type { ObjectSource } from "../odb/types.ts";
-import type { RawGitObject, SHA1 } from "../types/index.ts";
-import type { MidxReader } from "./midx-types.ts";
+import type { ObjectSource } from "../../odb/types.ts";
+import type { RawGitObject, SHA1 } from "../../types/index.ts";
+import type { MidxEntry, MidxReader } from "../midx/midx-types.ts";
 import type { PackFileInfo, PackPair } from "./pack-store-types.ts";
 
 export type { PackFileInfo } from "./pack-store-types.ts";
@@ -110,7 +110,7 @@ export function createPackObjectStore(gitDir: string): PackObjectStore {
   /**
    * 根据 MIDX 条目读取对象
    */
-  function readFromMidx(entry: import("./midx-types.ts").MidxEntry): RawGitObject | undefined {
+  function readFromMidx(entry: MidxEntry): RawGitObject | undefined {
     const packName = midx!.getPackName(entry.packId);
     const checksumMatch = packName.match(/^pack-([0-9a-f]{40})\.(?:pack|idx)$/);
     if (!checksumMatch) {

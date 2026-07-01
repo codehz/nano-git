@@ -4,39 +4,39 @@
  * 聚合常用 pack 读写、索引和工具函数。
  */
 
-export { createPackReader, packObjectToRaw } from "./pack-reader.ts";
-export type { PackObject } from "./pack-reader.ts";
+export { createPackReader, packObjectToRaw } from "./reader/pack-reader.ts";
+export type { PackObject } from "./reader/pack-reader.ts";
 
-export { createPackIndexReader, createPackIndexWriter } from "./pack-index.ts";
-export type { PackIndexEntry, PackIndexReader, PackIndexWriter } from "./pack-index.ts";
+export { createPackIndexReader, createPackIndexWriter } from "./idx/pack-index.ts";
+export type { PackIndexEntry, PackIndexReader, PackIndexWriter } from "./idx/pack-index.ts";
 
-export { createPackBuilder } from "./pack-builder.ts";
-export type { PackBuildResult, PackBuilder } from "./pack-builder.ts";
+export { createPackBuilder } from "./builder/pack-builder.ts";
+export type { PackBuildResult, PackBuilder } from "./builder/pack-builder.ts";
 
-export { createPackObjectStore } from "./pack-store.ts";
-export type { PackFileInfo, PackObjectStore } from "./pack-store.ts";
+export { createPackObjectStore } from "./store/pack-store.ts";
+export type { PackFileInfo, PackObjectStore } from "./store/pack-store.ts";
 
-export { createMidxReader } from "./midx-reader.ts";
-export { loadIncrementalMidxChain } from "./midx-chain.ts";
+export { createMidxReader } from "./midx/midx-reader.ts";
+export { loadIncrementalMidxChain } from "./midx/midx-chain.ts";
 export type {
   CreateMidxReaderOptions,
   MidxBitmappedPack,
   MidxEntry,
   MidxHeader,
   MidxReader,
-} from "./midx-types.ts";
+} from "./midx/midx-types.ts";
 
 export {
   writeMultiPackIndex,
   writeMultiPackIndexFile,
   writeIncrementalMultiPackIndexFile,
-} from "./midx-writer.ts";
-export type { MidxPackSource, WriteMultiPackIndexOptions } from "./midx-writer.ts";
+} from "./midx/midx-writer.ts";
+export type { MidxPackSource, WriteMultiPackIndexOptions } from "./midx/midx-writer.ts";
 
-export { createPackBitmapReader } from "./pack-bitmap-reader.ts";
-export type { BitmapObjectTypeIndex, PackBitmapReader } from "./pack-bitmap-reader.ts";
-export { decodeEwahBitmap } from "./ewah-bitmap.ts";
-export type { UnpackedBitmap } from "./ewah-bitmap.ts";
+export { createPackBitmapReader } from "./bitmap/pack-bitmap-reader.ts";
+export type { BitmapObjectTypeIndex, PackBitmapReader } from "./bitmap/pack-bitmap-reader.ts";
+export { decodeEwahBitmap } from "./bitmap/ewah-bitmap.ts";
+export type { UnpackedBitmap } from "./bitmap/ewah-bitmap.ts";
 
 export {
   addReachableFromCommitBitmap,
@@ -45,12 +45,12 @@ export {
   resolveMidxTipChecksumHex,
   tryLoadMidxBitmapAssist,
   tryLoadTipMidxBitmap,
-} from "./midx-bitmap.ts";
-export type { MidxBitmapAssist } from "./midx-bitmap.ts";
+} from "./midx/midx-bitmap.ts";
+export type { MidxBitmapAssist } from "./midx/midx-bitmap.ts";
 
 export { createCompositeObjectDatabase, CompositeObjectDatabase } from "./composite-store.ts";
 
-export { applyDelta, createDelta } from "./delta.ts";
+export { applyDelta, createDelta } from "./delta/delta.ts";
 export {
   decodeObjectHeader,
   encodeObjectHeader,
@@ -58,4 +58,4 @@ export {
   encodeOfsDeltaOffset,
   decodeVarint,
   encodeVarint,
-} from "./utils.ts";
+} from "./utils/utils.ts";

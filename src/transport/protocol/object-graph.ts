@@ -15,10 +15,10 @@
 
 import { ObjectNotFoundError } from "../../errors.ts";
 import { tryReadObject } from "../../objects/raw.ts";
-import { addReachableFromCommitBitmap } from "../../pack/midx-bitmap.ts";
+import { addReachableFromCommitBitmap } from "../../pack/midx/midx-bitmap.ts";
 
 import type { ObjectSource } from "../../odb/types.ts";
-import type { MidxBitmapAssist } from "../../pack/midx-bitmap.ts";
+import type { MidxBitmapAssist } from "../../pack/midx/midx-bitmap.ts";
 import type { SHA1 } from "../../types/index.ts";
 
 // ============================================================================

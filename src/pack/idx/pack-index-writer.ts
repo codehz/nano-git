@@ -9,7 +9,7 @@ import {
   IDX_V2_HEADER_SIZE,
   IDX_V2_SIGNATURE,
   IDX_V2_VERSION,
-} from "./constants.ts";
+} from "../constants.ts";
 
 import type { PackIndexEntry } from "./pack-index-types.ts";
 

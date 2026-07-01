@@ -6,9 +6,9 @@
  */
 
 import type { ObjectSource, ObjectDatabase } from "../odb/types.ts";
-import type { PackBuildResult } from "../pack/pack-builder.ts";
-import type { PackBuilder } from "../pack/pack-builder.ts";
-import type { PackObjectStore } from "../pack/pack-store.ts";
+import type { PackBuildResult } from "../pack/builder/pack-builder.ts";
+import type { PackBuilder } from "../pack/builder/pack-builder.ts";
+import type { PackObjectStore } from "../pack/store/pack-store.ts";
 import type { RawGitObject, SHA1 } from "../types/index.ts";
 import type { RefStore, RefTransactionHook } from "../types/refs.ts";
 import type { ShallowStore } from "../types/shallow.ts";
