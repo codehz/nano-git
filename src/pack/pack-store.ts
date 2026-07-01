@@ -112,7 +112,7 @@ export function createPackObjectStore(gitDir: string): PackObjectStore {
    */
   function readFromMidx(entry: import("./midx-types.ts").MidxEntry): RawGitObject | undefined {
     const packName = midx!.getPackName(entry.packId);
-    const checksumMatch = packName.match(/^pack-([0-9a-f]{40})\.pack$/);
+    const checksumMatch = packName.match(/^pack-([0-9a-f]{40})\.(?:pack|idx)$/);
     if (!checksumMatch) {
       return undefined;
     }
@@ -152,7 +152,9 @@ export function createPackObjectStore(gitDir: string): PackObjectStore {
     if (!midx) return pairs;
 
     const covered = getMidxCoveredPackNames();
-    return pairs.filter((p) => !covered.has(`pack-${p.checksum}.pack`));
+    return pairs.filter(
+      (p) => !covered.has(`pack-${p.checksum}.pack`) && !covered.has(`pack-${p.checksum}.idx`),
+    );
   }
 
   function read(hash: SHA1): RawGitObject {

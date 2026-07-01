@@ -21,6 +21,7 @@ import {
   FIXED_AUTHOR,
 } from "./helpers.ts";
 import { encodeObject, readObject } from "@/objects/raw.ts";
+import { writeMultiPackIndexFile } from "@/pack/midx-writer.ts";
 import { createPackBuilder } from "@/pack/pack-builder.ts";
 import { createPackObjectStore } from "@/pack/pack-store.ts";
 
@@ -294,5 +295,34 @@ describe("Packfile 兼容性: git → nano-git", () => {
     store.refresh();
     const hashesWithoutMidx = store.listHashes();
     expect(hashesWithoutMidx.length).toBeGreaterThanOrEqual(hashes.length);
+  });
+
+  test("nano-git writeMultiPackIndexFile 与 git 行为一致可读", () => {
+    for (let i = 0; i < 3; i++) {
+      createFile(tempDir, `nano-midx-${i}.txt`, `nano midx ${i}`);
+      git(["add", `.`], tempDir);
+      git(["commit", "-m", `nano midx commit ${i}`], tempDir);
+    }
+
+    git(["repack", "-d"], tempDir);
+
+    const gitDir = join(tempDir, ".git");
+    const packDir = join(gitDir, "objects", "pack");
+
+    writeMultiPackIndexFile(packDir);
+
+    const store = createPackObjectStore(gitDir);
+    const hashes = store.listHashes();
+    expect(hashes.length).toBeGreaterThan(0);
+    expect(store.objectCount).toBe(hashes.length);
+
+    for (const hash of hashes) {
+      const obj = store.read(hash);
+      if (obj.type !== "blob") {
+        continue;
+      }
+      const gitRaw = gitCatFileRaw(tempDir, hash);
+      expect(obj.content).toEqual(gitRaw);
+    }
   });
 });
