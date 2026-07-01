@@ -157,7 +157,7 @@ describe("PackObjectStore", () => {
     const bodyChunks = chunks.map((c) => c.data);
     const body = Buffer.concat([header, lookup, ...bodyChunks]);
 
-    // 写入 MIDX（无 trailer 校验和，P0/P1 策略与 idx 一致）
+    // 写入 MIDX（无 trailer 校验和，策略与 idx 一致）
     writeFileSync(join(gitDir, "objects", "pack", "multi-pack-index"), body);
 
     const store = createPackObjectStore(gitDir);
