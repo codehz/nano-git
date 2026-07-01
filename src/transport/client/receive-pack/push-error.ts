@@ -6,7 +6,7 @@
  * （包含成功和失败的），以便调用方在部分成功场景下做出相应处理。
  */
 
-import { GitError } from "../../../core/errors.ts";
+import { GitError } from "../../../errors.ts";
 
 import type { PushRefUpdate } from "../../protocol/types.ts";
 

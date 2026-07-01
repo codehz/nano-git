@@ -7,11 +7,11 @@ import { mkdirSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { sha1 } from "@/core/types.ts";
 import { initRepository } from "@/repository/file.ts";
+import { sha1 } from "@/types/index.ts";
 
-import type { GitAuthor } from "@/core/types.ts";
 import type { Repository } from "@/repository/types.ts";
+import type { GitAuthor } from "@/types/index.ts";
 
 const testAuthor: GitAuthor = {
   name: "Test User",

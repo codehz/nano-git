@@ -18,8 +18,8 @@
  * ```
  */
 
-import type { GitCommit, SHA1 } from "../core/types.ts";
 import type { MidxBitmapAssist } from "../pack/midx-bitmap.ts";
+import type { GitCommit, SHA1 } from "../types/index.ts";
 
 /** 单条提交日志条目 */
 export interface LogEntry {

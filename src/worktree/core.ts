@@ -10,8 +10,8 @@
  * - 所有实现模块通过工厂函数模式组装
  */
 
-import type { DiffEntry } from "../core/diff.ts";
-import type { SHA1 } from "../core/types.ts";
+import type { DiffEntry } from "../diff.ts";
+import type { SHA1 } from "../types/index.ts";
 
 export {
   VirtualPathNotFoundError,
@@ -20,7 +20,7 @@ export {
   VirtualNotFileError,
   VirtualNotSymlinkError,
   VirtualOriginUnavailableError,
-} from "../core/errors.ts";
+} from "../errors.ts";
 
 // ==================== 节点类型辅助 ====================
 

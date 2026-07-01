@@ -4,7 +4,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { refStoreBackends } from "./contract.ts";
-import { RefNotFoundError } from "@/core/errors.ts";
+import { RefNotFoundError } from "@/errors.ts";
 
 describe("RefStore contract: basic", () => {
   describe.each(refStoreBackends)("$name", ({ createStore }) => {

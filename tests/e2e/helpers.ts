@@ -10,7 +10,7 @@ import { mkdirSync, rmSync, existsSync, writeFileSync, chmodSync } from "node:fs
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { sha1, type SHA1 } from "@/core/types.ts";
+import { sha1, type SHA1 } from "@/types/index.ts";
 
 // ============================================================================
 // 固定环境变量（确保测试结果可重复）

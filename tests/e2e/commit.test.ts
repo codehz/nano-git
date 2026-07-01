@@ -18,10 +18,10 @@ import {
   cleanupDir,
   FIXED_AUTHOR,
 } from "./helpers.ts";
-import { sha1 } from "@/core/types.ts";
 import { openRepository } from "@/repository/file.ts";
+import { sha1 } from "@/types/index.ts";
 
-import type { GitAuthor } from "@/core/types.ts";
+import type { GitAuthor } from "@/types/index.ts";
 
 const testAuthor: GitAuthor = {
   name: FIXED_AUTHOR.name,

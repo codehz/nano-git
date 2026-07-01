@@ -4,7 +4,7 @@
  * @see Documentation/technical/bitmap-format.adoc — Appendix A
  */
 
-import { PackIndexError } from "../core/errors.ts";
+import { PackIndexError } from "../errors.ts";
 
 /**
  * 解压后的位图（只读）

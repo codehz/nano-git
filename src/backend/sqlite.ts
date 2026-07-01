@@ -11,10 +11,10 @@
  * 相同 dbPath 复用同一连接，避免反复打开同一个数据库文件。
  */
 
-import { HEAD_REF, HEADS_PREFIX } from "../core/types/refs.ts";
 import { createSqliteObjectStore } from "../odb/sqlite.ts";
 import { createSqliteShallowStore } from "../refs/shallow/sqlite.ts";
 import { createSqliteRefStore } from "../refs/sqlite.ts";
+import { HEAD_REF, HEADS_PREFIX } from "../types/refs.ts";
 import { acquireConnection } from "./sqlite-pool.ts";
 
 import type { RepositoryBackend } from "./types.ts";

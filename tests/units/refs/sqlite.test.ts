@@ -7,7 +7,7 @@ import { acquireConnection } from "@/backend/sqlite-pool.ts";
 import { createSqliteRefStore } from "@/refs/sqlite.ts";
 
 import type { SqliteConnectionHandle } from "@/backend/sqlite-pool.ts";
-import type { RefStore } from "@/core/types/refs.ts";
+import type { RefStore } from "@/types/refs.ts";
 
 describe("createSqliteRefStore()", () => {
   let conn: SqliteConnectionHandle;

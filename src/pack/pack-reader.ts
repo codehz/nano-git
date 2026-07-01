@@ -23,7 +23,7 @@
  * 当前文件只保留对象遍历与 delta 解析主流程。
  */
 
-import { InvalidPackError } from "../core/errors.ts";
+import { InvalidPackError } from "../errors.ts";
 import { PACK_HEADER_SIZE, PACK_CHECKSUM_SIZE, OBJ_OFS_DELTA, OBJ_REF_DELTA } from "./constants.ts";
 import {
   resolveOfsDeltaPackObject,
@@ -33,7 +33,7 @@ import {
 import { parsePackHeader } from "./pack-reader-utils.ts";
 import { decodeObjectHeader, decodeOfsDeltaOffset } from "./utils.ts";
 
-import type { SHA1 } from "../core/types.ts";
+import type { SHA1 } from "../types/index.ts";
 import type { PackObject } from "./pack-reader-types.ts";
 
 export type { PackObject } from "./pack-reader-types.ts";

@@ -15,13 +15,13 @@ import { join } from "node:path";
 import { cleanupDir, createTempDir, gitRevParse, git, gitInit, createFile } from "../helpers.ts";
 import { createServerRepo } from "./helpers.ts";
 import { startGitHttpBackendServer } from "./http-server.ts";
-import { sha1 } from "@/core/types.ts";
 import { createHttpRemote } from "@/remote/http.ts";
 import { initRepository } from "@/repository/file.ts";
 import { v2Fetch } from "@/transport/client/upload-pack/fetch.ts";
 import { createV2HttpTransport } from "@/transport/client/upload-pack/http.ts";
 import { lsRefs, lsRefsToRefAdvertisement } from "@/transport/client/upload-pack/ls-refs.ts";
 import { objectInfo } from "@/transport/client/upload-pack/object-info.ts";
+import { sha1 } from "@/types/index.ts";
 
 describe("v2 协议 - 服务器能力", () => {
   let tempDir: string;

@@ -5,16 +5,16 @@
  * 供 change-index 计算规范化变更记录。
  */
 
-import { hashObject } from "../../core/hash.ts";
+import { hashObject } from "../../hash/index.ts";
 import { serializeTree } from "../../objects/tree.ts";
 import { readRepoBlobContent, readRepoTree } from "../model/origin.ts";
 import { VIRTUAL_ROOT_PATH } from "../model/path.ts";
 import { observeListedDirectoryChild } from "./directory-view.ts";
 import { getDirectoryChildrenView, joinChildPath, resolvePath } from "./worktree-path.ts";
 
-import type { DiffObject } from "../../core/diff.ts";
-import type { SHA1, TreeEntry } from "../../core/types.ts";
-import type { ObjectSource } from "../../core/types/odb.ts";
+import type { DiffObject } from "../../diff.ts";
+import type { SHA1, TreeEntry } from "../../types/index.ts";
+import type { ObjectSource } from "../../types/odb.ts";
 import type { NodeId } from "../model/ids.ts";
 import type { WorktreeNode } from "../model/nodes.ts";
 import type { VirtualWorktreeStateStore } from "../store/state-store.ts";

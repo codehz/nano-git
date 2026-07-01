@@ -5,9 +5,9 @@
  * 彻底替代旧的 fetchRemote() / bootstrapRemote() / fetch(url) API。
  */
 
-import type { SHA1 } from "../../core/types.ts";
 import type { RemoteSource } from "../../remote/types.ts";
 import type { RemoteRef, RefAdvertisement } from "../../transport/protocol/types.ts";
+import type { SHA1 } from "../../types/index.ts";
 
 // ============================================================================
 // ImportView

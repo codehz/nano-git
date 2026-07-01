@@ -2,7 +2,7 @@
  * 基于内存的 Refs 存储
  */
 
-import { RefNotFoundError, TransactionError } from "../core/errors.ts";
+import { RefNotFoundError, TransactionError } from "../errors.ts";
 import { validateRefName, validateRefPrefix } from "./names.ts";
 
 import type {
@@ -10,7 +10,7 @@ import type {
   RefTransaction,
   RefTransactionHook,
   ReadonlyRefTransaction,
-} from "../core/types/refs.ts";
+} from "../types/refs.ts";
 
 /**
  * 创建基于内存的 Refs 存储

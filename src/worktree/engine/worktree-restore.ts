@@ -2,7 +2,7 @@
  * 从 baseTree 恢复 worktree 路径
  */
 
-import { VirtualPathNotFoundError } from "../../core/errors.ts";
+import { VirtualPathNotFoundError } from "../../errors.ts";
 import { originPathNodeId } from "../model/ids.ts";
 import { readRepoTree } from "../model/origin.ts";
 import { overlayBindEntry, overlayTombstoneEntry } from "../model/overlay.ts";
@@ -22,8 +22,8 @@ import {
 } from "./worktree-path.ts";
 import { updateParentOverlay } from "./worktree-transaction.ts";
 
-import type { TreeEntry } from "../../core/types.ts";
-import type { ObjectSource } from "../../core/types/odb.ts";
+import type { TreeEntry } from "../../types/index.ts";
+import type { ObjectSource } from "../../types/odb.ts";
 import type { WorktreeNode } from "../model/nodes.ts";
 import type { VirtualWorktreeStateStore } from "../store/state-store.ts";
 

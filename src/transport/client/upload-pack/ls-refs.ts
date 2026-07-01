@@ -25,8 +25,8 @@
  * @see https://git-scm.com/docs/protocol-v2#_ls_refs
  */
 
-import { GitError } from "../../../core/errors.ts";
-import { sha1 } from "../../../core/types.ts";
+import { GitError } from "../../../errors.ts";
+import { sha1 } from "../../../types/index.ts";
 import { parsePktLines } from "../../protocol/pkt-line.ts";
 
 import type { V2GitServiceTransport } from "./types.ts";

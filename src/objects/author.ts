@@ -9,9 +9,9 @@
  * 此格式在 commit 和 tag 对象中共享使用。
  */
 
-import { InvalidObjectError } from "../core/errors.ts";
+import { InvalidObjectError } from "../errors.ts";
 
-import type { GitAuthor } from "../core/types.ts";
+import type { GitAuthor } from "../types/index.ts";
 
 /**
  * 格式化作者信息为 Git 标准格式

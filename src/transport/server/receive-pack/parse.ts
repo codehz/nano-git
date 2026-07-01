@@ -15,7 +15,7 @@
  * @see https://git-scm.com/docs/pack-protocol#_git_gt_transport
  */
 
-import { sha1 } from "../../../core/types.ts";
+import { sha1 } from "../../../types/index.ts";
 import { splitPktLinesFromBuffer } from "../../protocol/pkt-line.ts";
 import { ReceivePackServiceError } from "./types.ts";
 

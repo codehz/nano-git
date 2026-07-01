@@ -4,11 +4,11 @@
  * 供经典单文件与增量 `multi-pack-index.d/` 链共用。
  */
 
-import { PackIndexError } from "../core/errors.ts";
-import { sha1 } from "../core/types.ts";
+import { PackIndexError } from "../errors.ts";
+import { sha1 } from "../types/index.ts";
 import { parseChunkLookup } from "./chunk-lookup.ts";
 
-import type { SHA1 } from "../core/types.ts";
+import type { SHA1 } from "../types/index.ts";
 import type {
   CreateMidxReaderOptions,
   MidxBitmappedPack,

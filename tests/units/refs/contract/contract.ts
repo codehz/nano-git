@@ -13,7 +13,7 @@ import { createFileRefStore } from "@/refs/file.ts";
 import { createMemoryRefStore } from "@/refs/memory.ts";
 import { createSqliteRefStore } from "@/refs/sqlite.ts";
 
-import type { RefStore } from "@/core/types/refs.ts";
+import type { RefStore } from "@/types/refs.ts";
 
 export interface RefStoreContractSession {
   readonly store: RefStore;

@@ -4,10 +4,10 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { createMemoryRepositoryBackend } from "@/backend/memory-backend.ts";
-import { sha1, type GitAuthor } from "@/core/types.ts";
+import { createMemoryRepositoryBackend } from "@/backend/memory.ts";
 import { writeObject, readObject } from "@/objects/raw.ts";
 import { createRefRepositoryOperations } from "@/repository/ops/ref-operations.ts";
+import { sha1, type GitAuthor } from "@/types/index.ts";
 
 const testAuthor: GitAuthor = {
   name: "Test User",
@@ -50,7 +50,7 @@ describe("createRefRepositoryOperations()", () => {
   test("createBranch() 不指定哈希时引用 HEAD 指向的目标", () => {
     const { ops, backend } = createOps();
     // 直接通过 backend 创建一个 commit 让 HEAD 可以解析
-    const blob: import("@/core/types.ts").GitBlob = { type: "blob", content: Buffer.from("c") };
+    const blob: import("@/types/index.ts").GitBlob = { type: "blob", content: Buffer.from("c") };
     const blobHash = writeObject(backend.objects, blob);
     const treeHash = writeObject(backend.objects, {
       type: "tree",
@@ -144,7 +144,7 @@ describe("createRefRepositoryOperations()", () => {
   test("createAnnotatedTag() 创建附注标签", () => {
     const { ops, backend } = createOps();
     // 先写入一个对象作为标签目标
-    const blob: import("@/core/types.ts").GitBlob = {
+    const blob: import("@/types/index.ts").GitBlob = {
       type: "blob",
       content: Buffer.from("content"),
     };

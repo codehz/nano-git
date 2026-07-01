@@ -10,13 +10,13 @@
  * 6. Tree 遍历与增量修改
  */
 
-import { hashObject } from "../src/core/hash.ts";
+import { hashObject } from "../src/hash/index.ts";
 import { serialize, deserialize } from "../src/objects/index.ts";
 import { createMemoryRepository } from "../src/repository/memory.ts";
 import { readTree } from "../src/repository/tree/tree-diff.ts";
 import { patchTree } from "../src/repository/tree/tree-patch.ts";
 
-import type { GitBlob, GitAuthor } from "../src/core/types.ts";
+import type { GitBlob, GitAuthor } from "../src/types/index.ts";
 
 console.log("=== nano-git 演示 ===\n");
 

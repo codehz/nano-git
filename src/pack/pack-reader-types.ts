@@ -7,7 +7,7 @@
  * - 使用 packObjectToRaw() 将 PackObject 转换为 RawGitObject
  */
 
-import type { ObjectType, RawGitObject, SHA1 } from "../core/types.ts";
+import type { ObjectType, RawGitObject, SHA1 } from "../types/index.ts";
 
 /**
  * Packfile 中的对象信息

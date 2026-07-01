@@ -5,7 +5,7 @@
  * fetch 语义对标 `git fetch <url>`，是 ImportSession 的善意封装。
  */
 
-import type { SHA1 } from "../../core/types.ts";
+import type { SHA1 } from "../../types/index.ts";
 
 /**
  * 仓库 fetch 操作选项

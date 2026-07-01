@@ -4,9 +4,9 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { sha1, type GitBlob } from "@/core/types.ts";
 import { encodeObject } from "@/objects/raw.ts";
 import { toEncodedPackObject, buildEncodedPack } from "@/pack/pack-encoding.ts";
+import { sha1, type GitBlob } from "@/types/index.ts";
 
 describe("toEncodedPackObject()", () => {
   test("将 blob 对象转换为编码条目", () => {

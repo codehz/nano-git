@@ -16,12 +16,12 @@ import {
 import { join } from "node:path";
 import { deflateSync, inflateSync } from "node:zlib";
 
-import { InvalidObjectError } from "../core/errors.ts";
-import { hashToPath } from "../core/hash.ts";
-import { sha1, assertObjectType } from "../core/types.ts";
+import { InvalidObjectError } from "../errors.ts";
+import { hashToPath } from "../hash/index.ts";
 import { serialize, deserialize } from "../objects/index.ts";
+import { sha1, assertObjectType } from "../types/index.ts";
 
-import type { GitObject, RawGitObject, SHA1 } from "../core/types.ts";
+import type { GitObject, RawGitObject, SHA1 } from "../types/index.ts";
 
 /**
  * 计算 loose object 文件路径

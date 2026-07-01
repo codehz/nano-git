@@ -6,8 +6,8 @@ import { readFileSync } from "node:fs";
 
 import { writeTreeRecursive } from "../tree/tree-writer.ts";
 
-import type { SHA1 } from "../../core/types.ts";
 import type { ObjectDatabase } from "../../odb/types.ts";
+import type { SHA1 } from "../../types/index.ts";
 import type { RepositoryFsObjectOperations } from "./object-types.ts";
 
 /**

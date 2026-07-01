@@ -11,8 +11,8 @@ import { join } from "node:path";
 import { git, gitInit, createTempDir, cleanupDir, createFile } from "../helpers.ts";
 import { createServerRepo, enableReceivePack } from "./helpers.ts";
 import { startGitHttpBackendServer } from "./http-server.ts";
-import { sha1 } from "@/core/types.ts";
 import { createReceivePackHttpClient } from "@/transport/client/receive-pack/http.ts";
+import { sha1 } from "@/types/index.ts";
 
 describe("receive-pack ref advertisement", () => {
   let tempDir: string;

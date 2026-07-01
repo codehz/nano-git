@@ -10,7 +10,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deflateSync } from "node:zlib";
 
-import { sha1, type GitBlob } from "@/core/types.ts";
 import { serialize } from "@/objects/index.ts";
 import {
   getLooseObjectPath,
@@ -20,6 +19,7 @@ import {
   deleteLooseObject,
   listLooseObjects,
 } from "@/odb/file-utils.ts";
+import { sha1, type GitBlob } from "@/types/index.ts";
 
 describe("getLooseObjectPath()", () => {
   test("应返回正确的对象路径", () => {

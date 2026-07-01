@@ -4,11 +4,11 @@
 import { describe, expect, test } from "bun:test";
 
 import { objectDatabaseBackends } from "./contract.ts";
-import { sha1 } from "@/core/types.ts";
 import { encodeObject, readObject, writeObject } from "@/objects/raw.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
+import { sha1 } from "@/types/index.ts";
 
-import type { GitBlob, GitTree, RawGitObject } from "@/core/types.ts";
+import type { GitBlob, GitTree, RawGitObject } from "@/types/index.ts";
 
 describe("ObjectDatabase contract: raw", () => {
   describe.each(objectDatabaseBackends)("$name", ({ createStore }) => {

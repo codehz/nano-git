@@ -5,8 +5,8 @@
 import { describe, test, expect } from "bun:test";
 import { deflateSync } from "node:zlib";
 
-import { sha1 } from "@/core/types.ts";
 import { resolvePlainPackObject } from "@/pack/pack-reader-resolver.ts";
+import { sha1 } from "@/types/index.ts";
 
 describe("resolvePlainPackObject()", () => {
   test("解析普通 blob 对象", () => {

@@ -4,11 +4,11 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { sha1 } from "@/core/types.ts";
 import { writeObject } from "@/objects/raw.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
 import { diffTrees, readTree, readTreeSnapshot, walkTree } from "@/repository/tree/tree-diff.ts";
+import { sha1 } from "@/types/index.ts";
 
 const fileHash = sha1("95d09f2b10159347eece71399a7e2e907ea3df4f");
 

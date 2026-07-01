@@ -19,8 +19,8 @@ import { VIRTUAL_ROOT_PATH } from "../model/path.ts";
 import { createNamedOriginChildLookup, resolveNamedChild } from "./directory-view.ts";
 import { joinChildPath } from "./worktree-path.ts";
 
-import type { SHA1, TreeEntry } from "../../core/types.ts";
-import type { ObjectDatabase, ObjectSource } from "../../core/types/odb.ts";
+import type { SHA1, TreeEntry } from "../../types/index.ts";
+import type { ObjectDatabase, ObjectSource } from "../../types/odb.ts";
 import type { NodeId } from "../model/ids.ts";
 import type { WorktreeNode } from "../model/nodes.ts";
 import type { VirtualWorktreeStateStore } from "../store/state-store.ts";

@@ -7,10 +7,10 @@ import { writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { sha1, type GitAuthor } from "@/core/types.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
 import { createRepositoryFsObjectOperations } from "@/repository/ops/fs-object-operations.ts";
 import { createObjectRepositoryOperations } from "@/repository/ops/object-operations.ts";
+import { sha1, type GitAuthor } from "@/types/index.ts";
 
 const testAuthor: GitAuthor = {
   name: "Test User",

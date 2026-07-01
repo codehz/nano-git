@@ -9,12 +9,12 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { CircularReferenceError, RefNotFoundError } from "@/core/errors.ts";
-import { sha1 } from "@/core/types.ts";
+import { CircularReferenceError, RefNotFoundError } from "@/errors.ts";
 import { createFileRefStore } from "@/refs/file.ts";
 import { createMemoryRefStore } from "@/refs/memory.ts";
 import { validateRefPrefix } from "@/refs/names.ts";
 import { resolveRefHash, resolveSymbolicRef } from "@/refs/resolve.ts";
+import { sha1 } from "@/types/index.ts";
 
 describe("createMemoryRefStore()", () => {
   test("会复制初始 Map，避免外部后续修改污染存储", () => {

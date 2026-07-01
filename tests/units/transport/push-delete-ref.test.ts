@@ -8,10 +8,10 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { sha1, type SHA1 } from "@/core/types.ts";
 import { PushError } from "@/transport/client/receive-pack/push-error.ts";
 import { determinePushRefs } from "@/transport/client/receive-pack/push-ref-plan.ts";
 import { parseRefSpec } from "@/transport/protocol/refspec.ts";
+import { sha1, type SHA1 } from "@/types/index.ts";
 
 // ============================================================================
 // 常量

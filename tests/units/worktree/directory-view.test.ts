@@ -5,7 +5,7 @@
  */
 import { describe, test, expect } from "bun:test";
 
-import { VirtualNotDirectoryError } from "@/core/errors.ts";
+import { VirtualNotDirectoryError } from "@/errors.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
 import {
   createNamedOriginChildLookup,
@@ -18,10 +18,10 @@ import { getDirectoryChildrenView } from "@/worktree/engine/worktree-path.ts";
 import { openVirtualWorktree } from "@/worktree/engine/worktree.ts";
 import { createVirtualWorktreeMemoryStateStore } from "@/worktree/store/memory-backend.ts";
 
-import type { GitTree } from "@/core/types.ts";
+import type { GitTree } from "@/types/index.ts";
 
 function readTree(repo: ReturnType<typeof createMemoryRepository>, hash: string): GitTree {
-  const object = repo.catFile(hash as import("@/core/types.ts").SHA1);
+  const object = repo.catFile(hash as import("@/types/index.ts").SHA1);
   if (object.type !== "tree") {
     throw new Error(`Expected tree, got ${object.type}`);
   }
@@ -51,8 +51,8 @@ describe("planAffectedDirectoryChildren()", () => {
 
   test("保持 origin 顺序并将纯新增受影响名字补到末尾", () => {
     const lookup = createNamedOriginChildLookup([
-      { mode: "100644", name: "a.txt", hash: "a".repeat(40) as import("@/core/types.ts").SHA1 },
-      { mode: "100644", name: "b.txt", hash: "b".repeat(40) as import("@/core/types.ts").SHA1 },
+      { mode: "100644", name: "a.txt", hash: "a".repeat(40) as import("@/types/index.ts").SHA1 },
+      { mode: "100644", name: "b.txt", hash: "b".repeat(40) as import("@/types/index.ts").SHA1 },
     ]);
     const firstEntry = lookup.entries[0];
     const secondEntry = lookup.entries[1];

@@ -2,8 +2,8 @@
  * 规范化变更记录的持久化编解码
  */
 
-import type { DiffObject } from "../../../core/diff.ts";
-import type { SHA1 } from "../../../core/types.ts";
+import type { DiffObject } from "../../../diff.ts";
+import type { SHA1 } from "../../../types/index.ts";
 import type { NormalizedChangeRecord } from "../../engine/change-index.ts";
 
 /** 文件 manifest 中的变更记录 */

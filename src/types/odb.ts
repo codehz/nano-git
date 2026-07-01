@@ -12,7 +12,7 @@
  * - loose object、内存存储等可写后端实现 ObjectDatabase
  */
 
-import type { RawGitObject, SHA1 } from "../types.ts";
+import type { RawGitObject, SHA1 } from "./index.ts";
 
 /**
  * 只读对象源接口

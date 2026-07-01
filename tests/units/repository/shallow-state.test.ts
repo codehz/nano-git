@@ -16,7 +16,6 @@ import { join } from "node:path";
 
 import { createFileRepositoryBackend } from "@/backend/file.ts";
 import { createMemoryRepositoryBackend } from "@/backend/memory.ts";
-import { sha1, type SHA1, type GitCommit } from "@/core/types.ts";
 import { writeObject } from "@/objects/raw.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
 import { createFileShallowStore } from "@/refs/shallow/file.ts";
@@ -24,6 +23,7 @@ import { createMemoryShallowStore } from "@/refs/shallow/memory.ts";
 import { createRepository } from "@/repository/create.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
 import { collectReachable } from "@/transport/protocol/object-graph.ts";
+import { sha1, type SHA1, type GitCommit } from "@/types/index.ts";
 
 import type { ObjectDatabase } from "@/odb/types.ts";
 

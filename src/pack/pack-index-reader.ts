@@ -2,8 +2,8 @@
  * Packfile 索引读取
  */
 
-import { PackIndexError } from "../core/errors.ts";
-import { sha1 } from "../core/types.ts";
+import { PackIndexError } from "../errors.ts";
+import { sha1 } from "../types/index.ts";
 import {
   IDX_V2_FANOUT_SIZE,
   IDX_V2_HEADER_SIZE,
@@ -11,7 +11,7 @@ import {
   IDX_V2_VERSION,
 } from "./constants.ts";
 
-import type { SHA1 } from "../core/types.ts";
+import type { SHA1 } from "../types/index.ts";
 import type { PackIndexEntry } from "./pack-index-types.ts";
 
 // ============================================================================

@@ -8,7 +8,6 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { sha1, type SHA1 } from "@/core/types.ts";
 import { writeObject } from "@/objects/raw.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
 import { createMemoryRefStore } from "@/refs/memory.ts";
@@ -17,6 +16,7 @@ import { determinePushRefs } from "@/transport/client/receive-pack/push-ref-plan
 import { push } from "@/transport/client/receive-pack/push.ts";
 import { encodePktLine, encodeFlushPkt } from "@/transport/protocol/pkt-line.ts";
 import { parseRefSpec } from "@/transport/protocol/refspec.ts";
+import { sha1, type SHA1 } from "@/types/index.ts";
 
 import type { ReceivePackTransport, RemoteRef } from "@/transport/protocol/types.ts";
 

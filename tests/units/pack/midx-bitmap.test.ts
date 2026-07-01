@@ -4,13 +4,13 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { sha1 } from "@/core/types.ts";
 import { addReachableFromCommitBitmap, findMidxObjectPosition } from "@/pack/midx-bitmap.ts";
+import { sha1 } from "@/types/index.ts";
 
-import type { SHA1 } from "@/core/types.ts";
 import type { UnpackedBitmap } from "@/pack/ewah-bitmap.ts";
 import type { MidxReader } from "@/pack/midx-types.ts";
 import type { PackBitmapReader } from "@/pack/pack-bitmap-reader.ts";
+import type { SHA1 } from "@/types/index.ts";
 
 function createUnpacked(bits: boolean[]): UnpackedBitmap {
   return {

@@ -4,7 +4,7 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { createMemoryRepositoryBackend } from "@/backend/memory-backend.ts";
+import { createMemoryRepositoryBackend } from "@/backend/memory.ts";
 import { writeObject } from "@/objects/raw.ts";
 import { createFetchRepositoryOperations } from "@/repository/ops/fetch-operations.ts";
 import { encodeFlushPkt, encodePktLine, parsePktLines } from "@/transport/protocol/pkt-line.ts";

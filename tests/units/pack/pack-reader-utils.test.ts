@@ -6,7 +6,7 @@ import { describe, test, expect } from "bun:test";
 import { createHash } from "node:crypto";
 import { deflateSync } from "node:zlib";
 
-import { InvalidPackError } from "@/core/errors.ts";
+import { InvalidPackError } from "@/errors.ts";
 import { PACK_SIGNATURE, PACK_VERSION } from "@/pack/constants.ts";
 import { parsePackHeader, readCompressedData } from "@/pack/pack-reader-utils.ts";
 

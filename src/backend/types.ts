@@ -5,13 +5,13 @@
  * 底层对象存储、引用存储和仓库布局信息通过 Backend 注入。
  */
 
-import type { RawGitObject, SHA1 } from "../core/types.ts";
-import type { RefStore, RefTransactionHook } from "../core/types/refs.ts";
-import type { ShallowStore } from "../core/types/shallow.ts";
 import type { ObjectSource, ObjectDatabase } from "../odb/types.ts";
 import type { PackBuildResult } from "../pack/pack-builder.ts";
 import type { PackBuilder } from "../pack/pack-builder.ts";
 import type { PackObjectStore } from "../pack/pack-store.ts";
+import type { RawGitObject, SHA1 } from "../types/index.ts";
+import type { RefStore, RefTransactionHook } from "../types/refs.ts";
+import type { ShallowStore } from "../types/shallow.ts";
 
 /** 仓库级 repack 选项 */
 export interface RepositoryRepackOptions {

@@ -10,8 +10,8 @@ import { push as transportPush } from "../../transport/client/receive-pack/push.
 import { resolveEffectivePushBoundaries } from "./push-resolution.ts";
 
 import type { RepositoryBackend } from "../../backend/types.ts";
-import type { SHA1 } from "../../core/types.ts";
 import type { ReceivePackTransport, RefAdvertisement } from "../../transport/protocol/types.ts";
+import type { SHA1 } from "../../types/index.ts";
 import type { RepositoryPushOptions, RepositoryPushResult } from "./push-types.ts";
 
 /**

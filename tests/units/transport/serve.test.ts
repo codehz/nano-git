@@ -8,7 +8,6 @@
 import { describe, test, expect } from "bun:test";
 
 import { createMemoryRepositoryBackend } from "@/backend/memory.ts";
-import { sha1 } from "@/core/types.ts";
 import { writeObject } from "@/objects/raw.ts";
 import {
   encodePktLine,
@@ -25,8 +24,9 @@ import {
   generateFetchResponse,
   advertiseUploadPack,
 } from "@/transport/server/upload-pack/index.ts";
+import { sha1 } from "@/types/index.ts";
 
-import type { SHA1 } from "@/core/types.ts";
+import type { SHA1 } from "@/types/index.ts";
 
 // ============================================================================
 // 测试辅助：构建一个带提交的内存仓库

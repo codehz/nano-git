@@ -2,7 +2,7 @@
  * Packfile 通用变长整数编码/解码
  */
 
-import { InvalidPackError } from "../core/errors.ts";
+import { InvalidPackError } from "../errors.ts";
 
 /**
  * 解码变长整数（通用版本）

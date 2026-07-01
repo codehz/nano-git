@@ -6,7 +6,7 @@
  * 哈希字段使用 SHA1 branded type 保证类型安全。
  */
 
-import type { SHA1 } from "../../core/types.ts";
+import type { SHA1 } from "../../types/index.ts";
 
 /**
  * 仓库 push 操作选项

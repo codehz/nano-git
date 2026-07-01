@@ -13,7 +13,7 @@ import { writeMultiPackIndex, writeIncrementalMultiPackIndexFile } from "@/pack/
 import { createPackBuilder } from "@/pack/pack-builder.ts";
 import { loadPackPairs } from "@/pack/pack-store-loader.ts";
 
-import type { GitBlob } from "@/core/types.ts";
+import type { GitBlob } from "@/types/index.ts";
 
 describe("loadIncrementalMidxChain", () => {
   test("无 chain 目录时返回 null", () => {

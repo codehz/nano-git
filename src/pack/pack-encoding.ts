@@ -9,7 +9,7 @@ import { PACK_SIGNATURE, PACK_VERSION, objectTypeToNumber } from "./constants.ts
 import { crc32Value } from "./crc32.ts";
 import { encodeObjectHeader } from "./utils.ts";
 
-import type { RawGitObject, SHA1 } from "../core/types.ts";
+import type { RawGitObject, SHA1 } from "../types/index.ts";
 
 /**
  * 用于 pack 编码的对象条目

@@ -20,7 +20,7 @@ import {
   DeltaError,
   TransactionError,
   PreconditionCheckError,
-} from "@/core/errors.ts";
+} from "@/errors.ts";
 
 describe("GitError 基类", () => {
   test("应继承 Error", () => {

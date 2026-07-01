@@ -13,12 +13,12 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { sha1 } from "@/core/types.ts";
 import {
   parseLsRefsResponse,
   lsRefsToRefAdvertisement,
 } from "@/transport/client/upload-pack/ls-refs.ts";
 import { encodePktLine, encodeFlushPkt } from "@/transport/protocol/pkt-line.ts";
+import { sha1 } from "@/types/index.ts";
 
 import type { LsRefsEntry } from "@/transport/client/upload-pack/types.ts";
 

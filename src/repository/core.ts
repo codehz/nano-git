@@ -12,5 +12,5 @@ export type {
   DiffObject,
   DiffObjectKind,
   DiffObjectMode,
-} from "../core/diff.ts";
+} from "../diff.ts";
 export type { TreeSnapshotEntry } from "./tree/tree-diff.ts";

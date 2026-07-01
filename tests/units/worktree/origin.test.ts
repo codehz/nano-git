@@ -3,9 +3,9 @@
  */
 import { describe, test, expect } from "bun:test";
 
-import { VirtualOriginUnavailableError } from "@/core/errors.ts";
-import { sha1 } from "@/core/types.ts";
+import { VirtualOriginUnavailableError } from "@/errors.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
+import { sha1 } from "@/types/index.ts";
 import {
   readRepoBlobContent,
   readRepoTree,

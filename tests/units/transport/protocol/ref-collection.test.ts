@@ -6,9 +6,9 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { sha1 } from "@/core/types.ts";
 import { createMemoryRefStore } from "@/refs/memory.ts";
 import { getLocalRefs, remoteRefsToMap } from "@/transport/protocol/ref-collection.ts";
+import { sha1 } from "@/types/index.ts";
 
 describe("getLocalRefs()", () => {
   test("空仓库返回空 Map（不含 HEAD）", () => {

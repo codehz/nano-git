@@ -5,12 +5,12 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 
 import { acquireConnection } from "@/backend/sqlite-pool.ts";
-import { ObjectNotFoundError } from "@/core/errors.ts";
-import { sha1 } from "@/core/types.ts";
+import { ObjectNotFoundError } from "@/errors.ts";
 import { encodeObject, writeObject } from "@/objects/raw.ts";
 import { createSqliteObjectStore } from "@/odb/sqlite.ts";
+import { sha1 } from "@/types/index.ts";
 
-import type { RawGitObject } from "@/core/types.ts";
+import type { RawGitObject } from "@/types/index.ts";
 
 describe("createSqliteObjectStore()", () => {
   let conn: ReturnType<typeof acquireConnection>;

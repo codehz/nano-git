@@ -13,10 +13,10 @@
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { sha1 } from "../../core/types.ts";
+import { sha1 } from "../../types/index.ts";
 
-import type { SHA1 } from "../../core/types.ts";
-import type { ShallowStore, ShallowUpdate } from "../../core/types/shallow.ts";
+import type { SHA1 } from "../../types/index.ts";
+import type { ShallowStore, ShallowUpdate } from "../../types/shallow.ts";
 
 /**
  * 创建基于文件系统的 Shallow 存储

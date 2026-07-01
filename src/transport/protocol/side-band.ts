@@ -12,7 +12,7 @@
  * @see https://git-scm.com/docs/pack-protocol#_side_channel
  */
 
-import { GitError } from "../../core/errors.ts";
+import { GitError } from "../../errors.ts";
 import { parsePktLines, splitPktLinesFromBuffer } from "./pkt-line.ts";
 
 // ============================================================================

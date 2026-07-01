@@ -14,10 +14,10 @@ import { join } from "node:path";
 
 import { git, gitInit, createTempDir, cleanupDir, createFile, FIXED_AUTHOR } from "../helpers.ts";
 import { startGitHttpBackendServer } from "./http-server.ts";
-import { sha1 } from "@/core/types.ts";
-import { HEAD_REF, HEADS_PREFIX } from "@/core/types/refs.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
 import { encodeFlushPkt, encodePktLine, parsePktLines } from "@/transport/protocol/pkt-line.ts";
+import { sha1 } from "@/types/index.ts";
+import { HEAD_REF, HEADS_PREFIX } from "@/types/refs.ts";
 
 import type { GitHttpBackendResponse } from "./http-server.ts";
 

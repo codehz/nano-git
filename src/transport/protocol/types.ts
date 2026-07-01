@@ -6,7 +6,7 @@
  * 协议语义解析在 transport/protocol 层完成。
  */
 
-import type { SHA1 } from "../../core/types.ts";
+import type { SHA1 } from "../../types/index.ts";
 
 // ============================================================================
 // 传输层接口（用于测试注入）

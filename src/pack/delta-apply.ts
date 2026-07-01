@@ -2,7 +2,7 @@
  * Delta 应用（解码）
  */
 
-import { DeltaError } from "../core/errors.ts";
+import { DeltaError } from "../errors.ts";
 import { decodeVarint } from "./utils.ts";
 
 /**

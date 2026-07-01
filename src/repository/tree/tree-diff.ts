@@ -9,9 +9,9 @@
 
 import { readObject } from "../../objects/raw.ts";
 
-import type { DiffEntry, DiffObject, DiffObjectKind } from "../../core/diff.ts";
-import type { SHA1, TreeEntry } from "../../core/types.ts";
+import type { DiffEntry, DiffObject, DiffObjectKind } from "../../diff.ts";
 import type { ObjectDatabase } from "../../odb/types.ts";
+import type { SHA1, TreeEntry } from "../../types/index.ts";
 
 /**
  * tree 快照条目

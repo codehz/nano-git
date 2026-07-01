@@ -4,10 +4,10 @@
 import { describe, expect, test } from "bun:test";
 
 import { objectDatabaseBackends } from "./contract.ts";
-import { sha1 } from "@/core/types.ts";
 import { readObject, writeObject } from "@/objects/raw.ts";
+import { sha1 } from "@/types/index.ts";
 
-import type { GitAuthor, GitBlob, GitCommit, GitTree } from "@/core/types.ts";
+import type { GitAuthor, GitBlob, GitCommit, GitTree } from "@/types/index.ts";
 
 const testAuthor: GitAuthor = {
   name: "Test User",

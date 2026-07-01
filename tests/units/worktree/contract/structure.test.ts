@@ -8,10 +8,10 @@ import {
   VirtualNotDirectoryError,
   VirtualPathAlreadyExistsError,
   VirtualPathNotFoundError,
-} from "@/core/errors.ts";
+} from "@/errors.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
 
-import type { GitTree, SHA1 } from "@/core/types.ts";
+import type { GitTree, SHA1 } from "@/types/index.ts";
 
 /** 读取 tree 对象（类型断言辅助） */
 function readTree(repo: ReturnType<typeof createMemoryRepository>, hash: string): GitTree {

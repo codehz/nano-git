@@ -9,11 +9,11 @@
  * 本模块只操作已存在的表，不负责 DDL。
  */
 
-import { sha1 } from "../../core/types.ts";
+import { sha1 } from "../../types/index.ts";
 
 import type { SqliteConnectionHandle } from "../../backend/sqlite-pool.ts";
-import type { SHA1 } from "../../core/types.ts";
-import type { ShallowStore, ShallowUpdate } from "../../core/types/shallow.ts";
+import type { SHA1 } from "../../types/index.ts";
+import type { ShallowStore, ShallowUpdate } from "../../types/shallow.ts";
 
 /**
  * 创建基于 SQLite 的 shallow 边界存储

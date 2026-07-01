@@ -4,7 +4,7 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { createMemoryRepositoryBackend } from "@/backend/memory-backend.ts";
+import { createMemoryRepositoryBackend } from "@/backend/memory.ts";
 import { createPushRepositoryOperations, PushError } from "@/repository/ops/push-operations.ts";
 
 describe("createPushRepositoryOperations()", () => {

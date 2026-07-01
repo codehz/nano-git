@@ -17,7 +17,7 @@
  * ```
  */
 
-import { PackIndexError } from "../core/errors.ts";
+import { PackIndexError } from "../errors.ts";
 
 // ============================================================================
 // 类型

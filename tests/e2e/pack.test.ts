@@ -32,7 +32,7 @@ import { createPackBuilder } from "@/pack/pack-builder.ts";
 import { createPackObjectStore } from "@/pack/pack-store.ts";
 import { collectReachable } from "@/transport/protocol/object-graph.ts";
 
-import type { GitBlob, GitTree, GitCommit, GitAuthor, SHA1 } from "@/core/types.ts";
+import type { GitBlob, GitTree, GitCommit, GitAuthor, SHA1 } from "@/types/index.ts";
 
 const testAuthor: GitAuthor = {
   name: FIXED_AUTHOR.name,

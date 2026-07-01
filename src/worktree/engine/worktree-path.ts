@@ -14,7 +14,7 @@ import {
   VirtualNotFileError,
   VirtualPathAlreadyExistsError,
   VirtualPathNotFoundError,
-} from "../../core/errors.ts";
+} from "../../errors.ts";
 import { originPathNodeId, VIRTUAL_ROOT_NODE_ID } from "../model/ids.ts";
 import { readRepoTree, treeEntryToNodeOrigin } from "../model/origin.ts";
 import { mergeDirectoryChildren } from "../model/overlay.ts";
@@ -27,8 +27,8 @@ import {
   VIRTUAL_ROOT_PATH,
 } from "../model/path.ts";
 
-import type { TreeEntry } from "../../core/types.ts";
-import type { ObjectSource } from "../../core/types/odb.ts";
+import type { TreeEntry } from "../../types/index.ts";
+import type { ObjectSource } from "../../types/odb.ts";
 import type { NodeId } from "../model/ids.ts";
 import type {
   DirectoryNodeState,

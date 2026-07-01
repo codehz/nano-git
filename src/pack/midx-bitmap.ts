@@ -9,7 +9,7 @@ import { loadIncrementalMidxChain } from "./midx-chain.ts";
 import { createMidxReader } from "./midx-reader.ts";
 import { createPackBitmapReader } from "./pack-bitmap-reader.ts";
 
-import type { SHA1 } from "../core/types.ts";
+import type { SHA1 } from "../types/index.ts";
 import type { MidxReader } from "./midx-types.ts";
 import type { PackBitmapReader } from "./pack-bitmap-reader.ts";
 

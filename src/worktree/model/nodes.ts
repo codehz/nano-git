@@ -18,7 +18,7 @@ import {
   type DirectoryOverlay,
 } from "./overlay.ts";
 
-import type { SHA1 } from "../../core/types.ts";
+import type { SHA1 } from "../../types/index.ts";
 
 export type { NodeId } from "./ids.ts";
 export { createNodeId, resetNodeIdCounterForTests, VIRTUAL_ROOT_NODE_ID } from "./ids.ts";

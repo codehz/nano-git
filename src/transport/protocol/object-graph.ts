@@ -13,13 +13,13 @@
  * ```
  */
 
-import { ObjectNotFoundError } from "../../core/errors.ts";
+import { ObjectNotFoundError } from "../../errors.ts";
 import { tryReadObject } from "../../objects/raw.ts";
 import { addReachableFromCommitBitmap } from "../../pack/midx-bitmap.ts";
 
-import type { SHA1 } from "../../core/types.ts";
 import type { ObjectSource } from "../../odb/types.ts";
 import type { MidxBitmapAssist } from "../../pack/midx-bitmap.ts";
+import type { SHA1 } from "../../types/index.ts";
 
 // ============================================================================
 // 可达性遍历

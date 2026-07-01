@@ -14,8 +14,8 @@ import { createRepository } from "@/repository/create.ts";
 import { createSqliteRepository } from "@/repository/sqlite.ts";
 
 import type { NanoGitServer } from "./transport/nano-git-server.ts";
-import type { GitAuthor, SHA1 } from "@/core/types.ts";
 import type { Repository } from "@/repository/types.ts";
+import type { GitAuthor, SHA1 } from "@/types/index.ts";
 
 const GIT_TIMEOUT_MS = 15000;
 const GIT_V2_ARGS = ["-c", "protocol.version=2"];

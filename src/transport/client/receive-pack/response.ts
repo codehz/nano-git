@@ -4,7 +4,7 @@
  * 从 transport 返回的原始 HTTP body 中解析 side-band 与 report-status。
  */
 
-import { GitError } from "../../../core/errors.ts";
+import { GitError } from "../../../errors.ts";
 import { parsePktLines } from "../../protocol/pkt-line.ts";
 import { parseReceivePackResult } from "./result.ts";
 

@@ -2,8 +2,8 @@
  * 仓库对象操作类型定义
  */
 
-import type { DiffEntry } from "../../core/diff.ts";
-import type { GitAuthor, GitObject, SHA1, TreeEntry } from "../../core/types.ts";
+import type { DiffEntry } from "../../diff.ts";
+import type { GitAuthor, GitObject, SHA1, TreeEntry } from "../../types/index.ts";
 import type { TreeSnapshotEntry } from "../tree/tree-diff.ts";
 import type { TreePatchOp, TreePatchResult } from "../tree/tree-patch.ts";
 

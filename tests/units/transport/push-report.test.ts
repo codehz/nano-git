@@ -6,9 +6,9 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { sha1 } from "@/core/types.ts";
 import { PushError } from "@/transport/client/receive-pack/push-error.ts";
 import { processPushReport } from "@/transport/client/receive-pack/push-report.ts";
+import { sha1 } from "@/types/index.ts";
 
 import type { PushRefItem } from "@/transport/client/receive-pack/push-ref-plan.ts";
 import type { ReceivePackCommand } from "@/transport/client/receive-pack/request.ts";

@@ -10,7 +10,7 @@ import {
   VirtualNotSymlinkError,
   VirtualPathAlreadyExistsError,
   VirtualPathNotFoundError,
-} from "../../core/errors.ts";
+} from "../../errors.ts";
 import { createNodeId } from "../model/ids.ts";
 import { type WorktreeNode } from "../model/nodes.ts";
 import { modeToVirtualEntryKind, readRepoBlobContent } from "../model/origin.ts";
@@ -45,9 +45,9 @@ import {
 } from "./worktree-transaction.ts";
 import { writeTreeFromSession } from "./write-tree.ts";
 
-import type { DiffEntry } from "../../core/diff.ts";
-import type { SHA1 } from "../../core/types.ts";
-import type { ObjectDatabase } from "../../core/types/odb.ts";
+import type { DiffEntry } from "../../diff.ts";
+import type { SHA1 } from "../../types/index.ts";
+import type { ObjectDatabase } from "../../types/odb.ts";
 import type {
   InitializeVirtualWorktreeOptions,
   VirtualDirEntry,

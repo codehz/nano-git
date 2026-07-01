@@ -7,9 +7,9 @@
  * @see https://git-scm.com/docs/pack-protocol#_git_gt_transport
  */
 
-import { sha1 } from "../../../core/types.ts";
 import { tryReadObject } from "../../../objects/raw.ts";
 import { resolveRefHash } from "../../../refs/resolve.ts";
+import { sha1 } from "../../../types/index.ts";
 import { encodePktLine, encodeFlushPkt } from "../../protocol/pkt-line.ts";
 import { ZERO_HASH, SERVER_AGENT, CAPABILITIES_REF } from "./types.ts";
 

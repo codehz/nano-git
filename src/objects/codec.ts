@@ -4,14 +4,14 @@
  * 提供完整对象格式与对象内容格式之间的转换能力。
  */
 
-import { InvalidObjectError } from "../core/errors.ts";
-import { assertObjectType } from "../core/types.ts";
+import { InvalidObjectError } from "../errors.ts";
+import { assertObjectType } from "../types/index.ts";
 import { serializeBlob, deserializeBlob } from "./blob.ts";
 import { serializeCommit, deserializeCommit } from "./commit.ts";
 import { serializeTag, deserializeTag } from "./tag.ts";
 import { serializeTree, deserializeTree } from "./tree.ts";
 
-import type { GitObject, ObjectType } from "../core/types.ts";
+import type { GitObject, ObjectType } from "../types/index.ts";
 
 // ============================================================================
 // 完整对象编解码

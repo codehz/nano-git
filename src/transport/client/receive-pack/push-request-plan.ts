@@ -4,14 +4,14 @@
  * refspec 归一化、能力校验、receive-pack 命令与请求 body 构造。
  */
 
-import { sha1 } from "../../../core/types.ts";
+import { sha1 } from "../../../types/index.ts";
 import { parseRefSpec } from "../../protocol/refspec.ts";
 import { extractCapabilities, PUSH_CAPABILITIES } from "../../protocol/transport-capabilities.ts";
 import { PushError } from "./push-error.ts";
 import { resolveDefaultRefSpec } from "./push-ref-plan.ts";
 import { buildReceivePackRequest } from "./request.ts";
 
-import type { RefStore } from "../../../core/types/refs.ts";
+import type { RefStore } from "../../../types/refs.ts";
 import type { ParsedRefSpec } from "../../protocol/refspec.ts";
 import type { RefAdvertisement, PushOptions } from "../../protocol/types.ts";
 import type { PushRefItem } from "./push-ref-plan.ts";

@@ -7,8 +7,7 @@
  * 所有对象按 canonical raw object 直接写入，不经过语义序列化/反序列化。
  */
 
-import { hashObject } from "../../../core/hash.ts";
-import { sha1 } from "../../../core/types.ts";
+import { hashObject } from "../../../hash/index.ts";
 import {
   PACK_HEADER_SIZE,
   PACK_CHECKSUM_SIZE,
@@ -19,10 +18,11 @@ import {
 import { applyDelta } from "../../../pack/delta.ts";
 import { readCompressedData, parsePackHeader } from "../../../pack/pack-reader-utils.ts";
 import { decodeObjectHeader, decodeOfsDeltaOffset } from "../../../pack/utils.ts";
+import { sha1 } from "../../../types/index.ts";
 import { ReceivePackServiceError } from "./types.ts";
 
-import type { ObjectType, RawGitObject } from "../../../core/types.ts";
 import type { ObjectDatabase } from "../../../odb/types.ts";
+import type { ObjectType, RawGitObject } from "../../../types/index.ts";
 
 /**
  * 将 push packfile 中的对象解包到对象数据库中

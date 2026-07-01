@@ -25,7 +25,7 @@
  * @see https://git-scm.com/docs/protocol-v2#_object_info
  */
 
-import { GitError } from "../../../core/errors.ts";
+import { GitError } from "../../../errors.ts";
 import { parsePktLines } from "../../protocol/pkt-line.ts";
 
 import type { V2GitServiceTransport } from "./types.ts";

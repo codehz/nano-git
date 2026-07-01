@@ -8,7 +8,7 @@
  * 本模块只操作已存在的表，不负责 DDL。
  */
 
-import { RefNotFoundError, TransactionError } from "../core/errors.ts";
+import { RefNotFoundError, TransactionError } from "../errors.ts";
 import { validateRefName, validateRefPrefix } from "./names.ts";
 
 import type { SqliteConnectionHandle } from "../backend/sqlite-pool.ts";
@@ -17,7 +17,7 @@ import type {
   RefTransaction,
   RefTransactionHook,
   ReadonlyRefTransaction,
-} from "../core/types/refs.ts";
+} from "../types/refs.ts";
 
 /**
  * 创建基于 SQLite 的 RefStore

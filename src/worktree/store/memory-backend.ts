@@ -5,7 +5,7 @@
 import { VIRTUAL_ROOT_NODE_ID, type NodeId } from "../model/ids.ts";
 import { createRootDirectoryNode, type WorktreeNode } from "../model/nodes.ts";
 
-import type { SHA1 } from "../../core/types.ts";
+import type { SHA1 } from "../../types/index.ts";
 import type { NormalizedChangeRecord } from "../engine/change-index.ts";
 import type { VirtualWorktreeStateStore } from "./state-store.ts";
 

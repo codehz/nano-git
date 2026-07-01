@@ -8,11 +8,11 @@
  * 读取路径：source.read() → RawGitObject → decodeObject() → GitObject
  */
 
-import { hashObject } from "../core/hash.ts";
+import { hashObject } from "../hash/index.ts";
 import { serializeContent, deserializeContent } from "./codec.ts";
 
-import type { GitObject, RawGitObject, SHA1 } from "../core/types.ts";
-import type { ObjectDatabase, ObjectSource } from "../core/types/odb.ts";
+import type { GitObject, RawGitObject, SHA1 } from "../types/index.ts";
+import type { ObjectDatabase, ObjectSource } from "../types/odb.ts";
 
 /**
  * 将语义对象编码为 RawGitObject

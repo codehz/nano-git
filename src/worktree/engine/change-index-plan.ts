@@ -7,7 +7,7 @@
 
 import { resolvePath } from "./worktree-path.ts";
 
-import type { ObjectSource } from "../../core/types/odb.ts";
+import type { ObjectSource } from "../../types/odb.ts";
 import type { VirtualWorktreeStateStore } from "../store/state-store.ts";
 
 /**

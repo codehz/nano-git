@@ -4,16 +4,16 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { sha1 } from "@/core/types.ts";
 import { writeObject } from "@/objects/raw.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
 import {
   mergePushBoundaries,
   computeObjectsToSend,
 } from "@/transport/client/receive-pack/push-pack-plan.ts";
+import { sha1 } from "@/types/index.ts";
 
-import type { SHA1 } from "@/core/types.ts";
 import type { PushRefItem } from "@/transport/client/receive-pack/push-ref-plan.ts";
+import type { SHA1 } from "@/types/index.ts";
 
 describe("mergePushBoundaries", () => {
   test("无 shallow 且无 push refs 应返回 undefined", () => {

@@ -6,13 +6,13 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { ObjectNotFoundError } from "@/core/errors.ts";
-import { sha1 } from "@/core/types.ts";
+import { ObjectNotFoundError } from "@/errors.ts";
 import { writeObject } from "@/objects/raw.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
 import { collectReachable, isAncestor, peelTagChain } from "@/transport/protocol/object-graph.ts";
+import { sha1 } from "@/types/index.ts";
 
-import type { SHA1 } from "@/core/types.ts";
+import type { SHA1 } from "@/types/index.ts";
 
 function makeCommit(
   store: ReturnType<typeof createMemoryObjectStore>,

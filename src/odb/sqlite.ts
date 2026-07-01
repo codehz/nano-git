@@ -8,12 +8,12 @@
  * 本模块只操作已存在的表，不负责 DDL。
  */
 
-import { ObjectNotFoundError } from "../core/errors.ts";
-import { hashObject } from "../core/hash.ts";
-import { sha1 } from "../core/types.ts";
+import { ObjectNotFoundError } from "../errors.ts";
+import { hashObject } from "../hash/index.ts";
+import { sha1 } from "../types/index.ts";
 
 import type { SqliteConnectionHandle } from "../backend/sqlite-pool.ts";
-import type { RawGitObject, SHA1, ObjectType } from "../core/types.ts";
+import type { RawGitObject, SHA1, ObjectType } from "../types/index.ts";
 import type { ObjectDatabase } from "./types.ts";
 
 // 数据库查询结果行类型

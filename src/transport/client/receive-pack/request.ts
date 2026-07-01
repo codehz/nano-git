@@ -14,7 +14,7 @@
 
 import { encodePktLine, encodeFlushPkt } from "../../protocol/pkt-line.ts";
 
-import type { SHA1 } from "../../../core/types.ts";
+import type { SHA1 } from "../../../types/index.ts";
 
 // ============================================================================
 // 类型导出

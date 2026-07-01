@@ -12,7 +12,7 @@
 
 import { join } from "node:path";
 
-import { hashObject } from "../core/hash.ts";
+import { hashObject } from "../hash/index.ts";
 import {
   deleteLooseObject,
   hasLooseObject,
@@ -21,7 +21,7 @@ import {
   readRawLooseObject,
 } from "./file-utils.ts";
 
-import type { RawGitObject, SHA1 } from "../core/types.ts";
+import type { RawGitObject, SHA1 } from "../types/index.ts";
 import type { ObjectDatabase } from "./types.ts";
 
 /**

@@ -9,11 +9,11 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { RefNotFoundError, TransactionError } from "@/core/errors.ts";
+import { RefNotFoundError, TransactionError } from "@/errors.ts";
 import { createFileRefStore } from "@/refs/file.ts";
 import { createMemoryRefStore } from "@/refs/memory.ts";
 
-import type { RefStore, RefTransactionHook } from "@/core/types/refs.ts";
+import type { RefStore, RefTransactionHook } from "@/types/refs.ts";
 
 // ============================================================================
 // Memory 事务

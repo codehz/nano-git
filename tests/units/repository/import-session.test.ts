@@ -7,7 +7,6 @@
 import { describe, test, expect } from "bun:test";
 
 import { createMemoryRepositoryBackend } from "@/backend/memory.ts";
-import { sha1 } from "@/core/types.ts";
 import { writeObject } from "@/objects/raw.ts";
 import { encodeObject } from "@/objects/raw.ts";
 import { createPackWriter } from "@/pack/pack-writer.ts";
@@ -18,6 +17,7 @@ import {
 } from "@/repository/import/import-session.ts";
 import { createImportView } from "@/repository/import/import-view.ts";
 import { encodePktLine } from "@/transport/protocol/pkt-line.ts";
+import { sha1 } from "@/types/index.ts";
 
 import type { V2GitServiceTransport } from "@/transport/client/upload-pack/types.ts";
 import type { RemoteRef, RefAdvertisement } from "@/transport/protocol/types.ts";

@@ -4,7 +4,7 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { DeltaError } from "@/core/errors.ts";
+import { DeltaError } from "@/errors.ts";
 import { applyDelta, createDelta } from "@/pack/delta.ts";
 import { encodeVarint } from "@/pack/utils.ts";
 

@@ -4,9 +4,9 @@
  * 提供 SHA-1 与 loose object 相对路径之间的转换能力。
  */
 
-import { sha1 } from "./types.ts";
+import { sha1 } from "../types/index.ts";
 
-import type { SHA1 } from "./types.ts";
+import type { SHA1 } from "../types/index.ts";
 
 /**
  * 将 SHA-1 哈希转换为对象存储路径
@@ -51,7 +51,8 @@ export function pathToHash(path: string): SHA1 {
  *
  * @example
  * ```ts
- * console.log(isValidSHA1("95d09f2b10159347eece71399a7e2e907ea3df4f"));
+ * isValidSHA1("95d09f2b10159347eece71399a7e2e907ea3df4f"); // => true
+ * isValidSHA1("invalid"); // => false
  * ```
  */
 export function isValidSHA1(value: string): value is SHA1 {

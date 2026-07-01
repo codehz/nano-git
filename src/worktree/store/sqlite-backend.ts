@@ -10,8 +10,8 @@ import {
   readBaseTreeValue,
 } from "./sqlite-db-layer.ts";
 
-import type { SHA1 } from "../../core/types.ts";
-import type { ObjectDatabase } from "../../core/types/odb.ts";
+import type { SHA1 } from "../../types/index.ts";
+import type { ObjectDatabase } from "../../types/odb.ts";
 import type { InitializeVirtualWorktreeOptions, VirtualWorktree } from "../core.ts";
 
 /** 打开 SQLite VirtualWorktree 数据库的可选参数 */

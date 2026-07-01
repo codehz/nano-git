@@ -2,8 +2,8 @@
  * Packfile 对象解析辅助函数
  */
 
-import { InvalidPackError } from "../core/errors.ts";
-import { hashObject } from "../core/hash.ts";
+import { InvalidPackError } from "../errors.ts";
+import { hashObject } from "../hash/index.ts";
 import { numberToObjectType } from "./constants.ts";
 import { applyDelta } from "./delta.ts";
 import { readCompressedData } from "./pack-reader-utils.ts";

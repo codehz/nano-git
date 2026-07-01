@@ -7,7 +7,6 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { sha1 } from "@/core/types.ts";
 import {
   buildReceivePackRequest,
   type ReceivePackCommand,
@@ -17,6 +16,7 @@ import {
   ReceivePackResultError,
 } from "@/transport/client/receive-pack/result.ts";
 import { parsePktLines, encodePktLine, encodeFlushPkt } from "@/transport/protocol/pkt-line.ts";
+import { sha1 } from "@/types/index.ts";
 
 import type { PktLineData } from "@/transport/protocol/pkt-line.ts";
 

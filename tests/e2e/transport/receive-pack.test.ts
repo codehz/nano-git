@@ -21,8 +21,8 @@ import { join } from "node:path";
 import { git, gitWithTimeout, createTempDir, cleanupDir, FIXED_AUTHOR } from "../helpers.ts";
 import { startNanoGitServer, createDefaultBackend } from "./nano-git-server.ts";
 import { createMemoryRepositoryBackend } from "@/backend/memory.ts";
-import { sha1, type SHA1 } from "@/core/types.ts";
 import { writeObject } from "@/objects/raw.ts";
+import { sha1, type SHA1 } from "@/types/index.ts";
 
 import type { NanoGitServer } from "./nano-git-server.ts";
 

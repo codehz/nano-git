@@ -4,7 +4,7 @@
  * 当前只负责 shallow 边界的最终决策。
  */
 
-import type { SHA1 } from "../../core/types.ts";
+import type { SHA1 } from "../../types/index.ts";
 import type { RepositoryPushOptions } from "./push-types.ts";
 
 /**

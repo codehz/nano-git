@@ -2,7 +2,7 @@
  * Packfile 索引共享类型
  */
 
-import type { SHA1 } from "../core/types.ts";
+import type { SHA1 } from "../types/index.ts";
 
 /**
  * 索引中的对象条目

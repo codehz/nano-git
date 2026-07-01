@@ -6,9 +6,9 @@
  * @see https://git-scm.com/docs/protocol-v2#_fetch
  */
 
-import { sha1 } from "../../../core/types.ts";
 import { createPackWriter } from "../../../pack/pack-writer.ts";
 import { resolveRefHash } from "../../../refs/resolve.ts";
+import { sha1 } from "../../../types/index.ts";
 import { collectReachable } from "../../protocol/object-graph.ts";
 import { encodePktLine, encodeFlushPkt, encodeDelimiterPkt } from "../../protocol/pkt-line.ts";
 import {
@@ -19,7 +19,7 @@ import {
 } from "./types.ts";
 
 import type { RepositoryBackend } from "../../../backend/types.ts";
-import type { SHA1 } from "../../../core/types.ts";
+import type { SHA1 } from "../../../types/index.ts";
 
 /** 从 fetch 请求 args 中解析的参数 */
 export interface FetchServerParams {

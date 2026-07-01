@@ -15,7 +15,7 @@ import { overlayBindEntry, type DirectoryOverlay } from "../model/overlay.ts";
 import { observeListedDirectoryChild } from "./directory-view.ts";
 import { listDirectoryChildren } from "./worktree-path.ts";
 
-import type { ObjectDatabase } from "../../core/types/odb.ts";
+import type { ObjectDatabase } from "../../types/odb.ts";
 import type { VirtualEntryStat } from "../core.ts";
 import type { NodeId } from "../model/ids.ts";
 import type { VirtualWorktreeStateStore } from "../store/state-store.ts";

@@ -6,10 +6,10 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { InvalidObjectError } from "@/core/errors.ts";
+import { InvalidObjectError } from "@/errors.ts";
 import { formatAuthor, parseAuthor } from "@/objects/author.ts";
 
-import type { GitAuthor } from "@/core/types.ts";
+import type { GitAuthor } from "@/types/index.ts";
 
 describe("formatAuthor()", () => {
   test("基本作者信息格式化", () => {

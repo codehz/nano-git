@@ -6,9 +6,9 @@
  * @see https://git-scm.com/docs/protocol-v2#_ls_refs
  */
 
-import { sha1 } from "../../../core/types.ts";
 import { tryReadObject } from "../../../objects/raw.ts";
 import { resolveRefHash } from "../../../refs/resolve.ts";
+import { sha1 } from "../../../types/index.ts";
 import { encodePktLine, encodeFlushPkt } from "../../protocol/pkt-line.ts";
 
 import type { RepositoryBackend } from "../../../backend/types.ts";

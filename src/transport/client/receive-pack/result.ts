@@ -15,7 +15,7 @@
  * @see https://git-scm.com/docs/pack-protocol#_report_status
  */
 
-import { GitError } from "../../../core/errors.ts";
+import { GitError } from "../../../errors.ts";
 import { parsePktLines } from "../../protocol/pkt-line.ts";
 
 import type { PushRefUpdate } from "../../protocol/types.ts";

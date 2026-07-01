@@ -12,10 +12,10 @@
  * 本模块在序列化/反序列化边界做双向转换，内部统一使用规范形式（"040000"）。
  */
 
-import { InvalidObjectError } from "../core/errors.ts";
-import { sha1 } from "../core/types.ts";
+import { InvalidObjectError } from "../errors.ts";
+import { sha1 } from "../types/index.ts";
 
-import type { GitTree, TreeEntry } from "../core/types.ts";
+import type { GitTree, TreeEntry } from "../types/index.ts";
 
 // ============================================================================
 // Mode 规范化工具

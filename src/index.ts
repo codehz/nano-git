@@ -57,7 +57,7 @@ export type {
   GitAuthor,
   TreeEntry,
   GitObject,
-} from "./core/types.ts";
+} from "./types/index.ts";
 export type {
   RepositoryBackend,
   RepositoryGCOptions,
@@ -67,21 +67,15 @@ export type {
 } from "./backend/types.ts";
 export type { RemoteSource } from "./remote/types.ts";
 export type { Repository, FileRepository } from "./repository/types.ts";
-export type {
-  DiffEntry,
-  DiffChanges,
-  DiffObject,
-  DiffObjectKind,
-  DiffObjectMode,
-} from "./core/diff.ts";
+export type { DiffEntry, DiffChanges, DiffObject, DiffObjectKind, DiffObjectMode } from "./diff.ts";
 export type { TreeSnapshotEntry } from "./repository/tree/tree-diff.ts";
 
 // ============================================================================
 // SHA-1 哈希工具（仅 node:crypto）
 // ============================================================================
 
-export { sha1, assertObjectType } from "./core/types.ts";
-export { hashData, hashObject, isValidSHA1 } from "./core/hash.ts";
+export { sha1, assertObjectType } from "./types/index.ts";
+export { hashData, hashObject, isValidSHA1 } from "./hash/index.ts";
 
 // ============================================================================
 // 错误类型（纯定义）
@@ -101,7 +95,7 @@ export {
   DeltaError,
   TransactionError,
   PreconditionCheckError,
-} from "./core/errors.ts";
+} from "./errors.ts";
 
 // ============================================================================
 // 对象编解码

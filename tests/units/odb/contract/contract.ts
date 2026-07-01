@@ -13,7 +13,7 @@ import { createFileObjectStore } from "@/odb/file.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
 import { createSqliteObjectStore } from "@/odb/sqlite.ts";
 
-import type { ObjectDatabase } from "@/core/types/odb.ts";
+import type { ObjectDatabase } from "@/types/odb.ts";
 
 export interface ObjectDatabaseContractSession {
   readonly store: ObjectDatabase;

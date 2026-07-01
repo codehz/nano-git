@@ -3,8 +3,8 @@
  */
 
 import type { RepositoryGCOptions, RepositoryRepackOptions } from "../../backend/types.ts";
-import type { SHA1 } from "../../core/types.ts";
 import type { PackBuildResult } from "../../pack/types.ts";
+import type { SHA1 } from "../../types/index.ts";
 
 /**
  * 仓库维护相关操作

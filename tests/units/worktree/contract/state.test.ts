@@ -4,7 +4,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { virtualWorktreeBackends } from "./contract.ts";
-import { VirtualPathNotFoundError } from "@/core/errors.ts";
+import { VirtualPathNotFoundError } from "@/errors.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
 
 describe("VirtualWorktree contract: state", () => {

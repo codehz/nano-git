@@ -36,7 +36,7 @@
  * @see https://git-scm.com/docs/protocol-v2#_fetch
  */
 
-import { GitError } from "../../../core/errors.ts";
+import { GitError } from "../../../errors.ts";
 import { createPackReader, packObjectToRaw } from "../../../pack/pack-reader.ts";
 import { splitPktLinesFromBuffer } from "../../protocol/pkt-line.ts";
 

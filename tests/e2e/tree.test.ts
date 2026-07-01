@@ -26,8 +26,8 @@ import {
   cleanupDir,
   createFile,
 } from "./helpers.ts";
-import { sha1 } from "@/core/types.ts";
 import { openRepository } from "@/repository/file.ts";
+import { sha1 } from "@/types/index.ts";
 
 describe("Tree 兼容性", () => {
   let tempDir: string;

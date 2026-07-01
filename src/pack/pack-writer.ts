@@ -21,7 +21,7 @@
 
 import { buildEncodedPack, type EncodedPackObject, toEncodedPackObject } from "./pack-encoding.ts";
 
-import type { RawGitObject, SHA1 } from "../core/types.ts";
+import type { RawGitObject, SHA1 } from "../types/index.ts";
 
 // ============================================================================
 // Packfile 写入器

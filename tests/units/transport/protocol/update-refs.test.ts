@@ -6,7 +6,6 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { sha1 } from "@/core/types.ts";
 import { writeObject } from "@/objects/raw.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
 import { createMemoryRefStore } from "@/refs/memory.ts";
@@ -16,9 +15,10 @@ import {
   isRefNamespaceRequiringFastForward,
   RefUpdateError,
 } from "@/transport/protocol/update-refs.ts";
+import { sha1 } from "@/types/index.ts";
 
-import type { SHA1 } from "@/core/types.ts";
 import type { RefUpdatePlanItem } from "@/transport/protocol/update-refs.ts";
+import type { SHA1 } from "@/types/index.ts";
 
 function makeBlob(store: ReturnType<typeof createMemoryObjectStore>, content: string): SHA1 {
   return writeObject(store, { type: "blob", content: Buffer.from(content) });

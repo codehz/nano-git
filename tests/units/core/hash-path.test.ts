@@ -1,15 +1,15 @@
 /**
- * core/hash-path.ts 单元测试
+ * hash/path.ts 单元测试
  *
  * 覆盖 hashToPath / pathToHash / isValidSHA1
  */
 
 import { describe, test, expect } from "bun:test";
 
-import { hashToPath, pathToHash, isValidSHA1 } from "@/core/hash-path.ts";
-import { sha1 } from "@/core/types.ts";
+import { hashToPath, pathToHash, isValidSHA1 } from "@/hash/path.ts";
+import { sha1 } from "@/types/index.ts";
 
-import type { SHA1 } from "@/core/types.ts";
+import type { SHA1 } from "@/types/index.ts";
 
 const HASH = sha1("95d09f2b10159347eece71399a7e2e907ea3df4f");
 

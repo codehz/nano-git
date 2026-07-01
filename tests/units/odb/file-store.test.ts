@@ -7,11 +7,11 @@ import { mkdirSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { sha1 } from "@/core/types.ts";
 import { writeObject } from "@/objects/raw.ts";
 import { createFileObjectStore } from "@/odb/file.ts";
+import { sha1 } from "@/types/index.ts";
 
-import type { GitBlob } from "@/core/types.ts";
+import type { GitBlob } from "@/types/index.ts";
 
 describe("createFileObjectStore()", () => {
   let tempDir: string;

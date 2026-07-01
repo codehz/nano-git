@@ -10,7 +10,7 @@ import {
   VirtualNotFileError,
   VirtualPathAlreadyExistsError,
   VirtualPathNotFoundError,
-} from "@/core/errors.ts";
+} from "@/errors.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
 import {
   joinChildPath,

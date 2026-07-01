@@ -4,9 +4,9 @@
 import { describe, expect, test } from "bun:test";
 
 import { refStoreBackends } from "./contract.ts";
-import { RefNotFoundError, TransactionError } from "@/core/errors.ts";
+import { RefNotFoundError, TransactionError } from "@/errors.ts";
 
-import type { ReadonlyRefTransaction, RefTransactionHook } from "@/core/types/refs.ts";
+import type { ReadonlyRefTransaction, RefTransactionHook } from "@/types/refs.ts";
 
 describe("RefStore contract: transaction", () => {
   describe.each(refStoreBackends)("$name", ({ createStore }) => {

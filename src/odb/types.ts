@@ -7,4 +7,4 @@
  * @deprecated 新代码请直接从 `../core/types/odb.ts` 导入 ObjectSource / ObjectDatabase
  */
 
-export type { ObjectSource, ObjectDatabase } from "../core/types/odb.ts";
+export type { ObjectSource, ObjectDatabase } from "../types/odb.ts";

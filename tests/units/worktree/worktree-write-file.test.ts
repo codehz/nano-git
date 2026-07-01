@@ -20,7 +20,7 @@ describe("writeFile", () => {
       transact<T>(fn: () => T): T {
         return inner.transact(fn);
       },
-      readBaseTree(): import("@/core/types.ts").SHA1 {
+      readBaseTree(): import("@/types/index.ts").SHA1 {
         return inner.readBaseTree();
       },
       writeBaseTree(nextBaseTree): void {

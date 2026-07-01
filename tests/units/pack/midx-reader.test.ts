@@ -7,13 +7,13 @@ import { mkdirSync, rmSync, existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { sha1 } from "@/core/types.ts";
 import { encodeObject } from "@/objects/raw.ts";
 import { createMidxReader } from "@/pack/midx-reader.ts";
 import { createPackBuilder } from "@/pack/pack-builder.ts";
 import { createPackObjectStore } from "@/pack/pack-store.ts";
+import { sha1 } from "@/types/index.ts";
 
-import type { GitBlob } from "@/core/types.ts";
+import type { GitBlob } from "@/types/index.ts";
 
 describe("createMidxReader", () => {
   function buildMidxFixture(): { gitDir: string; hashes: string[]; cleanup: () => void } {

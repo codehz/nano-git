@@ -24,8 +24,8 @@ import {
 import { openVirtualWorktree } from "../src/worktree/engine/worktree.ts";
 import { createVirtualWorktreeMemoryStateStore } from "../src/worktree/store/memory-backend.ts";
 
-import type { SHA1 } from "../src/core/types.ts";
 import type { Repository } from "../src/repository/types.ts";
+import type { SHA1 } from "../src/types/index.ts";
 import type { VirtualWorktree } from "../src/worktree/core.ts";
 import type { VirtualWorktreeStateStore } from "../src/worktree/store/state-store.ts";
 

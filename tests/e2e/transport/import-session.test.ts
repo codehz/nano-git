@@ -11,8 +11,8 @@ import { join } from "node:path";
 import { cleanupDir, createFile, createTempDir, git, gitFsck, gitRevParse } from "../helpers.ts";
 import { createServerRepo } from "./helpers.ts";
 import { startGitHttpBackendServer } from "./http-server.ts";
-import { sha1 } from "@/core/types.ts";
 import { initRepository } from "@/repository/file.ts";
+import { sha1 } from "@/types/index.ts";
 
 describe("Import Session", () => {
   let tempDir: string;

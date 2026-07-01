@@ -3,7 +3,7 @@
  */
 import { describe, test, expect } from "bun:test";
 
-import { sha1 } from "@/core/types.ts";
+import { sha1 } from "@/types/index.ts";
 import {
   createNodeId,
   originPathNodeId,

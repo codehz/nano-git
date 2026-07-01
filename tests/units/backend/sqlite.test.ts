@@ -10,9 +10,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { createSqliteRepositoryBackend, type SqliteRepositoryBackend } from "@/backend/sqlite.ts";
-import { sha1 } from "@/core/types.ts";
-import { HEAD_REF } from "@/core/types/refs.ts";
 import { createRepository } from "@/repository/create.ts";
+import { sha1 } from "@/types/index.ts";
+import { HEAD_REF } from "@/types/refs.ts";
 
 describe("createSqliteRepositoryBackend()", () => {
   let dbPath: string;

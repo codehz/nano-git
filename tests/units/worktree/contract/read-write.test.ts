@@ -10,7 +10,7 @@ import {
   VirtualOriginUnavailableError,
   VirtualPathAlreadyExistsError,
   VirtualPathNotFoundError,
-} from "@/core/errors.ts";
+} from "@/errors.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
 
 describe("VirtualWorktree contract: read/write", () => {

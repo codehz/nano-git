@@ -12,8 +12,8 @@ import {
   listCurrentSnapshotEntries,
 } from "./change-snapshot.ts";
 
-import type { DiffChanges, DiffEntry, DiffObject } from "../../core/diff.ts";
-import type { ObjectSource } from "../../core/types/odb.ts";
+import type { DiffChanges, DiffEntry, DiffObject } from "../../diff.ts";
+import type { ObjectSource } from "../../types/odb.ts";
 import type { VirtualWorktreeStateStore } from "../store/state-store.ts";
 import type { VirtualDiffComputationCache } from "./change-snapshot.ts";
 

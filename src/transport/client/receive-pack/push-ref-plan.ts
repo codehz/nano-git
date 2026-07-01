@@ -18,13 +18,13 @@
  * ```
  */
 
-import { HEADS_PREFIX } from "../../../core/types/refs.ts";
-import { HEAD_REF } from "../../../core/types/refs.ts";
 import { resolveSymbolicRef } from "../../../refs/resolve.ts";
+import { HEADS_PREFIX } from "../../../types/refs.ts";
+import { HEAD_REF } from "../../../types/refs.ts";
 import { PushError } from "./push-error.ts";
 
-import type { SHA1 } from "../../../core/types.ts";
-import type { RefStore } from "../../../core/types/refs.ts";
+import type { SHA1 } from "../../../types/index.ts";
+import type { RefStore } from "../../../types/refs.ts";
 import type { ParsedRefSpec } from "../../protocol/refspec.ts";
 
 // ============================================================================

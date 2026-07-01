@@ -9,8 +9,8 @@ import { writeFileSync, mkdirSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { hashFile } from "@/core/hash-file.ts";
-import { sha1 } from "@/core/types.ts";
+import { hashFile } from "@/hash-file.ts";
+import { sha1 } from "@/types/index.ts";
 
 describe("hashFile()", () => {
   let tempDir: string;

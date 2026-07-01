@@ -17,7 +17,7 @@
  * @see https://git-scm.com/docs/protocol-v2#_capability_advertisement
  */
 
-import { GitError } from "../../../core/errors.ts";
+import { GitError } from "../../../errors.ts";
 import { parsePktLines } from "../../protocol/pkt-line.ts";
 
 import type { V2CapabilityAdvertisement, V2CommandEntry } from "./types.ts";

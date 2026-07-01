@@ -4,11 +4,11 @@
 
 import { describe, test, expect, beforeEach } from "bun:test";
 
-import { HEAD_REF, HEADS_PREFIX } from "@/core/types/refs.ts";
 import { writeObject } from "@/objects/raw.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
 import { createMemoryRefStore } from "@/refs/memory.ts";
 import { createMaintenanceRepositoryOperations } from "@/repository/ops/maintenance-operations.ts";
+import { HEAD_REF, HEADS_PREFIX } from "@/types/refs.ts";
 
 describe("createMaintenanceRepositoryOperations()", () => {
   let objects: ReturnType<typeof createMemoryObjectStore>;

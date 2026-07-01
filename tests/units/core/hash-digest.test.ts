@@ -6,8 +6,8 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { hashData, hashObject } from "@/core/hash-digest.ts";
-import { sha1 } from "@/core/types.ts";
+import { hashData, hashObject } from "@/hash/digest.ts";
+import { sha1 } from "@/types/index.ts";
 
 describe("hashData()", () => {
   test("计算字符串的 SHA-1", () => {

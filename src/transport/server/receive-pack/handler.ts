@@ -13,7 +13,7 @@ import { ReceivePackServiceError, ZERO_HASH } from "./types.ts";
 import { unpackPackfile } from "./unpack.ts";
 
 import type { RepositoryBackend } from "../../../backend/types.ts";
-import type { SHA1 } from "../../../core/types.ts";
+import type { SHA1 } from "../../../types/index.ts";
 import type {
   ParsedReceivePackRequest,
   ReceivePackCommand,

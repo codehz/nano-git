@@ -7,8 +7,8 @@ import { join } from "node:path";
 
 import { writeObject } from "../../objects/raw.ts";
 
-import type { GitBlob, GitTree, TreeEntry, SHA1 } from "../../core/types.ts";
 import type { ObjectDatabase } from "../../odb/types.ts";
+import type { GitBlob, GitTree, TreeEntry, SHA1 } from "../../types/index.ts";
 
 /**
  * 递归将目录写入 tree 对象

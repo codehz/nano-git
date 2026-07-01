@@ -10,7 +10,7 @@
  * 扩展点：添加新存储后端时，只需实现此接口即可无缝集成。
  */
 
-import type { SHA1 } from "../types.ts";
+import type { SHA1 } from "./index.ts";
 
 /**
  * Shallow 边界更新

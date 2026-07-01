@@ -15,7 +15,7 @@
  * @see https://git-scm.com/docs/pack-protocol#_reference_discovery
  */
 
-import { sha1, type SHA1 } from "../../core/types.ts";
+import { sha1, type SHA1 } from "../../types/index.ts";
 import { parsePktLines, PktLineError } from "./pkt-line.ts";
 
 import type { RemoteRef, RefAdvertisement } from "./types.ts";

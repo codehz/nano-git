@@ -7,7 +7,6 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { sha1 } from "@/core/types.ts";
 import { createMemoryRefStore } from "@/refs/memory.ts";
 import { PushError } from "@/transport/client/receive-pack/push-error.ts";
 import {
@@ -16,6 +15,7 @@ import {
   buildPushCommands,
   buildPushRequestBody,
 } from "@/transport/client/receive-pack/push-request-plan.ts";
+import { sha1 } from "@/types/index.ts";
 
 import type { PushRefItem } from "@/transport/client/receive-pack/push-ref-plan.ts";
 

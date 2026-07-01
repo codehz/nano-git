@@ -17,12 +17,12 @@
 
 import { join } from "node:path";
 
-import { ObjectNotFoundError } from "../core/errors.ts";
+import { ObjectNotFoundError } from "../errors.ts";
 import { packObjectToRaw } from "./pack-reader-types.ts";
 import { getPackReader, loadPackPairs, toPackFileInfo } from "./pack-store-loader.ts";
 
-import type { RawGitObject, SHA1 } from "../core/types.ts";
 import type { ObjectSource } from "../odb/types.ts";
+import type { RawGitObject, SHA1 } from "../types/index.ts";
 import type { MidxReader } from "./midx-types.ts";
 import type { PackFileInfo, PackPair } from "./pack-store-types.ts";
 

@@ -4,7 +4,7 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { InvalidPackError } from "@/core/errors.ts";
+import { InvalidPackError } from "@/errors.ts";
 import { decodeObjectHeader, encodeObjectHeader } from "@/pack/object-header.ts";
 
 describe("decodeObjectHeader()", () => {

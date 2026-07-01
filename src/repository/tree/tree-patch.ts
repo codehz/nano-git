@@ -15,8 +15,8 @@
 
 import { writeObject, readObject } from "../../objects/raw.ts";
 
-import type { GitTree, SHA1, TreeEntry } from "../../core/types.ts";
 import type { ObjectDatabase } from "../../odb/types.ts";
+import type { GitTree, SHA1, TreeEntry } from "../../types/index.ts";
 
 // ============================================================================
 // 类型定义

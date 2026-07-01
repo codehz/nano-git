@@ -25,8 +25,8 @@ import {
   serializeDirectoryOverlayPayload,
 } from "./persist/overlay-codec.ts";
 
-import type { SHA1 } from "../../core/types.ts";
-import type { ObjectDatabase } from "../../core/types/odb.ts";
+import type { SHA1 } from "../../types/index.ts";
+import type { ObjectDatabase } from "../../types/odb.ts";
 import type { InitializeVirtualWorktreeOptions, VirtualWorktree } from "../core.ts";
 import type { NormalizedChangeRecord } from "../engine/change-index.ts";
 import type { NodeId } from "../model/ids.ts";

@@ -2,7 +2,7 @@
  * Worktree 节点 origin 的持久化编解码
  */
 
-import type { SHA1 } from "../../../core/types.ts";
+import type { SHA1 } from "../../../types/index.ts";
 import type { WorktreeNode } from "../../model/nodes.ts";
 
 /** 文件 manifest 中的 origin 记录 */

@@ -9,12 +9,12 @@ import { openVirtualWorktree } from "@/worktree/engine/worktree.ts";
 import { originPathNodeId } from "@/worktree/model/ids.ts";
 import { createVirtualWorktreeMemoryStateStore } from "@/worktree/store/memory-backend.ts";
 
-import type { GitTree } from "@/core/types.ts";
-import type { ObjectDatabase } from "@/core/types/odb.ts";
 import type { Repository } from "@/repository/types.ts";
+import type { GitTree } from "@/types/index.ts";
+import type { ObjectDatabase } from "@/types/odb.ts";
 
 function readTree(repo: Repository, hash: string): GitTree {
-  const obj = repo.catFile(hash as import("@/core/types.ts").SHA1);
+  const obj = repo.catFile(hash as import("@/types/index.ts").SHA1);
   if (obj.type !== "tree") {
     throw new Error(`Expected tree, got ${obj.type}`);
   }

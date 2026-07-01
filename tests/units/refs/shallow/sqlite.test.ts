@@ -7,10 +7,10 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 
 import { acquireConnection } from "@/backend/sqlite-pool.ts";
-import { sha1 } from "@/core/types.ts";
 import { createSqliteShallowStore } from "@/refs/shallow/sqlite.ts";
+import { sha1 } from "@/types/index.ts";
 
-import type { SHA1 } from "@/core/types.ts";
+import type { SHA1 } from "@/types/index.ts";
 
 function makeHash(seed: string): SHA1 {
   return sha1(seed.padStart(40, "0").slice(0, 40));

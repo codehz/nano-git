@@ -5,7 +5,7 @@
  */
 import { describe, test, expect } from "bun:test";
 
-import { VirtualPathNotFoundError } from "@/core/errors.ts";
+import { VirtualPathNotFoundError } from "@/errors.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
 import { createVirtualWorktree } from "@/worktree/engine/worktree.ts";
 

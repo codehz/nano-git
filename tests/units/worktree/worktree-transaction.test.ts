@@ -3,9 +3,9 @@
  */
 import { describe, expect, test } from "bun:test";
 
-import { VirtualOriginUnavailableError } from "@/core/errors.ts";
-import { sha1 } from "@/core/types.ts";
+import { VirtualOriginUnavailableError } from "@/errors.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
+import { sha1 } from "@/types/index.ts";
 import {
   cloneNodeGraphForCopy,
   runInWriteTransaction,

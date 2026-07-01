@@ -2,7 +2,7 @@
  * 仓库对象操作组装
  */
 
-import { hashObject } from "../../core/hash.ts";
+import { hashObject } from "../../hash/index.ts";
 import { writeObject, readObject } from "../../objects/raw.ts";
 import { diffTrees, readTreeSnapshot } from "../tree/tree-diff.ts";
 import {
@@ -11,6 +11,7 @@ import {
   type TreePatchResult,
 } from "../tree/tree-patch.ts";
 
+import type { ObjectDatabase } from "../../odb/types.ts";
 import type {
   GitAuthor,
   GitBlob,
@@ -20,8 +21,7 @@ import type {
   RawGitObject,
   SHA1,
   TreeEntry,
-} from "../../core/types.ts";
-import type { ObjectDatabase } from "../../odb/types.ts";
+} from "../../types/index.ts";
 import type { RepositoryObjectOperations } from "./object-types.ts";
 
 /**

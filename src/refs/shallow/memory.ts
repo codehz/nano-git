@@ -10,8 +10,8 @@
  * ```
  */
 
-import type { SHA1 } from "../../core/types.ts";
-import type { ShallowStore, ShallowUpdate } from "../../core/types/shallow.ts";
+import type { SHA1 } from "../../types/index.ts";
+import type { ShallowStore, ShallowUpdate } from "../../types/shallow.ts";
 
 /**
  * 创建基于内存的 Shallow 存储

@@ -2,7 +2,7 @@
  * 仓库引用操作类型定义
  */
 
-import type { GitAuthor, ObjectType, SHA1 } from "../../core/types.ts";
+import type { GitAuthor, ObjectType, SHA1 } from "../../types/index.ts";
 
 /**
  * 仓库引用相关操作

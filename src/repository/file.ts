@@ -20,7 +20,7 @@ import { mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
 import { createFileRepositoryBackend } from "../backend/file.ts";
-import { RepositoryError } from "../core/errors.ts";
+import { RepositoryError } from "../errors.ts";
 import { createRepository } from "./create.ts";
 import { createRepositoryFsObjectOperations } from "./ops/fs-object-operations.ts";
 

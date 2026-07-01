@@ -7,7 +7,7 @@
  * - 对象以 "<type> <size>\0<content>" 格式存储
  */
 
-import { InvalidSHA1Error, InvalidObjectError } from "./errors.ts";
+import { InvalidSHA1Error, InvalidObjectError } from "../errors.ts";
 
 /** SHA-1 哈希值（40 个十六进制字符） */
 export type SHA1 = string & { readonly __brand: "SHA1" };

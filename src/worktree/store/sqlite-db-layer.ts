@@ -2,7 +2,7 @@
  * SQLite VirtualWorktree 数据库层：共享 prepared statements 与按 key 绑定的 state store
  */
 
-import { sha1 } from "../../core/types.ts";
+import { sha1 } from "../../types/index.ts";
 import { createRootDirectoryNode, type WorktreeNode } from "../model/nodes.ts";
 import { parseChangeRecordFromSqlite } from "./persist/change-codec.ts";
 import { parseNodeOriginFromSqliteColumns } from "./persist/origin-codec.ts";
@@ -12,7 +12,7 @@ import {
 } from "./persist/overlay-codec.ts";
 
 import type { SqliteConnectionHandle } from "../../backend/sqlite-pool.ts";
-import type { SHA1 } from "../../core/types.ts";
+import type { SHA1 } from "../../types/index.ts";
 import type { NormalizedChangeRecord } from "../engine/change-index.ts";
 import type { NodeId } from "../model/ids.ts";
 import type { SqliteChangeRow } from "./persist/change-codec.ts";

@@ -7,15 +7,15 @@ import { mkdirSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { sha1 } from "@/core/types.ts";
 import { encodeObject } from "@/objects/raw.ts";
 import { createMidxReader } from "@/pack/midx-reader.ts";
 import { writeMultiPackIndex, writeMultiPackIndexFile } from "@/pack/midx-writer.ts";
 import { createPackBuilder } from "@/pack/pack-builder.ts";
 import { loadPackPairs } from "@/pack/pack-store-loader.ts";
 import { createPackObjectStore } from "@/pack/pack-store.ts";
+import { sha1 } from "@/types/index.ts";
 
-import type { GitBlob } from "@/core/types.ts";
+import type { GitBlob } from "@/types/index.ts";
 
 describe("writeMultiPackIndex", () => {
   function buildMultiPackFixture(): {

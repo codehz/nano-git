@@ -12,11 +12,11 @@
  * ```
  */
 
-import { InvalidObjectError } from "../core/errors.ts";
-import { assertObjectType, sha1 } from "../core/types.ts";
+import { InvalidObjectError } from "../errors.ts";
+import { assertObjectType, sha1 } from "../types/index.ts";
 import { formatAuthor, parseAuthor } from "./author.ts";
 
-import type { GitCommitExtraHeader, GitTag, ObjectType, SHA1 } from "../core/types.ts";
+import type { GitCommitExtraHeader, GitTag, ObjectType, SHA1 } from "../types/index.ts";
 
 // ============================================================================
 // Header 编解码辅助

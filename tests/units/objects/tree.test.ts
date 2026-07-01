@@ -4,10 +4,10 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { sha1 } from "@/core/types.ts";
 import { serialize, deserialize } from "@/objects/index.ts";
+import { sha1 } from "@/types/index.ts";
 
-import type { GitTree } from "@/core/types.ts";
+import type { GitTree } from "@/types/index.ts";
 
 describe("Tree 序列化", () => {
   test("序列化包含单个条目的 tree", () => {

@@ -13,11 +13,11 @@
  * ```
  */
 
-import { InvalidObjectError } from "../core/errors.ts";
-import { sha1 } from "../core/types.ts";
+import { InvalidObjectError } from "../errors.ts";
+import { sha1 } from "../types/index.ts";
 import { formatAuthor, parseAuthor } from "./author.ts";
 
-import type { GitCommit, GitCommitExtraHeader, SHA1 } from "../core/types.ts";
+import type { GitCommit, GitCommitExtraHeader, SHA1 } from "../types/index.ts";
 
 interface ParsedCommitHeader {
   readonly name: string;

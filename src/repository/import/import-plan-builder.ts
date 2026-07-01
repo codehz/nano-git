@@ -5,7 +5,7 @@
  * 前置条件校验、prune 清理以及实际的 ref 写入和对象导入。
  */
 
-import { PreconditionCheckError } from "../../core/errors.ts";
+import { PreconditionCheckError } from "../../errors.ts";
 import { v2FetchObjects } from "../../transport/client/upload-pack/fetch.ts";
 import { isAncestor } from "../../transport/protocol/object-graph.ts";
 import { getLocalRefs } from "../../transport/protocol/ref-collection.ts";
@@ -18,7 +18,6 @@ import {
 } from "./import-view.ts";
 
 import type { RepositoryBackend } from "../../backend/types.ts";
-import type { SHA1 } from "../../core/types.ts";
 import type { RemoteSource } from "../../remote/types.ts";
 import type { V2GitServiceTransport } from "../../transport/client/upload-pack/types.ts";
 import type {
@@ -26,6 +25,7 @@ import type {
   RefAdvertisement,
   UploadPackTransport,
 } from "../../transport/protocol/types.ts";
+import type { SHA1 } from "../../types/index.ts";
 import type {
   ImportPlanBuilder,
   ImportPreview,

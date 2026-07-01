@@ -14,7 +14,7 @@ import { createCompositeObjectDatabase } from "@/pack/composite-store.ts";
 import { createPackBuilder } from "@/pack/pack-builder.ts";
 import { createPackObjectStore } from "@/pack/pack-store.ts";
 
-import type { GitBlob } from "@/core/types.ts";
+import type { GitBlob } from "@/types/index.ts";
 
 describe("CompositeObjectDatabase", () => {
   test("从主存储读取", () => {

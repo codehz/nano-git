@@ -8,8 +8,8 @@ import { walkLogEntries } from "@/log/walk.ts";
 import { writeObject } from "@/objects/raw.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
 
-import type { GitAuthor, GitCommit, SHA1 } from "@/core/types.ts";
 import type { ObjectDatabase } from "@/odb/types.ts";
+import type { GitAuthor, GitCommit, SHA1 } from "@/types/index.ts";
 
 // ============================================================================
 // 测试辅助

@@ -11,7 +11,7 @@ import { encodeObject, readObject } from "@/objects/raw.ts";
 import { createPackBuilder } from "@/pack/pack-builder.ts";
 import { createPackObjectStore } from "@/pack/pack-store.ts";
 
-import type { GitBlob, GitTag, GitAuthor } from "@/core/types.ts";
+import type { GitBlob, GitTag, GitAuthor } from "@/types/index.ts";
 
 const testAuthor: GitAuthor = {
   name: "Test User",

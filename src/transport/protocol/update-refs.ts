@@ -11,13 +11,13 @@
  * ```
  */
 
-import { GitError } from "../../core/errors.ts";
+import { GitError } from "../../errors.ts";
 import { tryReadObject } from "../../objects/raw.ts";
 import { isAncestor } from "./object-graph.ts";
 
-import type { SHA1 } from "../../core/types.ts";
-import type { RefStore } from "../../core/types/refs.ts";
 import type { ObjectDatabase } from "../../odb/types.ts";
+import type { SHA1 } from "../../types/index.ts";
+import type { RefStore } from "../../types/refs.ts";
 import type { ApplyRefUpdatesResult, RefUpdateRejection, RemoteRef } from "./types.ts";
 
 /**

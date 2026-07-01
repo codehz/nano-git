@@ -5,7 +5,7 @@
  * 目标是让 memory / file / sqlite backend 复用同一套行为逻辑。
  */
 
-import type { SHA1 } from "../../core/types.ts";
+import type { SHA1 } from "../../types/index.ts";
 import type { NormalizedChangeRecord } from "../engine/change-index.ts";
 import type { NodeId } from "../model/ids.ts";
 import type { WorktreeNode } from "../model/nodes.ts";

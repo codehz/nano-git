@@ -2,10 +2,10 @@
  * receive-pack 服务端类型定义与常量
  */
 
-import { GitError } from "../../../core/errors.ts";
-import { sha1 } from "../../../core/types.ts";
+import { GitError } from "../../../errors.ts";
+import { sha1 } from "../../../types/index.ts";
 
-import type { SHA1 } from "../../../core/types.ts";
+import type { SHA1 } from "../../../types/index.ts";
 
 // ============================================================================
 // 常量

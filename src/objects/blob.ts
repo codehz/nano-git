@@ -5,7 +5,7 @@
  * 序列化时不需要额外处理，内容即为序列化结果。
  */
 
-import type { GitBlob } from "../core/types.ts";
+import type { GitBlob } from "../types/index.ts";
 
 /**
  * 序列化 Blob 对象
