@@ -5,6 +5,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { loadIncrementalMidxChain } from "./midx-chain.ts";
 import { createMidxReader } from "./midx-reader.ts";
 import { createPackIndexReader } from "./pack-index.ts";
 import { PackReader } from "./pack-reader.ts";
@@ -56,18 +57,19 @@ export function loadPackPairs(packDir: string): PackStoreLoadResult {
     });
   }
 
-  // 加载经典 MIDX（若存在）
+  // 加载 MIDX：经典单文件优先，否则尝试增量链
   const midxPath = join(packDir, "multi-pack-index");
   let midx: MidxReader | null = null;
+  const midxOptions = { expectedOidVersion: 1 as const };
   if (existsSync(midxPath)) {
     try {
       const midxData = readFileSync(midxPath);
-      // nano-git 当前仅支持 SHA-1 仓库，OID 版本不匹配时忽略 MIDX
-      midx = createMidxReader(midxData, { expectedOidVersion: 1 });
+      midx = createMidxReader(midxData, midxOptions);
     } catch {
-      // 与 Git 一致：损坏或格式不兼容的 MIDX 应被忽略，回退到各 idx
       midx = null;
     }
+  } else {
+    midx = loadIncrementalMidxChain(packDir, midxOptions);
   }
 
   return { pairs, midx };

@@ -139,7 +139,7 @@ export function createPackObjectStore(gitDir: string): PackObjectStore {
     if (!midx) return new Set();
 
     const covered = new Set<string>();
-    for (let i = 0; i < midx.header.packCount; i++) {
+    for (let i = 0; i < midx.globalPackCount; i++) {
       covered.add(midx.getPackName(i));
     }
     return covered;

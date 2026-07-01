@@ -297,6 +297,36 @@ describe("Packfile 兼容性: git → nano-git", () => {
     expect(hashesWithoutMidx.length).toBeGreaterThanOrEqual(hashes.length);
   });
 
+  test("git 增量 multi-pack-index 链可被 nano-git 读取", () => {
+    git(["config", "core.multiPackIndex", "true"], tempDir);
+
+    for (let i = 0; i < 3; i++) {
+      createFile(tempDir, `incr-midx-${i}.txt`, `incr ${i}`);
+      git(["add", "."], tempDir);
+      git(["commit", "-m", `incr ${i}`], tempDir);
+      git(["repack", "-d"], tempDir);
+    }
+
+    git(["multi-pack-index", "write"], tempDir);
+    const gitDir = join(tempDir, ".git");
+    const packDir = join(gitDir, "objects", "pack");
+    rmSync(join(packDir, "multi-pack-index"));
+    git(["multi-pack-index", "write", "--incremental"], tempDir);
+
+    const chainPath = join(packDir, "multi-pack-index.d", "multi-pack-index-chain");
+    expect(existsSync(chainPath)).toBe(true);
+
+    const store = createPackObjectStore(gitDir);
+    expect(store.objectCount).toBeGreaterThan(0);
+
+    const hashes = store.listHashes();
+    for (const hash of hashes) {
+      expect(store.exists(hash)).toBe(true);
+      const obj = store.read(hash);
+      expect(["blob", "tree", "commit"]).toContain(obj.type);
+    }
+  });
+
   test("nano-git writeMultiPackIndexFile 与 git 行为一致可读", () => {
     for (let i = 0; i < 3; i++) {
       createFile(tempDir, `nano-midx-${i}.txt`, `nano midx ${i}`);

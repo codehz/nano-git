@@ -12,10 +12,20 @@ import type { SHA1 } from "../core/types.ts";
 export interface MidxEntry {
   /** 对象哈希 */
   hash: SHA1;
-  /** pack-int-id（指向 PNAM 中第几个 pack，从 0 起） */
+  /** pack-int-id（单文件为 PNAM 下标；增量链为全局 pack-int-id） */
   packId: number;
   /** 对象在对应 packfile 中的偏移 */
   offset: number;
+}
+
+/**
+ * BTMP chunk 中单个 pack 的 bitmap 区间（pseudo-pack 序）
+ */
+export interface MidxBitmappedPack {
+  /** 在 MIDX bitmap 中的起始位 */
+  bitmapPos: number;
+  /** 该 pack 在 bitmap 中占用的对象数 */
+  bitmapNr: number;
 }
 
 /**
@@ -41,8 +51,18 @@ export interface MidxReader {
   /** MIDX 文件头 */
   readonly header: MidxHeader;
 
-  /** 去重后的对象总数 */
+  /** 去重后的对象总数（增量链为全局对象数） */
   readonly objectCount: number;
+
+  /**
+   * 全局 pack 数量（增量链为各层 pack 之和；单文件等于 header.packCount）
+   */
+  readonly globalPackCount: number;
+
+  /**
+   * 增量链顶 MIDX 文件校验和（单文件经典 MIDX 为文件 trailer OID）
+   */
+  readonly tipChecksumHex?: string;
 
   /**
    * 查找对象条目
@@ -71,6 +91,21 @@ export interface MidxReader {
    * @returns pack 文件名（如 `pack-<hash>.pack`）
    */
   getPackName(packId: number): string;
+
+  /**
+   * 获取全局 pack-int-id 对应的 BTMP 区间（无 BTMP chunk 时返回 undefined）
+   */
+  getBitmappedPack?(globalPackId: number): MidxBitmappedPack | undefined;
+
+  /**
+   * 列出所有在 BTMP 中登记的全局 pack-int-id
+   */
+  listBitmappedGlobalPackIds?(): number[];
+
+  /**
+   * 链顶层的 RIDX：pseudo-pack 序下标 → 全局 MIDX 对象位置（无 RIDX 时为 undefined）
+   */
+  getRevindexPseudoPackOrder?(): readonly number[] | undefined;
 }
 
 /**
