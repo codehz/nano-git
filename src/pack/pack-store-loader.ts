@@ -62,7 +62,8 @@ export function loadPackPairs(packDir: string): PackStoreLoadResult {
   if (existsSync(midxPath)) {
     try {
       const midxData = readFileSync(midxPath);
-      midx = createMidxReader(midxData);
+      // nano-git 当前仅支持 SHA-1 仓库，OID 版本不匹配时忽略 MIDX
+      midx = createMidxReader(midxData, { expectedOidVersion: 1 });
     } catch {
       // 与 Git 一致：损坏或格式不兼容的 MIDX 应被忽略，回退到各 idx
       midx = null;

@@ -22,7 +22,7 @@ import { sha1 } from "../core/types.ts";
 import { parseChunkLookup } from "./chunk-lookup.ts";
 
 import type { SHA1 } from "../core/types.ts";
-import type { MidxEntry, MidxHeader, MidxReader } from "./midx-types.ts";
+import type { CreateMidxReaderOptions, MidxEntry, MidxHeader, MidxReader } from "./midx-types.ts";
 
 // ============================================================================
 // 常量
@@ -55,6 +55,7 @@ const CHUNK_LOFF = "LOFF";
  * 创建 MIDX 读取器
  *
  * @param data - 完整的 `multi-pack-index` 文件数据
+ * @param options - 可选构造参数
  * @returns MIDX 读取器实例
  *
  * @example
@@ -63,7 +64,7 @@ const CHUNK_LOFF = "LOFF";
  * console.log(midx.objectCount);
  * ```
  */
-export function createMidxReader(data: Buffer): MidxReader {
+export function createMidxReader(data: Buffer, options?: CreateMidxReaderOptions): MidxReader {
   // === 解析头部 ===
 
   if (data.length < MIDX_HEADER_SIZE) {
@@ -83,6 +84,13 @@ export function createMidxReader(data: Buffer): MidxReader {
   const oidVersion = data.readUInt8(5);
   if (oidVersion !== 1 && oidVersion !== 2) {
     throw new PackIndexError(`Unsupported MIDX OID version: ${oidVersion}`);
+  }
+
+  const expectedOidVersion = options?.expectedOidVersion ?? 1;
+  if (oidVersion !== expectedOidVersion) {
+    throw new PackIndexError(
+      `MIDX OID version ${oidVersion} does not match expected ${expectedOidVersion}`,
+    );
   }
 
   const chunkCount = data.readUInt8(6);

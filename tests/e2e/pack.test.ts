@@ -6,7 +6,7 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { existsSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
 import {
@@ -276,7 +276,7 @@ describe("Packfile 兼容性: git → nano-git", () => {
     const gitDir = join(tempDir, ".git");
     const store = createPackObjectStore(gitDir);
 
-    // 有 MIDX 时 objectCount 应等于 MIDX 去重后的对象数
+    // 有 MIDX 时 listHashes 返回去重后的全局 OID 列表
     expect(store.objectCount).toBeGreaterThan(0);
 
     const hashes = store.listHashes();
@@ -288,5 +288,11 @@ describe("Packfile 兼容性: git → nano-git", () => {
       expect(obj).toBeDefined();
       expect(["blob", "tree", "commit", "tag"]).toContain(obj.type);
     }
+
+    // 验证未纳入 MIDX 的 pack 回退：删除 MIDX 后对象数应不变
+    rmSync(join(gitDir, "objects", "pack", "multi-pack-index"));
+    store.refresh();
+    const hashesWithoutMidx = store.listHashes();
+    expect(hashesWithoutMidx.length).toBeGreaterThanOrEqual(hashes.length);
   });
 });

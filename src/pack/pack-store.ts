@@ -132,6 +132,29 @@ export function createPackObjectStore(gitDir: string): PackObjectStore {
     return undefined;
   }
 
+  /**
+   * 获取 MIDX 已覆盖的 pack 文件名集合
+   */
+  function getMidxCoveredPackNames(): Set<string> {
+    if (!midx) return new Set();
+
+    const covered = new Set<string>();
+    for (let i = 0; i < midx.header.packCount; i++) {
+      covered.add(midx.getPackName(i));
+    }
+    return covered;
+  }
+
+  /**
+   * 获取未纳入 MIDX 的 pack 对（回退用）
+   */
+  function getFallbackPairs(): PackPair[] {
+    if (!midx) return pairs;
+
+    const covered = getMidxCoveredPackNames();
+    return pairs.filter((p) => !covered.has(`pack-${p.checksum}.pack`));
+  }
+
   function read(hash: SHA1): RawGitObject {
     ensureLoaded();
 
@@ -143,7 +166,7 @@ export function createPackObjectStore(gitDir: string): PackObjectStore {
       }
     }
 
-    for (const pair of pairs) {
+    for (const pair of getFallbackPairs()) {
       const entry = pair.index.lookup(hash);
       if (entry) {
         const reader = getPackReader(packDir, pair);
@@ -166,7 +189,7 @@ export function createPackObjectStore(gitDir: string): PackObjectStore {
       }
     }
 
-    for (const pair of pairs) {
+    for (const pair of getFallbackPairs()) {
       const entry = pair.index.lookup(hash);
       if (entry) {
         const reader = getPackReader(packDir, pair);
@@ -182,10 +205,10 @@ export function createPackObjectStore(gitDir: string): PackObjectStore {
     ensureLoaded();
 
     if (midx) {
-      return midx.has(hash);
+      if (midx.has(hash)) return true;
     }
 
-    for (const pair of pairs) {
+    for (const pair of getFallbackPairs()) {
       if (pair.index.has(hash)) return true;
     }
 
@@ -195,15 +218,18 @@ export function createPackObjectStore(gitDir: string): PackObjectStore {
   function list(): SHA1[] {
     ensureLoaded();
 
+    const hashes = new Set<SHA1>();
     if (midx) {
-      return midx.listHashes();
+      for (const hash of midx.listHashes()) {
+        hashes.add(hash);
+      }
     }
-
-    const hashes: SHA1[] = [];
-    for (const pair of pairs) {
-      hashes.push(...pair.index.listHashes());
+    for (const pair of getFallbackPairs()) {
+      for (const hash of pair.index.listHashes()) {
+        hashes.add(hash);
+      }
     }
-    return hashes;
+    return Array.from(hashes);
   }
 
   function listHashes(): SHA1[] {
@@ -235,14 +261,7 @@ export function createPackObjectStore(gitDir: string): PackObjectStore {
     },
     get objectCount(): number {
       ensureLoaded();
-      if (midx) {
-        return midx.objectCount;
-      }
-      let count = 0;
-      for (const pair of pairs) {
-        count += pair.index.objectCount;
-      }
-      return count;
+      return list().length;
     },
   };
 }

@@ -86,4 +86,21 @@ describe("createMidxReader", () => {
   test("createMidxReader 拒绝过小的数据", () => {
     expect(() => createMidxReader(Buffer.from("MIDX"))).toThrow();
   });
+
+  test("createMidxReader 在 OID 版本不匹配时抛出", () => {
+    // 构造一个 SHA-256 MIDX 头部（version=1, oidVersion=2）
+    const header = Buffer.alloc(12);
+    header.write("MIDX", 0);
+    header.writeUInt8(1, 4); // version
+    header.writeUInt8(2, 5); // oidVersion = SHA-256
+    header.writeUInt8(0, 6); // chunkCount
+    header.writeUInt8(0, 7); // baseMidxCount
+    header.writeUInt32BE(0, 8); // packCount
+
+    // 默认期望 SHA-1，应抛出
+    expect(() => createMidxReader(header)).toThrow();
+
+    // 显式期望 SHA-256 时应通过头部检查（后续 chunk 缺失仍会抛）
+    expect(() => createMidxReader(header, { expectedOidVersion: 2 })).toThrow();
+  });
 });

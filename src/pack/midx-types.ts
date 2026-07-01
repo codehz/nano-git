@@ -72,3 +72,16 @@ export interface MidxReader {
    */
   getPackName(packId: number): string;
 }
+
+/**
+ * MIDX 读取器构造选项
+ */
+export interface CreateMidxReaderOptions {
+  /**
+   * 期望的 OID 版本。
+   *
+   * 若 MIDX 的 Object Id Version 与此不匹配，应忽略该 MIDX。
+   * 在 nano-git 当前仅支持 SHA-1 的场景下固定为 1。
+   */
+  expectedOidVersion?: number;
+}
