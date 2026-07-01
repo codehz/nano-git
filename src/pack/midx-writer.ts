@@ -13,9 +13,11 @@
  */
 
 import { createHash } from "node:crypto";
-import { writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { loadIncrementalMidxChain } from "./midx-chain.ts";
+import { createMidxReader } from "./midx-reader.ts";
 import { loadPackPairs } from "./pack-store-loader.ts";
 
 import type { SHA1 } from "../core/types.ts";
@@ -51,6 +53,10 @@ export interface WriteMultiPackIndexOptions {
    * 未指定时，同一 OID 保留 pack-int-id 较大者（PNAM 中靠后）。
    */
   preferredPackFileName?: string;
+  /** 依赖的 base multi-pack-index 文件数（增量层通常为 1，链首层为 0） */
+  baseMidxCount?: number;
+  /** 写入时排除的 OID（已在 base MIDX 中） */
+  excludeHashes?: ReadonlySet<SHA1>;
 }
 
 // ============================================================================
@@ -100,6 +106,8 @@ export function writeMultiPackIndex(
   }
 
   const version: 1 | 2 = options?.version ?? 2;
+  const excludeHashes = options?.excludeHashes;
+  const baseMidxCount = options?.baseMidxCount ?? 0;
 
   const sortedSources = [...packs].sort((a, b) =>
     resolvePackIndexFileName(a).localeCompare(resolvePackIndexFileName(b)),
@@ -119,6 +127,9 @@ export function writeMultiPackIndex(
   for (const source of sortedSources) {
     const packId = packNameToId.get(resolvePackIndexFileName(source))!;
     for (const hash of source.index.listHashes()) {
+      if (excludeHashes?.has(hash)) {
+        continue;
+      }
       const idxEntry = source.index.lookup(hash);
       if (idxEntry === undefined) {
         continue;
@@ -166,7 +177,7 @@ export function writeMultiPackIndex(
   header.writeUInt8(version, 4);
   header.writeUInt8(OID_VERSION_SHA1, 5);
   header.writeUInt8(chunkCount, 6);
-  header.writeUInt8(0, 7);
+  header.writeUInt8(baseMidxCount, 7);
   header.writeUInt32BE(sortedSources.length, 8);
 
   const lookup = buildChunkLookupTable(chunkBodies, firstChunkOffset);
@@ -207,6 +218,101 @@ export function writeMultiPackIndexFile(
   const data = writeMultiPackIndex(sources, options);
   writeFileSync(join(packDir, "multi-pack-index"), data);
   return data;
+}
+
+/**
+ * 写入增量 MIDX 链的一层并更新 `multi-pack-index-chain`
+ *
+ * - 若已有 MIDX（经典或链），仅纳入尚未出现在 base 中的 pack，且跳过 base 已有 OID
+ * - 若无 MIDX，将当前目录全部 pack 作为链首层
+ *
+ * @param packDir - `.git/objects/pack` 目录
+ * @returns 新层 MIDX 文件内容与 trailer 校验和（40 hex）
+ */
+export function writeIncrementalMultiPackIndexFile(
+  packDir: string,
+  options?: WriteMultiPackIndexOptions,
+): { data: Buffer; checksumHex: string } {
+  const { pairs } = loadPackPairs(packDir);
+  if (pairs.length === 0) {
+    throw new Error(`No pack pairs found in ${packDir}`);
+  }
+
+  const baseMidx = resolveBaseMidxForIncrementalWrite(packDir);
+  const excludeHashes = new Set<SHA1>();
+  const packsInBase = new Set<string>();
+
+  if (baseMidx) {
+    for (const hash of baseMidx.listHashes()) {
+      excludeHashes.add(hash);
+    }
+    for (let i = 0; i < baseMidx.globalPackCount; i++) {
+      packsInBase.add(baseMidx.getPackName(i));
+    }
+  }
+
+  const newSources: MidxPackSource[] = [];
+  for (const pair of pairs) {
+    const idxName = `pack-${pair.checksum}.idx`;
+    if (packsInBase.has(idxName)) {
+      continue;
+    }
+    newSources.push({
+      packChecksum: pair.checksum,
+      index: pair.index,
+    });
+  }
+
+  if (newSources.length === 0) {
+    throw new Error("No new packs to add to incremental MIDX");
+  }
+
+  const layerOptions: WriteMultiPackIndexOptions = {
+    ...options,
+    excludeHashes,
+    baseMidxCount: baseMidx ? 1 : 0,
+  };
+
+  const data = writeMultiPackIndex(newSources, layerOptions);
+  const checksumHex = data.subarray(data.length - 20).toString("hex");
+
+  const chainDir = join(packDir, "multi-pack-index.d");
+  mkdirSync(chainDir, { recursive: true });
+  writeFileSync(join(chainDir, `multi-pack-index-${checksumHex}.midx`), data);
+
+  const chainPath = join(chainDir, "multi-pack-index-chain");
+  if (!existsSync(chainPath)) {
+    writeFileSync(chainPath, `${checksumHex}\n`);
+  } else {
+    const text = readFileSync(chainPath, "utf8");
+    const lines = text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+    if (!lines.includes(checksumHex)) {
+      appendFileSync(chainPath, `${checksumHex}\n`);
+    }
+  }
+
+  return { data, checksumHex };
+}
+
+function resolveBaseMidxForIncrementalWrite(packDir: string) {
+  const chain = loadIncrementalMidxChain(packDir, { expectedOidVersion: 1 });
+  if (chain) {
+    return chain;
+  }
+
+  const classicPath = join(packDir, "multi-pack-index");
+  if (!existsSync(classicPath)) {
+    return null;
+  }
+
+  try {
+    return createMidxReader(readFileSync(classicPath), { expectedOidVersion: 1 });
+  } catch {
+    return null;
+  }
 }
 
 // ============================================================================

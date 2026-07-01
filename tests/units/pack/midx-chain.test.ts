@@ -9,7 +9,7 @@ import { join } from "node:path";
 
 import { encodeObject } from "@/objects/raw.ts";
 import { loadIncrementalMidxChain, tryLoadMidxChainTip } from "@/pack/midx-chain.ts";
-import { writeMultiPackIndex } from "@/pack/midx-writer.ts";
+import { writeMultiPackIndex, writeIncrementalMultiPackIndexFile } from "@/pack/midx-writer.ts";
 import { createPackBuilder } from "@/pack/pack-builder.ts";
 import { loadPackPairs } from "@/pack/pack-store-loader.ts";
 
@@ -88,5 +88,33 @@ describe("loadIncrementalMidxChain", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  test("writeIncrementalMultiPackIndexFile 追加新 pack 层", () => {
+    const root = join(tmpdir(), `midx-inc-write-${Date.now()}`);
+    const gitDir = join(root, ".git");
+    const packDir = join(gitDir, "objects", "pack");
+    mkdirSync(packDir, { recursive: true });
+
+    const builder1 = createPackBuilder(gitDir);
+    const blob1: GitBlob = { type: "blob", content: Buffer.from("inc base") };
+    const hash1 = builder1.addRaw(encodeObject(blob1));
+    builder1.build();
+
+    writeIncrementalMultiPackIndexFile(packDir, { version: 2 });
+
+    const builder2 = createPackBuilder(gitDir);
+    const blob2: GitBlob = { type: "blob", content: Buffer.from("inc tip") };
+    const hash2 = builder2.addRaw(encodeObject(blob2));
+    builder2.build();
+
+    writeIncrementalMultiPackIndexFile(packDir, { version: 2 });
+
+    const midx = loadIncrementalMidxChain(packDir, { expectedOidVersion: 1 });
+    expect(midx).not.toBeNull();
+    expect(midx!.globalPackCount).toBe(2);
+    expect(midx!.lookup(hash1)).toBeDefined();
+    expect(midx!.lookup(hash2)).toBeDefined();
+    rmSync(root, { recursive: true, force: true });
   });
 });

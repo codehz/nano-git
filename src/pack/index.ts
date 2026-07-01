@@ -26,8 +26,25 @@ export type {
   MidxReader,
 } from "./midx-types.ts";
 
-export { writeMultiPackIndex, writeMultiPackIndexFile } from "./midx-writer.ts";
+export {
+  writeMultiPackIndex,
+  writeMultiPackIndexFile,
+  writeIncrementalMultiPackIndexFile,
+} from "./midx-writer.ts";
 export type { MidxPackSource, WriteMultiPackIndexOptions } from "./midx-writer.ts";
+
+export { createPackBitmapReader } from "./pack-bitmap-reader.ts";
+export type { BitmapObjectTypeIndex, PackBitmapReader } from "./pack-bitmap-reader.ts";
+export { decodeEwahBitmap } from "./ewah-bitmap.ts";
+export type { UnpackedBitmap } from "./ewah-bitmap.ts";
+
+export {
+  addReachableFromCommitBitmap,
+  findMidxObjectPosition,
+  loadPackMidxReader,
+  resolveMidxTipChecksumHex,
+  tryLoadTipMidxBitmap,
+} from "./midx-bitmap.ts";
 
 export { createCompositeObjectDatabase, CompositeObjectDatabase } from "./composite-store.ts";
 

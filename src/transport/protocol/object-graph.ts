@@ -15,9 +15,12 @@
 
 import { ObjectNotFoundError } from "../../core/errors.ts";
 import { tryReadObject } from "../../objects/raw.ts";
+import { addReachableFromCommitBitmap } from "../../pack/midx-bitmap.ts";
 
 import type { SHA1 } from "../../core/types.ts";
 import type { ObjectSource } from "../../odb/types.ts";
+import type { MidxReader } from "../../pack/midx-types.ts";
+import type { PackBitmapReader } from "../../pack/pack-bitmap-reader.ts";
 
 // ============================================================================
 // 可达性遍历
@@ -122,11 +125,22 @@ export function collectReachable(
   roots: SHA1[],
   missing: CollectReachableMissing = "skip",
   shallowBoundaries?: Set<SHA1>,
+  bitmapAssist?: CollectReachableBitmapAssist,
 ): Set<SHA1> {
   const reachable = new Set<SHA1>();
+
   for (const hash of roots) {
+    if (bitmapAssist) {
+      const obj = tryReadObject(source, hash);
+      if (obj?.type === "commit") {
+        if (addReachableFromCommitBitmap(bitmapAssist.midx, bitmapAssist.bitmap, hash, reachable)) {
+          continue;
+        }
+      }
+    }
     collectReachableFrom(source, hash, reachable, missing, shallowBoundaries, false);
   }
+
   return reachable;
 }
 
@@ -264,4 +278,12 @@ export function isAncestor(
   }
 
   return false;
+}
+
+/**
+ * MIDX reachability bitmap 加速（仅对根为 commit 且有条目的情形）
+ */
+export interface CollectReachableBitmapAssist {
+  midx: MidxReader;
+  bitmap: PackBitmapReader;
 }
