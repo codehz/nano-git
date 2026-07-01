@@ -24,10 +24,25 @@ export interface VirtualWorktreeBackend {
   readonly createWorktree: VirtualWorktreeFactory;
 }
 
+export interface PersistentVirtualWorktreeBackend {
+  readonly name: string;
+  readonly createPersistentWorktree: PersistentVirtualWorktreeFactory;
+}
+
 export type VirtualWorktreeFactory = (
   repo: Repository,
   options: InitializeVirtualWorktreeOptions,
 ) => VirtualWorktree;
+
+export interface PersistentVirtualWorktreeHandle {
+  readonly worktree: VirtualWorktree;
+  reopen(): VirtualWorktree;
+}
+
+export type PersistentVirtualWorktreeFactory = (
+  repo: Repository,
+  options: InitializeVirtualWorktreeOptions,
+) => PersistentVirtualWorktreeHandle;
 
 const tempRoots: string[] = [];
 const sqliteDatabases: SqliteVirtualWorktreeDatabase[] = [];
@@ -78,3 +93,43 @@ export const virtualWorktreeBackends = [
     },
   },
 ] satisfies VirtualWorktreeBackend[];
+
+/**
+ * 支持重新打开同一持久化状态的 VirtualWorktree 后端矩阵
+ *
+ * @example
+ * ```ts
+ * describe.each(persistentVirtualWorktreeBackends)("$name", ({ createPersistentWorktree }) => {
+ *   const { worktree, reopen } = createPersistentWorktree(repo, { baseTree });
+ *   expect(reopen().baseTree).toBe(worktree.baseTree);
+ * });
+ * ```
+ */
+export const persistentVirtualWorktreeBackends = [
+  {
+    name: "file",
+    createPersistentWorktree: (repo, options) => {
+      const root = mkdtempSync(join(tmpdir(), "nano-git-worktree-contract-file-"));
+      tempRoots.push(root);
+      createFileVirtualWorktree(root, options);
+      return {
+        worktree: openFileVirtualWorktree(repo.objects, root),
+        reopen: () => openFileVirtualWorktree(repo.objects, root),
+      };
+    },
+  },
+  {
+    name: "sqlite",
+    createPersistentWorktree: (repo, options) => {
+      const db = openSqliteVirtualWorktreeDatabase(":memory:");
+      sqliteDatabases.push(db);
+      sqliteContractCounter += 1;
+      const key = `demo-${sqliteContractCounter}`;
+      db.createWorktree(key, options);
+      return {
+        worktree: db.openWorktree(repo.objects, key),
+        reopen: () => db.openWorktree(repo.objects, key),
+      };
+    },
+  },
+] satisfies PersistentVirtualWorktreeBackend[];
