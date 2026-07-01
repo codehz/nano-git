@@ -6,7 +6,7 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
 import {
@@ -21,9 +21,11 @@ import {
   FIXED_AUTHOR,
 } from "./helpers.ts";
 import { encodeObject, readObject } from "@/objects/raw.ts";
+import { loadPackMidxReader, tryLoadTipMidxBitmap } from "@/pack/midx-bitmap.ts";
 import { writeMultiPackIndexFile } from "@/pack/midx-writer.ts";
 import { createPackBuilder } from "@/pack/pack-builder.ts";
 import { createPackObjectStore } from "@/pack/pack-store.ts";
+import { collectReachable } from "@/transport/protocol/object-graph.ts";
 
 import type { GitBlob, GitTree, GitCommit, GitAuthor, SHA1 } from "@/core/types.ts";
 
@@ -324,6 +326,52 @@ describe("Packfile 兼容性: git → nano-git", () => {
       expect(store.exists(hash)).toBe(true);
       const obj = store.read(hash);
       expect(["blob", "tree", "commit"]).toContain(obj.type);
+    }
+  });
+
+  test("git 增量 MIDX bitmap 可被 tryLoadTipMidxBitmap 解析", () => {
+    git(["config", "core.multiPackIndex", "true"], tempDir);
+
+    for (let i = 0; i < 4; i++) {
+      createFile(tempDir, `bitmap-midx-${i}.txt`, `bitmap ${i}`);
+      git(["add", "."], tempDir);
+      git(["commit", "-m", `bitmap ${i}`], tempDir);
+      git(["repack", "-d", "--no-write-bitmap-index"], tempDir);
+    }
+
+    git(["multi-pack-index", "write"], tempDir);
+    const gitDir = join(tempDir, ".git");
+    const packDir = join(gitDir, "objects", "pack");
+    rmSync(join(packDir, "multi-pack-index"));
+    git(["multi-pack-index", "write", "--incremental", "--bitmap"], tempDir);
+
+    const chainDir = join(packDir, "multi-pack-index.d");
+    const hasBitmap = readdirSync(chainDir).some((name) => name.endsWith(".bitmap"));
+    if (!hasBitmap) {
+      // 旧版 git 可能未写出 MIDX bitmap，跳过断言
+      return;
+    }
+
+    const bitmapReader = tryLoadTipMidxBitmap(packDir);
+    expect(bitmapReader).toBeDefined();
+    expect(bitmapReader!.entryCount).toBeGreaterThan(0);
+    expect(bitmapReader!.bitCount).toBeGreaterThan(0);
+
+    const midx = loadPackMidxReader(packDir);
+    expect(midx).not.toBeNull();
+
+    const headCommit = gitRevParse(tempDir, "HEAD");
+    const store = createPackObjectStore(gitDir);
+    const walked = collectReachable(store, [headCommit]);
+    const assisted = collectReachable(store, [headCommit], "skip", undefined, {
+      midx: midx!,
+      bitmap: bitmapReader!,
+    });
+
+    expect(assisted.size).toBeGreaterThan(0);
+    expect(walked.size).toBe(assisted.size);
+    for (const hash of assisted) {
+      expect(walked.has(hash)).toBe(true);
     }
   });
 

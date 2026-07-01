@@ -93,13 +93,6 @@ export function createPackBitmapReader(data: Buffer): PackBitmapReader {
     cursor += bytesRead;
   }
 
-  const bitCount = typeBitmaps[0]!.bitCount;
-  for (const tb of typeBitmaps) {
-    if (tb.bitCount !== bitCount) {
-      throw new PackIndexError("Bitmap type planes have inconsistent bit counts");
-    }
-  }
-
   const entries: BitmapCommitEntry[] = [];
   const ewahPayloads: UnpackedBitmap[] = [];
 
@@ -126,12 +119,27 @@ export function createPackBitmapReader(data: Buffer): PackBitmapReader {
     ewahPayloads.push(bitmap);
   }
 
+  let reachabilityBitCount = 0;
+  for (const payload of ewahPayloads) {
+    reachabilityBitCount = Math.max(reachabilityBitCount, payload.bitCount);
+  }
+  if (reachabilityBitCount === 0) {
+    for (const tb of typeBitmaps) {
+      reachabilityBitCount = Math.max(reachabilityBitCount, tb.bitCount);
+    }
+  }
+
   let tail = cursor;
   if ((flags & BITMAP_OPT_LOOKUP_TABLE) !== 0) {
     tail += entryCount * (4 + 8 + 4);
   }
   if ((flags & BITMAP_OPT_HASH_CACHE) !== 0) {
-    tail += bitCount * 4;
+    const trailerStart = data.length - SHA1_OID_LEN;
+    const hashCacheBytes = trailerStart - tail;
+    if (hashCacheBytes < 0 || hashCacheBytes % 4 !== 0) {
+      throw new PackIndexError("Bitmap HASH_CACHE section size invalid");
+    }
+    tail += hashCacheBytes;
   }
 
   const trailerStart = data.length - SHA1_OID_LEN;
@@ -177,7 +185,7 @@ export function createPackBitmapReader(data: Buffer): PackBitmapReader {
   return {
     checksumHex,
     entryCount,
-    bitCount,
+    bitCount: reachabilityBitCount,
     getTypeBitmap(type: BitmapObjectTypeIndex): UnpackedBitmap {
       return typeBitmaps[type]!;
     },

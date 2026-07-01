@@ -103,6 +103,23 @@ export function addReachableFromCommitBitmap(
   }
 
   const hashes = midx.listHashes();
+  const revindex = midx.getRevindexPseudoPackOrder?.();
+
+  if (revindex && revindex.length === hashes.length) {
+    for (let pseudo = 0; pseudo < bits.bitCount; pseudo++) {
+      if (!bits.get(pseudo)) {
+        continue;
+      }
+      for (let globalPos = 0; globalPos < revindex.length; globalPos++) {
+        if (revindex[globalPos] === pseudo) {
+          reachable.add(hashes[globalPos]!);
+          break;
+        }
+      }
+    }
+    return true;
+  }
+
   const limit = Math.min(bits.bitCount, hashes.length);
   for (let i = 0; i < limit; i++) {
     if (bits.get(i)) {
