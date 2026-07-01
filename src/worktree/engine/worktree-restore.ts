@@ -64,11 +64,11 @@ export function restorePathFromBase(
 
   const recursive = options?.recursive === true;
   ensureBaseDirectoryChain(source, state, path);
+  const resolvedBeforeRestore = resolvePath(source, state, path);
 
   if (baseEntry.mode === "040000" && !recursive) {
-    const resolved = resolvePath(source, state, path);
-    if (resolved.found) {
-      const node = resolved.node;
+    if (resolvedBeforeRestore.found) {
+      const node = resolvedBeforeRestore.node;
       if (node === null) {
         throw new Error(`Cannot restore '${path}': resolved node is missing`);
       }
@@ -84,7 +84,12 @@ export function restorePathFromBase(
     throw new Error(`Cannot restore '${path}': parent directory is unavailable`);
   }
 
-  if (baseEntry.mode === "040000" && recursive) {
+  if (
+    baseEntry.mode === "040000" &&
+    (recursive ||
+      !resolvedBeforeRestore.found ||
+      resolvedBeforeRestore.node?.state.kind !== "directory")
+  ) {
     restoreBaseSubtreeRecursively(source, state, path, baseEntry);
   } else {
     state.setNode(createRestoredNodeFromBaseEntry(path, baseEntry));
