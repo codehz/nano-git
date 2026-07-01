@@ -7,7 +7,11 @@
 import { describe, expect, test } from "bun:test";
 
 import { virtualWorktreeBackends } from "./contract.ts";
-import { VirtualPathAlreadyExistsError, VirtualPathNotFoundError } from "@/errors.ts";
+import {
+  VirtualNotDirectoryError,
+  VirtualPathAlreadyExistsError,
+  VirtualPathNotFoundError,
+} from "@/errors.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
 
 import type { GitTree, SHA1 } from "@/types/index.ts";
@@ -798,6 +802,72 @@ describe("VirtualWorktree contract: combinations", () => {
       expect(aEntry.mode).toBe("040000");
     });
 
+    test("move 到已删除的基线文件路径时，diff 收敛为 remove + update", () => {
+      const repo = createMemoryRepository();
+      const aHash = repo.writeBlob(Buffer.from("A"));
+      const bHash = repo.writeBlob(Buffer.from("B"));
+      const baseTree = repo.createTree([
+        { mode: "100644", name: "a.txt", hash: aHash },
+        { mode: "100644", name: "b.txt", hash: bHash },
+      ]);
+      const session = createWorktree(repo, { baseTree });
+
+      session.delete("b.txt");
+      session.move("a.txt", "b.txt");
+
+      expect(session.exists("a.txt")).toBe(false);
+      expect(session.readFile("b.txt").toString()).toBe("A");
+
+      const diff = session.diff();
+      expect(diff).toHaveLength(2);
+      expect(diff.find((entry) => entry.path === "a.txt")).toMatchObject({
+        kind: "remove",
+        path: "a.txt",
+        previous: { kind: "blob", mode: "100644" },
+      });
+      expect(diff.find((entry) => entry.path === "b.txt")).toMatchObject({
+        kind: "update",
+        path: "b.txt",
+        current: { kind: "blob", mode: "100644" },
+        changes: { contentChanged: true, kindChanged: false, modeChanged: false },
+      });
+    });
+
+    test("move 到已删除的基线目录路径时，diff 标记 kindChanged 并移除旧子项", () => {
+      const repo = createMemoryRepository();
+      const movedHash = repo.writeBlob(Buffer.from("moved"));
+      const oldChildHash = repo.writeBlob(Buffer.from("old-child"));
+      const dstTree = repo.createTree([{ mode: "100644", name: "q.txt", hash: oldChildHash }]);
+      const baseTree = repo.createTree([
+        { mode: "100644", name: "a.txt", hash: movedHash },
+        { mode: "040000", name: "dst", hash: dstTree },
+      ]);
+      const session = createWorktree(repo, { baseTree });
+
+      session.delete("dst");
+      session.move("a.txt", "dst");
+
+      expect(session.readFile("dst").toString()).toBe("moved");
+      expect(() => session.readFile("dst/q.txt")).toThrow(VirtualPathNotFoundError);
+
+      const diff = session.diff();
+      expect(diff.find((entry) => entry.path === "a.txt")).toMatchObject({
+        kind: "remove",
+        path: "a.txt",
+      });
+      expect(diff.find((entry) => entry.path === "dst")).toMatchObject({
+        kind: "update",
+        path: "dst",
+        current: { kind: "blob", mode: "100644" },
+        changes: { kindChanged: true, modeChanged: true, contentChanged: true },
+      });
+      expect(diff.find((entry) => entry.path === "dst/q.txt")).toMatchObject({
+        kind: "remove",
+        path: "dst/q.txt",
+        previous: { kind: "blob", mode: "100644" },
+      });
+    });
+
     test("move 符号链接后读写一致", () => {
       const repo = createMemoryRepository();
       const session = createWorktree(repo, { baseTree: repo.createTree([]) });
@@ -858,6 +928,57 @@ describe("VirtualWorktree contract: combinations", () => {
       // 当前 diff 语义会同时包含目录与叶子条目的创建
       expect(diff.filter((entry) => entry.path.startsWith("x"))).toHaveLength(6);
       expect(diff.filter((entry) => entry.kind === "create")).toHaveLength(6);
+    });
+
+    test("move 失败后事务回滚，不残留自动创建的目标父目录", () => {
+      const repo = createMemoryRepository();
+      const session = createWorktree(repo, { baseTree: repo.createTree([]) });
+
+      session.writeFile("src.txt", Buffer.from("data"));
+      session.writeFile("deep", Buffer.from("blocking-parent"));
+
+      expect(() => session.move("src.txt", "deep/nested/target.txt")).toThrow(
+        VirtualNotDirectoryError,
+      );
+
+      expect(session.readFile("src.txt").toString()).toBe("data");
+      expect(session.readFile("deep").toString()).toBe("blocking-parent");
+      expect(session.exists("deep/nested")).toBe(false);
+      expect(session.diff()).toMatchObject([
+        {
+          kind: "create",
+          path: "deep",
+          current: { kind: "blob", mode: "100644" },
+        },
+        {
+          kind: "create",
+          path: "src.txt",
+          current: { kind: "blob", mode: "100644" },
+        },
+      ]);
+    });
+
+    test("同父目录 rename 后不残留旧目录路径", () => {
+      const repo = createMemoryRepository();
+      const session = createWorktree(repo, { baseTree: repo.createTree([]) });
+
+      session.mkdir("root/dir", { recursive: true });
+      session.writeFile("root/dir/file.txt", Buffer.from("x"));
+      session.move("root/dir", "root/renamed");
+
+      expect(session.exists("root/dir")).toBe(false);
+      expect(session.readFile("root/renamed/file.txt").toString()).toBe("x");
+
+      const diff = session.diff();
+      expect(diff.find((entry) => entry.path === "root/dir")).toBeUndefined();
+      expect(diff.find((entry) => entry.path === "root/dir/file.txt")).toBeUndefined();
+      expect(diff.find((entry) => entry.path === "root")).toMatchObject({ kind: "create" });
+      expect(diff.find((entry) => entry.path === "root/renamed")).toMatchObject({
+        kind: "create",
+      });
+      expect(diff.find((entry) => entry.path === "root/renamed/file.txt")).toMatchObject({
+        kind: "create",
+      });
     });
 
     test("move 后 writeTree 再 move，多次 writeTree 结果连续正确", () => {
