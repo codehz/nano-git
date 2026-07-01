@@ -4,12 +4,7 @@
 import { describe, test, expect } from "bun:test";
 
 import { sha1 } from "@/types/index.ts";
-import {
-  createNodeId,
-  originPathNodeId,
-  resetNodeIdCounterForTests,
-  VIRTUAL_ROOT_NODE_ID,
-} from "@/worktree/model/ids.ts";
+import { createNodeId, originPathNodeId, VIRTUAL_ROOT_NODE_ID } from "@/worktree/model/ids.ts";
 import {
   cloneWorktreeNodeForCopy,
   createNewDirectoryNode,
@@ -34,7 +29,6 @@ describe("createRootDirectoryNode()", () => {
 
 describe("copy 节点语义", () => {
   test("cloneWorktreeNodeForCopy 目录浅复制且共享 origin", () => {
-    resetNodeIdCounterForTests();
     const tree = sha1("95d09f2b10159347eece71399a7e2e907ea3df4f");
     const src = createRootDirectoryNode(tree);
     const copyId = createNodeId();
@@ -48,7 +42,6 @@ describe("copy 节点语义", () => {
   });
 
   test("新建目录带脏 overlay 时可被识别为 dirty", () => {
-    resetNodeIdCounterForTests();
     const fresh = createNewDirectoryNode(createNodeId());
     if (fresh.state.kind !== "directory") {
       throw new Error("expected directory node");

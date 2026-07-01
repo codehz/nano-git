@@ -5,7 +5,6 @@ import { describe, expect, test } from "bun:test";
 
 import { persistentVirtualWorktreeBackends } from "./contract.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
-import { resetNodeIdCounterForTests } from "@/worktree/model/ids.ts";
 
 describe("VirtualWorktree contract: reopen", () => {
   describe.each(persistentVirtualWorktreeBackends)("$name", ({ createPersistentWorktree }) => {
@@ -81,7 +80,6 @@ describe("VirtualWorktree contract: reopen", () => {
     });
 
     test("重新打开后继续向既有目录写入不会触发父目录类型错乱", () => {
-      resetNodeIdCounterForTests(1);
       const repo = createMemoryRepository();
       const { worktree, reopen } = createPersistentWorktree(repo, {
         baseTree: repo.createTree([]),
@@ -89,14 +87,12 @@ describe("VirtualWorktree contract: reopen", () => {
 
       worktree.mkdir("a");
 
-      resetNodeIdCounterForTests(1);
       const reopened = reopen();
       expect(() => reopened.writeFile("a/x.txt", Buffer.from("x"))).not.toThrow();
       expect(reopened.readFile("a/x.txt").toString()).toBe("x");
     });
 
     test("重新打开后新建同级节点不会覆盖未访问的深层持久化节点", () => {
-      resetNodeIdCounterForTests(1);
       const repo = createMemoryRepository();
       const { worktree, reopen } = createPersistentWorktree(repo, {
         baseTree: repo.createTree([]),
@@ -105,7 +101,6 @@ describe("VirtualWorktree contract: reopen", () => {
       worktree.mkdir("a");
       worktree.writeFile("a/b.txt", Buffer.from("nested"));
 
-      resetNodeIdCounterForTests(1);
       const reopened = reopen();
       reopened.writeFile("c.txt", Buffer.from("root"));
 

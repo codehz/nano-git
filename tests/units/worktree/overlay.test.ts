@@ -3,7 +3,7 @@
  */
 import { describe, test, expect } from "bun:test";
 
-import { createNodeId, resetNodeIdCounterForTests } from "@/worktree/model/ids.ts";
+import { createNodeId } from "@/worktree/model/ids.ts";
 import {
   createEmptyDirectoryOverlay,
   mergeDirectoryChildren,
@@ -19,7 +19,6 @@ function child(name: string, mode: string, nodeId = createNodeId()): OriginDirec
 
 describe("mergeDirectoryChildren()", () => {
   test("纯 origin 按名称排序", () => {
-    resetNodeIdCounterForTests();
     const a = child("b.txt", "100644");
     const b = child("a.txt", "100644");
     const merged = mergeDirectoryChildren([a, b], createEmptyDirectoryOverlay(), new Map());
@@ -27,7 +26,6 @@ describe("mergeDirectoryChildren()", () => {
   });
 
   test("deletedNames 打 tombstone", () => {
-    resetNodeIdCounterForTests();
     const origin = [child("keep.txt", "100644"), child("gone.txt", "100644")];
     let overlay = createEmptyDirectoryOverlay();
     overlay = overlayTombstoneEntry(overlay, "gone.txt");
@@ -36,7 +34,6 @@ describe("mergeDirectoryChildren()", () => {
   });
 
   test("addedEntries 覆盖同名 origin", () => {
-    resetNodeIdCounterForTests();
     const originId = createNodeId();
     const newId = createNodeId();
     const origin = [child("f.txt", "100644", originId)];
@@ -49,7 +46,6 @@ describe("mergeDirectoryChildren()", () => {
   });
 
   test("纯新增条目需要 mode 映射", () => {
-    resetNodeIdCounterForTests();
     const newId = createNodeId();
     const overlay = overlayBindEntry(createEmptyDirectoryOverlay(), "new.txt", newId);
     const merged = mergeDirectoryChildren([], overlay, new Map([["new.txt", "100644"]]));
@@ -59,7 +55,6 @@ describe("mergeDirectoryChildren()", () => {
 
 describe("overlay 结构操作语义", () => {
   test("copy + delete 可以表达重命名后的可见结果", () => {
-    resetNodeIdCounterForTests();
     const originalId = createNodeId();
     const copiedId = createNodeId();
     const origin = [child("old", "040000", originalId)];
@@ -72,7 +67,6 @@ describe("overlay 结构操作语义", () => {
   });
 
   test("copy 使用不同 nodeId（由调用方绑定）", () => {
-    resetNodeIdCounterForTests();
     const srcId = createNodeId();
     const copyId = createNodeId();
     const origin = [child("src.txt", "100644", srcId)];
@@ -85,7 +79,6 @@ describe("overlay 结构操作语义", () => {
   });
 
   test("delete 仅 tombstone 不抹除其他子项", () => {
-    resetNodeIdCounterForTests();
     const origin = [child("a", "100644"), child("b", "100644")];
     const overlay = overlayTombstoneEntry(createEmptyDirectoryOverlay(), "a");
     const merged = mergeDirectoryChildren(origin, overlay, new Map());
@@ -93,7 +86,6 @@ describe("overlay 结构操作语义", () => {
   });
 
   test("resolveChildNodeId 在合成视图中解析", () => {
-    resetNodeIdCounterForTests();
     const id = createNodeId();
     const origin = [child("x", "100644", id)];
     const overlay = createEmptyDirectoryOverlay();

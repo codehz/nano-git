@@ -21,7 +21,7 @@ import {
 import type { SHA1 } from "../../types/index.ts";
 
 export type { NodeId } from "./ids.ts";
-export { createNodeId, resetNodeIdCounterForTests, VIRTUAL_ROOT_NODE_ID } from "./ids.ts";
+export { createNodeId, VIRTUAL_ROOT_NODE_ID } from "./ids.ts";
 
 /** Blob / 符号链接在 origin 与 state 中使用的 mode */
 export type BlobObjectMode = "100644" | "100755" | "120000";
