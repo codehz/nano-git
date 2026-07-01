@@ -129,7 +129,7 @@ export function createPackIndexWriter(): PackIndexWriter {
       if (offset >= 0x80000000) {
         const largeIndex = largeOffsets.length;
         largeOffsets.push(offset);
-        offsetTable.writeUInt32BE(0x80000000 | largeIndex, i * 4);
+        offsetTable.writeUInt32BE((0x80000000 | largeIndex) >>> 0, i * 4);
       } else {
         offsetTable.writeUInt32BE(offset, i * 4);
       }
