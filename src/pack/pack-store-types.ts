@@ -4,6 +4,7 @@
 
 import { PackReader } from "./pack-reader.ts";
 
+import type { MidxReader } from "./midx-types.ts";
 import type { PackIndexReader } from "./pack-index.ts";
 
 /**
@@ -18,6 +19,16 @@ export interface PackPair {
   reader: PackReader | null;
   /** packfile 数据（延迟加载） */
   packData: Buffer | null;
+}
+
+/**
+ * Pack 目录加载结果
+ */
+export interface PackStoreLoadResult {
+  /** 已发现的 pack 文件对 */
+  pairs: PackPair[];
+  /** 可选的 MIDX 读取器 */
+  midx: MidxReader | null;
 }
 
 /**

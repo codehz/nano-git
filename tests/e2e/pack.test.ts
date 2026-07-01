@@ -260,4 +260,33 @@ describe("Packfile 兼容性: git → nano-git", () => {
       }
     }
   });
+
+  test("git multi-pack-index write 生成的 MIDX 可被 nano-git 读取", () => {
+    // 制造多个 pack，使 MIDX 有意义
+    for (let i = 0; i < 3; i++) {
+      createFile(tempDir, `midx-file-${i}.txt`, `midx content ${i}`);
+      git(["add", `.`], tempDir);
+      git(["commit", "-m", `midx commit ${i}`], tempDir);
+    }
+
+    // 让 git 保留多个 pack 并写入 MIDX
+    git(["repack", "-d"], tempDir);
+    git(["multi-pack-index", "write"], tempDir);
+
+    const gitDir = join(tempDir, ".git");
+    const store = createPackObjectStore(gitDir);
+
+    // 有 MIDX 时 objectCount 应等于 MIDX 去重后的对象数
+    expect(store.objectCount).toBeGreaterThan(0);
+
+    const hashes = store.listHashes();
+    expect(hashes.length).toBe(store.objectCount);
+
+    for (const hash of hashes) {
+      expect(store.exists(hash)).toBe(true);
+      const obj = store.read(hash);
+      expect(obj).toBeDefined();
+      expect(["blob", "tree", "commit", "tag"]).toContain(obj.type);
+    }
+  });
 });

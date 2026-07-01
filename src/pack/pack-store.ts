@@ -23,6 +23,7 @@ import { getPackReader, loadPackPairs, toPackFileInfo } from "./pack-store-loade
 
 import type { RawGitObject, SHA1 } from "../core/types.ts";
 import type { ObjectSource } from "../odb/types.ts";
+import type { MidxReader } from "./midx-types.ts";
 import type { PackFileInfo, PackPair } from "./pack-store-types.ts";
 
 export type { PackFileInfo } from "./pack-store-types.ts";
@@ -50,7 +51,8 @@ export interface PackObjectStore extends ObjectSource {
   /**
    * 获取所有 packfile 中的对象哈希列表
    *
-   * 保留此方法作为更明确的命名别名。
+   * 有 MIDX 时返回去重后的全局 OID 列表；
+   * 无 MIDX 时返回各 pack idx 的 OID 并集（可能重复）。
    */
   listHashes(): SHA1[];
 
@@ -69,6 +71,7 @@ export interface PackObjectStore extends ObjectSource {
  * 创建基于 Packfile 的对象源
  *
  * 扫描 .git/objects/pack/ 目录，加载所有 .idx 文件。
+ * 若存在 `multi-pack-index`，会优先使用 MIDX 进行全局 OID 查找。
  * packfile 数据按需加载（首次读取时才加载）。
  *
  * @param gitDir - .git 目录的路径
@@ -90,6 +93,7 @@ export interface PackObjectStore extends ObjectSource {
 export function createPackObjectStore(gitDir: string): PackObjectStore {
   const packDir = join(gitDir, "objects", "pack");
   const pairs: PackPair[] = [];
+  let midx: MidxReader | null = null;
   let loaded = false;
 
   /**
@@ -98,11 +102,46 @@ export function createPackObjectStore(gitDir: string): PackObjectStore {
   function ensureLoaded(): void {
     if (loaded) return;
     loaded = true;
-    pairs.push(...loadPackPairs(packDir));
+    const result = loadPackPairs(packDir);
+    pairs.push(...result.pairs);
+    midx = result.midx;
+  }
+
+  /**
+   * 根据 MIDX 条目读取对象
+   */
+  function readFromMidx(entry: import("./midx-types.ts").MidxEntry): RawGitObject | undefined {
+    const packName = midx!.getPackName(entry.packId);
+    const checksumMatch = packName.match(/^pack-([0-9a-f]{40})\.pack$/);
+    if (!checksumMatch) {
+      return undefined;
+    }
+
+    const checksum = checksumMatch[1]!;
+    const pair = pairs.find((p) => p.checksum === checksum);
+    if (!pair) {
+      return undefined;
+    }
+
+    const reader = getPackReader(packDir, pair);
+    const obj = reader.getByOffset(entry.offset);
+    if (obj) {
+      return packObjectToRaw(obj);
+    }
+
+    return undefined;
   }
 
   function read(hash: SHA1): RawGitObject {
     ensureLoaded();
+
+    if (midx) {
+      const entry = midx.lookup(hash);
+      if (entry) {
+        const obj = readFromMidx(entry);
+        if (obj) return obj;
+      }
+    }
 
     for (const pair of pairs) {
       const entry = pair.index.lookup(hash);
@@ -119,6 +158,14 @@ export function createPackObjectStore(gitDir: string): PackObjectStore {
   function tryRead(hash: SHA1): RawGitObject | undefined {
     ensureLoaded();
 
+    if (midx) {
+      const entry = midx.lookup(hash);
+      if (entry) {
+        const obj = readFromMidx(entry);
+        if (obj) return obj;
+      }
+    }
+
     for (const pair of pairs) {
       const entry = pair.index.lookup(hash);
       if (entry) {
@@ -134,6 +181,10 @@ export function createPackObjectStore(gitDir: string): PackObjectStore {
   function exists(hash: SHA1): boolean {
     ensureLoaded();
 
+    if (midx) {
+      return midx.has(hash);
+    }
+
     for (const pair of pairs) {
       if (pair.index.has(hash)) return true;
     }
@@ -143,6 +194,10 @@ export function createPackObjectStore(gitDir: string): PackObjectStore {
 
   function list(): SHA1[] {
     ensureLoaded();
+
+    if (midx) {
+      return midx.listHashes();
+    }
 
     const hashes: SHA1[] = [];
     for (const pair of pairs) {
@@ -163,6 +218,7 @@ export function createPackObjectStore(gitDir: string): PackObjectStore {
   function refresh(): void {
     loaded = false;
     pairs.length = 0;
+    midx = null;
   }
 
   return {
@@ -179,6 +235,9 @@ export function createPackObjectStore(gitDir: string): PackObjectStore {
     },
     get objectCount(): number {
       ensureLoaded();
+      if (midx) {
+        return midx.objectCount;
+      }
       let count = 0;
       for (const pair of pairs) {
         count += pair.index.objectCount;

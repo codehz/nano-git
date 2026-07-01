@@ -5,25 +5,30 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { createMidxReader } from "./midx-reader.ts";
 import { createPackIndexReader } from "./pack-index.ts";
 import { PackReader } from "./pack-reader.ts";
 
-import type { PackFileInfo, PackPair } from "./pack-store-types.ts";
+import type { MidxReader } from "./midx-types.ts";
+import type { PackFileInfo, PackPair, PackStoreLoadResult } from "./pack-store-types.ts";
 
 /**
  * 扫描 pack 目录并加载索引信息
  *
+ * 若目录下存在 `multi-pack-index`，会一并加载；
+ * 未在 MIDX 中登记的 pack 仍会通过各自的 `.idx` 加载，作为回退。
+ *
  * @param packDir - `.git/objects/pack` 目录
- * @returns 已发现的 pack 文件对
+ * @returns 加载结果，包含 pack 文件对与可选的 MIDX 读取器
  *
  * @example
  * ```ts
- * const pairs = loadPackPairs("/tmp/repo/.git/objects/pack");
+ * const { pairs, midx } = loadPackPairs("/tmp/repo/.git/objects/pack");
  * ```
  */
-export function loadPackPairs(packDir: string): PackPair[] {
+export function loadPackPairs(packDir: string): PackStoreLoadResult {
   if (!existsSync(packDir)) {
-    return [];
+    return { pairs: [], midx: null };
   }
 
   const pairs: PackPair[] = [];
@@ -51,7 +56,20 @@ export function loadPackPairs(packDir: string): PackPair[] {
     });
   }
 
-  return pairs;
+  // 加载经典 MIDX（若存在）
+  const midxPath = join(packDir, "multi-pack-index");
+  let midx: MidxReader | null = null;
+  if (existsSync(midxPath)) {
+    try {
+      const midxData = readFileSync(midxPath);
+      midx = createMidxReader(midxData);
+    } catch {
+      // 与 Git 一致：损坏或格式不兼容的 MIDX 应被忽略，回退到各 idx
+      midx = null;
+    }
+  }
+
+  return { pairs, midx };
 }
 
 /**

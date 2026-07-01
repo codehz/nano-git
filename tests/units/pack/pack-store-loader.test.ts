@@ -25,23 +25,31 @@ describe("loadPackPairs()", () => {
     }
   });
 
-  test("不存在的目录返回空数组", () => {
+  test("不存在的目录返回空结果", () => {
     const badDir = join(packDir, "nonexistent");
-    expect(loadPackPairs(badDir)).toEqual([]);
+    const result = loadPackPairs(badDir);
+    expect(result.pairs).toEqual([]);
+    expect(result.midx).toBeNull();
   });
 
-  test("空目录返回空数组", () => {
-    expect(loadPackPairs(packDir)).toEqual([]);
+  test("空目录返回空结果", () => {
+    const result = loadPackPairs(packDir);
+    expect(result.pairs).toEqual([]);
+    expect(result.midx).toBeNull();
   });
 
-  test("只包含 .pack 文件没有 .idx 文件时返回空数组", () => {
+  test("只包含 .pack 文件没有 .idx 文件时返回空结果", () => {
     writeFileSync(join(packDir, "pack-abc123.pack"), "fake pack data");
-    expect(loadPackPairs(packDir)).toEqual([]);
+    const result = loadPackPairs(packDir);
+    expect(result.pairs).toEqual([]);
+    expect(result.midx).toBeNull();
   });
 
-  test("只包含 .idx 文件没有 .pack 文件时返回空数组", () => {
+  test("只包含 .idx 文件没有 .pack 文件时返回空结果", () => {
     writeFileSync(join(packDir, "pack-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.idx"), "fake idx");
-    expect(loadPackPairs(packDir)).toEqual([]);
+    const result = loadPackPairs(packDir);
+    expect(result.pairs).toEqual([]);
+    expect(result.midx).toBeNull();
   });
 
   test("加载匹配的 pack/idx 对", () => {
@@ -58,7 +66,7 @@ describe("loadPackPairs()", () => {
     writeFileSync(join(packDir, `pack-${checksum}.idx`), idxData);
     writeFileSync(join(packDir, `pack-${checksum}.pack`), "fake pack");
 
-    const pairs = loadPackPairs(packDir);
+    const { pairs } = loadPackPairs(packDir);
     expect(pairs).toHaveLength(1);
     expect(pairs[0]!.checksum).toBe(checksum);
     expect(pairs[0]!.reader).toBeNull();
@@ -70,7 +78,7 @@ describe("loadPackPairs()", () => {
     writeFileSync(join(packDir, "pack-bad-name.idx"), "fake");
     writeFileSync(join(packDir, "pack-bad-name.pack"), "fake");
 
-    const pairs = loadPackPairs(packDir);
+    const { pairs } = loadPackPairs(packDir);
     expect(pairs).toHaveLength(0);
   });
 });
