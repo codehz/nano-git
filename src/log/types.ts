@@ -19,6 +19,7 @@
  */
 
 import type { GitCommit, SHA1 } from "../core/types.ts";
+import type { MidxBitmapAssist } from "../pack/midx-bitmap.ts";
 
 /** 单条提交日志条目 */
 export interface LogEntry {
@@ -94,4 +95,11 @@ export interface LogWalkOptions {
    * 等价于 `git log --first-parent`。
    */
   readonly firstParent?: boolean;
+
+  /**
+   * 链顶 MIDX reachability bitmap，用于加速 `exclude` 祖先标记。
+   *
+   * 无对应 bitmap 条目时自动回退为逐 parent 遍历。
+   */
+  readonly bitmapAssist?: MidxBitmapAssist;
 }

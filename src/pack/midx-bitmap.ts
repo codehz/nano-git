@@ -105,16 +105,17 @@ export function addReachableFromCommitBitmap(
   const hashes = midx.listHashes();
   const revindex = midx.getRevindexPseudoPackOrder?.();
 
-  if (revindex && revindex.length === hashes.length) {
+  if (revindex && revindex.length > 0) {
     for (let pseudo = 0; pseudo < bits.bitCount; pseudo++) {
       if (!bits.get(pseudo)) {
         continue;
       }
-      for (let globalPos = 0; globalPos < revindex.length; globalPos++) {
-        if (revindex[globalPos] === pseudo) {
-          reachable.add(hashes[globalPos]!);
-          break;
-        }
+      if (pseudo >= revindex.length) {
+        continue;
+      }
+      const globalPos = revindex[pseudo]!;
+      if (globalPos < hashes.length) {
+        reachable.add(hashes[globalPos]!);
       }
     }
     return true;
@@ -148,4 +149,27 @@ export function loadPackMidxReader(packDir: string): MidxReader | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * MIDX reachability bitmap 辅助（用于排除祖先、collectReachable 等）
+ */
+export interface MidxBitmapAssist {
+  readonly midx: MidxReader;
+  readonly bitmap: PackBitmapReader;
+}
+
+/**
+ * 若 pack 目录存在链顶 MIDX 与匹配 bitmap，则返回辅助对象
+ */
+export function tryLoadMidxBitmapAssist(packDir: string): MidxBitmapAssist | undefined {
+  const midx = loadPackMidxReader(packDir);
+  if (!midx) {
+    return undefined;
+  }
+  const bitmap = tryLoadTipMidxBitmap(packDir);
+  if (!bitmap) {
+    return undefined;
+  }
+  return { midx, bitmap };
 }

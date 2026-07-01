@@ -370,6 +370,11 @@ export function createMidxReaderFromTip(tip: MidxLayer): MidxReader {
     return ids;
   }
 
+  /**
+   * RIDX：pseudo-pack 下标 → 全局 MIDX OID 序下标（与 gitformat-pack 一致）。
+   *
+   * 增量链由链顶 MIDX 的 RIDX 覆盖整条拼接 pseudo 序时，长度等于 `objectCount`。
+   */
   function getRevindexPseudoPackOrder(): readonly number[] | undefined {
     return tip.revindexLocal;
   }

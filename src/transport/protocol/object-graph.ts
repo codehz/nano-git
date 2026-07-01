@@ -19,8 +19,7 @@ import { addReachableFromCommitBitmap } from "../../pack/midx-bitmap.ts";
 
 import type { SHA1 } from "../../core/types.ts";
 import type { ObjectSource } from "../../odb/types.ts";
-import type { MidxReader } from "../../pack/midx-types.ts";
-import type { PackBitmapReader } from "../../pack/pack-bitmap-reader.ts";
+import type { MidxBitmapAssist } from "../../pack/midx-bitmap.ts";
 
 // ============================================================================
 // 可达性遍历
@@ -280,10 +279,5 @@ export function isAncestor(
   return false;
 }
 
-/**
- * MIDX reachability bitmap 加速（仅对根为 commit 且有条目的情形）
- */
-export interface CollectReachableBitmapAssist {
-  midx: MidxReader;
-  bitmap: PackBitmapReader;
-}
+/** @see MidxBitmapAssist */
+export type CollectReachableBitmapAssist = MidxBitmapAssist;

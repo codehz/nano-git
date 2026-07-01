@@ -22,9 +22,11 @@
  */
 
 import { tryReadObject } from "../objects/raw.ts";
+import { addReachableFromCommitBitmap } from "../pack/midx-bitmap.ts";
 
 import type { GitCommit, SHA1 } from "../core/types.ts";
 import type { ObjectSource } from "../odb/types.ts";
+import type { MidxBitmapAssist } from "../pack/midx-bitmap.ts";
 import type { CommitWalkOrder, LogEntry, LogWalkOptions } from "./types.ts";
 
 // ============================================================================
@@ -104,7 +106,19 @@ class MaxHeapByTimestamp {
 /**
  * 递归标记排除提交及其所有祖先
  */
-function markExcluded(source: ObjectSource, hash: SHA1, excluded: Set<SHA1>): void {
+function markExcluded(
+  source: ObjectSource,
+  hash: SHA1,
+  excluded: Set<SHA1>,
+  bitmapAssist?: MidxBitmapAssist,
+): void {
+  if (
+    bitmapAssist &&
+    addReachableFromCommitBitmap(bitmapAssist.midx, bitmapAssist.bitmap, hash, excluded)
+  ) {
+    return;
+  }
+
   const stack: SHA1[] = [hash];
   while (stack.length > 0) {
     const current = stack.pop()!;
@@ -394,6 +408,7 @@ export function walkLogEntries(
     until,
     firstParent = false,
     maxCount,
+    bitmapAssist,
   } = options;
 
   // 无起点时立即返回空生成器
@@ -404,7 +419,7 @@ export function walkLogEntries(
   // 构建排除集
   const excluded = new Set<SHA1>();
   for (const hash of exclude) {
-    markExcluded(source, hash, excluded);
+    markExcluded(source, hash, excluded, bitmapAssist);
   }
 
   if (order === "topo") {

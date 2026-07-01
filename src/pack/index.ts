@@ -43,8 +43,10 @@ export {
   findMidxObjectPosition,
   loadPackMidxReader,
   resolveMidxTipChecksumHex,
+  tryLoadMidxBitmapAssist,
   tryLoadTipMidxBitmap,
 } from "./midx-bitmap.ts";
+export type { MidxBitmapAssist } from "./midx-bitmap.ts";
 
 export { createCompositeObjectDatabase, CompositeObjectDatabase } from "./composite-store.ts";
 

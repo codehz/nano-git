@@ -103,7 +103,9 @@ export interface MidxReader {
   listBitmappedGlobalPackIds?(): number[];
 
   /**
-   * 链顶层的 RIDX：pseudo-pack 序下标 → 全局 MIDX 对象位置（无 RIDX 时为 undefined）
+   * RIDX：pseudo-pack 下标 → 全局 MIDX OID 序下标。
+   *
+   * 长度通常等于 `objectCount`；无 RIDX chunk 时返回 undefined。
    */
   getRevindexPseudoPackOrder?(): readonly number[] | undefined;
 }

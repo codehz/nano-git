@@ -20,8 +20,13 @@ import {
   createFile,
   FIXED_AUTHOR,
 } from "./helpers.ts";
+import { walkLogEntries } from "@/log/walk.ts";
 import { encodeObject, readObject } from "@/objects/raw.ts";
-import { loadPackMidxReader, tryLoadTipMidxBitmap } from "@/pack/midx-bitmap.ts";
+import {
+  loadPackMidxReader,
+  tryLoadMidxBitmapAssist,
+  tryLoadTipMidxBitmap,
+} from "@/pack/midx-bitmap.ts";
 import { writeMultiPackIndexFile } from "@/pack/midx-writer.ts";
 import { createPackBuilder } from "@/pack/pack-builder.ts";
 import { createPackObjectStore } from "@/pack/pack-store.ts";
@@ -339,7 +344,7 @@ describe("Packfile 兼容性: git → nano-git", () => {
       git(["repack", "-d", "--no-write-bitmap-index"], tempDir);
     }
 
-    git(["multi-pack-index", "write"], tempDir);
+    git(["multi-pack-index", "write", "--bitmap"], tempDir);
     const gitDir = join(tempDir, ".git");
     const packDir = join(gitDir, "objects", "pack");
     rmSync(join(packDir, "multi-pack-index"));
@@ -348,7 +353,6 @@ describe("Packfile 兼容性: git → nano-git", () => {
     const chainDir = join(packDir, "multi-pack-index.d");
     const hasBitmap = readdirSync(chainDir).some((name) => name.endsWith(".bitmap"));
     if (!hasBitmap) {
-      // 旧版 git 可能未写出 MIDX bitmap，跳过断言
       return;
     }
 
@@ -361,18 +365,80 @@ describe("Packfile 兼容性: git → nano-git", () => {
     expect(midx).not.toBeNull();
 
     const headCommit = gitRevParse(tempDir, "HEAD");
+    const excludeCommit = gitRevParse(tempDir, "HEAD~2");
     const store = createPackObjectStore(gitDir);
-    const walked = collectReachable(store, [headCommit]);
-    const assisted = collectReachable(store, [headCommit], "skip", undefined, {
+    const walkedHead = collectReachable(store, [headCommit]);
+    const assistedHead = collectReachable(store, [headCommit], "skip", undefined, {
+      midx: midx!,
+      bitmap: bitmapReader!,
+    });
+    const walkedExclude = collectReachable(store, [excludeCommit]);
+    const assistedExclude = collectReachable(store, [excludeCommit], "skip", undefined, {
       midx: midx!,
       bitmap: bitmapReader!,
     });
 
-    expect(assisted.size).toBeGreaterThan(0);
-    expect(walked.size).toBe(assisted.size);
-    for (const hash of assisted) {
-      expect(walked.has(hash)).toBe(true);
+    expect(assistedHead.size).toBe(walkedHead.size);
+    for (const hash of assistedHead) {
+      expect(walkedHead.has(hash)).toBe(true);
     }
+    expect(walkedHead.size).toBe(assistedHead.size);
+    for (const hash of walkedHead) {
+      expect(assistedHead.has(hash)).toBe(true);
+    }
+
+    expect(assistedExclude.size).toBe(walkedExclude.size);
+    for (const hash of walkedExclude) {
+      expect(assistedExclude.has(hash)).toBe(true);
+    }
+    for (const hash of assistedExclude) {
+      expect(walkedExclude.has(hash)).toBe(true);
+    }
+  });
+
+  test("walkLogEntries exclude 使用 bitmapAssist 与无 assist 结果一致", () => {
+    git(["config", "core.multiPackIndex", "true"], tempDir);
+
+    for (let i = 0; i < 4; i++) {
+      createFile(tempDir, `log-bitmap-${i}.txt`, `log bitmap ${i}`);
+      git(["add", "."], tempDir);
+      git(["commit", "-m", `log bitmap ${i}`], tempDir);
+      git(["repack", "-d", "--no-write-bitmap-index"], tempDir);
+    }
+
+    git(["multi-pack-index", "write", "--bitmap"], tempDir);
+    const gitDir = join(tempDir, ".git");
+    const packDir = join(gitDir, "objects", "pack");
+    rmSync(join(packDir, "multi-pack-index"));
+    git(["multi-pack-index", "write", "--incremental", "--bitmap"], tempDir);
+
+    const chainDir = join(packDir, "multi-pack-index.d");
+    const hasBitmap = readdirSync(chainDir).some((name) => name.endsWith(".bitmap"));
+    if (!hasBitmap) {
+      return;
+    }
+
+    const bitmapAssist = tryLoadMidxBitmapAssist(packDir);
+    expect(bitmapAssist).toBeDefined();
+
+    const store = createPackObjectStore(gitDir);
+    const head = gitRevParse(tempDir, "HEAD");
+    const exclude = gitRevParse(tempDir, "HEAD~2");
+
+    const withoutAssist = Array.from(
+      walkLogEntries(store, { from: [head], exclude: [exclude] }),
+    ).map((e) => e.hash);
+    const withAssist = Array.from(
+      walkLogEntries(store, { from: [head], exclude: [exclude], bitmapAssist }),
+    ).map((e) => e.hash);
+
+    expect(withAssist).toEqual(withoutAssist);
+
+    const gitLog = git(["log", "--format=%H", head, `^${exclude}`], tempDir)
+      .trim()
+      .split("\n")
+      .filter((line) => line.length > 0);
+    expect(withAssist.map((h) => h as string)).toEqual(gitLog);
   });
 
   test("nano-git writeMultiPackIndexFile 与 git 行为一致可读", () => {
