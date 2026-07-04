@@ -88,6 +88,6 @@ export default defineConfig({
     },
   },
   deps: {
-    neverBundle: ["bun:sqlite"],
+    neverBundle: ["native-sqlite"],
   },
 });

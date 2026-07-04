@@ -25,11 +25,11 @@
  * | `nano-git/repository/core` | 通用仓库拼装 | 纯 TS |
  * | `nano-git/repository/memory` | 内存仓库便捷函数 | 纯 TS |
  * | `nano-git/repository/file` | 文件仓库便捷函数 | `node:fs` + `node:zlib` |
- * | `nano-git/repository/sqlite` | SQLite 仓库便捷函数 | `bun:sqlite` |
- * | `nano-git/backend/sqlite` | SQLite 仓库后端（组合工厂） | `bun:sqlite` |
- * | `nano-git/odb/sqlite` | SQLite 对象存储 | `bun:sqlite` |
- * | `nano-git/refs/sqlite` | SQLite 引用存储 | `bun:sqlite` |
- * | `nano-git/refs/shallow/sqlite` | SQLite shallow 边界存储 | `bun:sqlite` |
+ * | `nano-git/repository/sqlite` | SQLite 仓库便捷函数 | `native-sqlite` |
+ * | `nano-git/backend/sqlite` | SQLite 仓库后端（组合工厂） | `native-sqlite` |
+ * | `nano-git/odb/sqlite` | SQLite 对象存储 | `native-sqlite` |
+ * | `nano-git/refs/sqlite` | SQLite 引用存储 | `native-sqlite` |
+ * | `nano-git/refs/shallow/sqlite` | SQLite shallow 边界存储 | `native-sqlite` |
  * | `nano-git/transport` | 传输层协议原语 | `node:crypto` |
  * | `nano-git/transport/upload-pack` | upload-pack 客户端 | `node:crypto` + `node:zlib` |
  * | `nano-git/transport/receive-pack` | receive-pack 客户端 | `node:crypto` + `node:zlib` |
@@ -38,7 +38,10 @@
  * | `nano-git/worktree/core` | Virtual Worktree 类型与错误 | 纯 TS |
  * | `nano-git/worktree/memory` | 内存 Virtual Worktree | 纯 TS |
  * | `nano-git/worktree/file` | 目录持久化 Virtual Worktree | `node:fs` |
- * | `nano-git/worktree/sqlite` | SQLite 持久化 Virtual Worktree | `bun:sqlite` |
+ * | `nano-git/worktree/sqlite` | SQLite 持久化 Virtual Worktree | `native-sqlite` |
+ *
+ * 其中 `native-sqlite` 是 `bun:sqlite` 兼容层，
+ * 用于在其他运行时中提供与 `bun:sqlite` 接近的 API 语义。
  */
 
 // ============================================================================

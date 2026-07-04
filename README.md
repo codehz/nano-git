@@ -156,10 +156,13 @@ repo.updateRef("refs/heads/main", commitHash);
 
 `openRepository()` 默认会同时读取 `.git/objects/` 下的 loose objects 和 `.git/objects/pack/` 下的 packed objects，因此可以直接打开经过 `git gc` 或 `git repack` 的真实仓库（包括裸仓库）。搭配 `initRepository()` 的第二个参数可初始化为裸仓库布局。
 
-### 使用 SQLite 仓库（Bun 运行时）
+### 使用 SQLite 仓库（native-sqlite 驱动）
 
 适用于需要持久化但又不想管理松散文件的场景——
 所有对象和引用存在一个 `.sqlite` 文件中。
+这里使用的 `native-sqlite` 实际上是一个 `bun:sqlite` 兼容层，
+用于在 Node 等非 Bun 运行时中提供与 `bun:sqlite` 接近的接口语义；
+因此本库的 SQLite 后端仍按 `bun:sqlite` 风格组织 API。
 
 ```typescript
 import { createSqliteRepository } from "nano-git/repository/sqlite";
@@ -408,7 +411,7 @@ bun run bench:worktree-diff
 本库默认入口 `"nano-git"` 直接提供高频的纯计算能力：类型、错误、对象编解码、refs 工具和 SHA-1 工具。
 带 `node:fs` / `node:zlib` 的运行时能力通过子路径显式导入，例如 `nano-git/repository/file`、`nano-git/pack`、`nano-git/transport/http`。
 纯远端查询能力通过 `nano-git/remote/http` 导入。
-基于 `bun:sqlite` 的存储后端通过 `nano-git/odb/sqlite`、`nano-git/refs/sqlite`、`nano-git/backend/sqlite`、`nano-git/repository/sqlite` 等子路径导入。
+基于 `native-sqlite` 的存储后端通过 `nano-git/odb/sqlite`、`nano-git/refs/sqlite`、`nano-git/backend/sqlite`、`nano-git/repository/sqlite` 等子路径导入。`native-sqlite` 本身是 `bun:sqlite` 兼容层，因此这些入口延续的是 `bun:sqlite` 风格的数据库接口约定。
 Virtual Worktree 通过 `nano-git/worktree/core`、`nano-git/worktree/memory`、`nano-git/worktree/file`、`nano-git/worktree/sqlite` 导入（后两者为持久化后端）。
 tree-shaking 主要依赖模块本身的无副作用结构，而不是把所有 API 都拆成叶子级子路径。完整入口表见 `package.json` 的 `exports` 与 `src/index.ts` 的 JSDoc。
 
@@ -486,7 +489,7 @@ bun test
 - [x] 可达性遍历与 GC（repack、gc）
 - [x] **Smart HTTP 传输** — pkt-line 编解码、ref 广告解析、side-band 解复用、Fetch / Push 协议、Import Session 集成
 - [x] **Reference Transaction** — 批量 ref 更新原子性、lock-then-rename 文件事务、生命周期 Hooks
-- [x] **SQLite 存储后端** — 基于 `bun:sqlite` 的单文件持久化，支持对象/refs/shallow 存储、ACID 事务、`Symbol.dispose` 生命周期管理
+- [x] **SQLite 存储后端** — 基于 `native-sqlite`（`bun:sqlite` 兼容层）的单文件持久化，支持对象/refs/shallow 存储、ACID 事务、`Symbol.dispose` 生命周期管理
 
 - [x] **Smart HTTP 服务端（upload-pack）** — 类 git-http-backend、框架无关的 HTTP handler，支持 ls-refs 和 fetch 命令，协议实现与编排器解耦
 - [x] **Smart HTTP 服务端（v1 receive-pack）** — 服务端 push 支持，基于 v1 协议，含 ref 广告、packfile 解包、ref 校验与 report-status

@@ -37,7 +37,7 @@ import type {
  */
 export function createSqliteRefStore(conn: SqliteConnectionHandle): RefStore {
   // 预编译 SQL 语句（通过 conn.prepare 缓存复用）
-  // 注意：bun:sqlite 的 .get() 始终返回行对象，即使是单列查询
+  // 注意：native-sqlite 的 .get() 会返回行对象，即使是单列查询
   const selectStmt = conn.prepare<{ target: string } | null>(
     "SELECT target FROM refs WHERE name = ?",
   );
