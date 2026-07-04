@@ -89,11 +89,11 @@ export async function lsRefs(
 ): Promise<LsRefsEntry[]> {
   const args: string[] = [];
 
-  if (options?.symrefs) {
-    args.push("symrefs");
-  }
   if (options?.peel) {
     args.push("peel");
+  }
+  if (options?.symrefs) {
+    args.push("symrefs");
   }
   if (options?.unborn) {
     args.push("unborn");

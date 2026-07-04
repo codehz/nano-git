@@ -39,6 +39,7 @@ import {
 import { parsePackHeader } from "./pack-reader-utils.ts";
 
 import type { SHA1 } from "../../types/index.ts";
+import type { ObjectSource } from "../../types/odb.ts";
 import type { PackObject } from "./pack-reader-types.ts";
 
 export type { PackObject } from "./pack-reader-types.ts";
@@ -65,8 +66,8 @@ export { packObjectToRaw } from "./pack-reader-types.ts";
  * }
  * ```
  */
-export function createPackReader(data: Buffer): PackReader {
-  return new PackReader(data);
+export function createPackReader(data: Buffer, externalBases?: ObjectSource): PackReader {
+  return new PackReader(data, externalBases);
 }
 
 /**
@@ -79,14 +80,16 @@ export function createPackReader(data: Buffer): PackReader {
 export class PackReader {
   private readonly data: Buffer;
   private readonly _objectCount: number;
+  private readonly externalBases?: ObjectSource;
   private readonly objectsByOffset: Map<number, PackObject> = new Map();
   private readonly objectsByHash: Map<string, PackObject> = new Map();
   private parseOffset: number;
   private parsedCount = 0;
   private fullyParsed = false;
 
-  constructor(data: Buffer) {
+  constructor(data: Buffer, externalBases?: ObjectSource) {
     this.data = data;
+    this.externalBases = externalBases;
     this._objectCount = parsePackHeader(data);
     this.parseOffset = PACK_HEADER_SIZE;
   }
@@ -139,6 +142,7 @@ export class PackReader {
         objOffset,
         baseHash,
         this.objectsByHash,
+        this.externalBases,
       );
       obj = resolved.object;
       this.parseOffset = resolved.nextOffset;

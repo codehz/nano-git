@@ -5,7 +5,7 @@
  */
 
 import { encodePktLine, encodeFlushPkt } from "../../protocol/pkt-line.ts";
-import { SERVER_AGENT } from "./types.ts";
+import { SERVER_AGENT, SERVER_OBJECT_FORMAT } from "./types.ts";
 
 /**
  * 生成 v2 能力广告
@@ -22,9 +22,14 @@ export function advertiseUploadPack(): Buffer {
   const parts: Buffer[] = [];
 
   parts.push(encodePktLine("version 2\n"));
-  parts.push(encodePktLine("ls-refs\n"));
-  parts.push(encodePktLine("fetch=shallow ref-in-want filter\n"));
-
+  // 与官方 git-http-backend 的默认广告保持接近：
+  // - ls-refs 显式带 unborn
+  // - fetch 默认仅广告 shallow / wait-for-done
+  // - object-format 作为顶层能力单独广告
+  parts.push(encodePktLine("ls-refs=unborn\n"));
+  parts.push(encodePktLine("fetch=shallow wait-for-done\n"));
+  parts.push(encodePktLine("server-option\n"));
+  parts.push(encodePktLine(`object-format=${SERVER_OBJECT_FORMAT}\n`));
   parts.push(encodePktLine(`agent=${SERVER_AGENT}\n`));
   parts.push(encodeFlushPkt());
 

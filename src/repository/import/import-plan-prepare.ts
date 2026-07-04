@@ -114,6 +114,15 @@ async function fetchPreviewObjects(
     }
   }
 
+  const knownCommonRefs: SHA1[] = [];
+  const knownCommonSeen = new Set<SHA1>();
+  for (const ref of compiled.advertisement.refs) {
+    if (compiled.backend.objects.exists(ref.hash) && !knownCommonSeen.has(ref.hash)) {
+      knownCommonSeen.add(ref.hash);
+      knownCommonRefs.push(ref.hash);
+    }
+  }
+
   if (compiled.v2Transport) {
     const v2Wants = objectRoots.map((hash) => hash);
     const v2Haves = localHaveTips.length > 0 ? localHaveTips.map((hash) => hash) : undefined;
@@ -122,6 +131,8 @@ async function fetchPreviewObjects(
       compiled.v2Transport,
       v2Wants,
       v2Haves,
+      undefined,
+      knownCommonRefs,
     );
     validateLocalPreconditions(compiled.backend, localPreconditions);
     return objectCount;

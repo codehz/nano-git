@@ -8,6 +8,8 @@ import { numberToObjectType } from "../constants.ts";
 import { applyDelta } from "../delta/delta.ts";
 import { readCompressedData } from "./pack-reader-utils.ts";
 
+import type { SHA1 } from "../../types/index.ts";
+import type { ObjectSource } from "../../types/odb.ts";
 import type { PackObject } from "./pack-reader-types.ts";
 
 /**
@@ -112,11 +114,12 @@ export function resolveRefDeltaPackObject(
   objOffset: number,
   baseHash: string,
   objectsByHash: Map<string, PackObject>,
+  externalBases?: ObjectSource,
 ): { object: PackObject; nextOffset: number } {
   const [deltaData, compressedBytes] = readCompressedData(data, offset);
   const nextOffset = offset + compressedBytes;
 
-  const baseObj = objectsByHash.get(baseHash);
+  const baseObj = objectsByHash.get(baseHash) ?? readExternalBaseObject(externalBases, baseHash);
   if (!baseObj) {
     throw new InvalidPackError(`Base object not found: ${baseHash}`);
   }
@@ -132,5 +135,26 @@ export function resolveRefDeltaPackObject(
       data: resolvedData,
     },
     nextOffset,
+  };
+}
+
+function readExternalBaseObject(
+  source: ObjectSource | undefined,
+  baseHash: string,
+): PackObject | undefined {
+  if (!source) {
+    return undefined;
+  }
+
+  const raw = source.tryRead(baseHash as SHA1);
+  if (!raw) {
+    return undefined;
+  }
+
+  return {
+    type: raw.type,
+    hash: raw.hash,
+    offset: -1,
+    data: raw.content,
   };
 }

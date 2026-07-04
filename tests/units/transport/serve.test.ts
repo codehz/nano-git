@@ -9,6 +9,7 @@ import { describe, test, expect } from "bun:test";
 
 import { createMemoryRepositoryBackend } from "@/backend/memory.ts";
 import { writeObject } from "@/objects/raw.ts";
+import { parseV2FetchResponse } from "@/transport/client/upload-pack/fetch.ts";
 import {
   encodePktLine,
   encodeDelimiterPkt,
@@ -36,6 +37,7 @@ interface TestRepoFixtures {
   backend: ReturnType<typeof createMemoryRepositoryBackend>;
   mainCommit: SHA1;
   developCommit: SHA1;
+  orphanCommit: SHA1;
   blobHash: SHA1;
 }
 
@@ -78,6 +80,17 @@ function createTestRepo(): TestRepoFixtures {
   });
   backend.refs.write("refs/heads/develop", developCommit);
 
+  // orphan 分支：与 main/develop 不共享历史，用于验证 ready 不能过早返回
+  const orphanCommit = writeObject(backend.objects, {
+    type: "commit" as const,
+    tree: treeHash,
+    parents: [],
+    author: { name: "Test", email: "test@test", timestamp: 1000010, timezone: "+0000" },
+    committer: { name: "Test", email: "test@test", timestamp: 1000010, timezone: "+0000" },
+    message: "orphan commit\n",
+  });
+  backend.refs.write("refs/heads/orphan", orphanCommit);
+
   // tag pointing to mainCommit
   const tagHash = writeObject(backend.objects, {
     type: "tag" as const,
@@ -89,7 +102,7 @@ function createTestRepo(): TestRepoFixtures {
   });
   backend.refs.write("refs/tags/v1.0", tagHash);
 
-  return { backend, mainCommit, developCommit, blobHash };
+  return { backend, mainCommit, developCommit, orphanCommit, blobHash };
 }
 
 // ============================================================================
@@ -260,6 +273,19 @@ describe("parseFetchArgs", () => {
     expect(params.noProgress).toBe(true);
     expect(params.ofsDelta).toBe(true);
   });
+
+  test("解析 sideband-all / wait-for-done 标记", () => {
+    const hash = sha1("95d09f2b10159347eece71399a7e2e907ea3df4f");
+    const params = parseFetchArgs([
+      `want ${hash}`,
+      "sideband-all",
+      "wait-for-done",
+      "have aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    ]);
+    expect(params.sidebandAll).toBe(true);
+    expect(params.waitForDone).toBe(true);
+    expect(params.haves).toEqual([sha1("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]);
+  });
 });
 
 // ============================================================================
@@ -272,8 +298,10 @@ describe("advertiseUploadPack", () => {
     const text = buf.toString("utf-8");
 
     expect(text).toContain("version 2");
-    expect(text).toContain("ls-refs");
-    expect(text).toContain("fetch=shallow ref-in-want filter");
+    expect(text).toContain("ls-refs=unborn");
+    expect(text).toContain("fetch=shallow wait-for-done");
+    expect(text).toContain("server-option");
+    expect(text).toContain("object-format=sha1");
     expect(text).toContain("agent=nano-git/0.1");
   });
 });
@@ -525,6 +553,134 @@ describe("generateFetchResponse — incremental fetch", () => {
     expect(text).toContain("packfile");
     // packfile 节必须出现在 ready 之后
     expect(text.indexOf("packfile")).toBeGreaterThan(text.indexOf("ready"));
+  });
+
+  test("多个 common have 按新到旧输入时仅回 ACK 第一个 common", () => {
+    const { backend, mainCommit, developCommit } = createTestRepo();
+    const buf = generateFetchResponse(backend, {
+      wants: [developCommit],
+      haves: [developCommit, mainCommit],
+      wantRefs: [],
+      done: false,
+      thinPack: false,
+      noProgress: false,
+      ofsDelta: true,
+    });
+
+    const parsed = parseV2FetchResponse(buf, false, false);
+    expect(parsed.acknowledgments?.acks).toEqual([developCommit]);
+    expect(parsed.acknowledgments?.ready).toBe(true);
+  });
+
+  test("多个 common have 按旧到新输入时会继续 ACK 非冗余 common", () => {
+    const { backend, mainCommit, developCommit } = createTestRepo();
+    const buf = generateFetchResponse(backend, {
+      wants: [developCommit],
+      haves: [mainCommit, developCommit],
+      wantRefs: [],
+      done: false,
+      thinPack: false,
+      noProgress: false,
+      ofsDelta: true,
+    });
+
+    const parsed = parseV2FetchResponse(buf, false, false);
+    expect(parsed.acknowledgments?.acks).toEqual([mainCommit, developCommit]);
+    expect(parsed.acknowledgments?.ready).toBe(true);
+  });
+
+  test("haves 与 wants 无共同祖先时仅 ACK common，不应过早 ready", () => {
+    const { backend, developCommit, orphanCommit } = createTestRepo();
+    const buf = generateFetchResponse(backend, {
+      wants: [developCommit],
+      haves: [orphanCommit],
+      wantRefs: [],
+      done: false,
+      thinPack: false,
+      noProgress: false,
+      ofsDelta: true,
+    });
+
+    const text = buf.toString("utf-8");
+    expect(text).toContain("acknowledgments");
+    expect(text).toContain("ACK");
+    expect(text).not.toContain("ready");
+    expect(text).not.toContain("packfile");
+  });
+
+  test("公共 have 的祖先命中 want 时也应直接 ready", () => {
+    const { backend, mainCommit, developCommit, blobHash } = createTestRepo();
+    const treeHash = writeObject(backend.objects, {
+      type: "tree" as const,
+      entries: [{ mode: "100644", name: "readme.txt", hash: blobHash }],
+    });
+    const nextMainCommit = writeObject(backend.objects, {
+      type: "commit" as const,
+      tree: treeHash,
+      parents: [mainCommit],
+      author: { name: "Test", email: "test@test", timestamp: 1000003, timezone: "+0000" },
+      committer: { name: "Test", email: "test@test", timestamp: 1000003, timezone: "+0000" },
+      message: "next main commit\n",
+    });
+
+    const buf = generateFetchResponse(backend, {
+      wants: [nextMainCommit],
+      haves: [developCommit],
+      wantRefs: [],
+      done: false,
+      thinPack: false,
+      noProgress: false,
+      ofsDelta: true,
+    });
+
+    const parsed = parseV2FetchResponse(buf, false, false);
+    expect(parsed.acknowledgments?.acks).toEqual([developCommit]);
+    expect(parsed.acknowledgments?.ready).toBe(true);
+    expect(parsed.packfile).toBeDefined();
+  });
+
+  test("wait-for-done 时即使命中 common 也不发送 ready 或 packfile", () => {
+    const { backend, mainCommit, developCommit } = createTestRepo();
+    const buf = generateFetchResponse(backend, {
+      wants: [developCommit],
+      haves: [mainCommit],
+      wantRefs: [],
+      done: false,
+      sidebandAll: false,
+      waitForDone: true,
+      thinPack: false,
+      noProgress: false,
+      ofsDelta: true,
+    });
+
+    const text = buf.toString("utf-8");
+    expect(text).toContain("acknowledgments");
+    expect(text).toContain("ACK");
+    expect(text).not.toContain("ready");
+    expect(text).not.toContain("packfile");
+  });
+
+  test("sideband-all 响应中 acknowledgments 和节头都带 channel 1", () => {
+    const { backend, mainCommit, developCommit } = createTestRepo();
+    const buf = generateFetchResponse(backend, {
+      wants: [developCommit],
+      haves: [mainCommit],
+      wantRefs: [],
+      done: false,
+      sidebandAll: true,
+      waitForDone: false,
+      thinPack: false,
+      noProgress: false,
+      ofsDelta: true,
+    });
+
+    const text = buf.toString("hex");
+    expect(text).toContain(
+      Buffer.from([0x01]).toString("hex") + Buffer.from("acknowledgments\n").toString("hex"),
+    );
+    expect(text).toContain(
+      Buffer.from([0x01]).toString("hex") + Buffer.from("packfile\n").toString("hex"),
+    );
   });
 
   test("want-ref + done 时在 packfile 前回送 wanted-refs 节且无前导 delimiter", () => {

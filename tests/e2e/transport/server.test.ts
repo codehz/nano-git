@@ -13,6 +13,7 @@ import { startNanoGitServer, createDefaultBackend } from "./nano-git-server.ts";
 import { writeObject } from "@/objects/raw.ts";
 import { initRepository } from "@/repository/file.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
+import { v2Fetch } from "@/transport/client/upload-pack/fetch.ts";
 import { createV2HttpTransport } from "@/transport/client/upload-pack/http.ts";
 import { sha1, type SHA1 } from "@/types/index.ts";
 
@@ -59,6 +60,28 @@ function addCommit(backend: RepositoryBackend, parent: SHA1, msg: string): SHA1 
   return commitHash;
 }
 
+/**
+ * 在内存后端上创建一个无共同历史的根提交
+ */
+function addRootCommit(backend: RepositoryBackend, msg: string): SHA1 {
+  const blobHash = writeObject(backend.objects, {
+    type: "blob" as const,
+    content: Buffer.from(msg),
+  });
+  const treeHash = writeObject(backend.objects, {
+    type: "tree" as const,
+    entries: [{ mode: "100644", name: `${msg}.txt`, hash: blobHash }],
+  });
+  return writeObject(backend.objects, {
+    type: "commit" as const,
+    tree: treeHash,
+    parents: [],
+    author: { name: "E2E", email: "e2e@test", timestamp: 2000000100, timezone: "+0000" },
+    committer: { name: "E2E", email: "e2e@test", timestamp: 2000000100, timezone: "+0000" },
+    message: `${msg}\n`,
+  });
+}
+
 describe("Smart HTTP 服务端 — nano-git 客户端", () => {
   let server: NanoGitServer;
   let tempDir: string;
@@ -79,6 +102,13 @@ describe("Smart HTTP 服务端 — nano-git 客户端", () => {
     const cmdNames = caps.commands.map((c) => c.name);
     expect(cmdNames).toContain("ls-refs");
     expect(cmdNames).toContain("fetch");
+    expect(caps.capabilities["object-format"]).toBe("sha1");
+    expect(caps.capabilities["server-option"]).toBe(true);
+    expect(caps.commands.find((c) => c.name === "ls-refs")?.features).toEqual(["unborn"]);
+    expect(caps.commands.find((c) => c.name === "fetch")?.features).toEqual([
+      "shallow",
+      "wait-for-done",
+    ]);
   });
 
   test("openImportSession 通过 v2 获取 refs", async () => {
@@ -164,6 +194,45 @@ describe("Smart HTTP 服务端 — nano-git 客户端", () => {
     expect(adv.refs.length).toBeGreaterThan(0);
     expect(adv.defaultBranch).toBeDefined();
     expect(adv.capabilities).toBeDefined();
+  });
+
+  test("wait-for-done 协商时服务端不提前发送 ready，直到 done 才返回 packfile", async () => {
+    const firstHash = sha1(server.backend.refs.read("refs/heads/main")!);
+    const newHash = addCommit(server.backend, firstHash, "wait-for-done");
+    server.backend.refs.write("refs/heads/main", newHash);
+
+    const transport = createV2HttpTransport(server.url);
+    const caps = await transport.advertise();
+    const features = caps.commands.find((c) => c.name === "fetch")?.features ?? [];
+
+    const negotiation = await v2Fetch(
+      transport,
+      {
+        wants: [newHash],
+        haves: [firstHash],
+        ofsDelta: true,
+        waitForDone: true,
+        sidebandAll: features.includes("sideband-all"),
+      },
+      features,
+    );
+    expect(negotiation.acknowledgments?.acks).toContain(firstHash);
+    expect(negotiation.acknowledgments?.ready).not.toBe(true);
+    expect(negotiation.packfile).toBeUndefined();
+
+    const pack = await v2Fetch(
+      transport,
+      {
+        wants: [newHash],
+        haves: [firstHash],
+        ofsDelta: true,
+        waitForDone: true,
+        sidebandAll: features.includes("sideband-all"),
+        done: true,
+      },
+      features,
+    );
+    expect(pack.packfile).toBeDefined();
   });
 });
 
@@ -295,5 +364,32 @@ describe("Smart HTTP 服务端 — git CLI e2e", () => {
       GIT_TIMEOUT_MS,
     );
     expect(remoteMain).toBe(newHash);
+  });
+
+  test("git fetch 同时拉取快进分支与无共同历史的新分支", async () => {
+    const target = `${tempDir}/cloned-multi`;
+
+    await gitWithTimeout([...GIT_V2_ARGS, "clone", server.url, target], tempDir, GIT_TIMEOUT_MS);
+    const firstHash = sha1(server.backend.refs.read("refs/heads/main")!);
+
+    const newMainHash = addCommit(server.backend, firstHash, "third commit");
+    const orphanHash = addRootCommit(server.backend, "orphan root");
+    server.backend.refs.write("refs/heads/main", newMainHash);
+    server.backend.refs.write("refs/heads/orphan", orphanHash);
+
+    await gitWithTimeout([...GIT_V2_ARGS, "fetch", "origin"], target, GIT_TIMEOUT_MS);
+
+    const remoteMain = await gitWithTimeout(
+      [...GIT_V2_ARGS, "rev-parse", "origin/main"],
+      target,
+      GIT_TIMEOUT_MS,
+    );
+    const remoteOrphan = await gitWithTimeout(
+      [...GIT_V2_ARGS, "rev-parse", "origin/orphan"],
+      target,
+      GIT_TIMEOUT_MS,
+    );
+    expect(remoteMain).toBe(newMainHash);
+    expect(remoteOrphan).toBe(orphanHash);
   });
 });

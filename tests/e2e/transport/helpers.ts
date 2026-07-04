@@ -4,6 +4,7 @@
 
 import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { gunzipSync } from "node:zlib";
 
 import { git, gitInit, createFile } from "../helpers.ts";
 import { parsePktLines } from "@/transport/protocol/pkt-line.ts";
@@ -57,9 +58,20 @@ export function createServerRepo(
  * 解析 upload-pack 请求中的命令文本
  */
 export function decodeUploadPackCommands(body: Buffer): string[] {
-  return parsePktLines(body)
+  const decodedBody = body[0] === 0x1f && body[1] === 0x8b ? gunzipSync(body) : body;
+
+  return parsePktLines(decodedBody)
     .filter((line) => line.type === "data")
     .map((line) => line.payload.toString("utf-8").trimEnd());
+}
+
+/**
+ * 规范化 upload-pack 请求命令，便于与不同客户端做行为对比
+ *
+ * 当前仅去掉易变的 agent 行，其余顺序与内容保持不变。
+ */
+export function normalizeUploadPackCommands(commands: readonly string[]): string[] {
+  return commands.filter((line) => !line.startsWith("agent="));
 }
 
 /**
@@ -76,4 +88,14 @@ export function getUploadPackRequests(requests: GitHttpRequestRecord[]): GitHttp
   return requests.filter(
     (request) => request.method === "POST" && request.path.endsWith("/git-upload-pack"),
   );
+}
+
+/**
+ * 提取并规范化 fetch 请求的命令序列
+ */
+export function getNormalizedFetchCommandBatches(requests: GitHttpRequestRecord[]): string[][] {
+  return getUploadPackRequests(requests)
+    .map((request) => decodeUploadPackCommands(request.body))
+    .filter((commands) => commands.includes("command=fetch"))
+    .map((commands) => normalizeUploadPackCommands(commands));
 }

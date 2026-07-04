@@ -5,8 +5,10 @@
  * 使用 Git Wire 协议 v2 ls-refs + fetch 获取远端数据。
  */
 
+import { resolveSymbolicRef } from "../../refs/resolve.ts";
 import { createV2HttpTransport } from "../../transport/client/upload-pack/http.ts";
 import { lsRefs, lsRefsToRefAdvertisement } from "../../transport/client/upload-pack/ls-refs.ts";
+import { HEAD_REF, HEADS_PREFIX, TAGS_PREFIX } from "../../types/refs.ts";
 import { matchRefGlob } from "./import-glob.ts";
 import { createImportPlanDraft } from "./import-plan-draft.ts";
 import { createImportView } from "./import-view.ts";
@@ -120,6 +122,18 @@ function createImportSession(
 // RepoImportOperations 工厂
 // ============================================================================
 
+function getLsRefsPrefixes(backend: RepositoryBackend): string[] {
+  const prefixes = [HEADS_PREFIX];
+  const localHeadTarget = resolveSymbolicRef(backend.refs, HEAD_REF);
+
+  if (localHeadTarget?.startsWith(HEADS_PREFIX) === true) {
+    prefixes.push(localHeadTarget);
+  }
+
+  prefixes.push(TAGS_PREFIX, HEAD_REF);
+  return prefixes;
+}
+
 /**
  * 创建仓库导入操作
  *
@@ -144,7 +158,8 @@ export function createRepoImportOperations(
       const lsRefsEntries = await lsRefs(v2Transport, {
         symrefs: true,
         peel: true,
-        refPrefixes: ["HEAD", "refs/heads/", "refs/tags/"],
+        unborn: true,
+        refPrefixes: getLsRefsPrefixes(backend),
       });
 
       const advertisement = lsRefsToRefAdvertisement(lsRefsEntries);

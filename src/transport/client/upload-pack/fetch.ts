@@ -38,9 +38,18 @@
 
 import { GitError } from "../../../errors.ts";
 import { createPackReader, packObjectToRaw } from "../../../pack/reader/pack-reader.ts";
-import { splitPktLinesFromBuffer } from "../../protocol/pkt-line.ts";
+import { sha1 } from "../../../types/index.ts";
+import {
+  encodeDelimiterPkt,
+  encodeFlushPkt,
+  encodePktLine,
+  encodeResponseEndPkt,
+  splitPktLinesFromBuffer,
+} from "../../protocol/pkt-line.ts";
+import { createFetchHaveSelector } from "./fetch-negotiator.ts";
 
 import type { ObjectDatabase } from "../../../odb/types.ts";
+import type { ObjectSource } from "../../../types/odb.ts";
 import type { V2GitServiceTransport, V2FetchResponse } from "./types.ts";
 
 // ============================================================================
@@ -61,11 +70,186 @@ export class V2FetchError extends GitError {
 // 常量
 // ============================================================================
 
-/** 单轮最多发送的 have 数量 */
-const MAX_HAVES_PER_ROUND = 32;
+/** 官方 Git：协商过程中连续无效 have 的容忍上限 */
+const MAX_IN_VAIN = 256;
+
+/** 官方 Git：v2 首轮默认发送 16 条 have */
+const INITIAL_FLUSH = 16;
+
+/** 官方 Git：stateless-rpc 在此阈值前采用倍增窗口 */
+const LARGE_FLUSH = 16384;
 
 /** 侧信道通道编号 */
 const CHANNEL_PACKFILE = 0x01;
+
+/** khash 的默认装载上限，Git 的 oidset 直接复用该实现 */
+const GIT_OIDSET_HASH_UPPER = 0.77;
+
+/**
+ * Git 的 oidhash 直接 memcpy 前 4 字节到 unsigned int。
+ *
+ * 为了让 v2 协商中的 common replay 顺序贴近官方 Git，这里按宿主字节序
+ * 读取 SHA-1 的前 4 个原始字节，模拟 khash/oidset 的桶定位行为。
+ */
+const HOST_IS_LITTLE_ENDIAN = new Uint8Array(new Uint32Array([0x01020304]).buffer)[0] === 0x04;
+
+/** 更贴近官方 Git CLI 的默认 fetch 参数 */
+const DEFAULT_NEGOTIATION_FETCH_OPTIONS = {
+  thinPack: true,
+  noProgress: true,
+  includeTag: true,
+  ofsDelta: true,
+} as const;
+
+interface GitOidSetState {
+  buckets: Array<string | undefined>;
+  states: Uint8Array;
+  size: number;
+  occupied: number;
+  upperBound: number;
+}
+
+function roundUpPowerOfTwo(value: number): number {
+  let rounded = 1;
+  while (rounded < value) {
+    rounded <<= 1;
+  }
+  return Math.max(4, rounded);
+}
+
+function createGitOidSetState(): GitOidSetState {
+  return {
+    buckets: [],
+    states: new Uint8Array(0),
+    size: 0,
+    occupied: 0,
+    upperBound: 0,
+  };
+}
+
+function readOidHash(oid: string): number {
+  const raw = Buffer.from(oid.slice(0, 8), "hex");
+  return HOST_IS_LITTLE_ENDIAN ? raw.readUInt32LE(0) : raw.readUInt32BE(0);
+}
+
+function resizeGitOidSet(state: GitOidSetState, requestedBuckets: number): void {
+  const previousBuckets = state.buckets;
+  const previousStates = state.states;
+  const previousBucketCount = previousBuckets.length;
+  const nextBucketCount = roundUpPowerOfTwo(requestedBuckets);
+  const nextStates = new Uint8Array(nextBucketCount);
+  const nextBuckets = [...previousBuckets];
+  nextBuckets.length = nextBucketCount;
+  const nextMask = nextBucketCount - 1;
+
+  for (let index = 0; index < previousBucketCount; index++) {
+    if (previousStates[index] !== 1) {
+      continue;
+    }
+
+    let key = nextBuckets[index]!;
+    previousStates[index] = 2;
+
+    while (true) {
+      let probe = readOidHash(key) & nextMask;
+      let step = 0;
+      while (nextStates[probe] !== 0) {
+        probe = (probe + ++step) & nextMask;
+      }
+
+      nextStates[probe] = 1;
+
+      if (probe < previousBucketCount && previousStates[probe] === 1) {
+        const displaced = nextBuckets[probe]!;
+        nextBuckets[probe] = key;
+        key = displaced;
+        previousStates[probe] = 2;
+        continue;
+      }
+
+      nextBuckets[probe] = key;
+      break;
+    }
+  }
+
+  state.buckets = nextBuckets;
+  state.states = nextStates;
+  state.occupied = state.size;
+  state.upperBound = Math.floor(nextBucketCount * GIT_OIDSET_HASH_UPPER + 0.5);
+}
+
+function insertGitOidSet(state: GitOidSetState, oid: string): boolean {
+  if (state.occupied >= state.upperBound) {
+    const currentBuckets = state.buckets.length;
+    if (currentBuckets > state.size << 1) {
+      resizeGitOidSet(state, currentBuckets - 1);
+    } else {
+      resizeGitOidSet(state, currentBuckets + 1);
+    }
+  }
+
+  const bucketCount = state.buckets.length;
+  const mask = bucketCount - 1;
+  const hash = readOidHash(oid);
+  let slot = bucketCount;
+  let deletedSlot = bucketCount;
+  let probe = hash & mask;
+
+  if (state.states[probe] === 0) {
+    slot = probe;
+  } else {
+    const start = probe;
+    let step = 0;
+    while (
+      state.states[probe] !== 0 &&
+      (state.states[probe] === 2 || state.buckets[probe] !== oid)
+    ) {
+      if (state.states[probe] === 2) {
+        deletedSlot = probe;
+      }
+      probe = (probe + ++step) & mask;
+      if (probe === start) {
+        slot = deletedSlot;
+        break;
+      }
+    }
+
+    if (slot === bucketCount) {
+      if (state.states[probe] === 0 && deletedSlot !== bucketCount) {
+        slot = deletedSlot;
+      } else {
+        slot = probe;
+      }
+    }
+  }
+
+  if (state.states[slot] === 0) {
+    state.buckets[slot] = oid;
+    state.states[slot] = 1;
+    state.size++;
+    state.occupied++;
+    return true;
+  }
+
+  if (state.states[slot] === 2) {
+    state.buckets[slot] = oid;
+    state.states[slot] = 1;
+    state.size++;
+    return true;
+  }
+
+  return false;
+}
+
+function iterateGitOidSet(state: GitOidSetState): string[] {
+  const result: string[] = [];
+  for (let index = 0; index < state.buckets.length; index++) {
+    if (state.states[index] === 1) {
+      result.push(state.buckets[index]!);
+    }
+  }
+  return result;
+}
 
 // ============================================================================
 // fetch 命令执行
@@ -143,6 +327,7 @@ export async function v2Fetch(
 
   // 检查特性支持：features === undefined 表示不支持任何附加特性
   const hasFeature = (name: string): boolean => features !== undefined && features.includes(name);
+  const useSidebandAll = params.sidebandAll === true && hasFeature("sideband-all");
 
   // 构建 arguments（所有 fetch 参数都在分隔符之后）
   const args: string[] = [];
@@ -152,7 +337,7 @@ export async function v2Fetch(
   if (params.noProgress) args.push("no-progress");
   if (params.includeTag) args.push("include-tag");
   if (params.ofsDelta) args.push("ofs-delta");
-  if (params.sidebandAll) args.push("sideband-all");
+  if (useSidebandAll) args.push("sideband-all");
   if (params.waitForDone) args.push("wait-for-done");
 
   // want 列表
@@ -167,16 +352,16 @@ export async function v2Fetch(
     }
   }
 
-  // done 标记
-  if (params.done) {
-    args.push("done");
-  }
-
-  // 不需要 done 时才发送 have
-  if (!params.done && params.haves) {
+  // have 列表：即使带 done，协议也允许同时发送 have 终止协商。
+  if (params.haves) {
     for (const oid of params.haves) {
       args.push(`have ${oid}`);
     }
+  }
+
+  // done 标记
+  if (params.done) {
+    args.push("done");
   }
 
   // shallow 参数
@@ -213,7 +398,7 @@ export async function v2Fetch(
 
   const response = await transport.command("fetch", args, []);
 
-  return parseV2FetchResponse(response, params.done ?? false, hasFeature("sideband-all"));
+  return parseV2FetchResponse(response, params.done ?? false, useSidebandAll);
 }
 
 // ============================================================================
@@ -244,21 +429,13 @@ export function parseV2FetchResponse(
   _hasDone: boolean,
   sidebandAll: boolean,
 ): V2FetchResponse {
+  void _hasDone;
+  if (sidebandAll) {
+    return parseV2FetchResponse(demultiplexSidebandAll(data), _hasDone, false);
+  }
+
   // 使用 splitPktLinesFromBuffer 优雅处理尾部非 pkt-line 数据
   const { lines: pktLines, trailing } = splitPktLinesFromBuffer(data);
-
-  // 跳过 sideband-all 的 channel 字节（如果启用了 sideband-all）
-  if (sidebandAll && pktLines.length > 0) {
-    const first = pktLines[0];
-    if (first?.type === "data" && first.payload.length > 1) {
-      const withoutChannel = Buffer.concat(
-        pktLines
-          .filter((p): p is typeof first => p.type === "data")
-          .map((p) => p.payload.subarray(1)),
-      );
-      return parseV2FetchResponse(Buffer.concat([withoutChannel, trailing]), false, false);
-    }
-  }
 
   // 解析节结构
   interface MutableSection {
@@ -342,6 +519,55 @@ export function parseV2FetchResponse(
   }
 
   return result as V2FetchResponse;
+}
+
+function demultiplexSidebandAll(data: Buffer): Buffer {
+  const { lines } = splitPktLinesFromBuffer(data);
+  const parts: Buffer[] = [];
+  let inPackfile = false;
+
+  for (const pkt of lines) {
+    switch (pkt.type) {
+      case "flush":
+        parts.push(encodeFlushPkt());
+        inPackfile = false;
+        continue;
+      case "delimiter":
+        parts.push(encodeDelimiterPkt());
+        inPackfile = false;
+        continue;
+      case "response-end":
+        parts.push(encodeResponseEndPkt());
+        continue;
+      case "data": {
+        if (pkt.payload.length === 0) {
+          continue;
+        }
+        const channel = pkt.payload[0]!;
+        const payload = pkt.payload.subarray(1);
+        if (inPackfile) {
+          parts.push(encodePktLine(Buffer.concat([Buffer.from([channel]), payload])));
+          continue;
+        }
+        if (channel === 0x01) {
+          parts.push(encodePktLine(payload));
+          if (payload.equals(Buffer.from("packfile\n"))) {
+            inPackfile = true;
+          }
+          continue;
+        }
+        if (channel === 0x02) {
+          continue;
+        }
+        if (channel === 0x03) {
+          throw new V2FetchError(`remote fatal: ${payload.toString("utf-8").trim()}`);
+        }
+        continue;
+      }
+    }
+  }
+
+  return Buffer.concat(parts);
 }
 
 // ============================================================================
@@ -480,9 +706,10 @@ function extractPackfileFromFrames(frames: Buffer[]): Buffer {
 
     if (channel === CHANNEL_PACKFILE) {
       chunks.push(frame.subarray(1));
+    } else if (channel === 0x03) {
+      throw new V2FetchError(`remote fatal: ${frame.subarray(1).toString("utf-8").trim()}`);
     }
     // channel 2 为进度消息，忽略
-    // channel 3 为致命错误，由外部函数处理
   }
 
   if (chunks.length === 0) {
@@ -496,18 +723,11 @@ function extractPackfileFromFrames(frames: Buffer[]): Buffer {
 // 多轮协商
 // ============================================================================
 
-/**
- * v2 多轮协商状态
- */
-interface NegotiationState {
-  /** 已发送的 have 集合 */
-  readonly sent: Set<string>;
-  /** 所有可用的 have（按时间从旧到新排序） */
-  readonly candidates: string[];
-  /** 当前已发送的候选下标 */
-  offset: number;
-  /** 最后一次 ACK 的 common 对象 */
-  common: string[];
+function nextFlush(count: number): number {
+  if (count < LARGE_FLUSH) {
+    return count << 1;
+  }
+  return Math.floor((count * 11) / 10);
 }
 
 /**
@@ -519,8 +739,10 @@ interface NegotiationState {
  *
  * @param transport - v2 传输接口
  * @param wants - want 列表
- * @param haveCandidates - have 候选列表（按时间从旧到新排序）
+ * @param haveCandidates - have 候选列表（通常为本地 refs tip）
  * @param features - 服务端 fetch 命令特性
+ * @param localObjects - 本地对象源（可选，用于 commit-aware negotiator）
+ * @param knownCommonRefs - 已知与远端相同的远端 ref 提示（可选）
  * @returns fetch 响应（含 packfile）
  */
 export async function negotiateV2Fetch(
@@ -528,6 +750,8 @@ export async function negotiateV2Fetch(
   wants: string[],
   haveCandidates: string[],
   features?: string[],
+  localObjects?: ObjectSource,
+  knownCommonRefs?: readonly string[],
 ): Promise<V2FetchResponse> {
   if (wants.length === 0) {
     throw new V2FetchError("No wants specified for fetch");
@@ -535,85 +759,92 @@ export async function negotiateV2Fetch(
 
   // 初始 clone：无 haves，直接发送 wants + done
   if (haveCandidates.length === 0) {
-    return v2Fetch(transport, { wants, ofsDelta: true, done: true }, features);
+    return v2Fetch(
+      transport,
+      {
+        wants,
+        ...DEFAULT_NEGOTIATION_FETCH_OPTIONS,
+        done: true,
+      },
+      features,
+    );
   }
 
-  // 多轮协商
-  const state: NegotiationState = {
-    sent: new Set(),
-    candidates: haveCandidates,
-    offset: 0,
-    common: [],
-  };
+  const selector = createFetchHaveSelector(haveCandidates, localObjects);
+  if (knownCommonRefs) {
+    for (const oid of knownCommonRefs) {
+      selector.knownCommon(sha1(oid));
+    }
+  }
+  const commonSet = createGitOidSetState();
+  let havesToSend = INITIAL_FLUSH;
+  let inVain = 0;
+  let seenAck = false;
 
-  const MAX_ROUNDS = 10;
+  while (true) {
+    const roundHaves = iterateGitOidSet(commonSet);
+    let havesAdded = 0;
 
-  for (let round = 0; round < MAX_ROUNDS; round++) {
-    // 收集本轮 have
-    const roundHaves: string[] = [];
-
-    // 先 replay 已确认的 common
-    for (const c of state.common) {
-      if (!state.sent.has(c)) {
-        roundHaves.push(c);
-        state.sent.add(c);
+    while (havesAdded < havesToSend) {
+      const nextHave = selector.next();
+      if (!nextHave) {
+        break;
       }
+      roundHaves.push(nextHave);
+      havesAdded++;
     }
 
-    // 再发送新的候选
-    let remaining = MAX_HAVES_PER_ROUND - roundHaves.length;
-    while (remaining > 0 && state.offset < state.candidates.length) {
-      const candidate = state.candidates[state.offset]!;
-      state.offset++;
-      if (!state.sent.has(candidate)) {
-        roundHaves.push(candidate);
-        state.sent.add(candidate);
-        remaining--;
-      }
-    }
+    havesToSend = nextFlush(havesToSend);
+    inVain += havesAdded;
 
-    const isFinalRound = roundHaves.length === 0 || round === MAX_ROUNDS - 1;
-
-    // 发送请求（不含 done，中间轮）
+    const done = havesAdded === 0 || (seenAck && inVain >= MAX_IN_VAIN);
     const response = await v2Fetch(
       transport,
-      { wants, haves: roundHaves, ofsDelta: true },
+      { wants, haves: roundHaves, ...DEFAULT_NEGOTIATION_FETCH_OPTIONS, done },
       features,
     );
 
-    // 解析响应
+    // 官方 Git 在 ready 响应中会直接携带 packfile，客户端必须立即消费。
+    if (response.packfile) {
+      return response;
+    }
+
+    if (done) {
+      return response;
+    }
+
     const ack = response.acknowledgments;
     if (!ack) {
-      // 如果 done 被省略，但服务端直接返回了 packfile
-      // （v2 允许服务端在 ready 时发送 packfile）
-      if (response.packfile) {
-        return response;
-      }
-      continue;
+      throw new V2FetchError("Missing acknowledgments in negotiation response");
     }
 
-    // 吸收 ACK
     if (ack.acks.length > 0) {
+      seenAck = true;
+      inVain = 0;
+
       for (const ackOid of ack.acks) {
-        if (!state.common.includes(ackOid)) {
-          state.common.push(ackOid);
-        }
+        selector.ack(sha1(ackOid));
+        insertGitOidSet(commonSet, ackOid);
       }
     }
 
-    // 服务端 ready → 发送最终请求（带 done）
+    // 规范要求 ready 响应应与 packfile 同帧返回；若对端实现更保守，
+    // 则补发一轮带 done 的请求兜底。
     if (ack.ready) {
-      return v2Fetch(transport, { wants, haves: roundHaves, ofsDelta: true, done: true }, features);
+      return v2Fetch(
+        transport,
+        {
+          wants,
+          haves: iterateGitOidSet(commonSet),
+          ...DEFAULT_NEGOTIATION_FETCH_OPTIONS,
+          done: true,
+        },
+        features,
+      );
     }
 
-    // 所有 have 已发送完 → 发 done 结束
-    if (isFinalRound) {
-      return v2Fetch(transport, { wants, haves: roundHaves, ofsDelta: true, done: true }, features);
-    }
+    selector.releaseAncestors();
   }
-
-  // 最大轮数耗尽，强制 done
-  return v2Fetch(transport, { wants, ofsDelta: true, done: true }, features);
 }
 
 // ============================================================================
@@ -630,6 +861,7 @@ export async function negotiateV2Fetch(
  * @param wants - want 对象哈希列表
  * @param haves - have 对象哈希列表
  * @param features - 服务端 fetch 命令特性
+ * @param knownCommonRefs - 已知与远端相同的远端 ref 提示（可选）
  * @returns 导入的对象数量
  */
 export async function v2FetchObjects(
@@ -638,15 +870,16 @@ export async function v2FetchObjects(
   wants: string[],
   haves?: string[],
   features?: string[],
+  knownCommonRefs?: readonly string[],
 ): Promise<{ objectCount: number }> {
-  const result = await negotiateV2Fetch(v2Trans, wants, haves ?? [], features);
+  const result = await negotiateV2Fetch(v2Trans, wants, haves ?? [], features, db, knownCommonRefs);
 
   if (!result.packfile || result.packfile.length === 0) {
     return { objectCount: 0 };
   }
 
   // 解析 packfile 并直接摄入原始对象（跳过语义反序列化）
-  const reader = createPackReader(result.packfile);
+  const reader = createPackReader(result.packfile, db);
   let count = 0;
 
   for (const packObj of reader.objects()) {

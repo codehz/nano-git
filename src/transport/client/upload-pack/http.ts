@@ -40,6 +40,12 @@ const ADVERTISE_PATH = "/info/refs";
 /** v2 命令执行路径 */
 const COMMAND_PATH = "/git-upload-pack";
 
+/** v2 命令请求中的 agent 标识 */
+const CLIENT_AGENT = "nano-git/0.1";
+
+/** nano-git 当前仅支持 SHA-1 对象格式 */
+const CLIENT_OBJECT_FORMAT = "sha1";
+
 // ============================================================================
 // 工厂函数
 // ============================================================================
@@ -63,6 +69,8 @@ export function createV2HttpTransport(
   options?: { token?: string; headers?: Record<string, string> },
 ): V2GitServiceTransport {
   const baseUrl = url.replace(/\/$/, "");
+  let cachedAdvertisement: V2CapabilityAdvertisement | undefined;
+  let advertisePromise: Promise<V2CapabilityAdvertisement> | undefined;
 
   const baseHeaders: Record<string, string> = {
     "User-Agent": "nano-git/0.1",
@@ -76,8 +84,12 @@ export function createV2HttpTransport(
     baseHeaders.Authorization = `Bearer ${options.token}`;
   }
 
-  return {
-    async advertise(): Promise<V2CapabilityAdvertisement> {
+  async function advertiseOnce(): Promise<V2CapabilityAdvertisement> {
+    if (cachedAdvertisement) {
+      return cachedAdvertisement;
+    }
+
+    advertisePromise ??= (async () => {
       const response = await fetch(`${baseUrl}${ADVERTISE_PATH}?service=git-upload-pack`, {
         headers: baseHeaders,
       });
@@ -87,7 +99,18 @@ export function createV2HttpTransport(
       }
 
       const data = Buffer.from(await response.arrayBuffer());
-      return parseV2CapabilityAdvertisement(data);
+      cachedAdvertisement = parseV2CapabilityAdvertisement(data);
+      return cachedAdvertisement;
+    })().finally(() => {
+      advertisePromise = undefined;
+    });
+
+    return advertisePromise;
+  }
+
+  return {
+    async advertise(): Promise<V2CapabilityAdvertisement> {
+      return advertiseOnce();
     },
 
     async command(
@@ -96,12 +119,30 @@ export function createV2HttpTransport(
       capabilities?: string[],
       body?: Buffer,
     ): Promise<Buffer> {
+      await advertiseOnce();
+
       const lines: Buffer[] = [];
+      const advertisedObjectFormat = cachedAdvertisement?.capabilities["object-format"];
+      const autoCapabilities: string[] = [];
+
+      if (cachedAdvertisement?.agent && capabilities?.includes(`agent=${CLIENT_AGENT}`) !== true) {
+        autoCapabilities.push(`agent=${CLIENT_AGENT}`);
+      }
+
+      if (
+        advertisedObjectFormat === CLIENT_OBJECT_FORMAT &&
+        capabilities?.includes(`object-format=${CLIENT_OBJECT_FORMAT}`) !== true
+      ) {
+        autoCapabilities.push(`object-format=${CLIENT_OBJECT_FORMAT}`);
+      }
 
       // command=<name>\n (pkt-line 编码)
       lines.push(encodePktLine(`command=${command}\n`));
 
       // capability-list (pkt-line 编码)
+      for (const cap of autoCapabilities) {
+        lines.push(encodePktLine(`${cap}\n`));
+      }
       if (capabilities) {
         for (const cap of capabilities) {
           lines.push(encodePktLine(`${cap}\n`));

@@ -16,7 +16,7 @@ import {
   createRepoImportOperations,
 } from "@/repository/import/import-session.ts";
 import { createImportView } from "@/repository/import/import-view.ts";
-import { encodePktLine } from "@/transport/protocol/pkt-line.ts";
+import { encodePktLine, encodeFlushPkt } from "@/transport/protocol/pkt-line.ts";
 import { sha1 } from "@/types/index.ts";
 
 import type { ImportPlanDraft } from "@/repository/import/import-session-types.ts";
@@ -1508,13 +1508,22 @@ describe("apply 错误处理", () => {
     const writer = createPackWriter();
     writer.addRaw(encodeObject(tree));
     writer.addRaw(encodeObject(commit));
-    const rawResponse = Buffer.concat([encodePktLine("NAK\n"), writer.build()]);
+    const packfileResponse = Buffer.concat([
+      encodePktLine("packfile\n"),
+      encodePktLine(Buffer.concat([Buffer.from([0x01]), writer.build()])),
+      encodeFlushPkt(),
+    ]);
+    const negotiationResponse = Buffer.concat([
+      encodePktLine("acknowledgments\n"),
+      encodePktLine("NAK\n"),
+      encodeFlushPkt(),
+    ]);
 
     const mockV2Transport: V2GitServiceTransport = {
       advertise: async () => ({ capabilities: {}, commands: [] }),
-      command: async () => {
+      command: async (_command, args) => {
         backend.refs.write("refs/heads/main", sha1("f".repeat(40)));
-        return rawResponse;
+        return args?.includes("done") ? packfileResponse : negotiationResponse;
       },
     };
 
@@ -1581,5 +1590,31 @@ describe("openImportSession source 透传", () => {
     });
 
     expect(session.source.token).toBe("secret-token");
+  });
+
+  test("openImportSession 会在 ls-refs 请求中带 unborn", async () => {
+    const backend = createMemoryRepositoryBackend();
+    backend.refs.write("HEAD", "ref: refs/heads/main");
+    const commandCalls: string[][] = [];
+    const mockV2Transport: V2GitServiceTransport = {
+      advertise: async () => ({ capabilities: {}, commands: [] }),
+      command: async (_command, args) => {
+        commandCalls.push([...(args ?? [])]);
+        return Buffer.concat([
+          encodePktLine(`${MOCK_HASH_A} HEAD symref-target:refs/heads/main\n`),
+          encodePktLine(`${MOCK_HASH_A} refs/heads/main\n`),
+          encodeFlushPkt(),
+        ]);
+      },
+    };
+
+    const repo = createRepoImportOperations(backend, mockV2Transport);
+    await repo.openImportSession({ url: "https://example.com/repo.git" });
+
+    expect(commandCalls).toHaveLength(1);
+    expect(commandCalls[0]).toContain("unborn");
+    expect(commandCalls[0]).toContain("symrefs");
+    expect(commandCalls[0]).toContain("peel");
+    expect(commandCalls[0]).toContain("ref-prefix refs/heads/main");
   });
 });

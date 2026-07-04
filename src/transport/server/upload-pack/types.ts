@@ -9,8 +9,12 @@
 /** 服务端 agent 字符串 */
 export const SERVER_AGENT = "nano-git/0.1";
 
+/** 服务端当前支持的对象格式 */
+export const SERVER_OBJECT_FORMAT = "sha1";
+
 /** side-band 通道编号 */
 export const CHANNEL_PACKFILE = 0x01;
+export const CHANNEL_PROGRESS = 0x02;
 export const CHANNEL_FATAL = 0x03;
 
 /** pkt-line 单帧最大负载字节数 */

@@ -6,10 +6,11 @@
  * @see https://git-scm.com/docs/protocol-v2#_fetch
  */
 
+import { tryReadObject } from "../../../objects/raw.ts";
 import { createPackWriter } from "../../../pack/writer/pack-writer.ts";
 import { resolveRefHash } from "../../../refs/resolve.ts";
 import { sha1 } from "../../../types/index.ts";
-import { collectReachable } from "../../protocol/object-graph.ts";
+import { collectReachable, isAncestor, peelTagChain } from "../../protocol/object-graph.ts";
 import { encodePktLine, encodeFlushPkt, encodeDelimiterPkt } from "../../protocol/pkt-line.ts";
 import {
   CHANNEL_PACKFILE,
@@ -27,6 +28,8 @@ export interface FetchServerParams {
   readonly haves: SHA1[];
   readonly wantRefs: string[];
   readonly done: boolean;
+  readonly sidebandAll?: boolean;
+  readonly waitForDone?: boolean;
   readonly thinPack: boolean;
   readonly noProgress: boolean;
   readonly ofsDelta: boolean;
@@ -49,6 +52,8 @@ export function parseFetchArgs(args: string[]): FetchServerParams {
   const haves: SHA1[] = [];
   const wantRefs: string[] = [];
   let done = false;
+  let sidebandAll = false;
+  let waitForDone = false;
   let thinPack = false;
   let noProgress = false;
   let ofsDelta = false;
@@ -56,6 +61,10 @@ export function parseFetchArgs(args: string[]): FetchServerParams {
   for (const arg of args) {
     if (arg === "done") {
       done = true;
+    } else if (arg === "sideband-all") {
+      sidebandAll = true;
+    } else if (arg === "wait-for-done") {
+      waitForDone = true;
     } else if (arg === "thin-pack") {
       thinPack = true;
     } else if (arg === "no-progress") {
@@ -73,7 +82,7 @@ export function parseFetchArgs(args: string[]): FetchServerParams {
     // （shallow 场景下支持传递边界但不做剪裁）
   }
 
-  return { wants, haves, wantRefs, done, thinPack, noProgress, ofsDelta };
+  return { wants, haves, wantRefs, done, sidebandAll, waitForDone, thinPack, noProgress, ofsDelta };
 }
 
 // ============================================================================
@@ -130,6 +139,11 @@ function encodePackfileWithSideBand(packfile: Buffer): Buffer[] {
   return frames;
 }
 
+function encodeSidebandData(payload: string | Buffer, channel = CHANNEL_PACKFILE): Buffer {
+  const data = typeof payload === "string" ? Buffer.from(payload, "utf-8") : payload;
+  return encodePktLine(Buffer.concat([Buffer.from([channel]), data]));
+}
+
 // ============================================================================
 // fetch 响应生成
 // ============================================================================
@@ -174,9 +188,15 @@ function generatePackfileResponse(
   // wanted-refs 节：当客户端通过 want-ref 请求时必须回送 refname→oid 映射，
   // 否则 git 无法得知每个 ref 解析到的对象。该节后接 delim-pkt 与 packfile 节分隔。
   if (wantedRefs.length > 0) {
-    parts.push(encodePktLine("wanted-refs\n"));
+    parts.push(
+      params.sidebandAll ? encodeSidebandData("wanted-refs\n") : encodePktLine("wanted-refs\n"),
+    );
     for (const { refname, oid } of wantedRefs) {
-      parts.push(encodePktLine(`${oid} ${refname}\n`));
+      parts.push(
+        params.sidebandAll
+          ? encodeSidebandData(`${oid} ${refname}\n`)
+          : encodePktLine(`${oid} ${refname}\n`),
+      );
     }
     parts.push(encodeDelimiterPkt());
   }
@@ -196,7 +216,7 @@ function generatePackfileResponse(
   const packfile = writer.build();
 
   // packfile 节
-  parts.push(encodePktLine("packfile\n"));
+  parts.push(params.sidebandAll ? encodeSidebandData("packfile\n") : encodePktLine("packfile\n"));
 
   // side-band 编码的 packfile 数据
   if (packfile.length > 0) {
@@ -211,14 +231,15 @@ function generatePackfileResponse(
 /**
  * 查找 wants 与 haves 间的共同对象
  *
- * 当前简化实现：返回所有在本地仓库中存在且出现在 haves 中的哈希。
- * 更完善的实现应通过 commit 图 BFS 验证祖先关系。
+ * ACK 的判定仍以“客户端声明 have，且服务端本地确实存在该对象”为准；
+ * 但 `ready` 不能仅凭“存在任意 common”就成立，而要确认每个 want
+ * 都已经能沿 tag/commit 链回溯到某个 common cut-point。
  */
 function findCommonObjects(
   backend: RepositoryBackend,
-  _wants: SHA1[],
+  wants: SHA1[],
   haves: SHA1[],
-): { common: SHA1[]; ready: boolean } {
+): { common: SHA1[]; acks: SHA1[]; ready: boolean } {
   const common: SHA1[] = [];
 
   for (const have of haves) {
@@ -227,10 +248,113 @@ function findCommonObjects(
     }
   }
 
-  // 只要有一个 have 在本地仓库中存在就 ready
-  const ready = common.length > 0;
+  const acks = selectAcknowledgedCommons(backend, common);
+  const ready = canReadyWithCommonBase(backend, wants, common);
 
-  return { common, ready };
+  return { common, acks, ready };
+}
+
+function selectAcknowledgedCommons(backend: RepositoryBackend, common: readonly SHA1[]): SHA1[] {
+  const acks: SHA1[] = [];
+
+  for (const have of common) {
+    // 与 git-http-backend 的常见行为保持接近：
+    // 仅跳过那些已经被更“新”的已 ACK common 覆盖的祖先 have。
+    const redundant = acks.some((acked) => isAncestor(backend.objects, have, acked));
+    if (!redundant) {
+      acks.push(have);
+    }
+  }
+
+  return acks;
+}
+
+function canReadyWithCommonBase(
+  backend: RepositoryBackend,
+  wants: readonly SHA1[],
+  common: readonly SHA1[],
+): boolean {
+  if (common.length === 0) {
+    return false;
+  }
+
+  const commonSet = collectCommonCutPoints(backend, common);
+  for (const want of wants) {
+    if (!wantReachesCommon(backend, want, commonSet)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function collectCommonCutPoints(backend: RepositoryBackend, common: readonly SHA1[]): Set<SHA1> {
+  const commonSet = new Set<SHA1>();
+  const queue = [...common];
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (commonSet.has(current)) {
+      continue;
+    }
+    commonSet.add(current);
+
+    const obj = tryReadObject(backend.objects, current);
+    if (!obj) {
+      continue;
+    }
+
+    if (obj.type === "tag") {
+      queue.push(obj.object);
+      continue;
+    }
+
+    if (obj.type === "commit") {
+      for (const parent of obj.parents) {
+        queue.push(parent);
+      }
+    }
+  }
+
+  return commonSet;
+}
+
+function wantReachesCommon(
+  backend: RepositoryBackend,
+  want: SHA1,
+  commonSet: ReadonlySet<SHA1>,
+): boolean {
+  const start = peelTagChain(backend.objects, want);
+  const queue: SHA1[] = [start];
+  const visited = new Set<SHA1>();
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (commonSet.has(current)) {
+      return true;
+    }
+    if (visited.has(current)) {
+      continue;
+    }
+    visited.add(current);
+
+    const obj = tryReadObject(backend.objects, current);
+    if (!obj) {
+      continue;
+    }
+
+    if (obj.type === "tag") {
+      queue.push(obj.object);
+      continue;
+    }
+
+    if (obj.type === "commit") {
+      for (const parent of obj.parents) {
+        queue.push(parent);
+      }
+    }
+  }
+
+  return false;
 }
 
 /**
@@ -252,22 +376,28 @@ function buildAcknowledgmentsSection(
   params: FetchServerParams,
 ): { section: Buffer; ready: boolean } {
   const parts: Buffer[] = [];
-  parts.push(encodePktLine("acknowledgments\n"));
+  parts.push(
+    params.sidebandAll
+      ? encodeSidebandData("acknowledgments\n")
+      : encodePktLine("acknowledgments\n"),
+  );
 
-  const { common, ready } = findCommonObjects(backend, params.wants, params.haves);
+  const { common, acks, ready } = findCommonObjects(backend, params.wants, params.haves);
 
   if (common.length > 0) {
-    for (const oid of common) {
-      parts.push(encodePktLine(`ACK ${oid}\n`));
+    for (const oid of acks) {
+      parts.push(
+        params.sidebandAll ? encodeSidebandData(`ACK ${oid}\n`) : encodePktLine(`ACK ${oid}\n`),
+      );
     }
-    if (ready) {
-      parts.push(encodePktLine("ready\n"));
+    if (ready && !params.waitForDone) {
+      parts.push(params.sidebandAll ? encodeSidebandData("ready\n") : encodePktLine("ready\n"));
     }
   } else {
-    parts.push(encodePktLine("NAK\n"));
+    parts.push(params.sidebandAll ? encodeSidebandData("NAK\n") : encodePktLine("NAK\n"));
   }
 
-  return { section: Buffer.concat(parts), ready };
+  return { section: Buffer.concat(parts), ready: ready && !params.waitForDone };
 }
 
 /**
@@ -296,11 +426,18 @@ export function generateFetchResponse(
     if (!backend.objects.exists(want)) {
       // 用 side-band channel 3 返回错误（packfile 节为响应的最后一节，前面无 delim）
       const parts: Buffer[] = [];
-      parts.push(encodePktLine("packfile\n"));
       parts.push(
-        encodePktLine(
-          Buffer.concat([Buffer.from([CHANNEL_FATAL]), Buffer.from(`want ${want} not found\n`)]),
-        ),
+        params.sidebandAll ? encodeSidebandData("packfile\n") : encodePktLine("packfile\n"),
+      );
+      parts.push(
+        params.sidebandAll
+          ? encodeSidebandData(`want ${want} not found\n`, CHANNEL_FATAL)
+          : encodePktLine(
+              Buffer.concat([
+                Buffer.from([CHANNEL_FATAL]),
+                Buffer.from(`want ${want} not found\n`),
+              ]),
+            ),
       );
       parts.push(encodeFlushPkt());
       return Buffer.concat(parts);
