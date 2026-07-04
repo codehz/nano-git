@@ -19,6 +19,7 @@ import { createImportView } from "@/repository/import/import-view.ts";
 import { encodePktLine } from "@/transport/protocol/pkt-line.ts";
 import { sha1 } from "@/types/index.ts";
 
+import type { ImportPlanDraft } from "@/repository/import/import-session-types.ts";
 import type { V2GitServiceTransport } from "@/transport/client/upload-pack/types.ts";
 import type { RemoteRef, RefAdvertisement } from "@/transport/protocol/types.ts";
 
@@ -89,6 +90,27 @@ function createMockAdvertisement(overrides?: Partial<RefAdvertisement>): RefAdve
 }
 
 const MOCK_SOURCE = { url: "https://example.com/repo.git" };
+
+async function prepareDraft(draft: ImportPlanDraft) {
+  return draft.build().prepare();
+}
+
+async function previewDraft(draft: ImportPlanDraft) {
+  const plan = draft.build();
+  const prepared = await plan.prepare();
+  return Object.freeze({
+    ...prepared.preview,
+    selectedRefs: plan.inspect().selectedRefs,
+  });
+}
+
+async function applyDraft(draft: ImportPlanDraft) {
+  return (await prepareDraft(draft)).apply();
+}
+
+function inspectDraft(draft: ImportPlanDraft) {
+  return draft.build().inspect();
+}
 
 // ============================================================================
 // Glob 模式匹配
@@ -286,46 +308,52 @@ describe("ImportSession", () => {
 });
 
 // ============================================================================
-// ImportPlanBuilder 基础行为
+// ImportPlanDraft 基础行为
 // ============================================================================
 
-describe("ImportPlanBuilder 基础行为", () => {
+describe("ImportPlanDraft 基础行为", () => {
   const backend = createBackendWithMockObjects();
   const adv = createMockAdvertisement();
   const session = createImportSession(MOCK_SOURCE, backend, adv);
 
-  test("plan() 返回 plan builder", async () => {
+  test("plan() 返回 draft", async () => {
     const plan = session.plan();
     expect(plan).toBeDefined();
-    expect(typeof plan.preview).toBe("function");
-    expect(typeof plan.apply).toBe("function");
     expect(typeof plan.materialize).toBe("function");
+    expect(typeof plan.build).toBe("function");
   });
 
-  test("preview() 返回 canApply = true", async () => {
+  test("空计划可 inspect 且可 prepare", async () => {
     const plan = session.plan();
-    const preview = await plan.preview();
+    const inspection = inspectDraft(plan);
+    expect(inspection.canPrepare).toBe(true);
+    expect(inspection.selectedRefs).toEqual([]);
+
+    const preview = await previewDraft(plan);
     expect(preview.canApply).toBe(true);
     expect(preview.remoteSnapshot).toEqual(adv);
   });
 
-  test("apply() 返回空结果（无物化操作）", async () => {
+  test("空计划 apply() 返回空结果", async () => {
     const plan = session.plan();
-    const result = await plan.apply();
+    const result = await applyDraft(plan);
     expect(result.importedObjects).toBe(0);
     expect(result.updatedRefs.size).toBe(0);
   });
 
-  test("materialize 链式调用后 preview 返回真实 ref 操作", async () => {
+  test("materialize 链式调用后 inspect/prepare 返回真实计划", async () => {
     const defaultBranch = session.defaultBranch();
     const plan = session.plan();
 
     plan.materialize(defaultBranch).toBranch("main");
-    const preview = await plan.preview();
+    const inspection = inspectDraft(plan);
+    expect(inspection.selectedRefs.length).toBeGreaterThan(0);
+    expect(inspection.canPrepare).toBe(true);
+
+    const preview = await previewDraft(plan);
 
     expect(preview.canApply).toBe(true);
     expect(preview.refOperations.length).toBeGreaterThan(0);
-    expect(preview.selectedRefs.length).toBeGreaterThan(0);
     expect(preview.objectRoots.length).toBe(0);
     expect(preview.prefetchedObjects).toBe(0);
     expect(preview.diagnostics.length).toBeGreaterThan(0);
@@ -394,10 +422,10 @@ describe("会话冻结语义", () => {
 });
 
 // ============================================================================
-// PlanBuilder Preview
+// ImportPlanDraft / ImportPlan / PreparedImportPlan
 // ============================================================================
 
-describe("PlanBuilder — 命名空间物化", () => {
+describe("ImportPlanDraft — 命名空间物化", () => {
   const backend = createBackendWithMockObjects();
   const adv = createMockAdvertisement();
   const session = createImportSession(MOCK_SOURCE, backend, adv);
@@ -409,7 +437,7 @@ describe("PlanBuilder — 命名空间物化", () => {
       .materialize(branches)
       .toNamespace("refs/mirrors/upstream/*", { policy: { mode: "mirror" }, prune: true });
 
-    const preview = await plan.preview();
+    const preview = await previewDraft(plan);
 
     // 所有 3 个分支应映射到镜像命名空间
     expect(preview.selectedRefs.length).toBe(3);
@@ -427,7 +455,7 @@ describe("PlanBuilder — 命名空间物化", () => {
     const mainRef = session.selectRefs(["refs/heads/main"]);
     const plan = session.plan().materialize(mainRef).toNamespace("refs/heads/main-backup");
 
-    const preview = await plan.preview();
+    const preview = await previewDraft(plan);
     expect(preview.selectedRefs.length).toBe(1);
     expect(preview.selectedRefs[0]?.localTarget).toBe("refs/heads/main-backup");
   });
@@ -436,7 +464,7 @@ describe("PlanBuilder — 命名空间物化", () => {
     const tags = session.select("refs/tags/*");
     const plan = session.plan().materialize(tags).toNamespace("refs/tags/*");
 
-    const preview = await plan.preview();
+    const preview = await previewDraft(plan);
     // 标签的公共前缀是 refs/tags/，所以 * 匹配 v1.0.0, v1.1.0, v2.0.0-beta
     expect(preview.selectedRefs.length).toBe(3);
     const localRefs = preview.selectedRefs.map((r) => r.localTarget).sort();
@@ -452,7 +480,7 @@ describe("PlanBuilder — 命名空间物化", () => {
       .materialize(branches)
       .toNamespace("refs/mirrors/upstream/*", { policy: { mode: "mirror" } });
 
-    const preview = await plan.preview();
+    const preview = await previewDraft(plan);
     const loginTarget = preview.selectedRefs.find(
       (r) => r.remoteRef.name === "refs/heads/feature/login",
     );
@@ -461,7 +489,7 @@ describe("PlanBuilder — 命名空间物化", () => {
   });
 });
 
-describe("PlanBuilder — 分支/tag/HEAD 物化", () => {
+describe("ImportPlanDraft — 分支/tag/HEAD 物化", () => {
   const backend = createBackendWithMockObjects();
   const adv = createMockAdvertisement();
   const session = createImportSession(MOCK_SOURCE, backend, adv);
@@ -470,7 +498,7 @@ describe("PlanBuilder — 分支/tag/HEAD 物化", () => {
     const defaultBranch = session.defaultBranch();
     const plan = session.plan().materialize(defaultBranch).toBranch("main");
 
-    const preview = await plan.preview();
+    const preview = await previewDraft(plan);
     expect(preview.selectedRefs.length).toBe(1);
     expect(preview.selectedRefs[0]?.localTarget).toBe("refs/heads/main");
     expect(preview.refOperations[0]?.localRef).toBe("refs/heads/main");
@@ -480,7 +508,7 @@ describe("PlanBuilder — 分支/tag/HEAD 物化", () => {
     const defaultBranch = session.defaultBranch();
     const plan = session.plan().materialize(defaultBranch).toBranch("refs/heads/custom-main");
 
-    const preview = await plan.preview();
+    const preview = await previewDraft(plan);
     expect(preview.selectedRefs[0]?.localTarget).toBe("refs/heads/custom-main");
   });
 
@@ -488,7 +516,7 @@ describe("PlanBuilder — 分支/tag/HEAD 物化", () => {
     const tags = session.select("refs/tags/v1*");
     const plan = session.plan().materialize(tags).toTag("v1-current");
 
-    const preview = await plan.preview();
+    const preview = await previewDraft(plan);
     expect(preview.selectedRefs.length).toBe(0);
     expect(preview.canApply).toBe(false);
     expect(
@@ -502,7 +530,7 @@ describe("PlanBuilder — 分支/tag/HEAD 物化", () => {
     const tagRef = session.selectRefs(["refs/tags/v1.0.0"]);
     const plan = session.plan().materialize(tagRef).toTag("refs/tags/stable-v1");
 
-    const preview = await plan.preview();
+    const preview = await previewDraft(plan);
     expect(preview.selectedRefs[0]?.localTarget).toBe("refs/tags/stable-v1");
   });
 
@@ -515,7 +543,7 @@ describe("PlanBuilder — 分支/tag/HEAD 物化", () => {
       .materialize(defaultBranch)
       .setHead();
 
-    const preview = await plan.preview();
+    const preview = await previewDraft(plan);
     expect(preview.headOperation).toBeDefined();
     expect(preview.headOperation!.targetRef).toBe("refs/heads/main");
   });
@@ -534,7 +562,7 @@ describe("PlanBuilder — 分支/tag/HEAD 物化", () => {
       .materialize(defaultBranch)
       .setHead();
 
-    const preview = await plan.preview();
+    const preview = await previewDraft(plan);
     expect(preview.headOperation?.targetRef).toBe("refs/heads/main");
   });
 
@@ -542,7 +570,7 @@ describe("PlanBuilder — 分支/tag/HEAD 物化", () => {
     const defaultBranch = session.defaultBranch();
     const plan = session.plan().materialize(defaultBranch).setHead();
 
-    const preview = await plan.preview();
+    const preview = await previewDraft(plan);
     // setHead 在物化操作中但没有前置 toBranch/toNamespace
     // headOperation 应为 undefined，同时发出警告
     expect(preview.headOperation).toBeUndefined();
@@ -552,15 +580,16 @@ describe("PlanBuilder — 分支/tag/HEAD 物化", () => {
 
   test("setHead 指向镜像命名空间时报错", async () => {
     const defaultBranch = session.defaultBranch();
-    const preview = await session
-      .plan()
-      .materialize(defaultBranch)
-      .toNamespace("refs/mirrors/upstream/*", {
-        policy: { mode: "mirror" },
-      })
-      .materialize(defaultBranch)
-      .setHead()
-      .preview();
+    const preview = await previewDraft(
+      session
+        .plan()
+        .materialize(defaultBranch)
+        .toNamespace("refs/mirrors/upstream/*", {
+          policy: { mode: "mirror" },
+        })
+        .materialize(defaultBranch)
+        .setHead(),
+    );
 
     expect(preview.headOperation).toBeUndefined();
     expect(preview.canApply).toBe(false);
@@ -573,13 +602,9 @@ describe("PlanBuilder — 分支/tag/HEAD 物化", () => {
 
   test("setHead 指向 tag 时报错", async () => {
     const tagRef = session.selectRefs(["refs/tags/v1.0.0"]);
-    const preview = await session
-      .plan()
-      .materialize(tagRef)
-      .toTag("stable-v1")
-      .materialize(tagRef)
-      .setHead()
-      .preview();
+    const preview = await previewDraft(
+      session.plan().materialize(tagRef).toTag("stable-v1").materialize(tagRef).setHead(),
+    );
 
     expect(preview.headOperation).toBeUndefined();
     expect(preview.canApply).toBe(false);
@@ -592,15 +617,16 @@ describe("PlanBuilder — 分支/tag/HEAD 物化", () => {
 
   test("setHead({ detach: true }) 仍要求目标是 refs/heads/*", async () => {
     const defaultBranch = session.defaultBranch();
-    const preview = await session
-      .plan()
-      .materialize(defaultBranch)
-      .toNamespace("refs/mirrors/upstream/*", {
-        policy: { mode: "mirror" },
-      })
-      .materialize(defaultBranch)
-      .setHead({ detach: true })
-      .preview();
+    const preview = await previewDraft(
+      session
+        .plan()
+        .materialize(defaultBranch)
+        .toNamespace("refs/mirrors/upstream/*", {
+          policy: { mode: "mirror" },
+        })
+        .materialize(defaultBranch)
+        .setHead({ detach: true }),
+    );
 
     expect(preview.headOperation).toBeUndefined();
     expect(preview.canApply).toBe(false);
@@ -613,7 +639,7 @@ describe("PlanBuilder — 分支/tag/HEAD 物化", () => {
 
   test("toBranch 多 ref 视图直接报错", async () => {
     const branches = session.select("refs/heads/*");
-    const preview = await session.plan().materialize(branches).toBranch("main").preview();
+    const preview = await previewDraft(session.plan().materialize(branches).toBranch("main"));
 
     expect(preview.canApply).toBe(false);
     expect(
@@ -643,38 +669,29 @@ describe("PlanBuilder — 分支/tag/HEAD 物化", () => {
       .materialize(defaultBranch)
       .setHead();
 
-    const preview = await plan.preview();
+    const preview = await previewDraft(plan);
 
     // 3 branches + 1 release tag + 1 branch + HEAD
     expect(preview.selectedRefs.length).toBe(5);
     expect(preview.headOperation).toBeDefined();
     expect(preview.headOperation!.targetRef).toBe("refs/heads/main");
-
-    // 应包含本地前置条件
-    expect(preview.localPreconditions.length).toBeGreaterThan(0);
   });
 });
 
-describe("PlanBuilder — 前置条件与诊断", () => {
+describe("ImportPlanDraft — 前置条件与诊断", () => {
   const backend = createBackendWithMockObjects();
   const adv = createMockAdvertisement();
   const session = createImportSession(MOCK_SOURCE, backend, adv);
 
-  test("preview 包含正确的 localPreconditions", async () => {
+  test("prepare 预览不暴露内部前置条件快照", async () => {
     const defaultBranch = session.defaultBranch();
     const plan = session.plan().materialize(defaultBranch).toBranch("new-main");
-    const preview = await plan.preview();
+    const preview = await previewDraft(plan);
 
-    // 应有 refs/heads/new-main 的前置条件（不存在时为 null）
-    const precondition = preview.localPreconditions.find(
-      (p) => p.refName === "refs/heads/new-main",
-    );
-    expect(precondition).toBeDefined();
-    // 本地不存在，expectedHash 应为 null
-    expect(precondition!.expectedHash).toBeNull();
+    expect("localPreconditions" in preview).toBe(false);
   });
 
-  test("setHead 会把 HEAD 纳入前置条件快照", async () => {
+  test("setHead 的准备预览仍可正常生成", async () => {
     backend.refs.write("HEAD", "ref: refs/heads/old-main");
 
     const defaultBranch = session.defaultBranch();
@@ -684,11 +701,10 @@ describe("PlanBuilder — 前置条件与诊断", () => {
       .toBranch("main")
       .materialize(defaultBranch)
       .setHead();
-    const preview = await plan.preview();
+    const preview = await previewDraft(plan);
 
-    const headPrecondition = preview.localPreconditions.find((p) => p.refName === "HEAD");
-    expect(headPrecondition).toBeDefined();
-    expect(headPrecondition?.expectedValue).toBe("ref: refs/heads/old-main");
+    expect(preview.headOperation?.targetRef).toBe("refs/heads/main");
+    expect("localPreconditions" in preview).toBe(false);
   });
 
   test("create-only 策略检测已有 ref 冲突", async () => {
@@ -701,7 +717,7 @@ describe("PlanBuilder — 前置条件与诊断", () => {
       .materialize(tagView)
       .toTag("v1.0.0", { policy: { mode: "create-only" } });
 
-    const preview = await plan.preview();
+    const preview = await previewDraft(plan);
 
     // 应有 error 级别的诊断信息
     const errors = preview.diagnostics.filter((d) => d.level === "error");
@@ -721,7 +737,7 @@ describe("PlanBuilder — 前置条件与诊断", () => {
 
     const mainView = session.selectRefs(["refs/heads/main"]);
     const plan = session.plan().materialize(mainView).toBranch("main");
-    const preview = await plan.preview();
+    const preview = await previewDraft(plan);
 
     // 应为 info 级别的 "已是最新" 诊断
     const skipMessages = preview.diagnostics.filter((d) => d.message.includes("已是最新"));
@@ -741,23 +757,17 @@ describe("PlanBuilder — 前置条件与诊断", () => {
         throw new Error("transport requested");
       },
     };
-    const isolatedSession = createImportSession(
-      MOCK_SOURCE,
-      isolatedBackend,
-      adv,
-      undefined,
-      mockV2Transport,
-    );
+    const isolatedSession = createImportSession(MOCK_SOURCE, isolatedBackend, adv, mockV2Transport);
 
     const mainView = isolatedSession.selectRefs(["refs/heads/main"]);
     const plan = isolatedSession.plan().materialize(mainView).toBranch("main");
-    expect(plan.preview()).rejects.toThrow(/transport requested/);
+    expect(previewDraft(plan)).rejects.toThrow(/transport requested/);
   });
 
   test("自定义命名空间未显式指定 policy 时拒绝 apply", async () => {
     const branches = session.select("refs/heads/*");
     const plan = session.plan().materialize(branches).toNamespace("refs/mirrors/upstream/*");
-    const preview = await plan.preview();
+    const preview = await previewDraft(plan);
 
     expect(preview.canApply).toBe(false);
     expect(
@@ -769,7 +779,9 @@ describe("PlanBuilder — 前置条件与诊断", () => {
 
   test("命名视图标签会出现在诊断中", async () => {
     const namedEmptyView = session.select("refs/heads/nonexistent/*").name("empty-branches");
-    const preview = await session.plan().materialize(namedEmptyView).toBranch("ghost").preview();
+    const preview = await previewDraft(
+      session.plan().materialize(namedEmptyView).toBranch("ghost"),
+    );
 
     expect(
       preview.diagnostics.some(
@@ -780,13 +792,14 @@ describe("PlanBuilder — 前置条件与诊断", () => {
 
   test("命名视图标签会结构化出现在 preview 中", async () => {
     const namedDefaultBranch = session.defaultBranch().name("default-branch");
-    const preview = await session
-      .plan()
-      .materialize(namedDefaultBranch)
-      .toBranch("named-main")
-      .materialize(namedDefaultBranch)
-      .setHead()
-      .preview();
+    const preview = await previewDraft(
+      session
+        .plan()
+        .materialize(namedDefaultBranch)
+        .toBranch("named-main")
+        .materialize(namedDefaultBranch)
+        .setHead(),
+    );
 
     expect(preview.selectedRefs[0]?.viewLabel).toBe("default-branch");
     expect(preview.refOperations[0]?.viewLabel).toBe("default-branch");
@@ -795,7 +808,7 @@ describe("PlanBuilder — 前置条件与诊断", () => {
   });
 });
 
-describe("PlanBuilder — 边界与错误", () => {
+describe("ImportPlanDraft — 边界与错误", () => {
   const backend = createBackendWithMockObjects();
   const adv = createMockAdvertisement();
   const session = createImportSession(MOCK_SOURCE, backend, adv);
@@ -803,7 +816,7 @@ describe("PlanBuilder — 边界与错误", () => {
   test("空 view 的 toBranch 发出警告但不崩溃", async () => {
     const emptyView = session.select("refs/heads/nonexistent/*");
     const plan = session.plan().materialize(emptyView).toBranch("ghost");
-    const preview = await plan.preview();
+    const preview = await previewDraft(plan);
 
     const warnings = preview.diagnostics.filter((d) => d.message.includes("view 为空"));
     expect(warnings.length).toBeGreaterThan(0);
@@ -813,7 +826,7 @@ describe("PlanBuilder — 边界与错误", () => {
   test("空 view 的 toTag 发出警告但不崩溃", async () => {
     const emptyView = session.select("refs/tags/nonexistent/*");
     const plan = session.plan().materialize(emptyView).toTag("ghost");
-    const preview = await plan.preview();
+    const preview = await previewDraft(plan);
 
     const warnings = preview.diagnostics.filter((d) => d.message.includes("view 为空"));
     expect(warnings.length).toBeGreaterThan(0);
@@ -822,21 +835,22 @@ describe("PlanBuilder — 边界与错误", () => {
   test("空 view 的 toNamespace 返回空映射", async () => {
     const emptyView = session.select("refs/heads/nonexistent/*");
     const plan = session.plan().materialize(emptyView).toNamespace("refs/mirrors/*");
-    const preview = await plan.preview();
+    const preview = await previewDraft(plan);
 
     expect(preview.selectedRefs.length).toBe(0);
   });
 
   test("精确目标不允许开启 prune", async () => {
     const mainRef = session.selectRefs(["refs/heads/main"]);
-    const preview = await session
-      .plan()
-      .materialize(mainRef)
-      .toNamespace("refs/mirrors/upstream/main", {
-        policy: { mode: "mirror" },
-        prune: true,
-      })
-      .preview();
+    const preview = await previewDraft(
+      session
+        .plan()
+        .materialize(mainRef)
+        .toNamespace("refs/mirrors/upstream/main", {
+          policy: { mode: "mirror" },
+          prune: true,
+        }),
+    );
 
     expect(preview.canApply).toBe(false);
     expect(
@@ -850,13 +864,14 @@ describe("PlanBuilder — 边界与错误", () => {
     const mainRef = session.selectRefs(["refs/heads/main"]);
     const developRef = session.selectRefs(["refs/heads/develop"]);
 
-    const preview = await session
-      .plan()
-      .materialize(mainRef)
-      .toBranch("shared")
-      .materialize(developRef)
-      .toBranch("shared")
-      .preview();
+    const preview = await previewDraft(
+      session
+        .plan()
+        .materialize(mainRef)
+        .toBranch("shared")
+        .materialize(developRef)
+        .toBranch("shared"),
+    );
 
     expect(preview.canApply).toBe(false);
     expect(
@@ -870,29 +885,26 @@ describe("PlanBuilder — 边界与错误", () => {
 
   test("apply() 空 plan 返回空结果", async () => {
     const plan = session.plan();
-    const result = await plan.apply();
+    const result = await applyDraft(plan);
     expect(result.importedObjects).toBe(0);
     expect(result.updatedRefs.size).toBe(0);
   });
 
   test("preview 保留 remoteSnapshot 快照", async () => {
     const plan = session.plan();
-    const preview = await plan.preview();
+    const preview = await previewDraft(plan);
 
     expect(preview.remoteSnapshot.defaultBranch).toBe("refs/heads/main");
     expect(preview.remoteSnapshot.refs.length).toBe(7);
   });
 
   test("preview 结果会被冻结", async () => {
-    const preview = await session
-      .plan()
-      .materialize(session.defaultBranch())
-      .toBranch("main")
-      .preview();
+    const preview = await previewDraft(
+      session.plan().materialize(session.defaultBranch()).toBranch("main"),
+    );
 
     expect(Object.isFrozen(preview)).toBe(true);
     expect(Object.isFrozen(preview.selectedRefs)).toBe(true);
-    expect(Object.isFrozen(preview.localPreconditions)).toBe(true);
     expect(Object.isFrozen(preview.refOperations)).toBe(true);
     expect(Object.isFrozen(preview.diagnostics)).toBe(true);
   });
@@ -963,17 +975,15 @@ describe("apply 写 ref", () => {
     return { backend, treeHash, commitHash, commitHash2, blobHash };
   }
 
-  test("preview 阶段直接拒绝非 fast-forward 更新", async () => {
+  test("prepare 阶段直接拒绝非 fast-forward 更新", async () => {
     const { backend, commitHash, commitHash2 } = createRepoWithObjects();
     backend.refs.write("refs/heads/main", commitHash2);
 
     const adv = createAdvForCommit(commitHash);
     const session = createImportSession(MOCK_SOURCE, backend, adv);
-    const preview = await session
-      .plan()
-      .materialize(session.defaultBranch())
-      .toBranch("main")
-      .preview();
+    const preview = await previewDraft(
+      session.plan().materialize(session.defaultBranch()).toBranch("main"),
+    );
 
     expect(preview.canApply).toBe(false);
     expect(
@@ -983,7 +993,7 @@ describe("apply 写 ref", () => {
     ).toBe(true);
   });
 
-  test("preview 阶段直接拒绝把非 commit 对象物化到 refs/heads/*", async () => {
+  test("prepare 阶段直接拒绝把非 commit 对象物化到 refs/heads/*", async () => {
     const { backend, blobHash } = createRepoWithObjects();
     const adv: RefAdvertisement = {
       capabilities: {},
@@ -994,11 +1004,9 @@ describe("apply 写 ref", () => {
       defaultBranch: "refs/heads/main",
     };
     const session = createImportSession(MOCK_SOURCE, backend, adv);
-    const preview = await session
-      .plan()
-      .materialize(session.defaultBranch())
-      .toBranch("main")
-      .preview();
+    const preview = await previewDraft(
+      session.plan().materialize(session.defaultBranch()).toBranch("main"),
+    );
 
     expect(preview.canApply).toBe(false);
     expect(
@@ -1017,7 +1025,7 @@ describe("apply 写 ref", () => {
     const defaultBranch = session.defaultBranch();
     const plan = session.plan().materialize(defaultBranch).toBranch("main");
 
-    const result = await plan.apply();
+    const result = await applyDraft(plan);
 
     expect(result.importedObjects).toBe(0); // 本地已有对象
     expect(result.updatedRefs.get("refs/heads/main")).toBe(sha1(commitHash));
@@ -1037,7 +1045,7 @@ describe("apply 写 ref", () => {
       .materialize(defaultBranch)
       .setHead();
 
-    const result = await plan.apply();
+    const result = await applyDraft(plan);
 
     expect(result.updatedRefs.has("refs/heads/main")).toBe(true);
     expect(result.headTarget).toBe("refs/heads/main");
@@ -1070,13 +1078,14 @@ describe("apply 写 ref", () => {
       .materialize(defaultBranch)
       .toBranch("main", { policy: { mode: "mirror" } });
 
-    const preview = await plan.preview();
+    const prepared = await prepareDraft(plan);
+    const preview = prepared.preview;
     expect(preview.canApply).toBe(true);
     expect(
       preview.diagnostics.some((d) => d.level === "info" && d.message.includes("mirror 策略覆盖")),
     ).toBe(true);
 
-    const result = await plan.apply();
+    const result = await applyDraft(plan);
 
     expect(result.updatedRefs.get("refs/heads/main")).toBe(commitHash2);
     expect(backend.refs.read("refs/heads/main")).toBe(commitHash2);
@@ -1095,10 +1104,10 @@ describe("apply 写 ref", () => {
       .materialize(defaultBranch)
       .setHead({ detach: true });
 
-    const preview = await plan.preview();
+    const preview = await previewDraft(plan);
     expect(preview.headOperation?.detach).toBe(true);
 
-    const result = await plan.apply();
+    const result = await applyDraft(plan);
 
     expect(result.headTarget).toBe("refs/heads/main");
     expect(backend.refs.read("HEAD")).toBe(commitHash);
@@ -1119,7 +1128,7 @@ describe("apply 写 ref", () => {
         policy: { mode: "mirror" },
       });
 
-    const result = await plan.apply();
+    const result = await applyDraft(plan);
 
     // main 和 develop 应镜像到 upstream
     expect(result.updatedRefs.has("refs/mirrors/upstream/main")).toBe(true);
@@ -1141,7 +1150,7 @@ describe("apply 写 ref", () => {
       .materialize(tags)
       .toTag("v1.0.0", { policy: { mode: "create-only" } });
 
-    const result = await plan.apply();
+    const result = await applyDraft(plan);
 
     expect(result.updatedRefs.has("refs/tags/v1.0.0")).toBe(true);
     expect(backend.refs.read("refs/tags/v1.0.0")).toBe(commitHash);
@@ -1164,7 +1173,7 @@ describe("apply 写 ref", () => {
         prune: true,
       });
 
-    const result = await plan.apply();
+    const result = await applyDraft(plan);
 
     // stale-branch 应在 prunedRefs 中
     expect(result.deletedRefs).toContain("refs/mirrors/upstream/stale-branch");
@@ -1182,14 +1191,15 @@ describe("apply 写 ref", () => {
     const session = createImportSession(MOCK_SOURCE, backend, adv);
     const mainView = session.selectRefs(["refs/heads/main"]);
 
-    const result = await session
-      .plan()
-      .materialize(mainView)
-      .toNamespace("refs/mirrors/*-backup", {
-        policy: { mode: "mirror" },
-        prune: true,
-      })
-      .apply();
+    const result = await applyDraft(
+      session
+        .plan()
+        .materialize(mainView)
+        .toNamespace("refs/mirrors/*-backup", {
+          policy: { mode: "mirror" },
+          prune: true,
+        }),
+    );
 
     expect(result.deletedRefs).toEqual(["refs/mirrors/legacy-backup"]);
     expect(backend.refs.read("refs/mirrors/main-backup")).toBe(commitHash);
@@ -1215,19 +1225,20 @@ describe("apply 写 ref", () => {
     const mainView = session.selectRefs(["refs/heads/main"]);
     const developView = session.selectRefs(["refs/heads/develop"]);
 
-    const result = await session
-      .plan()
-      .materialize(mainView)
-      .toNamespace("refs/mirrors/upstream/*", {
-        policy: { mode: "mirror" },
-        prune: true,
-      })
-      .materialize(developView)
-      .toNamespace("refs/mirrors/upstream/*", {
-        policy: { mode: "mirror" },
-        prune: true,
-      })
-      .apply();
+    const result = await applyDraft(
+      session
+        .plan()
+        .materialize(mainView)
+        .toNamespace("refs/mirrors/upstream/*", {
+          policy: { mode: "mirror" },
+          prune: true,
+        })
+        .materialize(developView)
+        .toNamespace("refs/mirrors/upstream/*", {
+          policy: { mode: "mirror" },
+          prune: true,
+        }),
+    );
 
     expect(result.deletedRefs).toEqual(["refs/mirrors/upstream/legacy"]);
     expect(backend.refs.read("refs/mirrors/upstream/main")).toBe(commitHash);
@@ -1243,14 +1254,15 @@ describe("apply 写 ref", () => {
     const session = createImportSession(MOCK_SOURCE, backend, adv);
     const emptyView = session.select("refs/heads/nonexistent/*");
 
-    const result = await session
-      .plan()
-      .materialize(emptyView)
-      .toNamespace("refs/mirrors/upstream/*", {
-        policy: { mode: "mirror" },
-        prune: true,
-      })
-      .apply();
+    const result = await applyDraft(
+      session
+        .plan()
+        .materialize(emptyView)
+        .toNamespace("refs/mirrors/upstream/*", {
+          policy: { mode: "mirror" },
+          prune: true,
+        }),
+    );
 
     expect([...result.deletedRefs].sort()).toEqual([
       "refs/mirrors/upstream/legacy",
@@ -1288,10 +1300,10 @@ describe("apply 错误处理", () => {
 
     const plan = session.plan().materialize(defaultBranch).toBranch("main");
 
-    // preview 后，外部修改了本地 ref
-    const preview = await plan.preview();
+    // prepare 后，外部修改了本地 ref
+    const prepared = await prepareDraft(plan);
+    const preview = prepared.preview;
     expect(preview.canApply).toBe(true);
-    expect(preview.localPreconditions.length).toBeGreaterThan(0);
 
     // 在 apply 前手动写 ref，破坏前置条件
     // 注意：前置条件是针对目标 ref 的，这里写一个不同 hash 的 ref 来触发
@@ -1299,10 +1311,10 @@ describe("apply 错误处理", () => {
     backend.refs.write("refs/heads/main", sha1("f".repeat(40)));
 
     // apply 应因前置条件变化而失败
-    expect(plan.apply()).rejects.toThrow(/前置条件/);
+    expect(prepared.apply()).rejects.toThrow(/前置条件/);
   });
 
-  test("HEAD 在 preview 后漂移时 apply 失败", async () => {
+  test("HEAD 在 prepare 生成预览后漂移时 apply 失败", async () => {
     const { backend, commitHash } = createRepoWithObjects();
     backend.refs.write("HEAD", "ref: refs/heads/previous");
 
@@ -1317,15 +1329,14 @@ describe("apply 错误处理", () => {
       .materialize(defaultBranch)
       .setHead();
 
-    const preview = await plan.preview();
-    expect(preview.localPreconditions.some((p) => p.refName === "HEAD")).toBe(true);
+    const prepared = await prepareDraft(plan);
 
     backend.refs.write("HEAD", "ref: refs/heads/changed");
 
-    expect(plan.apply()).rejects.toThrow(/前置条件/);
+    expect(prepared.apply()).rejects.toThrow(/前置条件/);
   });
 
-  test("prune 命名空间在 preview 后新增 ref 时 apply 失败", async () => {
+  test("prune 命名空间在 prepare 生成预览后新增 ref 时 apply 失败", async () => {
     const { backend, commitHash } = createRepoWithObjects();
     backend.refs.write("refs/mirrors/upstream/main", commitHash);
 
@@ -1341,30 +1352,27 @@ describe("apply 错误处理", () => {
         prune: true,
       });
 
-    const preview = await plan.preview();
-    expect(
-      preview.localPreconditions.some((p) => p.namespacePrefix === "refs/mirrors/upstream/"),
-    ).toBe(true);
+    const prepared = await prepareDraft(plan);
 
     backend.refs.write("refs/mirrors/upstream/rogue", sha1("e".repeat(40)));
 
-    expect(plan.apply()).rejects.toThrow(
-      /命名空间 "refs\/mirrors\/upstream\/\*" 在 preview\(\) 后已变化/,
+    expect(prepared.apply()).rejects.toThrow(
+      /命名空间 "refs\/mirrors\/upstream\/\*" 在 prepare\(\) 生成的预览后已变化/,
     );
   });
 
-  test("preview 后追加动作时 apply 使用最新计划", async () => {
+  test("prepare 前追加动作时 apply 使用最新计划", async () => {
     const { backend, commitHash } = createRepoWithObjects();
     const adv = createAdvForCommit(commitHash);
     const session = createImportSession(MOCK_SOURCE, backend, adv);
     const defaultBranch = session.defaultBranch();
 
     const plan = session.plan();
-    const firstPreview = await plan.preview();
+    const firstPreview = await previewDraft(plan);
     expect(firstPreview.refOperations.length).toBe(0);
 
     plan.materialize(defaultBranch).toBranch("main");
-    const result = await plan.apply();
+    const result = await applyDraft(plan);
 
     expect(result.updatedRefs.get("refs/heads/main")).toBe(commitHash);
     expect(backend.refs.read("refs/heads/main")).toBe(commitHash);
@@ -1385,7 +1393,7 @@ describe("apply 错误处理", () => {
       .materialize(defaultBranch)
       .toBranch("main", { policy: { mode: "create-only" } });
 
-    expect(plan.apply()).rejects.toThrow(/错误.*无法执行/);
+    expect(applyDraft(plan)).rejects.toThrow(/错误.*无法执行/);
     expect(backend.refs.read("refs/heads/main")).toBe(sha1("d".repeat(40)));
     // 原始 hash 保持不变
     expect(backend.refs.read("refs/heads/main")).toBe(sha1("d".repeat(40)));
@@ -1416,7 +1424,7 @@ describe("apply 错误处理", () => {
       .materialize(session.defaultBranch())
       .toBranch("main", { policy: { mode: "create-only" } });
 
-    const preview = await plan.preview();
+    const preview = await previewDraft(plan);
     expect(preview.canApply).toBe(false);
     expect(
       preview.diagnostics.some(
@@ -1424,7 +1432,7 @@ describe("apply 错误处理", () => {
           diagnostic.level === "error" && diagnostic.message.includes("create-only 策略拒绝更新"),
       ),
     ).toBe(true);
-    expect(plan.apply()).rejects.toThrow(/create-only/);
+    expect(applyDraft(plan)).rejects.toThrow(/create-only/);
   });
 
   test("对象缺失时 preview 预取失败会向上传递 transport 错误", async () => {
@@ -1444,12 +1452,12 @@ describe("apply 错误处理", () => {
       ],
       defaultBranch: undefined,
     };
-    const session = createImportSession(MOCK_SOURCE, backend, adv, undefined, mockV2Transport);
+    const session = createImportSession(MOCK_SOURCE, backend, adv, mockV2Transport);
     const missingView = session.selectRefs(["refs/heads/missing"]);
     const plan = session.plan().materialize(missingView).toBranch("missing-tip");
 
-    expect(plan.preview()).rejects.toThrow();
-    expect(plan.apply()).rejects.toThrow();
+    expect(previewDraft(plan)).rejects.toThrow();
+    expect(applyDraft(plan)).rejects.toThrow();
   });
 
   test("hash 相同但对象缺失时 preview 会先尝试导入对象", async () => {
@@ -1472,14 +1480,14 @@ describe("apply 错误处理", () => {
       defaultBranch: "refs/heads/main",
     };
 
-    const session = createImportSession(MOCK_SOURCE, backend, adv, undefined, mockV2Transport);
+    const session = createImportSession(MOCK_SOURCE, backend, adv, mockV2Transport);
 
     const plan = session.plan().materialize(session.defaultBranch()).toBranch("main");
-    expect(plan.preview()).rejects.toThrow(/transport requested/);
-    expect(plan.apply()).rejects.toThrow(/transport requested/);
+    expect(previewDraft(plan)).rejects.toThrow(/transport requested/);
+    expect(applyDraft(plan)).rejects.toThrow(/transport requested/);
   });
 
-  test("preview 期间本地 ref 漂移会直接返回失败预览", async () => {
+  test("prepare 期间本地 ref 漂移会直接返回失败预览", async () => {
     const backend = createMemoryRepositoryBackend();
     const sourceRepo = createMemoryRepositoryBackend();
     const tree = {
@@ -1511,10 +1519,10 @@ describe("apply 错误处理", () => {
     };
 
     const adv = createAdvForCommit(commitHash);
-    const session = createImportSession(MOCK_SOURCE, backend, adv, undefined, mockV2Transport);
+    const session = createImportSession(MOCK_SOURCE, backend, adv, mockV2Transport);
 
     const plan = session.plan().materialize(session.defaultBranch()).toBranch("main");
-    const preview = await plan.preview();
+    const preview = await previewDraft(plan);
     expect(preview.canApply).toBe(false);
     expect(
       preview.diagnostics.some(
@@ -1523,11 +1531,11 @@ describe("apply 错误处理", () => {
       ),
     ).toBe(true);
 
-    expect(plan.apply()).rejects.toThrow(/无法执行/);
+    expect(applyDraft(plan)).rejects.toThrow(/无法执行/);
     expect(backend.refs.read("refs/heads/main")).toBe(sha1("f".repeat(40)));
   });
 
-  test("目标符号引用在 preview 后漂移时 apply 失败", async () => {
+  test("目标符号引用在 prepare 生成预览后漂移时 apply 失败", async () => {
     const { backend, commitHash } = createRepoWithObjects();
     backend.refs.write("refs/heads/current", commitHash);
     backend.refs.write("refs/heads/main", "ref: refs/heads/current");
@@ -1551,12 +1559,11 @@ describe("apply 错误处理", () => {
       .materialize(session.defaultBranch())
       .toBranch("main", { policy: { mode: "mirror" } });
 
-    const preview = await plan.preview();
-    expect(preview.localPreconditions.some((p) => p.refName === "refs/heads/main")).toBe(true);
+    const prepared = await prepareDraft(plan);
 
     backend.refs.write("refs/heads/main", "ref: refs/heads/other");
 
-    expect(plan.apply()).rejects.toThrow(/前置条件/);
+    expect(prepared.apply()).rejects.toThrow(/前置条件/);
   });
 });
 
@@ -1567,7 +1574,7 @@ describe("openImportSession source 透传", () => {
       advertise: async () => ({ capabilities: {}, commands: [] }),
       command: async () => Buffer.alloc(0),
     };
-    const repo = createRepoImportOperations(backend, undefined, mockV2Transport);
+    const repo = createRepoImportOperations(backend, mockV2Transport);
     const session = await repo.openImportSession({
       url: "https://example.com/private.git",
       token: "secret-token",

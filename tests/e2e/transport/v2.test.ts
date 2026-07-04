@@ -23,6 +23,20 @@ import { lsRefs, lsRefsToRefAdvertisement } from "@/transport/client/upload-pack
 import { objectInfo } from "@/transport/client/upload-pack/object-info.ts";
 import { sha1 } from "@/types/index.ts";
 
+import type { ImportPlanDraft } from "@/repository/import/import-session-types.ts";
+
+async function prepareDraft(draft: ImportPlanDraft) {
+  return draft.build().prepare();
+}
+
+async function previewDraft(draft: ImportPlanDraft) {
+  return (await prepareDraft(draft)).preview;
+}
+
+async function applyDraft(draft: ImportPlanDraft) {
+  return (await prepareDraft(draft)).apply();
+}
+
 describe("v2 协议 - 服务器能力", () => {
   let tempDir: string;
   let server: ReturnType<typeof startGitHttpBackendServer>;
@@ -231,10 +245,11 @@ describe("v2 协议 - ImportSession 透明升级", () => {
       .materialize(defaultBranch)
       .setHead();
 
-    const preview = await plan.preview();
+    const prepared = await prepareDraft(plan);
+    const preview = prepared.preview;
     expect(preview.canApply).toBe(true);
 
-    const result = await plan.apply();
+    const result = await prepared.apply();
     expect(result.updatedRefs.get("refs/heads/main")).toBe(mainCommitHash);
     expect(result.importedObjects).toBe(preview.prefetchedObjects);
 
@@ -292,7 +307,7 @@ describe("v2 协议 - 增量 fetch 多轮协商", () => {
       .toBranch("main")
       .materialize(session1.defaultBranch())
       .setHead();
-    const result1 = await plan1.apply();
+    const result1 = await applyDraft(plan1);
     expect(result1.updatedRefs.get("refs/heads/main")).toBe(sha1(initialCommitHash));
 
     // 第二步：在服务器端创建新提交
@@ -309,11 +324,11 @@ describe("v2 协议 - 增量 fetch 多轮协商", () => {
     );
 
     const plan2 = session2.plan().materialize(session2.defaultBranch()).toBranch("main");
-    const preview2 = await plan2.preview();
+    const preview2 = await previewDraft(plan2);
     expect(preview2.canApply).toBe(true);
     expect(preview2.prefetchedObjects).toBeGreaterThan(0);
 
-    const result2 = await plan2.apply();
+    const result2 = await applyDraft(plan2);
     expect(result2.updatedRefs.get("refs/heads/main")).toBe(sha1(latestCommitHash));
     expect(gitRevParse(join(tempDir, "local-clone"), "HEAD")).toBe(sha1(latestCommitHash));
   });

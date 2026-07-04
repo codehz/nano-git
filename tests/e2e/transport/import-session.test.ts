@@ -14,6 +14,20 @@ import { startGitHttpBackendServer } from "./http-server.ts";
 import { initRepository } from "@/repository/file.ts";
 import { sha1 } from "@/types/index.ts";
 
+import type { ImportPlanDraft } from "@/repository/import/import-session-types.ts";
+
+async function prepareDraft(draft: ImportPlanDraft) {
+  return draft.build().prepare();
+}
+
+async function previewDraft(draft: ImportPlanDraft) {
+  return (await prepareDraft(draft)).preview;
+}
+
+async function applyDraft(draft: ImportPlanDraft) {
+  return (await prepareDraft(draft)).apply();
+}
+
 describe("Import Session", () => {
   let tempDir: string;
   let localDir: string;
@@ -50,11 +64,12 @@ describe("Import Session", () => {
       .materialize(defaultBranch)
       .setHead();
 
-    const preview = await plan.preview();
+    const prepared = await prepareDraft(plan);
+    const preview = prepared.preview;
     expect(preview.canApply).toBe(true);
     expect(preview.prefetchedObjects).toBeGreaterThan(0);
 
-    const result = await plan.apply();
+    const result = await prepared.apply();
 
     expect(result.updatedRefs.get("refs/heads/main")).toBe(mainCommitHash);
     expect(result.importedObjects).toBe(preview.prefetchedObjects);
@@ -79,14 +94,15 @@ describe("Import Session", () => {
     const repo = initRepository(localDir);
     const session = await repo.openImportSession({ url: server.url });
 
-    await session
-      .plan()
-      .materialize(session.select("refs/heads/*"))
-      .toNamespace("refs/mirrors/upstream/*", {
-        policy: { mode: "mirror" },
-        prune: true,
-      })
-      .apply();
+    await applyDraft(
+      session
+        .plan()
+        .materialize(session.select("refs/heads/*"))
+        .toNamespace("refs/mirrors/upstream/*", {
+          policy: { mode: "mirror" },
+          prune: true,
+        }),
+    );
 
     expect(repo.refs.read("refs/mirrors/upstream/main")).toBe(mainCommitHash);
     expect(repo.refs.read("refs/mirrors/upstream/feature")).toBe(featureCommitHash);
@@ -101,11 +117,9 @@ describe("Import Session", () => {
     const repo = initRepository(localDir);
     const session = await repo.openImportSession({ url: server.url });
 
-    await session
-      .plan()
-      .materialize(session.select("refs/tags/*"))
-      .toNamespace("refs/tags/*")
-      .apply();
+    await applyDraft(
+      session.plan().materialize(session.select("refs/tags/*")).toNamespace("refs/tags/*"),
+    );
 
     expect(repo.refs.read("refs/tags/v1.0.0")).toBe(mainCommitHash);
     expect(git(["tag", "--list"], localDir)).toContain("v1.0.0");
@@ -116,14 +130,15 @@ describe("Import Session", () => {
     repo.refs.write("refs/mirrors/upstream/stale", mainCommitHash);
 
     const session = await repo.openImportSession({ url: server.url });
-    const result = await session
-      .plan()
-      .materialize(session.select("refs/heads/*"))
-      .toNamespace("refs/mirrors/upstream/*", {
-        policy: { mode: "mirror" },
-        prune: true,
-      })
-      .apply();
+    const result = await applyDraft(
+      session
+        .plan()
+        .materialize(session.select("refs/heads/*"))
+        .toNamespace("refs/mirrors/upstream/*", {
+          policy: { mode: "mirror" },
+          prune: true,
+        }),
+    );
 
     expect(result.deletedRefs).toContain("refs/mirrors/upstream/stale");
     expect(repo.refs.read("refs/mirrors/upstream/stale")).toBeNull();
@@ -136,14 +151,15 @@ describe("Import Session", () => {
     git(["pack-refs", "--all"], localDir);
 
     const session = await repo.openImportSession({ url: server.url });
-    const result = await session
-      .plan()
-      .materialize(session.select("refs/heads/*"))
-      .toNamespace("refs/mirrors/upstream/*", {
-        policy: { mode: "mirror" },
-        prune: true,
-      })
-      .apply();
+    const result = await applyDraft(
+      session
+        .plan()
+        .materialize(session.select("refs/heads/*"))
+        .toNamespace("refs/mirrors/upstream/*", {
+          policy: { mode: "mirror" },
+          prune: true,
+        }),
+    );
 
     expect(result.deletedRefs).toContain("refs/mirrors/upstream/stale");
     expect(repo.refs.read("refs/mirrors/upstream/stale")).toBeNull();
@@ -154,13 +170,14 @@ describe("Import Session", () => {
     const session = await repo.openImportSession({ url: server.url });
 
     const plan = session.plan().materialize(session.defaultBranch()).toBranch("main");
-    const preview = await plan.preview();
+    const prepared = await prepareDraft(plan);
+    const preview = prepared.preview;
 
     expect(preview.canApply).toBe(true);
 
     repo.refs.write("refs/heads/main", mainCommitHash);
 
-    expect(plan.apply()).rejects.toThrow(/前置条件/);
+    expect(prepared.apply()).rejects.toThrow(/前置条件/);
   });
 
   test("自定义命名空间未显式声明策略时拒绝执行", async () => {
@@ -168,7 +185,7 @@ describe("Import Session", () => {
     const session = await repo.openImportSession({ url: server.url });
 
     const plan = session.plan().materialize(session.allRefs()).toNamespace("refs/vendor/*");
-    const preview = await plan.preview();
+    const preview = await previewDraft(plan);
 
     expect(preview.canApply).toBe(false);
     expect(
@@ -178,7 +195,7 @@ describe("Import Session", () => {
       ),
     ).toBe(true);
 
-    expect(plan.apply()).rejects.toThrow(/无法执行/);
+    expect(applyDraft(plan)).rejects.toThrow(/无法执行/);
   });
 
   test("setHead 不能绑定到镜像命名空间", async () => {
@@ -186,15 +203,16 @@ describe("Import Session", () => {
     const session = await repo.openImportSession({ url: server.url });
     const defaultBranch = session.defaultBranch();
 
-    const preview = await session
-      .plan()
-      .materialize(defaultBranch)
-      .toNamespace("refs/mirrors/upstream/*", {
-        policy: { mode: "mirror" },
-      })
-      .materialize(defaultBranch)
-      .setHead()
-      .preview();
+    const preview = await previewDraft(
+      session
+        .plan()
+        .materialize(defaultBranch)
+        .toNamespace("refs/mirrors/upstream/*", {
+          policy: { mode: "mirror" },
+        })
+        .materialize(defaultBranch)
+        .setHead(),
+    );
 
     expect(preview.headOperation).toBeUndefined();
     expect(preview.canApply).toBe(false);
@@ -216,13 +234,14 @@ describe("Import Session", () => {
     const session = await repo.openImportSession({ url: server.url });
     const tags = session.select("refs/tags/*");
 
-    const preview = await session
-      .plan()
-      .materialize(tags)
-      .toTag("stable-v1")
-      .materialize(tags.where((ref) => ref.name === "refs/tags/v1.0.0"))
-      .setHead()
-      .preview();
+    const preview = await previewDraft(
+      session
+        .plan()
+        .materialize(tags)
+        .toTag("stable-v1")
+        .materialize(tags.where((ref) => ref.name === "refs/tags/v1.0.0"))
+        .setHead(),
+    );
 
     expect(preview.headOperation).toBeUndefined();
     expect(preview.canApply).toBe(false);

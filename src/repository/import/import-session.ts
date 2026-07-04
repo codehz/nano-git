@@ -8,21 +8,17 @@
 import { createV2HttpTransport } from "../../transport/client/upload-pack/http.ts";
 import { lsRefs, lsRefsToRefAdvertisement } from "../../transport/client/upload-pack/ls-refs.ts";
 import { matchRefGlob } from "./import-glob.ts";
-import { createPlanBuilder } from "./import-plan-builder.ts";
+import { createImportPlanDraft } from "./import-plan-draft.ts";
 import { createImportView } from "./import-view.ts";
 
 import type { RepositoryBackend } from "../../backend/types.ts";
 import type { RemoteSource } from "../../remote/types.ts";
 import type { V2GitServiceTransport } from "../../transport/client/upload-pack/types.ts";
-import type {
-  RemoteRef,
-  RefAdvertisement,
-  UploadPackTransport,
-} from "../../transport/protocol/types.ts";
+import type { RemoteRef, RefAdvertisement } from "../../transport/protocol/types.ts";
 import type {
   ImportView,
   ImportSession,
-  ImportPlanBuilder,
+  ImportPlanDraft,
   RepoImportOperations,
 } from "./import-session-types.ts";
 
@@ -42,7 +38,6 @@ function createImportSession(
   source: RemoteSource,
   backend: RepositoryBackend,
   advertisement: RefAdvertisement,
-  transportFactory?: (url: string) => UploadPackTransport,
   v2Transport?: V2GitServiceTransport,
 ): ImportSession {
   const frozenSource = Object.freeze({
@@ -115,14 +110,8 @@ function createImportSession(
       return createImportView(refs) as ImportView;
     },
 
-    plan(): ImportPlanBuilder {
-      return createPlanBuilder(
-        backend,
-        frozenAdvertisement,
-        frozenSource,
-        transportFactory,
-        v2Transport,
-      );
+    plan(): ImportPlanDraft {
+      return createImportPlanDraft(backend, frozenAdvertisement, v2Transport);
     },
   };
 }
@@ -141,7 +130,6 @@ function createImportSession(
  */
 export function createRepoImportOperations(
   backend: RepositoryBackend,
-  transportFactory?: (url: string) => UploadPackTransport,
   testV2Transport?: V2GitServiceTransport,
 ): RepoImportOperations {
   return {
@@ -160,8 +148,7 @@ export function createRepoImportOperations(
       });
 
       const advertisement = lsRefsToRefAdvertisement(lsRefsEntries);
-
-      return createImportSession(source, backend, advertisement, transportFactory, v2Transport);
+      return createImportSession(source, backend, advertisement, v2Transport);
     },
   };
 }

@@ -810,11 +810,17 @@ describe("push() 端到端", () => {
 
     // 先导入远端对象，使本地 store 拥有服务端提交（避免 push 时 parent commit 缺失）
     const importSession = await repo.openImportSession({ url: serverUrl });
-    await importSession
-      .plan()
-      .materialize(importSession.allRefs())
-      .toNamespace("refs/mirrors/upstream/*", { policy: { mode: "mirror" }, prune: true })
-      .apply();
+    await (
+      await importSession
+        .plan()
+        .materialize(importSession.allRefs())
+        .toNamespace("refs/mirrors/upstream/*", {
+          policy: { mode: "mirror" },
+          prune: true,
+        })
+        .build()
+        .prepare()
+    ).apply();
 
     // 清理可能残留的 server feature ref，保证测试隔离
     try {

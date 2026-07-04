@@ -260,16 +260,17 @@ const plan = session
   .materialize(defaultBranch)
   .setHead();
 
-const preview = await plan.preview();
+const prepared = await plan.build().prepare();
+const preview = prepared.preview;
 console.log(preview.refOperations.map((op) => op.localRef));
 console.log(preview.prefetchedObjects);
 
-const result = await plan.apply();
+const result = await prepared.apply();
 console.log(`Imported ${result.importedObjects} objects`);
 console.log(`Updated ${result.updatedRefs.size} refs`);
 ```
 
-`preview()` 可能会为严格校验预取缺失对象，但不会写入 refs 或 `HEAD`。`apply()` 只会消费同一计划的冻结 preview 结果。
+`build()` 只做静态计划编译；`prepare()` 可能会为严格校验预取缺失对象，但不会写入 refs 或 `HEAD`；`apply()` 只消费同一份 prepared plan。
 
 带认证的导入（私有仓库）：
 
@@ -284,15 +285,20 @@ const session2 = await repo.openImportSession({
   headers: { "Job-Token": "xxxxxxxx" },
 });
 
-await session.plan().materialize(session.defaultBranch()).toBranch("main").apply();
-await session2
-  .plan()
-  .materialize(session2.allRefs())
-  .toNamespace("refs/mirrors/upstream/*", {
-    policy: { mode: "mirror" },
-    prune: true,
-  })
-  .apply();
+await (
+  await session.plan().materialize(session.defaultBranch()).toBranch("main").build().prepare()
+).apply();
+await (
+  await session2
+    .plan()
+    .materialize(session2.allRefs())
+    .toNamespace("refs/mirrors/upstream/*", {
+      policy: { mode: "mirror" },
+      prune: true,
+    })
+    .build()
+    .prepare()
+).apply();
 ```
 
 如果你需要更底层的控制，也可以直接使用 transport 层的独立函数：

@@ -70,7 +70,7 @@ export interface NamedImportView extends ImportView {
 }
 
 // ============================================================================
-// ImportPlanBuilder
+// ImportPlanDraft
 // ============================================================================
 
 /**
@@ -117,29 +117,27 @@ export interface HeadMaterializationOptions {
 /**
  * Ref 物化构建器
  */
-export interface RefMaterializationBuilder {
-  toNamespace(targetPattern: string, options?: NamespaceMaterializationOptions): ImportPlanBuilder;
+export interface RefMaterializationDraft {
+  toNamespace(targetPattern: string, options?: NamespaceMaterializationOptions): ImportPlanDraft;
 
-  toBranch(branchName: string, options?: BranchMaterializationOptions): ImportPlanBuilder;
+  toBranch(branchName: string, options?: BranchMaterializationOptions): ImportPlanDraft;
 
-  toTag(tagName: string, options?: TagMaterializationOptions): ImportPlanBuilder;
+  toTag(tagName: string, options?: TagMaterializationOptions): ImportPlanDraft;
 
-  setHead(options?: HeadMaterializationOptions): ImportPlanBuilder;
+  setHead(options?: HeadMaterializationOptions): ImportPlanDraft;
 }
 
 /**
- * 导入计划构建器
+ * 导入计划草案
  */
-export interface ImportPlanBuilder {
-  materialize(view: ImportView): RefMaterializationBuilder;
+export interface ImportPlanDraft {
+  materialize(view: ImportView): RefMaterializationDraft;
 
-  preview(): Promise<ImportPreview>;
-
-  apply(): Promise<ImportApplyResult>;
+  build(): ImportPlan;
 }
 
 // ============================================================================
-// Preview 与 Apply 结果类型
+// Plan / Preview / Apply 结果类型
 // ============================================================================
 
 /**
@@ -150,47 +148,6 @@ export interface PlannedRemoteRef {
   readonly localTarget: string;
   readonly policy: RefUpdatePolicy;
   readonly viewLabel?: string;
-}
-
-/**
- * 本地前置条件
- */
-export interface LocalPrecondition {
-  readonly refName: string;
-  readonly expectedHash: SHA1 | null;
-  /**
-   * 原始 ref 值快照
-   *
-   * 用于 HEAD 这类可能是符号引用的特殊 ref。
-   * 普通 hash ref 通常不需要此字段。
-   */
-  readonly expectedValue?: string | null;
-  /**
-   * 命名空间快照前缀
-   *
-   * 用于 prune ownership 场景。
-   * 当此字段存在时，表示该前置条件校验的是整个命名空间下的 ref 集合，
-   * 而不是单个 ref。
-   */
-  readonly namespacePrefix?: string;
-  /**
-   * 命名空间 ownership 模式
-   *
-   * 当 prune 目标不是简单的前缀投影（例如 `refs/mirrors/*-backup`）时，
-   * 需要记录完整目标模式，以便 apply() 按同一集合重新校验和 prune。
-   */
-  readonly namespacePattern?: string;
-  /**
-   * 命名空间内全部 ref 的原始值快照
-   *
-   * 与 namespacePrefix 配合使用，用于检测 preview() 后
-   * 该命名空间下 ref 的新增、删除或内容漂移。
-   * 若存在 namespacePattern，则按完整模式而不是简单前缀匹配。
-   */
-  readonly expectedRefs?: readonly {
-    readonly refName: string;
-    readonly expectedValue: string | null;
-  }[];
 }
 
 /**
@@ -235,22 +192,47 @@ export interface ImportDiagnostic {
 }
 
 /**
- * 导入预览结果
- *
- * preview() 的目标是明确展示将会发生什么，
- * 让调用者在 apply() 前有完整的认识。
+ * 静态计划检查结果
  */
-export interface ImportPreview {
-  readonly remoteSnapshot: RefAdvertisement;
+export interface ImportPlanInspection {
   readonly selectedRefs: readonly PlannedRemoteRef[];
+  readonly diagnostics: readonly ImportDiagnostic[];
+  readonly canPrepare: boolean;
+}
+
+/**
+ * 已准备导入计划的预览结果
+ *
+ * prepare() 的目标是展示对象预取和 ref/HEAD/prune 最终会发生什么，
+ * 同时隐藏执行内部使用的前置条件快照。
+ */
+export interface ImportPreparedPreview {
+  readonly remoteSnapshot: RefAdvertisement;
   readonly objectRoots: readonly SHA1[];
   readonly prefetchedObjects: number;
-  readonly localPreconditions: readonly LocalPrecondition[];
   readonly refOperations: readonly PlannedRefOperation[];
   readonly headOperation?: PlannedHeadOperation;
   readonly pruneOperations: readonly PlannedRefDeletion[];
   readonly diagnostics: readonly ImportDiagnostic[];
   readonly canApply: boolean;
+}
+
+/**
+ * 已编译的导入计划
+ */
+export interface ImportPlan {
+  inspect(): ImportPlanInspection;
+
+  prepare(): Promise<PreparedImportPlan>;
+}
+
+/**
+ * 已准备执行的导入计划
+ */
+export interface PreparedImportPlan {
+  readonly preview: ImportPreparedPreview;
+
+  apply(): Promise<ImportApplyResult>;
 }
 
 /**
@@ -288,7 +270,7 @@ export interface ImportSession {
 
   allRefs(): ImportView;
 
-  plan(): ImportPlanBuilder;
+  plan(): ImportPlanDraft;
 }
 
 // ============================================================================

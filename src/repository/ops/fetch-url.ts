@@ -74,7 +74,7 @@ async function applyDefaultMapping(
     plan.materialize(defaultBranch).setHead();
   }
 
-  const result = await plan.apply();
+  const result = await (await plan.build().prepare()).apply();
   return convertToFetchResult(result);
 }
 
@@ -103,7 +103,7 @@ async function applyCustomRefSpecs(
     }
   }
 
-  const result = await plan.apply();
+  const result = await (await plan.build().prepare()).apply();
   return convertToFetchResult(result);
 }
 

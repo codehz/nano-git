@@ -18,6 +18,19 @@ import { sha1, type SHA1 } from "@/types/index.ts";
 
 import type { NanoGitServer } from "./nano-git-server.ts";
 import type { RepositoryBackend } from "@/backend/types.ts";
+import type { ImportPlanDraft } from "@/repository/import/import-session-types.ts";
+
+async function prepareDraft(draft: ImportPlanDraft) {
+  return draft.build().prepare();
+}
+
+async function previewDraft(draft: ImportPlanDraft) {
+  return (await prepareDraft(draft)).preview;
+}
+
+async function applyDraft(draft: ImportPlanDraft) {
+  return (await prepareDraft(draft)).apply();
+}
 
 // ============================================================================
 // 测试辅助：用系统 git 创建带提交的目录
@@ -91,10 +104,11 @@ describe("Smart HTTP 服务端 — nano-git 客户端", () => {
       .materialize(defaultBranch)
       .setHead();
 
-    const preview = await plan.preview();
+    const prepared = await prepareDraft(plan);
+    const preview = prepared.preview;
     expect(preview.canApply).toBe(true);
 
-    const result = await plan.apply();
+    const result = await prepared.apply();
     expect(result.updatedRefs.size).toBeGreaterThan(0);
     expect(result.importedObjects).toBeGreaterThan(0);
   });
@@ -110,7 +124,7 @@ describe("Smart HTTP 服务端 — nano-git 客户端", () => {
       .toBranch("main")
       .materialize(session1.defaultBranch())
       .setHead();
-    await plan1.apply();
+    await applyDraft(plan1);
     const firstHash = sha1(repo.refs.read("refs/heads/main")!);
 
     // 在服务端增加提交
@@ -128,10 +142,10 @@ describe("Smart HTTP 服务端 — nano-git 客户端", () => {
       .materialize(session2.select("refs/heads/*"))
       .toNamespace("refs/heads/*", { policy: { mode: "fast-forward" } });
 
-    const preview2 = await plan2.preview();
+    const preview2 = await previewDraft(plan2);
     expect(preview2.canApply).toBe(true);
 
-    const result2 = await plan2.apply();
+    const result2 = await applyDraft(plan2);
     expect(result2.updatedRefs.get("refs/heads/main")).toBe(newHash);
 
     // 验证新提交的树对象
@@ -186,7 +200,7 @@ describe("Smart HTTP 服务端 — 文件系统仓库 e2e", () => {
       .toBranch("main")
       .materialize(session.defaultBranch())
       .setHead();
-    const result = await plan.apply();
+    const result = await applyDraft(plan);
     expect(result.importedObjects).toBeGreaterThan(0);
     expect(result.updatedRefs.has("refs/heads/main")).toBe(true);
   });
