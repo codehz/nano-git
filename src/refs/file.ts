@@ -7,6 +7,7 @@ import {
   readFileSync,
   writeFileSync,
   existsSync,
+  statSync,
   unlinkSync,
   renameSync,
 } from "node:fs";
@@ -23,14 +24,18 @@ import type {
   ReadonlyRefTransaction,
 } from "../types/refs.ts";
 
-function readPackedRefs(gitDir: string): Map<string, string> {
-  const packedRefsPath = join(gitDir, "packed-refs");
-  if (!existsSync(packedRefsPath)) {
-    return new Map<string, string>();
-  }
+interface ParsedPackedRefs {
+  readonly refs: Map<string, string>;
+  readonly lines: readonly string[];
+}
 
+interface PackedRefsCacheEntry extends ParsedPackedRefs {
+  readonly statKey: string | null;
+}
+
+function parsePackedRefs(content: string): ParsedPackedRefs {
   const packedRefs = new Map<string, string>();
-  const lines = readFileSync(packedRefsPath, "utf-8").split("\n");
+  const lines = content.split("\n");
 
   for (const line of lines) {
     if (!line || line.startsWith("#") || line.startsWith("^")) {
@@ -47,26 +52,25 @@ function readPackedRefs(gitDir: string): Map<string, string> {
     packedRefs.set(ref, hash);
   }
 
-  return packedRefs;
+  return {
+    refs: packedRefs,
+    lines,
+  };
 }
 
 /**
- * 从 packed-refs 中删除指定引用
+ * 从 packed-refs 中移除一批指定引用
  *
- * 会同时删除该引用可能携带的 peeled 行（`^...`）。
+ * 会同时删除目标引用可能携带的 peeled 行（`^...`）。
  *
- * @param gitDir - Git 目录
- * @param ref - 完整引用路径
- * @returns 是否实际删除了 packed-refs 条目
+ * @param lines - packed-refs 原始行
+ * @param refs - 需要删除的完整引用路径集合
+ * @returns 是否实际删除了条目，以及删除后的完整文本
  */
-function deletePackedRef(gitDir: string, ref: string): boolean {
-  const packedRefsPath = join(gitDir, "packed-refs");
-  if (!existsSync(packedRefsPath)) {
-    return false;
-  }
-
-  const originalContent = readFileSync(packedRefsPath, "utf-8");
-  const lines = originalContent.split("\n");
+function filterPackedRefsLines(
+  lines: readonly string[],
+  refs: ReadonlySet<string>,
+): { readonly removed: boolean; readonly content: string } {
   const keptLines: string[] = [];
   let removed = false;
   let skipNextPeeledLine = false;
@@ -91,7 +95,7 @@ function deletePackedRef(gitDir: string, ref: string): boolean {
     }
 
     const packedRef = line.slice(spaceIndex + 1);
-    if (packedRef === ref) {
+    if (refs.has(packedRef)) {
       removed = true;
       skipNextPeeledLine = true;
       continue;
@@ -100,12 +104,10 @@ function deletePackedRef(gitDir: string, ref: string): boolean {
     keptLines.push(line);
   }
 
-  if (!removed) {
-    return false;
-  }
-
-  writeFileSync(packedRefsPath, keptLines.join("\n"));
-  return true;
+  return {
+    removed,
+    content: keptLines.join("\n"),
+  };
 }
 
 /**
@@ -173,6 +175,74 @@ function freezePending(pending: Map<string, string | null>): ReadonlyRefTransact
 // ============================================================================
 
 export function createFileRefStore(gitDir: string): RefStore {
+  const packedRefsPath = join(gitDir, "packed-refs");
+  let packedRefsCache: PackedRefsCacheEntry | null = null;
+
+  function invalidatePackedRefsCache(): void {
+    packedRefsCache = null;
+  }
+
+  function getPackedRefsStatKey(): string | null {
+    try {
+      const stat = statSync(packedRefsPath);
+      return `${stat.mtimeMs}:${stat.size}`;
+    } catch (error: unknown) {
+      if (
+        error instanceof Error &&
+        "code" in error &&
+        typeof error.code === "string" &&
+        error.code === "ENOENT"
+      ) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  function readPackedRefsSnapshot(): PackedRefsCacheEntry {
+    const statKey = getPackedRefsStatKey();
+    if (packedRefsCache !== null && packedRefsCache.statKey === statKey) {
+      return packedRefsCache;
+    }
+
+    if (statKey === null) {
+      packedRefsCache = {
+        statKey: null,
+        refs: new Map<string, string>(),
+        lines: [],
+      };
+      return packedRefsCache;
+    }
+
+    const parsed = parsePackedRefs(readFileSync(packedRefsPath, "utf-8"));
+    packedRefsCache = {
+      statKey,
+      refs: parsed.refs,
+      lines: parsed.lines,
+    };
+    return packedRefsCache;
+  }
+
+  function deletePackedRefs(refs: ReadonlySet<string>): boolean {
+    if (refs.size === 0) {
+      return false;
+    }
+
+    const snapshot = readPackedRefsSnapshot();
+    if (snapshot.lines.length === 0) {
+      return false;
+    }
+
+    const filtered = filterPackedRefsLines(snapshot.lines, refs);
+    if (!filtered.removed) {
+      return false;
+    }
+
+    writeFileSync(packedRefsPath, filtered.content);
+    invalidatePackedRefsCache();
+    return true;
+  }
+
   function beginTransaction(hooks?: RefTransactionHook[]): RefTransaction {
     const pending = new Map<string, string | null>(); // null = delete mark
     let committed = false;
@@ -193,7 +263,7 @@ export function createFileRefStore(gitDir: string): RefStore {
         validateRefName(ref);
         const refPath = join(gitDir, ref);
         const hasLooseRef = existsSync(refPath);
-        const hasPackedRef = readPackedRefs(gitDir).has(ref);
+        const hasPackedRef = readPackedRefsSnapshot().refs.has(ref);
         if (!hasLooseRef && !hasPackedRef && !pending.has(ref)) {
           throw new RefNotFoundError(ref);
         }
@@ -205,6 +275,7 @@ export function createFileRefStore(gitDir: string): RefStore {
         committed = true;
 
         const txSnapshot = freezePending(pending);
+        const packedRefsToDelete = new Set(pending.keys());
 
         // 创建所有 lock 文件
         const locks: string[] = [];
@@ -244,15 +315,14 @@ export function createFileRefStore(gitDir: string): RefStore {
               if (existsSync(target)) {
                 unlinkSync(target);
               }
-              deletePackedRef(gitDir, ref);
               unlinkSync(lock);
             } else {
               mkdirSync(dirname(target), { recursive: true });
               renameSync(lock, target);
-              // 写入 loose ref 后清理 packed-refs 条目
-              deletePackedRef(gitDir, ref);
             }
           }
+
+          deletePackedRefs(packedRefsToDelete);
 
           // onCommitted hook
           for (const hook of hooks ?? []) {
@@ -296,7 +366,7 @@ export function createFileRefStore(gitDir: string): RefStore {
         return readFileSync(refPath, "utf-8").trimEnd();
       }
 
-      return readPackedRefs(gitDir).get(ref) ?? null;
+      return readPackedRefsSnapshot().refs.get(ref) ?? null;
     },
 
     write(ref: string, content: string): void {
@@ -310,7 +380,7 @@ export function createFileRefStore(gitDir: string): RefStore {
       validateRefName(ref);
       const refPath = join(gitDir, ref);
       const hasLooseRef = existsSync(refPath);
-      const removedPackedRef = deletePackedRef(gitDir, ref);
+      const removedPackedRef = deletePackedRefs(new Set([ref]));
 
       if (!hasLooseRef && !removedPackedRef) {
         throw new RefNotFoundError(ref);
@@ -332,7 +402,7 @@ export function createFileRefStore(gitDir: string): RefStore {
         }
       }
 
-      for (const ref of readPackedRefs(gitDir).keys()) {
+      for (const ref of readPackedRefsSnapshot().refs.keys()) {
         if (ref.startsWith(prefix)) {
           refs.add(ref);
         }
@@ -351,7 +421,7 @@ export function createFileRefStore(gitDir: string): RefStore {
         }
       }
 
-      for (const ref of readPackedRefs(gitDir).keys()) {
+      for (const ref of readPackedRefsSnapshot().refs.keys()) {
         if (ref.startsWith("refs/")) {
           refs.add(ref);
         }

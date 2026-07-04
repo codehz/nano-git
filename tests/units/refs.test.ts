@@ -117,6 +117,29 @@ describe("createFileRefStore()", () => {
     expect(store.read("refs/heads/main")).toBe("1111111111111111111111111111111111111111");
   });
 
+  test("packed-refs 外部变化后 read()/list() 会重新加载", () => {
+    writeFileSync(
+      join(tempDir, "packed-refs"),
+      "1111111111111111111111111111111111111111 refs/heads/main\n",
+    );
+    const store = createFileRefStore(tempDir);
+
+    expect(store.read("refs/heads/main")).toBe("1111111111111111111111111111111111111111");
+
+    writeFileSync(
+      join(tempDir, "packed-refs"),
+      [
+        "2222222222222222222222222222222222222222 refs/heads/release",
+        "3333333333333333333333333333333333333333 refs/heads/feature/api",
+        "",
+      ].join("\n"),
+    );
+
+    expect(store.read("refs/heads/main")).toBeNull();
+    expect(store.read("refs/heads/release")).toBe("2222222222222222222222222222222222222222");
+    expect(store.list("refs/heads/")).toEqual(["refs/heads/feature/api", "refs/heads/release"]);
+  });
+
   test("list() 会合并 loose refs 和 packed-refs", () => {
     writeFileSync(
       join(tempDir, "packed-refs"),

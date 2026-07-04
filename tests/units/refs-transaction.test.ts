@@ -5,7 +5,7 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -361,5 +361,35 @@ describe("File RefTransaction", () => {
         `000000000000000000000000000000000000000${i}`,
       );
     }
+  });
+
+  test("事务会批量清理 packed-refs 中被写入和删除的引用", () => {
+    writeFileSync(
+      join(tempDir, "packed-refs"),
+      [
+        "# pack-refs with: peeled fully-peeled sorted",
+        "1111111111111111111111111111111111111111 refs/heads/main",
+        "2222222222222222222222222222222222222222 refs/heads/feature",
+        "3333333333333333333333333333333333333333 refs/tags/v1.0.0",
+        "^4444444444444444444444444444444444444444",
+        "",
+      ].join("\n"),
+    );
+
+    const tx = store.beginTransaction();
+    tx.write("refs/heads/main", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    tx.delete("refs/heads/feature");
+    tx.commit();
+
+    expect(store.read("refs/heads/main")).toBe("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    expect(store.read("refs/heads/feature")).toBeNull();
+    expect(readFileSync(join(tempDir, "packed-refs"), "utf-8")).toBe(
+      [
+        "# pack-refs with: peeled fully-peeled sorted",
+        "3333333333333333333333333333333333333333 refs/tags/v1.0.0",
+        "^4444444444444444444444444444444444444444",
+        "",
+      ].join("\n"),
+    );
   });
 });
