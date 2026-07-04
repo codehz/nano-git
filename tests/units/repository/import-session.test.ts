@@ -1544,6 +1544,83 @@ describe("apply 错误处理", () => {
     expect(backend.refs.read("refs/heads/main")).toBe(sha1("f".repeat(40)));
   });
 
+  test("仅对象库中存在但不被本地 ref 可达的远端 ref，不应作为 known-common have 参与协商", async () => {
+    const backend = createMemoryRepositoryBackend();
+    const localTree = {
+      type: "tree" as const,
+      entries: [],
+    };
+    const localTreeHash = writeObject(backend.objects, localTree);
+    const localCommit = {
+      type: "commit" as const,
+      tree: localTreeHash,
+      parents: [],
+      author: { name: "Test", email: "test@test", timestamp: 1, timezone: "+0000" },
+      committer: { name: "Test", email: "test@test", timestamp: 1, timezone: "+0000" },
+      message: "local commit\n",
+    };
+    const localCommitHash = writeObject(backend.objects, localCommit);
+    backend.refs.write("refs/heads/main", localCommitHash);
+
+    const danglingCommitHash = writeObject(backend.objects, {
+      type: "commit",
+      tree: localTreeHash,
+      parents: [],
+      author: { name: "Test", email: "test@test", timestamp: 2, timezone: "+0000" },
+      committer: { name: "Test", email: "test@test", timestamp: 2, timezone: "+0000" },
+      message: "dangling commit\n",
+    });
+
+    const remoteCommit = {
+      type: "commit" as const,
+      tree: localTreeHash,
+      parents: [localCommitHash],
+      author: { name: "Test", email: "test@test", timestamp: 3, timezone: "+0000" },
+      committer: { name: "Test", email: "test@test", timestamp: 3, timezone: "+0000" },
+      message: "remote commit\n",
+    };
+    const remoteCommitHash = writeObject(createMemoryRepositoryBackend().objects, remoteCommit);
+
+    const writer = createPackWriter();
+    writer.addRaw(encodeObject(remoteCommit));
+    const packfileResponse = Buffer.concat([
+      encodePktLine("packfile\n"),
+      encodePktLine(Buffer.concat([Buffer.from([0x01]), writer.build()])),
+      encodeFlushPkt(),
+    ]);
+    const negotiationResponse = Buffer.concat([
+      encodePktLine("acknowledgments\n"),
+      encodePktLine("NAK\n"),
+      encodeFlushPkt(),
+    ]);
+
+    const calls: string[][] = [];
+    const mockV2Transport: V2GitServiceTransport = {
+      advertise: async () => ({ capabilities: {}, commands: [] }),
+      command: async (_command, args) => {
+        calls.push([...(args ?? [])]);
+        return args?.includes("done") ? packfileResponse : negotiationResponse;
+      },
+    };
+
+    const adv = createAdvForCommit(remoteCommitHash, [
+      { name: "refs/heads/stale", hash: danglingCommitHash },
+    ]);
+    const session = createImportSession(MOCK_SOURCE, backend, adv, mockV2Transport);
+
+    const plan = session
+      .plan()
+      .materialize(session.select("refs/heads/*"))
+      .toNamespace("refs/heads/*", { policy: { mode: "fast-forward" } });
+    const preview = await previewDraft(plan);
+
+    expect(preview.canApply).toBe(true);
+    const fetchCall = calls.find((args) => args.includes("want " + remoteCommitHash));
+    expect(fetchCall).toBeDefined();
+    expect(fetchCall).toContain(`have ${localCommitHash}`);
+    expect(fetchCall).not.toContain(`have ${danglingCommitHash}`);
+  });
+
   test("目标符号引用在 prepare 生成预览后漂移时 apply 失败", async () => {
     const { backend, commitHash } = createRepoWithObjects();
     backend.refs.write("refs/heads/current", commitHash);

@@ -1,6 +1,10 @@
 import { PreconditionCheckError } from "../../errors.ts";
 import { v2FetchObjects } from "../../transport/client/upload-pack/fetch.ts";
-import { isAncestor } from "../../transport/protocol/object-graph.ts";
+import {
+  collectReachable,
+  isAncestor,
+  peelTagChain,
+} from "../../transport/protocol/object-graph.ts";
 import { getLocalRefs } from "../../transport/protocol/ref-collection.ts";
 import { resolveBranchTargetHash } from "../../transport/protocol/update-refs.ts";
 import { matchRefGlob } from "./import-glob.ts";
@@ -59,6 +63,35 @@ function createPreparedPreview(params: {
   });
 }
 
+function collectKnownCommonRefs(
+  compiled: CompiledImportPlanState,
+  localHaveTips: readonly SHA1[],
+): SHA1[] {
+  if (localHaveTips.length === 0) {
+    return [];
+  }
+
+  const reachable = collectReachable(compiled.backend.objects, [...localHaveTips], "skip");
+  const knownCommonRefs: SHA1[] = [];
+  const knownCommonSeen = new Set<SHA1>();
+
+  for (const ref of compiled.advertisement.refs) {
+    if (!compiled.backend.objects.exists(ref.hash) || knownCommonSeen.has(ref.hash)) {
+      continue;
+    }
+
+    const peeled = peelTagChain(compiled.backend.objects, ref.hash);
+    if (!reachable.has(peeled)) {
+      continue;
+    }
+
+    knownCommonSeen.add(ref.hash);
+    knownCommonRefs.push(ref.hash);
+  }
+
+  return knownCommonRefs;
+}
+
 function captureLocalPreconditions(
   compiled: CompiledImportPlanState,
 ): readonly LocalPrecondition[] {
@@ -114,14 +147,7 @@ async function fetchPreviewObjects(
     }
   }
 
-  const knownCommonRefs: SHA1[] = [];
-  const knownCommonSeen = new Set<SHA1>();
-  for (const ref of compiled.advertisement.refs) {
-    if (compiled.backend.objects.exists(ref.hash) && !knownCommonSeen.has(ref.hash)) {
-      knownCommonSeen.add(ref.hash);
-      knownCommonRefs.push(ref.hash);
-    }
-  }
+  const knownCommonRefs = collectKnownCommonRefs(compiled, localHaveTips);
 
   if (compiled.v2Transport) {
     const v2Wants = objectRoots.map((hash) => hash);
