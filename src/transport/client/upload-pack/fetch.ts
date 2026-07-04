@@ -770,12 +770,7 @@ export async function negotiateV2Fetch(
     );
   }
 
-  const selector = createFetchHaveSelector(haveCandidates, localObjects);
-  if (knownCommonRefs) {
-    for (const oid of knownCommonRefs) {
-      selector.knownCommon(sha1(oid));
-    }
-  }
+  const selector = createFetchHaveSelector(haveCandidates, localObjects, knownCommonRefs);
   const commonSet = createGitOidSetState();
   let havesToSend = INITIAL_FLUSH;
   let inVain = 0;

@@ -517,7 +517,7 @@ describe("v2 fetch 协商请求", () => {
     );
 
     const haveLines = calls[0]!.filter((line) => line.startsWith("have "));
-    expect(haveLines).toEqual([`have ${mainTip}`, `have ${featureTip}`]);
+    expect(haveLines).toEqual([`have ${featureTip}`, `have ${mainTip}`]);
   });
 
   test("commit-aware 协商会先 peel annotated tag，并避免发送 tag 对象 have", async () => {

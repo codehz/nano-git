@@ -1,18 +1,16 @@
 /**
  * fetch 协商用本地 have 选择器
  *
- * 目标是让客户端在 v2 fetch 协商时更接近官方 Git 的默认 negotiator：
+ * 目标是让客户端在 v2 fetch 协商时尽量贴近官方 Git 默认 negotiator：
  * - 以本地 ref tip 作为起点
- * - 按 commit 时间逆序优先发送较新的提交
+ * - 使用按提交时间排序、按首次入队顺序打破平局的优先队列
+ * - known-common ref 会像上游一样先进入队列，并把祖先标记为 common
  * - 一旦某个提交被 ACK 为 common，就跳过其祖先链，避免无效 have
- *
- * 这里不尝试完整复刻 Git C 实现中的所有 flag 与模式切换，
- * 但保留了最关键的行为轮廓，供 upload-pack/fetch.ts 复用。
  */
 
 import { tryReadObject } from "../../../objects/raw.ts";
 import { sha1 } from "../../../types/index.ts";
-import { isAncestor, peelTagChain } from "../../protocol/object-graph.ts";
+import { peelTagChain } from "../../protocol/object-graph.ts";
 
 import type { SHA1 } from "../../../types/index.ts";
 import type { ObjectSource } from "../../../types/odb.ts";
@@ -31,8 +29,8 @@ const FLAG_SENT = 1 << 4;
 interface CommitNegotiationNode {
   readonly oid: SHA1;
   readonly timestamp: number;
-  readonly order: number;
   readonly parents: readonly SHA1[];
+  pushOrder?: number;
   flags: number;
 }
 
@@ -40,7 +38,7 @@ interface CommitNegotiationState {
   readonly source: ObjectSource;
   readonly nodes: Map<SHA1, CommitNegotiationNode>;
   readonly queue: CommitNegotiationNode[];
-  nextOrder: number;
+  nextPushOrder: number;
   nonCommonRevs: number;
 }
 
@@ -87,8 +85,8 @@ export interface FetchHaveSelector {
   /**
    * 释放祖先遍历阶段
    *
-   * 首轮优先只发送本地 ref 的直接 tip；
-   * 若仍未收敛，再继续向祖先回溯。
+   * 当前实现与官方默认 negotiator 一样会立刻沿祖先链继续扩展，
+   * 因此这里保留为兼容空操作。
    */
   releaseAncestors(): void;
 }
@@ -97,7 +95,7 @@ function compareNodes(a: CommitNegotiationNode, b: CommitNegotiationNode): numbe
   if (a.timestamp !== b.timestamp) {
     return b.timestamp - a.timestamp;
   }
-  return a.order - b.order;
+  return (a.pushOrder ?? 0) - (b.pushOrder ?? 0);
 }
 
 function insertQueue(queue: CommitNegotiationNode[], node: CommitNegotiationNode): void {
@@ -117,11 +115,7 @@ function insertQueue(queue: CommitNegotiationNode[], node: CommitNegotiationNode
   queue.splice(low, 0, node);
 }
 
-function loadCommitNode(
-  source: ObjectSource,
-  oid: SHA1,
-  order: number,
-): CommitNegotiationNode | undefined {
+function loadCommitNode(source: ObjectSource, oid: SHA1): CommitNegotiationNode | undefined {
   const obj = tryReadObject(source, oid);
   if (obj?.type !== "commit") {
     return undefined;
@@ -130,7 +124,6 @@ function loadCommitNode(
   return {
     oid,
     timestamp: obj.committer.timestamp,
-    order,
     parents: obj.parents,
     flags: 0,
   };
@@ -154,23 +147,27 @@ function getCommitNode(
     return cached;
   }
 
-  const loaded = loadCommitNode(state.source, oid, state.nextOrder);
+  const loaded = loadCommitNode(state.source, oid);
   if (!loaded) {
     return undefined;
   }
 
-  state.nextOrder++;
   state.nodes.set(oid, loaded);
   return loaded;
 }
 
-function revListPush(state: CommitNegotiationState, oid: SHA1): CommitNegotiationNode | undefined {
+function revListPush(
+  state: CommitNegotiationState,
+  oid: SHA1,
+  mark = FLAG_SEEN,
+): CommitNegotiationNode | undefined {
   const node = getCommitNode(state, oid);
-  if (!node || (node.flags & FLAG_SEEN) !== 0) {
+  if (!node || (node.flags & mark) !== 0) {
     return node;
   }
 
-  node.flags |= FLAG_SEEN;
+  node.flags |= mark;
+  node.pushOrder ??= state.nextPushOrder++;
   insertQueue(state.queue, node);
   if ((node.flags & FLAG_COMMON) === 0) {
     state.nonCommonRevs++;
@@ -198,7 +195,7 @@ function markCommon(state: CommitNegotiationState, oid: SHA1, ancestorsOnly: boo
     const current = stack.pop()!;
 
     if ((current.flags & FLAG_SEEN) === 0) {
-      revListPush(state, current.oid);
+      revListPush(state, current.oid, FLAG_SEEN);
       continue;
     }
 
@@ -240,62 +237,19 @@ function createLinearSelector(candidates: readonly SHA1[]): FetchHaveSelector {
   };
 }
 
-function hasDirectCandidate(
-  candidates: readonly CommitNegotiationNode[],
-  node: CommitNegotiationNode,
-): boolean {
-  return candidates.some((candidate) => candidate === node);
-}
-
-function getDirectCandidateIndex(
-  candidates: readonly CommitNegotiationNode[],
-  node: CommitNegotiationNode,
-): number {
-  return candidates.findIndex((candidate) => candidate === node);
-}
-
-function insertDirectCandidate(
-  candidates: CommitNegotiationNode[],
-  node: CommitNegotiationNode,
-  directCommitCandidates: readonly CommitNegotiationNode[],
-): void {
-  if (hasDirectCandidate(candidates, node)) {
+function pushKnownCommon(state: CommitNegotiationState, oid: SHA1): void {
+  const commitOid = normalizeNegotiationCommitOid(state.source, oid);
+  if (!commitOid) {
     return;
   }
 
-  const nodeDirectIndex = getDirectCandidateIndex(directCommitCandidates, node);
-  if ((node.flags & FLAG_COMMON_REF) !== 0 && nodeDirectIndex !== -1) {
-    let insertAt = candidates.length;
-    for (let index = 0; index < candidates.length; index++) {
-      const current = candidates[index]!;
-      const currentDirectIndex = getDirectCandidateIndex(directCommitCandidates, current);
-      if ((current.flags & FLAG_COMMON_REF) === 0) {
-        insertAt = index;
-        break;
-      }
-      if (currentDirectIndex !== -1 && nodeDirectIndex < currentDirectIndex) {
-        insertAt = index;
-        break;
-      }
-    }
-    candidates.splice(insertAt, 0, node);
+  const node = getCommitNode(state, commitOid);
+  if (!node || (node.flags & FLAG_SEEN) !== 0) {
     return;
   }
 
-  let low = 0;
-  let high = candidates.length;
-
-  while (low < high) {
-    const mid = Math.floor((low + high) / 2);
-    const current = candidates[mid]!;
-    if (compareNodes(node, current) < 0) {
-      high = mid;
-    } else {
-      low = mid + 1;
-    }
-  }
-
-  candidates.splice(low, 0, node);
+  revListPush(state, commitOid, FLAG_COMMON_REF | FLAG_SEEN);
+  markCommon(state, commitOid, true);
 }
 
 /**
@@ -306,6 +260,7 @@ function insertDirectCandidate(
  *
  * @param candidates - 本地 have 候选集合（通常为本地 refs tip）
  * @param source - 本地对象源（可选）
+ * @param knownCommonCandidates - 已知与远端一致的公共 ref 提示（可选）
  * @returns have 选择器
  *
  * @example
@@ -320,6 +275,7 @@ function insertDirectCandidate(
 export function createFetchHaveSelector(
   candidates: readonly string[],
   source?: ObjectSource,
+  knownCommonCandidates?: readonly string[],
 ): FetchHaveSelector {
   const normalized = candidates.map((oid) => sha1(oid));
   if (!source) {
@@ -330,66 +286,26 @@ export function createFetchHaveSelector(
     source,
     nodes: new Map(),
     queue: [],
-    nextOrder: 0,
+    nextPushOrder: 0,
     nonCommonRevs: 0,
   };
 
-  const directCommitCandidates: CommitNegotiationNode[] = [];
-  const directCandidates: SHA1[] = [];
-  const directSeen = new Set<SHA1>();
+  if (knownCommonCandidates) {
+    for (const oid of knownCommonCandidates) {
+      pushKnownCommon(state, sha1(oid));
+    }
+  }
 
   for (const rawOid of normalized) {
     const oid = normalizeNegotiationCommitOid(state.source, rawOid);
     if (!oid) {
       continue;
     }
-
-    const node = revListPush(state, oid);
-    if (node && !directSeen.has(oid)) {
-      directSeen.add(oid);
-      directCommitCandidates.push(node);
-      continue;
-    }
-
-    if (!node && !directSeen.has(oid)) {
-      directSeen.add(oid);
-      directCandidates.push(oid);
-    }
+    revListPush(state, oid, FLAG_SEEN);
   }
-
-  const filteredDirectCommitCandidates = [...directCommitCandidates];
-  filteredDirectCommitCandidates.sort(compareNodes);
-
-  let directCommitOffset = 0;
-  let directOffset = 0;
-  let hasKnownCommonDirect = false;
-  // 单 tip 会像 Git CLI 一样立即沿祖先链继续协商。
-  // 多 tip 默认也允许继续下探；只有命中 known-common direct tip 时，
-  // 才临时收住祖先遍历，让该公共 ref 先作为 cut-point 发给服务端。
-  let ancestorsReleased = directCommitCandidates.length + directCandidates.length <= 1;
 
   return {
     next(): SHA1 | undefined {
-      while (directCommitOffset < filteredDirectCommitCandidates.length) {
-        const current = filteredDirectCommitCandidates[directCommitOffset]!;
-        directCommitOffset++;
-        if ((current.flags & FLAG_SENT) !== 0) {
-          continue;
-        }
-        current.flags |= FLAG_SENT;
-        return current.oid;
-      }
-
-      if (directOffset < directCandidates.length) {
-        const oid = directCandidates[directOffset];
-        directOffset++;
-        return oid;
-      }
-
-      if (!ancestorsReleased && hasKnownCommonDirect) {
-        return undefined;
-      }
-
       while (state.queue.length > 0 && state.nonCommonRevs > 0) {
         const current = state.queue.shift()!;
         current.flags |= FLAG_POPPED;
@@ -397,20 +313,27 @@ export function createFetchHaveSelector(
           state.nonCommonRevs--;
         }
 
+        const shouldSend =
+          (current.flags & FLAG_COMMON) === 0 || (current.flags & FLAG_COMMON_REF) !== 0;
+        const parentMark =
+          (current.flags & (FLAG_COMMON | FLAG_COMMON_REF)) !== 0
+            ? FLAG_COMMON | FLAG_SEEN
+            : FLAG_SEEN;
+
         for (const parent of current.parents) {
           const parentNode = getCommitNode(state, parent);
           if (!parentNode) {
             continue;
           }
           if ((parentNode.flags & FLAG_SEEN) === 0) {
-            revListPush(state, parent);
+            revListPush(state, parent, parentMark);
           }
-          if ((current.flags & (FLAG_COMMON | FLAG_COMMON_REF)) !== 0) {
+          if ((parentMark & FLAG_COMMON) !== 0) {
             markCommon(state, parent, true);
           }
         }
 
-        if ((current.flags & FLAG_COMMON) === 0 && (current.flags & FLAG_SENT) === 0) {
+        if (shouldSend && (current.flags & FLAG_SENT) === 0) {
           current.flags |= FLAG_SENT;
           return current.oid;
         }
@@ -424,48 +347,9 @@ export function createFetchHaveSelector(
     },
 
     knownCommon(oid: SHA1): void {
-      const commitOid = normalizeNegotiationCommitOid(state.source, oid);
-      if (!commitOid) {
-        return;
-      }
-
-      const node = revListPush(state, commitOid);
-      if (!node) {
-        return;
-      }
-
-      node.flags |= FLAG_COMMON_REF;
-      markCommon(state, commitOid, true);
-      // 与官方 Git 更接近：若某个本地 tip 同时也是远端已知公共 ref，
-      // 则它可以覆盖更老的 direct tip；否则不要预先用本地 tip 互相裁剪。
-      if (hasDirectCandidate(directCommitCandidates, node)) {
-        hasKnownCommonDirect = true;
-        const existingIndex = getDirectCandidateIndex(filteredDirectCommitCandidates, node);
-        if (existingIndex !== -1) {
-          filteredDirectCommitCandidates.splice(existingIndex, 1);
-          if (existingIndex < directCommitOffset) {
-            directCommitOffset--;
-          }
-        }
-        insertDirectCandidate(filteredDirectCommitCandidates, node, directCommitCandidates);
-        for (let index = filteredDirectCommitCandidates.length - 1; index >= 0; index--) {
-          const candidate = filteredDirectCommitCandidates[index]!;
-          if (
-            candidate !== node &&
-            (candidate.flags & FLAG_COMMON_REF) === 0 &&
-            isAncestor(state.source, candidate.oid, node.oid)
-          ) {
-            filteredDirectCommitCandidates.splice(index, 1);
-            if (index < directCommitOffset) {
-              directCommitOffset--;
-            }
-          }
-        }
-      }
+      pushKnownCommon(state, oid);
     },
 
-    releaseAncestors(): void {
-      ancestorsReleased = true;
-    },
+    releaseAncestors(): void {},
   };
 }
