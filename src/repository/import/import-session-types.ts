@@ -262,6 +262,16 @@ export interface ImportPrepareOptions {
   readonly skipExplicitLightweightTagsByImplicitFollow?: boolean;
 
   /**
+   * shallow 请求下，是否仍对“本地已存在同名同哈希”的 tag 保留显式 want
+   *
+   * 主要供 repository.fetch({ refSpecs }) 的显式 tag refspec 路径使用，
+   * 以对齐官方 `git fetch <tag-refspec> --depth/...` 的发包形态。
+   * `repo.fetch({ refPatterns: ["refs/heads/*", "refs/tags/*"] })`
+   * 则更接近 `git fetch --tags`，不应开启该行为。
+   */
+  readonly refetchExistingTagTargetsInShallow?: boolean;
+
+  /**
    * 协商 have 候选是否优先将 HEAD 指向分支排在首位
    *
    * 默认行为与高层 `repo.fetch()` 的分支跟随语义保持一致。

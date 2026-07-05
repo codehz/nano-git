@@ -183,15 +183,20 @@ function shouldFetchExistingMappingTarget(
   mapping: ResolvedMapping,
   options?: ImportPrepareOptions,
 ): boolean {
+  const currentHash = resolveRefHash(compiled.backend.refs, mapping.localRef);
+
   if (!isTagMapping(mapping)) {
     return true;
   }
 
   if (hasShallowFetchRequest(options)) {
-    return true;
+    if (currentHash === null || currentHash !== mapping.remoteRef.hash) {
+      return true;
+    }
+
+    return options?.refetchExistingTagTargetsInShallow === true;
   }
 
-  const currentHash = resolveRefHash(compiled.backend.refs, mapping.localRef);
   return currentHash === null || currentHash !== mapping.remoteRef.hash;
 }
 
@@ -213,8 +218,7 @@ function shouldIncludeTag(
 
   if (
     options?.keepIncludeTagWithExplicitTags !== true &&
-    (compiled.wantsExplicitTags || options?.requestedExplicitTags === true) &&
-    !hasShallowFetchRequest(options)
+    (compiled.wantsExplicitTags || options?.requestedExplicitTags === true)
   ) {
     return false;
   }

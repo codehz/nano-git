@@ -811,6 +811,85 @@ describe("Import Session", () => {
     expect(sortHashes(repo.shallow.read())).toEqual(sortHashes(readBareShallowFile(bareCliDir)));
   });
 
+  test("bare 仓库上 refPatterns 的 shallow follow-up 会像 git CLI 一样保持请求序列与 shallow 状态一致", async () => {
+    git(["checkout", "main"], workDir);
+    createFile(workDir, "second.txt", "second\n");
+    git(["add", "second.txt"], workDir);
+    git(["commit", "-m", "Second commit"], workDir);
+    git(["tag", "-a", "v2", "-m", "v2"], workDir);
+    git(["push", repoDir, "main"], workDir);
+    git(["push", repoDir, "refs/tags/v2"], workDir);
+
+    const bareCliDir = join(tempDir, "cli-refpatterns-shallow.git");
+    const nanoDir = join(tempDir, "nano-refpatterns-shallow.git");
+    const repo = initRepository(nanoDir);
+    const refPatterns = ["refs/heads/*", "refs/tags/*"];
+
+    await gitWithTimeout(
+      ["-c", "protocol.version=2", "clone", "--bare", server.url, bareCliDir],
+      tempDir,
+      15000,
+    );
+    await repo.fetch(server.url, { refPatterns });
+
+    server.clearRequests();
+    const nanoDepthResult = await repo.fetch(server.url, { refPatterns, depth: 1 });
+    const nanoDepthBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    const cliDepthResult = await Promise.allSettled([
+      gitWithTimeout(
+        [
+          "--git-dir",
+          bareCliDir,
+          "-c",
+          "protocol.version=2",
+          "fetch",
+          "--depth=1",
+          "--tags",
+          "origin",
+        ],
+        tempDir,
+        15000,
+      ),
+    ]);
+    const cliDepthBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoDepthResult.objectCount).toBeGreaterThanOrEqual(0);
+    expect(cliDepthResult[0]?.status).toBe("fulfilled");
+    expect(nanoDepthBatches).toEqual(cliDepthBatches);
+    expect(sortHashes(repo.shallow.read())).toEqual(sortHashes(readBareShallowFile(bareCliDir)));
+
+    server.clearRequests();
+    const nanoSinceResult = await Promise.allSettled([
+      repo.fetch(server.url, { refPatterns, shallowSince: 1700000001 }),
+    ]);
+    const nanoSinceBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    const cliSinceResult = await Promise.allSettled([
+      gitWithTimeout(
+        [
+          "--git-dir",
+          bareCliDir,
+          "-c",
+          "protocol.version=2",
+          "fetch",
+          "--shallow-since=@1700000001",
+          "--tags",
+          "origin",
+        ],
+        tempDir,
+        15000,
+      ),
+    ]);
+    const cliSinceBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoSinceResult[0]?.status).toBe(cliSinceResult[0]?.status);
+    expect(nanoSinceBatches).toEqual(cliSinceBatches);
+    expect(sortHashes(repo.shallow.read())).toEqual(sortHashes(readBareShallowFile(bareCliDir)));
+  });
+
   test("本地 shallow 仓库后续 repo.fetch() 会像 git fetch 一样自动物化新增可达 tag", async () => {
     git(["checkout", "main"], workDir);
     createFile(workDir, "initial-tagged.txt", "initial-tagged\n");

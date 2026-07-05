@@ -107,6 +107,7 @@ function createImportPrepareOptions(
   keepIncludeTagWithExplicitTags = false,
   requestedExplicitTags = false,
   skipExplicitLightweightTagsByImplicitFollow = false,
+  refetchExistingTagTargetsInShallow = false,
   prioritizeHeadHaveTip = true,
   preferLocalHaveOrderForKnownCommon = false,
   replayKnownCommonInFirstRound = false,
@@ -118,6 +119,7 @@ function createImportPrepareOptions(
     keepIncludeTagWithExplicitTags !== true &&
     requestedExplicitTags !== true &&
     skipExplicitLightweightTagsByImplicitFollow !== true &&
+    refetchExistingTagTargetsInShallow !== true &&
     prioritizeHeadHaveTip !== false &&
     preferLocalHaveOrderForKnownCommon !== true &&
     replayKnownCommonInFirstRound !== true &&
@@ -138,6 +140,7 @@ function createImportPrepareOptions(
     requestedExplicitTags: requestedExplicitTags || undefined,
     skipExplicitLightweightTagsByImplicitFollow:
       skipExplicitLightweightTagsByImplicitFollow || undefined,
+    refetchExistingTagTargetsInShallow: refetchExistingTagTargetsInShallow || undefined,
     prioritizeHeadHaveTip: prioritizeHeadHaveTip === false ? false : undefined,
     preferLocalHaveOrderForKnownCommon: preferLocalHaveOrderForKnownCommon || undefined,
     replayKnownCommonInFirstRound: replayKnownCommonInFirstRound || undefined,
@@ -212,6 +215,7 @@ async function applyDefaultMapping(
           initialDefaultTags.length > 0,
           false,
           initialDefaultTags.length > 0,
+          false,
           true,
           false,
           false,
@@ -230,7 +234,9 @@ async function applyDefaultMapping(
   const tagResult = await (
     await tagPlan
       .build()
-      .prepare(createImportPrepareOptions(options, true, false, true, true, false, false, false))
+      .prepare(
+        createImportPrepareOptions(options, true, false, true, false, true, false, false, false),
+      )
   ).apply();
 
   return mergeFetchResults(convertToFetchResult(primaryResult), convertToFetchResult(tagResult));
@@ -257,6 +263,7 @@ async function applyDefaultRefProjection(
     keepIncludeTagWithExplicitTags,
     requestedExplicitTags,
     skipExplicitLightweightTagsByImplicitFollow,
+    false,
     prioritizeHeadHaveTip,
     preferLocalHaveOrderForKnownCommon,
     replayKnownCommonInFirstRound,
@@ -289,11 +296,13 @@ async function applyCustomRefSpecs(
   options: RepositoryFetchOptions,
 ): Promise<RepositoryFetchResult> {
   const plan = session.plan();
+  const explicitTagRefSpecs = refSpecsRequestExplicitTags(options.refSpecs);
   const prepareOptions = createImportPrepareOptions(
     options,
-    refSpecsRequestExplicitTags(options.refSpecs),
+    explicitTagRefSpecs,
     false,
     false,
+    explicitTagRefSpecs,
     false,
     false,
     false,
