@@ -61,6 +61,7 @@ export interface CompiledImportPlanState {
   readonly backend: RepositoryBackend;
   readonly advertisement: Readonly<RefAdvertisement>;
   readonly v2Transport?: V2GitServiceTransport;
+  readonly wantsExplicitTags: boolean;
   readonly resolvedMappings: readonly ResolvedMapping[];
   readonly headRequests: readonly HeadRequest[];
   readonly namespaceOwnerships: ReadonlyMap<string, NamespaceOwnership>;

@@ -101,6 +101,10 @@ const DEFAULT_NEGOTIATION_FETCH_OPTIONS = {
   ofsDelta: true,
 } as const;
 
+interface NegotiationFetchOptions {
+  readonly includeTag?: boolean;
+}
+
 interface GitOidSetState {
   buckets: Array<string | undefined>;
   states: Uint8Array;
@@ -752,6 +756,7 @@ export async function negotiateV2Fetch(
   features?: string[],
   localObjects?: ObjectSource,
   knownCommonRefs?: readonly string[],
+  options: NegotiationFetchOptions = {},
 ): Promise<V2FetchResponse> {
   if (wants.length === 0) {
     throw new V2FetchError("No wants specified for fetch");
@@ -764,6 +769,7 @@ export async function negotiateV2Fetch(
       {
         wants,
         ...DEFAULT_NEGOTIATION_FETCH_OPTIONS,
+        includeTag: options.includeTag ?? DEFAULT_NEGOTIATION_FETCH_OPTIONS.includeTag,
         done: true,
       },
       features,
@@ -780,6 +786,9 @@ export async function negotiateV2Fetch(
     const roundHaves = iterateGitOidSet(commonSet);
     let havesAdded = 0;
 
+    // 官方 Git 的 v2 add_haves() 只把 known common replay 直接写入请求，
+    // 对本轮 selector.next() 选出的 have 不会立刻调用 have_sent()。
+    // 因此这里保持“先完整挑完本轮，再等待 ACK 推进 common”的行为。
     while (havesAdded < havesToSend) {
       const nextHave = selector.next();
       if (!nextHave) {
@@ -795,7 +804,13 @@ export async function negotiateV2Fetch(
     const done = havesAdded === 0 || (seenAck && inVain >= MAX_IN_VAIN);
     const response = await v2Fetch(
       transport,
-      { wants, haves: roundHaves, ...DEFAULT_NEGOTIATION_FETCH_OPTIONS, done },
+      {
+        wants,
+        haves: roundHaves,
+        ...DEFAULT_NEGOTIATION_FETCH_OPTIONS,
+        includeTag: options.includeTag ?? DEFAULT_NEGOTIATION_FETCH_OPTIONS.includeTag,
+        done,
+      },
       features,
     );
 
@@ -832,6 +847,7 @@ export async function negotiateV2Fetch(
           wants,
           haves: iterateGitOidSet(commonSet),
           ...DEFAULT_NEGOTIATION_FETCH_OPTIONS,
+          includeTag: options.includeTag ?? DEFAULT_NEGOTIATION_FETCH_OPTIONS.includeTag,
           done: true,
         },
         features,
@@ -866,8 +882,17 @@ export async function v2FetchObjects(
   haves?: string[],
   features?: string[],
   knownCommonRefs?: readonly string[],
+  options: NegotiationFetchOptions = {},
 ): Promise<{ objectCount: number }> {
-  const result = await negotiateV2Fetch(v2Trans, wants, haves ?? [], features, db, knownCommonRefs);
+  const result = await negotiateV2Fetch(
+    v2Trans,
+    wants,
+    haves ?? [],
+    features,
+    db,
+    knownCommonRefs,
+    options,
+  );
 
   if (!result.packfile || result.packfile.length === 0) {
     return { objectCount: 0 };

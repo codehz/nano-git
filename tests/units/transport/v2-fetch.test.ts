@@ -520,6 +520,50 @@ describe("v2 fetch 协商请求", () => {
     expect(haveLines).toEqual([`have ${featureTip}`, `have ${mainTip}`]);
   });
 
+  test("若某个 known common ref 被另一个 known common 后代覆盖，则不会再发送被覆盖祖先", async () => {
+    const backend = createMemoryRepositoryBackend();
+    const treeHash = writeObject(backend.objects, { type: "tree", entries: [] });
+    const root = writeObject(backend.objects, {
+      type: "commit",
+      tree: treeHash,
+      parents: [],
+      author: { name: "T", email: "t@t", timestamp: 1, timezone: "+0000" },
+      committer: { name: "T", email: "t@t", timestamp: 1, timezone: "+0000" },
+      message: "root\n",
+    });
+    const topicTip = writeObject(backend.objects, {
+      type: "commit",
+      tree: treeHash,
+      parents: [root],
+      author: { name: "T", email: "t@t", timestamp: 1, timezone: "+0000" },
+      committer: { name: "T", email: "t@t", timestamp: 1, timezone: "+0000" },
+      message: "topic\n",
+    });
+    const knownDescendant = writeObject(backend.objects, {
+      type: "commit",
+      tree: treeHash,
+      parents: [root],
+      author: { name: "T", email: "t@t", timestamp: 1, timezone: "+0000" },
+      committer: { name: "T", email: "t@t", timestamp: 1, timezone: "+0000" },
+      message: "known\n",
+    });
+
+    const calls: string[][] = [];
+    const transport = createMockTransport([encodePackfileSection()], calls);
+
+    await negotiateV2Fetch(
+      transport,
+      [sha1("1111111111111111111111111111111111111111")],
+      [root, topicTip, knownDescendant],
+      [],
+      backend.objects,
+      [root, knownDescendant],
+    );
+
+    const haveLines = calls[0]!.filter((line) => line.startsWith("have "));
+    expect(haveLines).toEqual([`have ${knownDescendant}`, `have ${topicTip}`]);
+  });
+
   test("commit-aware 协商会先 peel annotated tag，并避免发送 tag 对象 have", async () => {
     const backend = createMemoryRepositoryBackend();
     const treeHash = writeObject(backend.objects, { type: "tree", entries: [] });

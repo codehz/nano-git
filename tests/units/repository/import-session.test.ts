@@ -1621,6 +1621,77 @@ describe("apply 错误处理", () => {
     expect(fetchCall).not.toContain(`have ${danglingCommitHash}`);
   });
 
+  test("远端 annotated tag 对象缺失但 peeled commit 本地可达时，应使用 peeled commit 作为 known-common", async () => {
+    const backend = createMemoryRepositoryBackend();
+    const treeHash = writeObject(backend.objects, { type: "tree", entries: [] });
+    const rootCommitHash = writeObject(backend.objects, {
+      type: "commit",
+      tree: treeHash,
+      parents: [],
+      author: { name: "Test", email: "test@test", timestamp: 1, timezone: "+0000" },
+      committer: { name: "Test", email: "test@test", timestamp: 1, timezone: "+0000" },
+      message: "root commit\n",
+    });
+    const localCommitHash = writeObject(backend.objects, {
+      type: "commit",
+      tree: treeHash,
+      parents: [rootCommitHash],
+      author: { name: "Test", email: "test@test", timestamp: 2, timezone: "+0000" },
+      committer: { name: "Test", email: "test@test", timestamp: 2, timezone: "+0000" },
+      message: "local commit\n",
+    });
+    backend.refs.write("refs/heads/main", localCommitHash);
+
+    const remoteTag = {
+      type: "tag" as const,
+      object: localCommitHash,
+      objectType: "commit" as const,
+      tag: "v-remote",
+      tagger: { name: "Test", email: "test@test", timestamp: 3, timezone: "+0000" },
+      message: "v-remote\n",
+    };
+    const remoteTagRaw = encodeObject(remoteTag);
+    const writer = createPackWriter();
+    writer.addRaw(remoteTagRaw);
+    const packfileResponse = Buffer.concat([
+      encodePktLine("packfile\n"),
+      encodePktLine(Buffer.concat([Buffer.from([0x01]), writer.build()])),
+      encodeFlushPkt(),
+    ]);
+
+    const calls: string[][] = [];
+    const mockV2Transport: V2GitServiceTransport = {
+      advertise: async () => ({ capabilities: {}, commands: [] }),
+      command: async (_command, args) => {
+        calls.push([...(args ?? [])]);
+        return packfileResponse;
+      },
+    };
+
+    const adv: RefAdvertisement = {
+      capabilities: {},
+      refs: [
+        { hash: localCommitHash, name: "HEAD", symrefTarget: "refs/heads/main" },
+        { hash: localCommitHash, name: "refs/heads/main" },
+        { hash: remoteTagRaw.hash, name: "refs/tags/v-remote", peeled: localCommitHash },
+      ],
+      defaultBranch: "refs/heads/main",
+    };
+    const session = createImportSession(MOCK_SOURCE, backend, adv, mockV2Transport);
+
+    const plan = session
+      .plan()
+      .materialize(session.select("refs/tags/*"))
+      .toNamespace("refs/tags/*", { policy: { mode: "create-only" } });
+    const preview = await previewDraft(plan);
+
+    expect(preview.canApply).toBe(true);
+    const fetchCall = calls.find((args) => args.includes("want " + remoteTagRaw.hash));
+    expect(fetchCall).toBeDefined();
+    expect(fetchCall).toContain(`have ${localCommitHash}`);
+    expect(fetchCall).not.toContain(`have ${rootCommitHash}`);
+  });
+
   test("目标符号引用在 prepare 生成预览后漂移时 apply 失败", async () => {
     const { backend, commitHash } = createRepoWithObjects();
     backend.refs.write("refs/heads/current", commitHash);

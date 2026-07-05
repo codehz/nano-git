@@ -98,21 +98,53 @@ function compareNodes(a: CommitNegotiationNode, b: CommitNegotiationNode): numbe
   return (a.pushOrder ?? 0) - (b.pushOrder ?? 0);
 }
 
-function insertQueue(queue: CommitNegotiationNode[], node: CommitNegotiationNode): void {
-  let low = 0;
-  let high = queue.length;
+function swapQueue(queue: CommitNegotiationNode[], left: number, right: number): void {
+  const temp = queue[left]!;
+  queue[left] = queue[right]!;
+  queue[right] = temp;
+}
 
-  while (low < high) {
-    const mid = Math.floor((low + high) / 2);
-    const current = queue[mid]!;
-    if (compareNodes(node, current) < 0) {
-      high = mid;
-    } else {
-      low = mid + 1;
+function queuePut(queue: CommitNegotiationNode[], node: CommitNegotiationNode): void {
+  queue.push(node);
+
+  for (let index = queue.length - 1; index > 0; ) {
+    const parent = Math.floor((index - 1) / 2);
+    if (compareNodes(queue[parent]!, queue[index]!) <= 0) {
+      break;
     }
+    swapQueue(queue, parent, index);
+    index = parent;
+  }
+}
+
+function queueGet(queue: CommitNegotiationNode[]): CommitNegotiationNode | undefined {
+  if (queue.length === 0) {
+    return undefined;
   }
 
-  queue.splice(low, 0, node);
+  const result = queue[0]!;
+  const tail = queue.pop()!;
+  if (queue.length === 0) {
+    return result;
+  }
+
+  queue[0] = tail;
+
+  for (let index = 0; index * 2 + 1 < queue.length; ) {
+    let child = index * 2 + 1;
+    if (child + 1 < queue.length && compareNodes(queue[child]!, queue[child + 1]!) >= 0) {
+      child++;
+    }
+
+    if (compareNodes(queue[index]!, queue[child]!) <= 0) {
+      break;
+    }
+
+    swapQueue(queue, child, index);
+    index = child;
+  }
+
+  return result;
 }
 
 function loadCommitNode(source: ObjectSource, oid: SHA1): CommitNegotiationNode | undefined {
@@ -168,7 +200,7 @@ function revListPush(
 
   node.flags |= mark;
   node.pushOrder ??= state.nextPushOrder++;
-  insertQueue(state.queue, node);
+  queuePut(state.queue, node);
   if ((node.flags & FLAG_COMMON) === 0) {
     state.nonCommonRevs++;
   }
@@ -182,9 +214,12 @@ function markCommon(state: CommitNegotiationState, oid: SHA1, ancestorsOnly: boo
   }
 
   const knownToBeCommon = (initial.flags & FLAG_COMMON) !== 0;
+  if (knownToBeCommon) {
+    return true;
+  }
   const stack: CommitNegotiationNode[] = [initial];
 
-  if (!ancestorsOnly && (initial.flags & FLAG_COMMON) === 0) {
+  if (!ancestorsOnly) {
     initial.flags |= FLAG_COMMON;
     if ((initial.flags & FLAG_SEEN) !== 0 && (initial.flags & FLAG_POPPED) === 0) {
       state.nonCommonRevs--;
@@ -307,14 +342,13 @@ export function createFetchHaveSelector(
   return {
     next(): SHA1 | undefined {
       while (state.queue.length > 0 && state.nonCommonRevs > 0) {
-        const current = state.queue.shift()!;
+        const current = queueGet(state.queue)!;
         current.flags |= FLAG_POPPED;
         if ((current.flags & FLAG_COMMON) === 0) {
           state.nonCommonRevs--;
         }
 
-        const shouldSend =
-          (current.flags & FLAG_COMMON) === 0 || (current.flags & FLAG_COMMON_REF) !== 0;
+        const shouldSend = (current.flags & FLAG_COMMON) === 0;
         const parentMark =
           (current.flags & (FLAG_COMMON | FLAG_COMMON_REF)) !== 0
             ? FLAG_COMMON | FLAG_SEEN

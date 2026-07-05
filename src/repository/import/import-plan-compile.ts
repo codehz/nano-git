@@ -41,6 +41,18 @@ function describeView(viewLabel?: string): string {
   return viewLabel ? `命名视图 "${viewLabel}"` : "当前视图";
 }
 
+function actionRequestsExplicitTags(action: ImportMaterializationIntent): boolean {
+  if (action.target.startsWith("refs/tags/")) {
+    return true;
+  }
+
+  if (action.action === "namespace" && globToRegex("refs/tags/*").test(action.target)) {
+    return true;
+  }
+
+  return action.action === "tag";
+}
+
 function inferNamespaceDefaultPolicy(targetPattern: string): RefUpdatePolicy | undefined {
   const headRegex = globToRegex("refs/heads/*");
   if (targetPattern === "refs/heads/*" || headRegex.test(targetPattern)) {
@@ -71,6 +83,7 @@ function compileImportPlanState(
   const headRequests: HeadRequest[] = [];
   const namespaceOwnerships = new Map<string, NamespaceOwnership>();
   const diagnostics: ImportDiagnostic[] = [];
+  const wantsExplicitTags = actions.some(actionRequestsExplicitTags);
 
   for (const act of actions) {
     let effectivePolicy: RefUpdatePolicy | undefined = act.policy;
@@ -288,6 +301,7 @@ function compileImportPlanState(
     backend,
     advertisement,
     v2Transport,
+    wantsExplicitTags,
     resolvedMappings,
     headRequests,
     namespaceOwnerships,

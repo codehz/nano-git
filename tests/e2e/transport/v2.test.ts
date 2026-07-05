@@ -112,8 +112,13 @@ async function cloneGitCli(url: string, localDir: string, tempDir: string) {
   );
 }
 
-async function fetchGitCli(localDir: string) {
-  await gitWithTimeout(["-c", "protocol.version=2", "fetch", "origin"], localDir, 15000);
+async function fetchGitCli(localDir: string, options: { readonly tags?: boolean } = {}) {
+  const args = ["-c", "protocol.version=2", "fetch"];
+  if (options.tags) {
+    args.push("--tags");
+  }
+  args.push("origin");
+  await gitWithTimeout(args, localDir, 15000);
 }
 
 describe("v2 协议 - 服务器能力", () => {
@@ -1374,6 +1379,63 @@ describe("v2 协议 - 与 git CLI 的请求序列对照", () => {
     expect(nanoBatches).toEqual(cliBatches);
   });
 
+  test("known common 后代已覆盖公共祖先时 fetch 请求序列与 git CLI 一致", async () => {
+    let mainCommitHash: string;
+    let topicCommitHash: string;
+    let knownCommitHash: string;
+
+    gitInit(workDir);
+    createFile(workDir, "a.txt", "A\n");
+    git(["add", "a.txt"], workDir);
+    git(["commit", "-m", "A"], workDir);
+    mainCommitHash = git(["rev-parse", "HEAD"], workDir);
+    git(["push", serverRepoDir, "main"], workDir);
+
+    git(["checkout", "-b", "topic"], workDir);
+    createFile(workDir, "topic-1.txt", "topic-1\n");
+    git(["add", "topic-1.txt"], workDir);
+    git(["commit", "-m", "topic-1"], workDir);
+    topicCommitHash = git(["rev-parse", "HEAD"], workDir);
+    git(["push", serverRepoDir, "topic"], workDir);
+
+    git(["checkout", "main"], workDir);
+    git(["checkout", "-b", "known"], workDir);
+    createFile(workDir, "known-1.txt", "known-1\n");
+    git(["add", "known-1.txt"], workDir);
+    git(["commit", "-m", "known-1"], workDir);
+    knownCommitHash = git(["rev-parse", "HEAD"], workDir);
+    git(["push", serverRepoDir, "known"], workDir);
+
+    server = startGitHttpBackendServer(tempDir, "/server.git");
+    url = server.url;
+
+    const nanoRepo = await cloneNanoHeads(url, join(tempDir, "local-nano-known-descendant"));
+    const gitCliDir = join(tempDir, "local-git-known-descendant");
+    await cloneGitCli(url, gitCliDir, tempDir);
+
+    git(["checkout", "topic"], workDir);
+    createFile(workDir, "topic-2.txt", "topic-2\n");
+    git(["add", "topic-2.txt"], workDir);
+    git(["commit", "-m", "topic-2"], workDir);
+    git(["push", serverRepoDir, "topic"], workDir);
+
+    server.clearRequests();
+    const nanoPreview = await fetchNanoHeads(nanoRepo, url);
+    expect(nanoPreview.canApply).toBe(true);
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    await fetchGitCli(gitCliDir);
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoBatches).toEqual(cliBatches);
+
+    const firstNanoBatch = nanoBatches[0] ?? [];
+    expect(firstNanoBatch).toContain(`have ${knownCommitHash}`);
+    expect(firstNanoBatch).toContain(`have ${topicCommitHash}`);
+    expect(firstNanoBatch).not.toContain(`have ${mainCommitHash}`);
+  });
+
   test("长主线 + 多公共分支场景下第二轮 common replay 顺序与 git CLI 一致", async () => {
     gitInit(workDir);
     createFile(workDir, "main-1.txt", "main-1\n");
@@ -1500,6 +1562,76 @@ describe("v2 协议 - 与 git CLI 的请求序列对照", () => {
     expect(nanoBatches).toEqual(cliBatches);
   });
 
+  test("显式 tag 物化但远端暂无 tag 时 fetch 请求序列与 git CLI 一致", async () => {
+    gitInit(workDir);
+    createFile(workDir, "a.txt", "A\n");
+    git(["add", "a.txt"], workDir);
+    git(["commit", "-m", "A"], workDir);
+    git(["push", serverRepoDir, "main"], workDir);
+
+    server = startGitHttpBackendServer(tempDir, "/server.git");
+    url = server.url;
+
+    const nanoRepo = await cloneNanoHeadsAndTags(url, join(tempDir, "local-nano-no-tag"));
+    const gitCliDir = join(tempDir, "local-git-no-tag");
+    await cloneGitCli(url, gitCliDir, tempDir);
+
+    createFile(workDir, "b.txt", "B\n");
+    git(["add", "b.txt"], workDir);
+    git(["commit", "-m", "B"], workDir);
+    git(["push", serverRepoDir, "main"], workDir);
+
+    server.clearRequests();
+    const nanoPreview = await fetchNanoHeadsAndTags(nanoRepo, url);
+    expect(nanoPreview.canApply).toBe(true);
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    await fetchGitCli(gitCliDir, { tags: true });
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoBatches).toEqual(cliBatches);
+  });
+
+  test("lightweight tag 与分支指向同一新提交时 fetch 请求序列与 git CLI 一致", async () => {
+    let commitHash: string;
+
+    gitInit(workDir);
+    createFile(workDir, "a.txt", "A\n");
+    git(["add", "a.txt"], workDir);
+    git(["commit", "-m", "A"], workDir);
+    git(["push", serverRepoDir, "main"], workDir);
+
+    server = startGitHttpBackendServer(tempDir, "/server.git");
+    url = server.url;
+
+    const nanoRepo = await cloneNanoHeadsAndTags(url, join(tempDir, "local-nano-lightweight-tag"));
+    const gitCliDir = join(tempDir, "local-git-lightweight-tag");
+    await cloneGitCli(url, gitCliDir, tempDir);
+
+    createFile(workDir, "b.txt", "B\n");
+    git(["add", "b.txt"], workDir);
+    git(["commit", "-m", "B"], workDir);
+    commitHash = git(["rev-parse", "HEAD"], workDir);
+    git(["tag", "v1.0.0-lightweight"], workDir);
+    git(["push", serverRepoDir, "main"], workDir);
+    git(["push", serverRepoDir, "refs/tags/v1.0.0-lightweight"], workDir);
+
+    server.clearRequests();
+    const nanoPreview = await fetchNanoHeadsAndTags(nanoRepo, url);
+    expect(nanoPreview.canApply).toBe(true);
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    await fetchGitCli(gitCliDir, { tags: true });
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoBatches).toEqual(cliBatches);
+
+    const firstNanoBatch = nanoBatches[0] ?? [];
+    expect(firstNanoBatch.filter((line) => line === `want ${commitHash}`).length).toBe(2);
+  });
+
   test("annotated tag 存在时 fetch 请求序列与 git CLI 一致", async () => {
     gitInit(workDir);
     createFile(workDir, "a.txt", "A\n");
@@ -1532,7 +1664,7 @@ describe("v2 协议 - 与 git CLI 的请求序列对照", () => {
     const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
 
     server.clearRequests();
-    await fetchGitCli(gitCliDir);
+    await fetchGitCli(gitCliDir, { tags: true });
     const cliBatches = getNormalizedFetchCommandBatches(server.requests);
 
     expect(nanoBatches).toEqual(cliBatches);

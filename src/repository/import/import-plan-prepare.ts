@@ -1,4 +1,5 @@
 import { PreconditionCheckError } from "../../errors.ts";
+import { resolveRefHash } from "../../refs/resolve.ts";
 import { v2FetchObjects } from "../../transport/client/upload-pack/fetch.ts";
 import {
   collectReachable,
@@ -24,6 +25,32 @@ import type {
   PlannedRefDeletion,
   PlannedRefOperation,
 } from "./import-session-types.ts";
+
+function collectNegotiationLocalHaveTips(compiled: CompiledImportPlanState): SHA1[] {
+  const refNames = compiled.backend.refs.listAll();
+  const headValue = compiled.backend.refs.read("HEAD");
+  const headTarget =
+    headValue !== null && headValue.startsWith("ref: ")
+      ? headValue.slice("ref: ".length)
+      : undefined;
+  const orderedRefNames =
+    headTarget && refNames.includes(headTarget)
+      ? [headTarget, ...refNames.filter((refName) => refName !== headTarget)]
+      : refNames;
+  const localHaveTips: SHA1[] = [];
+  const seen = new Set<SHA1>();
+
+  for (const refName of orderedRefNames) {
+    const hash = resolveRefHash(compiled.backend.refs, refName);
+    if (hash === null || seen.has(hash)) {
+      continue;
+    }
+    seen.add(hash);
+    localHaveTips.push(hash);
+  }
+
+  return localHaveTips;
+}
 
 function describeView(viewLabel?: string): string {
   return viewLabel ? `命名视图 "${viewLabel}"` : "当前视图";
@@ -76,17 +103,17 @@ function collectKnownCommonRefs(
   const knownCommonSeen = new Set<SHA1>();
 
   for (const ref of compiled.advertisement.refs) {
-    if (!compiled.backend.objects.exists(ref.hash) || knownCommonSeen.has(ref.hash)) {
+    const peeled = ref.peeled ?? peelTagChain(compiled.backend.objects, ref.hash);
+    if (
+      !compiled.backend.objects.exists(peeled) ||
+      !reachable.has(peeled) ||
+      knownCommonSeen.has(peeled)
+    ) {
       continue;
     }
 
-    const peeled = peelTagChain(compiled.backend.objects, ref.hash);
-    if (!reachable.has(peeled)) {
-      continue;
-    }
-
-    knownCommonSeen.add(ref.hash);
-    knownCommonRefs.push(ref.hash);
+    knownCommonSeen.add(peeled);
+    knownCommonRefs.push(peeled);
   }
 
   return knownCommonRefs;
@@ -132,25 +159,18 @@ function captureLocalPreconditions(
 
 async function fetchPreviewObjects(
   compiled: CompiledImportPlanState,
-  objectRoots: readonly SHA1[],
+  wantSequence: readonly SHA1[],
   localPreconditions: readonly LocalPrecondition[],
 ): Promise<number> {
-  if (objectRoots.length === 0) {
+  if (wantSequence.length === 0) {
     return 0;
   }
 
-  const currentLocalRefs = getLocalRefs(compiled.backend.refs);
-  const localHaveTips: SHA1[] = [];
-  for (const [, hash] of currentLocalRefs) {
-    if (!localHaveTips.some((existingHash) => existingHash === hash)) {
-      localHaveTips.push(hash);
-    }
-  }
-
+  const localHaveTips = collectNegotiationLocalHaveTips(compiled);
   const knownCommonRefs = collectKnownCommonRefs(compiled, localHaveTips);
 
   if (compiled.v2Transport) {
-    const v2Wants = objectRoots.map((hash) => hash);
+    const v2Wants = wantSequence.map((hash) => hash);
     const v2Haves = localHaveTips.length > 0 ? localHaveTips.map((hash) => hash) : undefined;
     const { objectCount } = await v2FetchObjects(
       compiled.backend.objects,
@@ -159,6 +179,7 @@ async function fetchPreviewObjects(
       v2Haves,
       undefined,
       knownCommonRefs,
+      { includeTag: !compiled.wantsExplicitTags },
     );
     validateLocalPreconditions(compiled.backend, localPreconditions);
     return objectCount;
@@ -390,18 +411,15 @@ export async function prepareImportPlan(
   }
 
   const localPreconditions = captureLocalPreconditions(compiled);
-  const objectRoots = [
-    ...new Set(
-      compiled.resolvedMappings
-        .filter((mapping) => !compiled.conflictedTargets.has(mapping.localRef))
-        .map((mapping) => mapping.remoteRef.hash)
-        .filter((hash) => !compiled.backend.objects.exists(hash)),
-    ),
-  ] as SHA1[];
+  const wantSequence = compiled.resolvedMappings
+    .filter((mapping) => !compiled.conflictedTargets.has(mapping.localRef))
+    .map((mapping) => mapping.remoteRef.hash)
+    .filter((hash) => !compiled.backend.objects.exists(hash));
+  const objectRoots = [...new Set(wantSequence)] as SHA1[];
 
   let prefetchedObjects = 0;
   try {
-    prefetchedObjects = await fetchPreviewObjects(compiled, objectRoots, localPreconditions);
+    prefetchedObjects = await fetchPreviewObjects(compiled, wantSequence, localPreconditions);
   } catch (err: unknown) {
     if (err instanceof PreconditionCheckError) {
       return {
