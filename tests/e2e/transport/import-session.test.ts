@@ -4047,6 +4047,53 @@ describe("Import Session", () => {
     expect(readBareShallowFile(bareCliDir)).toEqual([]);
   });
 
+  test("merge-history source shallow 下显式 branch-only refPatterns 的初始 full fetch 会像 bare git CLI 一样拒绝且不落地 refs", async () => {
+    await server.stop();
+    await createMergeShallowSourceRepository(tempDir, {
+      repoName: "merge-shallow-source-branch-only.git",
+      upstreamName: "merge-upstream-branch-only.git",
+      workName: "merge-upstream-work-branch-only",
+    });
+    server = startGitHttpBackendServer(tempDir, "/merge-shallow-source-branch-only.git");
+
+    const bareCliDir = join(tempDir, "cli-merge-source-branch-only.git");
+    const repo = initRepository(join(tempDir, "nano-merge-source-branch-only.git"));
+    const refPatterns = ["refs/heads/*"];
+
+    git(["init", "--bare", bareCliDir], tempDir);
+    git(["--git-dir", bareCliDir, "remote", "add", "origin", server.url], tempDir);
+
+    server.clearRequests();
+    const nanoFetch = repo.fetch(server.url, { refPatterns });
+    expect(nanoFetch).rejects.toBeInstanceOf(Error);
+    await Promise.allSettled([nanoFetch]);
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    const cliFetch = gitWithTimeout(
+      [
+        "--git-dir",
+        bareCliDir,
+        "-c",
+        "protocol.version=2",
+        "fetch",
+        "origin",
+        "refs/heads/*:refs/heads/*",
+      ],
+      tempDir,
+      15000,
+    );
+    expect(cliFetch).rejects.toBeInstanceOf(Error);
+    await Promise.allSettled([cliFetch]);
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoBatches).toEqual(cliBatches);
+    expect(repo.readBranch("main")).toBeNull();
+    expect(repo.shallow.read()).toEqual([]);
+    expect(git(["--git-dir", bareCliDir, "for-each-ref", "--format=%(refname)"], tempDir)).toBe("");
+    expect(readBareShallowFile(bareCliDir)).toEqual([]);
+  });
+
   test("source shallow 下显式 branch-only refSpecs 的 depth=1 初始 fetch 与 deepen follow-up 会像 bare git CLI 一样成功并推进 shallow 边界", async () => {
     await server.stop();
     const history = await createShallowSourceRepository(tempDir, {
