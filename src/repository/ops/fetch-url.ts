@@ -419,10 +419,6 @@ async function applyCustomRefSpecs(
   }
 
   const shouldFollowImplicitTags = options.noTags !== true && !explicitTagRefSpecs;
-  const explicitTagOnlyRefSpecs =
-    explicitTagRefSpecs &&
-    selectedRemoteRefs.length > 0 &&
-    selectedRemoteRefs.every((ref) => ref.name.startsWith("refs/tags/"));
   const tagRefs = shouldFollowImplicitTags ? session.select("refs/tags/*") : undefined;
   const fetchedTargetHashes = new Set(selectedRemoteRefs.map((ref) => ref.hash));
   const initialDefaultTags =

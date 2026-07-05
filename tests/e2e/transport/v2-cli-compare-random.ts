@@ -49,6 +49,7 @@ interface RandomCliComparisonOptions {
   readonly explicitTagOnlyRefSpecs?: boolean;
   readonly explicitTagPatterns?: boolean;
   readonly explicitTagRefSpecs?: boolean;
+  readonly relaxedHaveComparison?: boolean;
 }
 
 interface RandomCliBranchState {
@@ -78,6 +79,56 @@ function createSeededRandom(seed: number): () => number {
 
 function pickRandom<T>(rand: () => number, values: readonly T[]): T {
   return values[Math.floor(rand() * values.length)]!;
+}
+
+function countLines(lines: readonly string[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const line of lines) {
+    counts.set(line, (counts.get(line) ?? 0) + 1);
+  }
+  return counts;
+}
+
+function compareBatchesWithRelaxedHaveComparison(
+  nanoBatches: readonly string[][],
+  cliBatches: readonly string[][],
+): boolean {
+  if (nanoBatches.length !== cliBatches.length) {
+    return false;
+  }
+
+  for (let index = 0; index < nanoBatches.length; index++) {
+    const nanoBatch = nanoBatches[index]!;
+    const cliBatch = cliBatches[index]!;
+    const nanoNonHave = nanoBatch.filter((line) => !line.startsWith("have "));
+    const cliNonHave = cliBatch.filter((line) => !line.startsWith("have "));
+
+    if (JSON.stringify(nanoNonHave) !== JSON.stringify(cliNonHave)) {
+      return false;
+    }
+
+    const nanoHaveCounts = countLines(nanoBatch.filter((line) => line.startsWith("have ")));
+    const cliHaveCounts = countLines(cliBatch.filter((line) => line.startsWith("have ")));
+    for (const [line, count] of cliHaveCounts) {
+      if ((nanoHaveCounts.get(line) ?? 0) < count) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+function compareFetchCommandBatches(
+  nanoBatches: readonly string[][],
+  cliBatches: readonly string[][],
+  options: RandomCliComparisonOptions,
+): boolean {
+  if (options.relaxedHaveComparison === true) {
+    return compareBatchesWithRelaxedHaveComparison(nanoBatches, cliBatches);
+  }
+
+  return JSON.stringify(nanoBatches) === JSON.stringify(cliBatches);
 }
 
 async function cloneNanoHeads(url: string, localDir: string) {
@@ -572,6 +623,7 @@ function parseSeedArguments(args: readonly string[]): {
     explicitTagOnlyRefSpecs?: boolean;
     explicitTagPatterns?: boolean;
     explicitTagRefSpecs?: boolean;
+    relaxedHaveComparison?: boolean;
   } = {};
 
   for (const arg of args) {
@@ -631,6 +683,10 @@ function parseSeedArguments(args: readonly string[]): {
     }
     if (arg === "--explicit-tag-refspecs") {
       options.explicitTagRefSpecs = true;
+      continue;
+    }
+    if (arg === "--relaxed-have-comparison") {
+      options.relaxedHaveComparison = true;
       continue;
     }
     seedArgs.push(arg);
@@ -1004,7 +1060,7 @@ export async function runRandomV2CliComparisonSeed(
     const nanoTags = nanoTagEntries.map((line) => line.replace(/^[^ ]+ /, ""));
     const cliTags = cliTagEntries.map((line) => line.replace(/^[^ ]+ /, ""));
     const matched =
-      JSON.stringify(nanoBatches) === JSON.stringify(cliBatches) &&
+      compareFetchCommandBatches(nanoBatches, cliBatches, options) &&
       (nanoError === undefined) === (cliError === undefined) &&
       (options.noTags === true ||
       options.defaultFetch === true ||
