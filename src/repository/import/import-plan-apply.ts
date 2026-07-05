@@ -11,6 +11,10 @@ export function createPreparedImportPlan(
   preparedState: PreparedImportPlanState,
 ): PreparedImportPlan {
   let consumed = false;
+  const hasShallowUpdate =
+    preparedState.shallowUpdate !== undefined &&
+    (preparedState.shallowUpdate.shallow.length > 0 ||
+      preparedState.shallowUpdate.unshallow.length > 0);
 
   return {
     preview: preparedState.preview,
@@ -41,8 +45,12 @@ export function createPreparedImportPlan(
         !preparedState.headOperation &&
         preparedState.pruneOperations.length === 0
       ) {
+        if (hasShallowUpdate) {
+          backend.shallow.applyUpdate(preparedState.shallowUpdate!);
+        }
         return {
           importedObjects: preview.prefetchedObjects,
+          shallowUpdate: preparedState.shallowUpdate,
           updatedRefs: new Map<string, SHA1>(),
           deletedRefs: [],
         };
@@ -127,9 +135,13 @@ export function createPreparedImportPlan(
         }
 
         tx.commit();
+        if (hasShallowUpdate) {
+          backend.shallow.applyUpdate(preparedState.shallowUpdate!);
+        }
 
         return {
           importedObjects: preview.prefetchedObjects,
+          shallowUpdate: preparedState.shallowUpdate,
           updatedRefs,
           deletedRefs,
           headTarget: preparedState.headOperation?.targetRef,

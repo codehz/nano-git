@@ -18,6 +18,7 @@ import {
 } from "./import-plan-types.ts";
 
 import type { SHA1 } from "../../types/index.ts";
+import type { ShallowUpdate } from "../../types/shallow.ts";
 import type {
   ImportDiagnostic,
   ImportPreparedPreview,
@@ -61,6 +62,7 @@ function freezePreparedPreview(preview: ImportPreparedPreview): ImportPreparedPr
     remoteSnapshot: preview.remoteSnapshot,
     objectRoots: preview.objectRoots,
     prefetchedObjects: preview.prefetchedObjects,
+    shallowUpdate: preview.shallowUpdate,
     refOperations: preview.refOperations,
     headOperation: preview.headOperation,
     pruneOperations: preview.pruneOperations,
@@ -73,6 +75,7 @@ function createPreparedPreview(params: {
   readonly remoteSnapshot: CompiledImportPlanState["advertisement"];
   readonly objectRoots: readonly SHA1[];
   readonly prefetchedObjects: number;
+  readonly shallowUpdate?: ShallowUpdate;
   readonly refOperations: readonly PlannedRefOperation[];
   readonly headOperation?: PlannedHeadOperation;
   readonly pruneOperations: readonly PlannedRefDeletion[];
@@ -82,6 +85,7 @@ function createPreparedPreview(params: {
     remoteSnapshot: params.remoteSnapshot,
     objectRoots: params.objectRoots,
     prefetchedObjects: params.prefetchedObjects,
+    shallowUpdate: params.shallowUpdate,
     refOperations: params.refOperations,
     headOperation: params.headOperation,
     pruneOperations: params.pruneOperations,
@@ -161,9 +165,9 @@ async function fetchPreviewObjects(
   compiled: CompiledImportPlanState,
   wantSequence: readonly SHA1[],
   localPreconditions: readonly LocalPrecondition[],
-): Promise<number> {
+): Promise<{ objectCount: number; shallowUpdate?: ShallowUpdate }> {
   if (wantSequence.length === 0) {
-    return 0;
+    return { objectCount: 0 };
   }
 
   const localHaveTips = collectNegotiationLocalHaveTips(compiled);
@@ -172,7 +176,7 @@ async function fetchPreviewObjects(
   if (compiled.v2Transport) {
     const v2Wants = wantSequence.map((hash) => hash);
     const v2Haves = localHaveTips.length > 0 ? localHaveTips.map((hash) => hash) : undefined;
-    const { objectCount } = await v2FetchObjects(
+    const { objectCount, shallowUpdate } = await v2FetchObjects(
       compiled.backend.objects,
       compiled.v2Transport,
       v2Wants,
@@ -182,7 +186,7 @@ async function fetchPreviewObjects(
       { includeTag: !compiled.wantsExplicitTags },
     );
     validateLocalPreconditions(compiled.backend, localPreconditions);
-    return objectCount;
+    return { objectCount, shallowUpdate };
   }
 
   throw new PreconditionCheckError("v1 fetch is not supported. Use v2 Git Wire Protocol.");
@@ -192,6 +196,7 @@ function finalizePreparedState(
   compiled: CompiledImportPlanState,
   objectRoots: readonly SHA1[],
   prefetchedObjects: number,
+  shallowUpdate: ShallowUpdate | undefined,
   localPreconditions: readonly LocalPrecondition[],
 ): PreparedImportPlanState {
   const diagnostics = [...compiled.diagnostics];
@@ -379,11 +384,13 @@ function finalizePreparedState(
       remoteSnapshot: compiled.advertisement,
       objectRoots,
       prefetchedObjects,
+      shallowUpdate,
       refOperations,
       headOperation,
       pruneOperations,
       diagnostics,
     }),
+    shallowUpdate,
     preconditions: localPreconditions,
     refOperations,
     headOperation,
@@ -400,6 +407,7 @@ export async function prepareImportPlan(
         remoteSnapshot: compiled.advertisement,
         objectRoots: [],
         prefetchedObjects: 0,
+        shallowUpdate: undefined,
         refOperations: [],
         pruneOperations: [],
         diagnostics: compiled.diagnostics,
@@ -418,8 +426,11 @@ export async function prepareImportPlan(
   const objectRoots = [...new Set(wantSequence)] as SHA1[];
 
   let prefetchedObjects = 0;
+  let shallowUpdate: ShallowUpdate | undefined;
   try {
-    prefetchedObjects = await fetchPreviewObjects(compiled, wantSequence, localPreconditions);
+    const fetchPreview = await fetchPreviewObjects(compiled, wantSequence, localPreconditions);
+    prefetchedObjects = fetchPreview.objectCount;
+    shallowUpdate = fetchPreview.shallowUpdate;
   } catch (err: unknown) {
     if (err instanceof PreconditionCheckError) {
       return {
@@ -427,6 +438,7 @@ export async function prepareImportPlan(
           remoteSnapshot: compiled.advertisement,
           objectRoots,
           prefetchedObjects,
+          shallowUpdate,
           refOperations: [],
           pruneOperations: [],
           diagnostics: [
@@ -437,6 +449,7 @@ export async function prepareImportPlan(
             },
           ],
         }),
+        shallowUpdate,
         preconditions: localPreconditions,
         refOperations: [],
         pruneOperations: [],
@@ -445,5 +458,11 @@ export async function prepareImportPlan(
     throw err;
   }
 
-  return finalizePreparedState(compiled, objectRoots, prefetchedObjects, localPreconditions);
+  return finalizePreparedState(
+    compiled,
+    objectRoots,
+    prefetchedObjects,
+    shallowUpdate,
+    localPreconditions,
+  );
 }

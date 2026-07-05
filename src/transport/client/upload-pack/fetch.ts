@@ -50,6 +50,7 @@ import { createFetchHaveSelector } from "./fetch-negotiator.ts";
 
 import type { ObjectDatabase } from "../../../odb/types.ts";
 import type { ObjectSource } from "../../../types/odb.ts";
+import type { ShallowUpdate } from "../../../types/shallow.ts";
 import type { V2GitServiceTransport, V2FetchResponse } from "./types.ts";
 
 // ============================================================================
@@ -883,7 +884,7 @@ export async function v2FetchObjects(
   features?: string[],
   knownCommonRefs?: readonly string[],
   options: NegotiationFetchOptions = {},
-): Promise<{ objectCount: number }> {
+): Promise<{ objectCount: number; shallowUpdate?: ShallowUpdate }> {
   const result = await negotiateV2Fetch(
     v2Trans,
     wants,
@@ -893,9 +894,15 @@ export async function v2FetchObjects(
     knownCommonRefs,
     options,
   );
+  const shallowUpdate = result.shallowInfo
+    ? {
+        shallow: result.shallowInfo.shallow.map((hash) => sha1(hash)),
+        unshallow: result.shallowInfo.unshallow.map((hash) => sha1(hash)),
+      }
+    : undefined;
 
   if (!result.packfile || result.packfile.length === 0) {
-    return { objectCount: 0 };
+    return { objectCount: 0, shallowUpdate };
   }
 
   // 解析 packfile 并直接摄入原始对象（跳过语义反序列化）
@@ -907,5 +914,5 @@ export async function v2FetchObjects(
     count++;
   }
 
-  return { objectCount: count };
+  return { objectCount: count, shallowUpdate };
 }

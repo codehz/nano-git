@@ -16,7 +16,11 @@ import {
   createRepoImportOperations,
 } from "@/repository/import/import-session.ts";
 import { createImportView } from "@/repository/import/import-view.ts";
-import { encodePktLine, encodeFlushPkt } from "@/transport/protocol/pkt-line.ts";
+import {
+  encodePktLine,
+  encodeFlushPkt,
+  encodeDelimiterPkt,
+} from "@/transport/protocol/pkt-line.ts";
 import { sha1 } from "@/types/index.ts";
 
 import type { ImportPlanDraft } from "@/repository/import/import-session-types.ts";
@@ -1030,6 +1034,82 @@ describe("apply 写 ref", () => {
     expect(result.importedObjects).toBe(0); // 本地已有对象
     expect(result.updatedRefs.get("refs/heads/main")).toBe(sha1(commitHash));
     expect(backend.refs.read("refs/heads/main")).toBe(commitHash);
+  });
+
+  test("fetch 返回 shallow-info 时，prepare/apply 会同步 backend.shallow", async () => {
+    const backend = createMemoryRepositoryBackend({
+      initialShallow: [MOCK_HASH_A],
+    });
+    const remoteBackend = createMemoryRepositoryBackend();
+    const remoteTree = {
+      type: "tree" as const,
+      entries: [],
+    };
+    const remoteTreeHash = writeObject(remoteBackend.objects, remoteTree);
+    const missingParentHash = writeObject(remoteBackend.objects, {
+      type: "commit",
+      tree: remoteTreeHash,
+      parents: [],
+      author: { name: "Test", email: "test@test", timestamp: 0, timezone: "+0000" },
+      committer: { name: "Test", email: "test@test", timestamp: 0, timezone: "+0000" },
+      message: "missing parent\n",
+    });
+    const remoteCommit = {
+      type: "commit" as const,
+      tree: remoteTreeHash,
+      parents: [missingParentHash],
+      author: { name: "Test", email: "test@test", timestamp: 1, timezone: "+0000" },
+      committer: { name: "Test", email: "test@test", timestamp: 1, timezone: "+0000" },
+      message: "remote shallow commit\n",
+    };
+    const remoteCommitHash = writeObject(remoteBackend.objects, remoteCommit);
+
+    const writer = createPackWriter();
+    writer.addRaw(encodeObject(remoteTree));
+    writer.addRaw(encodeObject(remoteCommit));
+
+    const fetchResponse = Buffer.concat([
+      encodePktLine("shallow-info\n"),
+      encodePktLine(`shallow ${remoteCommitHash}\n`),
+      encodePktLine(`unshallow ${MOCK_HASH_A}\n`),
+      encodeDelimiterPkt(),
+      encodePktLine("packfile\n"),
+      encodePktLine(Buffer.concat([Buffer.from([0x01]), writer.build()])),
+      encodeFlushPkt(),
+    ]);
+
+    const mockV2Transport: V2GitServiceTransport = {
+      advertise: async () => ({ capabilities: {}, commands: [] }),
+      command: async () => fetchResponse,
+    };
+    const adv: RefAdvertisement = {
+      capabilities: {},
+      refs: [
+        { hash: remoteCommitHash, name: "HEAD", symrefTarget: "refs/heads/main" },
+        { hash: remoteCommitHash, name: "refs/heads/main" },
+      ],
+      defaultBranch: "refs/heads/main",
+    };
+    const session = createImportSession(MOCK_SOURCE, backend, adv, mockV2Transport);
+
+    const prepared = await prepareDraft(
+      session.plan().materialize(session.defaultBranch()).toBranch("main"),
+    );
+
+    expect(prepared.preview.shallowUpdate).toEqual({
+      shallow: [remoteCommitHash],
+      unshallow: [MOCK_HASH_A],
+    });
+    expect(backend.shallow.read()).toEqual([MOCK_HASH_A]);
+
+    const result = await prepared.apply();
+
+    expect(result.shallowUpdate).toEqual({
+      shallow: [remoteCommitHash],
+      unshallow: [MOCK_HASH_A],
+    });
+    expect(backend.shallow.read()).toEqual([remoteCommitHash]);
+    expect(result.updatedRefs.get("refs/heads/main")).toBe(remoteCommitHash);
   });
 
   test("toBranch + setHead 设置 HEAD", async () => {

@@ -2,6 +2,7 @@ import type { RepositoryBackend } from "../../backend/types.ts";
 import type { V2GitServiceTransport } from "../../transport/client/upload-pack/types.ts";
 import type { RemoteRef, RefAdvertisement } from "../../transport/protocol/types.ts";
 import type { SHA1 } from "../../types/index.ts";
+import type { ShallowUpdate } from "../../types/shallow.ts";
 import type {
   ImportDiagnostic,
   ImportPreparedPreview,
@@ -72,6 +73,7 @@ export interface CompiledImportPlanState {
 
 export interface PreparedImportPlanState {
   readonly preview: ImportPreparedPreview;
+  readonly shallowUpdate?: ShallowUpdate;
   readonly preconditions: readonly LocalPrecondition[];
   readonly refOperations: readonly PlannedRefOperation[];
   readonly headOperation?: PlannedHeadOperation;

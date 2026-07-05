@@ -8,6 +8,7 @@
 import type { RemoteSource } from "../../remote/types.ts";
 import type { RemoteRef, RefAdvertisement } from "../../transport/protocol/types.ts";
 import type { SHA1 } from "../../types/index.ts";
+import type { ShallowUpdate } from "../../types/shallow.ts";
 
 // ============================================================================
 // ImportView
@@ -210,6 +211,7 @@ export interface ImportPreparedPreview {
   readonly remoteSnapshot: RefAdvertisement;
   readonly objectRoots: readonly SHA1[];
   readonly prefetchedObjects: number;
+  readonly shallowUpdate?: ShallowUpdate;
   readonly refOperations: readonly PlannedRefOperation[];
   readonly headOperation?: PlannedHeadOperation;
   readonly pruneOperations: readonly PlannedRefDeletion[];
@@ -240,6 +242,7 @@ export interface PreparedImportPlan {
  */
 export interface ImportApplyResult {
   readonly importedObjects: number;
+  readonly shallowUpdate?: ShallowUpdate;
   readonly updatedRefs: ReadonlyMap<string, SHA1>;
   readonly deletedRefs: readonly string[];
   readonly headTarget?: string;
