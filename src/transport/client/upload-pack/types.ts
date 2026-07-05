@@ -124,7 +124,7 @@ export interface V2FetchRequest {
   readonly shallow?: string[];
   readonly deepen?: number;
   readonly deepenRelative?: boolean;
-  readonly deepenSince?: number;
+  readonly deepenSince?: number | string;
   readonly deepenNot?: string[];
   readonly filter?: string;
   readonly sidebandAll?: boolean;

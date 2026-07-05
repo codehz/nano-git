@@ -10,6 +10,7 @@ import { createMemoryRepositoryBackend } from "@/backend/memory.ts";
 import { writeObject } from "@/objects/raw.ts";
 import { encodeObject } from "@/objects/raw.ts";
 import { createPackWriter } from "@/pack/writer/pack-writer.ts";
+import { formatGitCliShallowSince } from "@/repository/import/git-cli-shallow-since.ts";
 import { matchRefGlob } from "@/repository/import/import-glob.ts";
 import {
   createImportSession,
@@ -76,6 +77,41 @@ const MOCK_HASH_A = mockHashes.mainHash;
 const MOCK_HASH_B = mockHashes.developHash;
 const MOCK_HASH_C = mockHashes.releaseHash;
 const MOCK_HASH_D = mockHashes.betaHash;
+
+describe("formatGitCliShallowSince()", () => {
+  test("普通 Unix 时间戳保持原样", () => {
+    expect(
+      formatGitCliShallowSince(4_102_444_799, {
+        epochSeconds: 1_783_256_314,
+        year: 2026,
+        month: 6,
+        day: 5,
+        hours: 20,
+        minutes: 58,
+        seconds: 34,
+      }),
+    ).toBe("4102444799");
+  });
+
+  test("极端 future 时间戳会复刻 git CLI 的 approxidate 退化行为", () => {
+    const now = {
+      epochSeconds: 1_783_256_314,
+      year: 2026,
+      month: 6,
+      day: 5,
+      hours: 20,
+      minutes: 58,
+      seconds: 34,
+    } as const;
+
+    expect(formatGitCliShallowSince(4_102_444_800, now)).toBe("18446744071662610042");
+    expect(formatGitCliShallowSince(4_102_444_801, now)).toBe("18446744071662696442");
+    expect(formatGitCliShallowSince(4_102_448_400, now)).toBe("18446744071973650042");
+    expect(formatGitCliShallowSince(4_102_531_200, now)).toBe("1123051130");
+    expect(formatGitCliShallowSince(4_294_967_295, now)).toBe("1783256314");
+    expect(formatGitCliShallowSince(4_294_967_296, now)).toBe("1783256314");
+  });
+});
 
 function createMockAdvertisement(overrides?: Partial<RefAdvertisement>): RefAdvertisement {
   const refs: RemoteRef[] = [

@@ -9,6 +9,7 @@ import {
 } from "../../transport/protocol/object-graph.ts";
 import { getLocalRefs } from "../../transport/protocol/ref-collection.ts";
 import { resolveBranchTargetHash } from "../../transport/protocol/update-refs.ts";
+import { formatGitCliShallowSince } from "./git-cli-shallow-since.ts";
 import { matchRefGlob } from "./import-glob.ts";
 import { snapshotOwnedRefs, validateLocalPreconditions } from "./import-plan-preconditions.ts";
 import {
@@ -225,7 +226,7 @@ function createNegotiationFetchOptions(
   readonly shallow?: string[];
   readonly deepen?: number;
   readonly deepenRelative?: boolean;
-  readonly deepenSince?: number;
+  readonly deepenSince?: string;
   readonly deepenNot?: string[];
   readonly replayKnownCommonInFirstRound?: boolean;
 } {
@@ -237,7 +238,10 @@ function createNegotiationFetchOptions(
     shallow,
     deepen: useUnshallow ? INFINITE_DEPTH : (options?.depth ?? options?.deepen),
     deepenRelative: options?.deepen !== undefined,
-    deepenSince: options?.shallowSince,
+    deepenSince:
+      options?.shallowSince !== undefined
+        ? formatGitCliShallowSince(options.shallowSince)
+        : undefined,
     deepenNot: options?.shallowExclude ? [...options.shallowExclude] : undefined,
     replayKnownCommonInFirstRound: options?.replayKnownCommonInFirstRound,
   };

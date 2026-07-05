@@ -108,7 +108,7 @@ interface NegotiationFetchOptions {
   readonly shallow?: string[];
   readonly deepen?: number;
   readonly deepenRelative?: boolean;
-  readonly deepenSince?: number;
+  readonly deepenSince?: number | string;
   readonly deepenNot?: string[];
   readonly replayKnownCommonInFirstRound?: boolean;
 }
@@ -295,8 +295,8 @@ export interface V2FetchParams {
   readonly deepen?: number;
   /** deepen-relative 标志 */
   readonly deepenRelative?: boolean;
-  /** deepen-since 时间戳 */
-  readonly deepenSince?: number;
+  /** deepen-since 时间戳字符串 */
+  readonly deepenSince?: number | string;
   /** deepen-not 排除 */
   readonly deepenNot?: string[];
   /** filter 表达式 */

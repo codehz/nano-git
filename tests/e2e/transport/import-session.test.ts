@@ -1020,7 +1020,7 @@ describe("Import Session", () => {
     expect(nanoBatches[0]?.filter((line) => line.startsWith("have ")).length).toBeGreaterThan(1);
   });
 
-  test("完整仓库上极端 future shallowSince 仍会保持当前 Unix 时间戳直传语义", async () => {
+  test("完整仓库上极端 future shallowSince 会像 git CLI 一样复刻 approxidate 退化发包", async () => {
     git(["checkout", "main"], workDir);
     createFile(workDir, "second.txt", "second\n");
     git(["add", "second.txt"], workDir);
@@ -1031,17 +1031,40 @@ describe("Import Session", () => {
     const thirdCommitHash = sha1(git(["rev-parse", "HEAD"], workDir));
     git(["push", repoDir, "main"], workDir);
 
+    const cliDir = join(tempDir, "cli-shallow-since-future");
     const repo = initRepository(join(tempDir, "nano-shallow-since-future"));
+    await gitWithTimeout(["-c", "protocol.version=2", "clone", server.url, cliDir], tempDir, 15000);
     await repo.fetch(server.url);
 
     server.clearRequests();
+    const beforeCliMaxAge = git(["rev-parse", "--since=@4102444800"], workDir).replace(
+      "--max-age=",
+      "",
+    );
     const nanoFetch = repo.fetch(server.url, { shallowSince: 4102444800 });
     const nanoResult = await Promise.allSettled([nanoFetch]);
     const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+    const afterCliMaxAge = git(["rev-parse", "--since=@4102444800"], workDir).replace(
+      "--max-age=",
+      "",
+    );
+
+    server.clearRequests();
+    const cliFetch = gitWithTimeout(
+      ["-c", "protocol.version=2", "fetch", "--shallow-since=@4102444800", "origin"],
+      cliDir,
+      15000,
+    );
+    const cliResult = await Promise.allSettled([cliFetch]);
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
 
     expect(nanoResult[0]?.status).toBe("rejected");
+    expect(cliResult[0]?.status).toBe("rejected");
+    expect(nanoBatches).toEqual(cliBatches);
     expect(nanoBatches).toHaveLength(1);
-    expect(nanoBatches[0]).toContain("deepen-since 4102444800");
+    expect([`deepen-since ${beforeCliMaxAge}`, `deepen-since ${afterCliMaxAge}`]).toContain(
+      nanoBatches[0]?.find((line) => line.startsWith("deepen-since ")) ?? "",
+    );
     expect(nanoBatches[0]).toContain(`want ${thirdCommitHash}`);
     expect(nanoBatches[0]?.filter((line) => line.startsWith("have ")).length).toBeGreaterThan(1);
   });
