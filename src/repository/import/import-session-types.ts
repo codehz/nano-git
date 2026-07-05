@@ -321,7 +321,8 @@ export interface ImportPrepareOptions {
   /**
    * 基于时间扩展 shallow 历史（对标 `git fetch --shallow-since=<timestamp>`）
    *
-   * 这里使用 Unix 时间戳秒数，避免把近似日期解析规则泄漏到库 API 中。
+   * 这里使用有限整数的 Unix 时间戳秒数，
+   * 避免把 CLI 里的近似日期解析规则泄漏到库 API 中。
    */
   readonly shallowSince?: number;
 

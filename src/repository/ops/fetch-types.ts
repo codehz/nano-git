@@ -46,7 +46,7 @@ export interface RepositoryFetchOptions {
   /** 相对 shallow 加深层数（对标 `git fetch --deepen=<n>`） */
   readonly deepen?: number;
 
-  /** 基于时间扩展 shallow 历史，使用 Unix 时间戳秒数 */
+  /** 基于时间扩展 shallow 历史，使用有限整数的 Unix 时间戳秒数 */
   readonly shallowSince?: number;
 
   /** 排除指定远端分支/标签可达历史，可多次指定 */

@@ -7,6 +7,20 @@ import { describe, test } from "bun:test";
 import { runRandomImportSessionSourceShallowSeeds } from "./import-session-shallow-random.ts";
 
 describe("Import Session - source-shallow 随机 git CLI 对照", () => {
+  test("默认随机 operation/history/boundary 组合与 git CLI 一致", async () => {
+    await runRandomImportSessionSourceShallowSeeds([241, 277, 313], {
+      strictInitialState: true,
+    });
+  });
+
+  test("完整 clone 后 depth=1 的行为与 git CLI 一致", async () => {
+    await runRandomImportSessionSourceShallowSeeds([9, 21, 33], {
+      initialMode: "full",
+      followupOperation: "depth1",
+      strictInitialState: true,
+    });
+  });
+
   test("完整 clone 后 deepen=1 的请求序列与仓库状态与 git CLI 一致", async () => {
     await runRandomImportSessionSourceShallowSeeds([11, 29, 47], {
       initialMode: "full",
@@ -78,6 +92,15 @@ describe("Import Session - source-shallow 随机 git CLI 对照", () => {
       historyShape: "merge",
       initialMode: "full",
       followupOperation: "deepen",
+      strictInitialState: true,
+    });
+  });
+
+  test("merge-history source-shallow 下完整 clone 后 depth=1 的行为与 git CLI 一致", async () => {
+    await runRandomImportSessionSourceShallowSeeds([97, 131, 167], {
+      historyShape: "merge",
+      initialMode: "full",
+      followupOperation: "depth1",
       strictInitialState: true,
     });
   });

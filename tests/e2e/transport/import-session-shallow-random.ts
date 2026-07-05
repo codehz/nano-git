@@ -27,7 +27,12 @@ import { startGitHttpBackendServer } from "./http-server.ts";
 import { initRepository } from "@/repository/file.ts";
 
 type RandomInitialMode = "full" | "depth1";
-type RandomFollowupOperation = "deepen" | "shallowExcludeTag" | "shallowSinceReject" | "unshallow";
+type RandomFollowupOperation =
+  | "depth1"
+  | "deepen"
+  | "shallowExcludeTag"
+  | "shallowSinceReject"
+  | "unshallow";
 type RandomBoundaryTagMode = "none" | "lightweight" | "annotated";
 type RandomHistoryShape = "linear" | "merge";
 
@@ -104,6 +109,10 @@ function parseSeedArguments(args: readonly string[]): {
     }
     if (arg === "--deepen") {
       options.followupOperation = "deepen";
+      continue;
+    }
+    if (arg === "--depth1") {
+      options.followupOperation = "depth1";
       continue;
     }
     if (arg === "--shallow-exclude-tag") {
@@ -441,7 +450,12 @@ function createFollowupOperation(
     return options.followupOperation;
   }
 
-  const operations: RandomFollowupOperation[] = ["deepen", "shallowSinceReject", "unshallow"];
+  const operations: RandomFollowupOperation[] = [
+    "depth1",
+    "deepen",
+    "shallowSinceReject",
+    "unshallow",
+  ];
   if (boundaryTagMode !== "none") {
     operations.push("shallowExcludeTag");
   }
@@ -455,6 +469,9 @@ async function runNanoFollowup(
   boundaryTagName?: string,
 ): Promise<void> {
   switch (operation) {
+    case "depth1":
+      await repo.fetch(url, { depth: 1 });
+      return;
     case "deepen":
       await repo.fetch(url, { deepen: 1 });
       return;
@@ -476,6 +493,13 @@ async function runCliFollowup(
   boundaryTagName?: string,
 ): Promise<void> {
   switch (operation) {
+    case "depth1":
+      await gitWithTimeout(
+        ["-c", "protocol.version=2", "fetch", "--depth=1", "origin"],
+        cliDir,
+        15000,
+      );
+      return;
     case "deepen":
       await gitWithTimeout(
         ["-c", "protocol.version=2", "fetch", "--deepen=1", "origin"],

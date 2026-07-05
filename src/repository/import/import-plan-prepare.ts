@@ -130,6 +130,12 @@ function validateImportPrepareOptions(
     throw new Error(`deepen 必须是正整数，当前为 ${options.deepen}。`);
   }
 
+  if (options?.shallowSince !== undefined && !Number.isSafeInteger(options.shallowSince)) {
+    throw new Error(
+      `shallowSince 必须是有限整数秒级 Unix 时间戳，当前为 ${String(options.shallowSince)}。`,
+    );
+  }
+
   if (options?.depth !== undefined && options?.deepen !== undefined) {
     throw new Error("depth 与 deepen 不能同时指定。");
   }

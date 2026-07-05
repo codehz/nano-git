@@ -184,6 +184,15 @@ function sortStrings(values: readonly string[]): string[] {
   return [...new Set(values)].sort();
 }
 
+function createTag(workDir: string, tagName: string, target: string, annotated: boolean): void {
+  if (annotated) {
+    git(["tag", "-a", tagName, target, "-m", tagName], workDir);
+    return;
+  }
+
+  git(["tag", tagName, target], workDir);
+}
+
 function snapshotNanoRepository(
   repo: ReturnType<typeof initRepository>,
   gitDir: string,
@@ -224,19 +233,33 @@ async function createRandomLinearRepository(
   const bareDir = join(tempDir, `complete-upstream-${seed}.git`);
   const workDir = join(tempDir, `complete-upstream-work-${seed}`);
   const historyLength = 4 + Math.floor(rand() * 4);
+  const pushedTagRefs: string[] = [];
 
   git(["init", "--bare", "-b", "main", bareDir], tempDir);
   git(["init", "-b", "main", workDir], tempDir);
   git(["remote", "add", "origin", bareDir], workDir);
 
+  const commitHashes: string[] = [];
   for (let index = 0; index < historyLength; index++) {
     createFile(workDir, `c${index + 1}.txt`, `c${index + 1}\n`);
     git(["add", `c${index + 1}.txt`], workDir);
     git(["commit", "-m", `c${index + 1}`], workDir);
+    commitHashes.push(git(["rev-parse", "HEAD"], workDir));
   }
 
-  const tipCommit = git(["rev-parse", "HEAD"], workDir);
-  git(["push", "-u", "origin", "main"], workDir);
+  if (commitHashes.length >= 2) {
+    const baseTagTarget = commitHashes[Math.max(0, commitHashes.length - 2)]!;
+    createTag(workDir, `v-base-${seed}`, baseTagTarget, rand() < 0.5);
+    pushedTagRefs.push(`refs/tags/v-base-${seed}`);
+  }
+
+  const tipCommit = commitHashes[commitHashes.length - 1]!;
+  if (rand() < 0.5) {
+    createTag(workDir, `v-tip-${seed}`, tipCommit, rand() < 0.5);
+    pushedTagRefs.push(`refs/tags/v-tip-${seed}`);
+  }
+
+  git(["push", "-u", "origin", "main", ...pushedTagRefs], workDir);
 
   return {
     bareDir,
@@ -259,6 +282,7 @@ async function createRandomMergeRepository(
   const baseCommitCount = 3 + Math.floor(rand() * 2);
   const topicCommitCount = 2 + Math.floor(rand() * 2);
   const mainAdvanceCount = 1 + Math.floor(rand() * 2);
+  const pushedTagRefs: string[] = [];
 
   git(["init", "--bare", "-b", "main", bareDir], tempDir);
   git(["init", "-b", "main", workDir], tempDir);
@@ -277,6 +301,9 @@ async function createRandomMergeRepository(
     git(["add", `topic-${index + 1}.txt`], workDir);
     git(["commit", "-m", `topic-${index + 1}`], workDir);
   }
+  const topicTip = git(["rev-parse", "HEAD"], workDir);
+  createTag(workDir, `v-topic-${seed}`, topicTip, rand() < 0.5);
+  pushedTagRefs.push(`refs/tags/v-topic-${seed}`);
 
   git(["checkout", "main"], workDir);
   for (let index = 0; index < mainAdvanceCount; index++) {
@@ -291,7 +318,12 @@ async function createRandomMergeRepository(
   git(["commit", "-m", "tail-after-merge"], workDir);
 
   const tipCommit = git(["rev-parse", "HEAD"], workDir);
-  git(["push", "-u", "origin", "main", "topic"], workDir);
+  if (rand() < 0.5) {
+    createTag(workDir, `v-merge-${seed}`, tipCommit, rand() < 0.5);
+    pushedTagRefs.push(`refs/tags/v-merge-${seed}`);
+  }
+
+  git(["push", "-u", "origin", "main", "topic", ...pushedTagRefs], workDir);
 
   return {
     bareDir,

@@ -1298,6 +1298,20 @@ describe("apply 写 ref", () => {
     ]);
   });
 
+  test("shallowSince 必须是有限整数秒级 Unix 时间戳", async () => {
+    const { backend, commitHash } = createRepoWithObjects();
+    const adv = createAdvForCommit(commitHash);
+    const session = createImportSession(MOCK_SOURCE, backend, adv);
+
+    for (const shallowSince of [Number.NaN, Number.POSITIVE_INFINITY, 1.5]) {
+      expect(
+        prepareDraft(session.plan().materialize(session.defaultBranch()).toBranch("main"), {
+          shallowSince,
+        }),
+      ).rejects.toThrow(/shallowSince 必须是有限整数秒级 Unix 时间戳/);
+    }
+  });
+
   test("完整仓库上的 shallow 请求不会再用 known-common 提示裁剪祖先 have", async () => {
     const backend = createMemoryRepositoryBackend();
     const treeHash = writeObject(backend.objects, {

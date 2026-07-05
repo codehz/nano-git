@@ -1020,6 +1020,32 @@ describe("Import Session", () => {
     expect(nanoBatches[0]?.filter((line) => line.startsWith("have ")).length).toBeGreaterThan(1);
   });
 
+  test("完整仓库上极端 future shallowSince 仍会保持当前 Unix 时间戳直传语义", async () => {
+    git(["checkout", "main"], workDir);
+    createFile(workDir, "second.txt", "second\n");
+    git(["add", "second.txt"], workDir);
+    git(["commit", "-m", "Second commit"], workDir);
+    createFile(workDir, "third.txt", "third\n");
+    git(["add", "third.txt"], workDir);
+    git(["commit", "-m", "Third commit"], workDir);
+    const thirdCommitHash = sha1(git(["rev-parse", "HEAD"], workDir));
+    git(["push", repoDir, "main"], workDir);
+
+    const repo = initRepository(join(tempDir, "nano-shallow-since-future"));
+    await repo.fetch(server.url);
+
+    server.clearRequests();
+    const nanoFetch = repo.fetch(server.url, { shallowSince: 4102444800 });
+    const nanoResult = await Promise.allSettled([nanoFetch]);
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoResult[0]?.status).toBe("rejected");
+    expect(nanoBatches).toHaveLength(1);
+    expect(nanoBatches[0]).toContain("deepen-since 4102444800");
+    expect(nanoBatches[0]).toContain(`want ${thirdCommitHash}`);
+    expect(nanoBatches[0]?.filter((line) => line.startsWith("have ")).length).toBeGreaterThan(1);
+  });
+
   test("完整仓库上 repo.fetch({ unshallow: true }) 会像 git CLI 一样直接拒绝且不发请求", async () => {
     const cliDir = join(tempDir, "cli-complete-unshallow");
     const repo = initRepository(join(tempDir, "nano-complete-unshallow"));

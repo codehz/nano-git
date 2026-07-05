@@ -7,6 +7,12 @@ import { describe, test } from "bun:test";
 import { runRandomImportSessionCompleteFollowupSeeds } from "./import-session-complete-followup-random.ts";
 
 describe("Import Session - 完整仓库 follow-up shallow 随机 git CLI 对照", () => {
+  test("默认随机 operation/history 组合与 git CLI 一致", async () => {
+    await runRandomImportSessionCompleteFollowupSeeds([223, 257, 293], {
+      strictInitialState: true,
+    });
+  });
+
   test("linear history 下 depth=1 行为与 git CLI 一致", async () => {
     await runRandomImportSessionCompleteFollowupSeeds([11, 29, 47], {
       followupOperation: "depth1",
