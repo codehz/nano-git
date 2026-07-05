@@ -39,6 +39,7 @@ interface TestRepoFixtures {
   developCommit: SHA1;
   orphanCommit: SHA1;
   blobHash: SHA1;
+  tagHash: SHA1;
 }
 
 function createTestRepo(): TestRepoFixtures {
@@ -102,7 +103,7 @@ function createTestRepo(): TestRepoFixtures {
   });
   backend.refs.write("refs/tags/v1.0", tagHash);
 
-  return { backend, mainCommit, developCommit, orphanCommit, blobHash };
+  return { backend, mainCommit, developCommit, orphanCommit, blobHash, tagHash };
 }
 
 interface MergeShallowRepoFixtures {
@@ -388,11 +389,13 @@ describe("parseFetchArgs", () => {
       "thin-pack",
       "no-progress",
       "ofs-delta",
+      "include-tag",
       "done",
     ]);
     expect(params.thinPack).toBe(true);
     expect(params.noProgress).toBe(true);
     expect(params.ofsDelta).toBe(true);
+    expect(params.includeTag).toBe(true);
   });
 
   test("解析 sideband-all / wait-for-done 标记", () => {
@@ -874,6 +877,64 @@ describe("generateFetchResponse — incremental fetch", () => {
       shallow: [developCommit],
       unshallow: [],
     });
+  });
+
+  test("deepen-not 支持 annotated tag 短名", () => {
+    const { backend, developCommit } = createTestRepo();
+    const buf = generateFetchResponse(backend, {
+      wants: [developCommit],
+      haves: [],
+      shallow: [],
+      wantRefs: [],
+      done: true,
+      thinPack: false,
+      noProgress: false,
+      ofsDelta: true,
+      deepenRelative: false,
+      deepenNot: ["v1.0"],
+    });
+
+    const parsed = parseV2FetchResponse(buf, true, false);
+    expect(parsed.shallowInfo).toEqual({
+      shallow: [developCommit],
+      unshallow: [],
+    });
+  });
+
+  test("deepen-not 不接受裸 oid", () => {
+    const { backend, developCommit, mainCommit } = createTestRepo();
+    expect(() =>
+      generateFetchResponse(backend, {
+        wants: [developCommit],
+        haves: [],
+        shallow: [],
+        wantRefs: [],
+        done: true,
+        thinPack: false,
+        noProgress: false,
+        ofsDelta: true,
+        deepenRelative: false,
+        deepenNot: [mainCommit],
+      }),
+    ).toThrow(/deepen-not is not a ref/);
+  });
+
+  test("deepen-not 不会因为 annotated tag want 指向被排除 commit 就拒绝请求", () => {
+    const { backend, tagHash } = createTestRepo();
+    expect(() =>
+      generateFetchResponse(backend, {
+        wants: [tagHash],
+        haves: [],
+        shallow: [],
+        wantRefs: [],
+        done: true,
+        thinPack: false,
+        noProgress: false,
+        ofsDelta: true,
+        deepenRelative: false,
+        deepenNot: ["v1.0"],
+      }),
+    ).not.toThrow();
   });
 
   test("deepen-not 在已有 shallow merge DAG 上会保留未触达的旧边界", () => {

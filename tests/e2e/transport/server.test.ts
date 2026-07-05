@@ -106,6 +106,11 @@ function readBareShallowFile(repoDir: string): string[] {
   return content.length === 0 ? [] : content.split(/\n+/);
 }
 
+async function readLocalTagRefs(workDir: string): Promise<string[]> {
+  const output = await gitWithTimeout(["tag", "-l", "--format=%(refname) %(objectname)"], workDir);
+  return output.length === 0 ? [] : output.split(/\n+/);
+}
+
 async function writeTrackedFile(workDir: string, filename: string, content: string): Promise<void> {
   writeFileSync(join(workDir, filename), content, "utf-8");
   await gitWithTimeout(["add", filename], workDir, GIT_TIMEOUT_MS);
@@ -156,6 +161,38 @@ async function createFileRepoWithMergeHistory(rootDir: string): Promise<{
     topicBoundaryCommit,
     mergeCommit,
   };
+}
+
+async function createFileRepoWithMergeHistoryAndTopicTag(rootDir: string): Promise<{
+  readonly bareDir: string;
+  readonly rootCommit: string;
+  readonly mainBoundaryCommit: string;
+  readonly topicAncestorCommit: string;
+  readonly topicBoundaryCommit: string;
+  readonly mergeCommit: string;
+  readonly topicTag: string;
+}> {
+  const history = await createFileRepoWithMergeHistory(rootDir);
+  await gitWithTimeout(
+    [
+      "--git-dir",
+      history.bareDir,
+      "tag",
+      "-a",
+      "tag-topic",
+      history.topicBoundaryCommit,
+      "-m",
+      "tag-topic",
+    ],
+    rootDir,
+    GIT_TIMEOUT_MS,
+  );
+  const topicTag = await gitWithTimeout(
+    ["--git-dir", history.bareDir, "rev-parse", "refs/tags/tag-topic"],
+    rootDir,
+    GIT_TIMEOUT_MS,
+  );
+  return { ...history, topicTag };
 }
 
 async function createLinearHistoryRepo(rootDir: string): Promise<{
@@ -808,6 +845,138 @@ describe("Smart HTTP 服务端 — shallow 结果对照", () => {
       expect(nanoResult.shallowAfter.toSorted()).toEqual(
         [history.mainBoundaryCommit, history.topicBoundaryCommit, history.mergeCommit].toSorted(),
       );
+    } finally {
+      await gitServer.stop();
+      nanoServer.stop();
+    }
+  });
+
+  test("merge DAG 下 clone --depth=2 会带回 reachable annotated tag，与 git-http-backend 一致", async () => {
+    const history = await createFileRepoWithMergeHistoryAndTopicTag(tempDir);
+    const gitServer = startGitHttpBackendServer(tempDir, "/server.git");
+    const nanoServer = startNanoGitServer(createFileRepositoryBackend(history.bareDir));
+    const gitTarget = join(tempDir, "git-depth2-tag-clone");
+    const nanoTarget = join(tempDir, "nano-depth2-tag-clone");
+
+    try {
+      await gitWithTimeout(
+        ["-c", "protocol.version=2", "clone", "--depth=2", gitServer.url, gitTarget],
+        tempDir,
+        GIT_TIMEOUT_MS,
+      );
+      await gitWithTimeout(
+        ["-c", "protocol.version=2", "clone", "--depth=2", nanoServer.url, nanoTarget],
+        tempDir,
+        GIT_TIMEOUT_MS,
+      );
+
+      expect(readShallowFile(nanoTarget)).toEqual(readShallowFile(gitTarget));
+      expect(await readLocalTagRefs(nanoTarget)).toEqual(await readLocalTagRefs(gitTarget));
+      expect(await readLocalTagRefs(nanoTarget)).toEqual([
+        `refs/tags/tag-topic ${history.topicTag}`,
+      ]);
+    } finally {
+      await gitServer.stop();
+      nanoServer.stop();
+    }
+  });
+
+  test("merge DAG 下 clone --depth=2 后 fetch --shallow-exclude=tag-topic 的 shallow 结果与 git-http-backend 一致", async () => {
+    const history = await createFileRepoWithMergeHistoryAndTopicTag(tempDir);
+    const gitServer = startGitHttpBackendServer(tempDir, "/server.git");
+    const nanoServer = startNanoGitServer(createFileRepositoryBackend(history.bareDir));
+    const runFetch = async (url: string, targetDir: string) => {
+      await gitWithTimeout(
+        ["-c", "protocol.version=2", "clone", "--depth=2", url, targetDir],
+        tempDir,
+        GIT_TIMEOUT_MS,
+      );
+      const shallowBefore = readShallowFile(targetDir);
+      const countBefore = await gitWithTimeout(
+        ["rev-list", "--count", "HEAD"],
+        targetDir,
+        GIT_TIMEOUT_MS,
+      );
+
+      await gitWithTimeout(
+        ["-c", "protocol.version=2", "fetch", "--shallow-exclude=tag-topic", "origin"],
+        targetDir,
+        GIT_TIMEOUT_MS,
+      );
+      const shallowAfter = readShallowFile(targetDir);
+      const countAfter = await gitWithTimeout(
+        ["rev-list", "--count", "HEAD"],
+        targetDir,
+        GIT_TIMEOUT_MS,
+      );
+
+      return { shallowBefore, shallowAfter, countBefore, countAfter };
+    };
+
+    try {
+      const gitResult = await runFetch(
+        gitServer.url,
+        join(tempDir, "git-depth2-exclude-tag-topic"),
+      );
+      const nanoResult = await runFetch(
+        nanoServer.url,
+        join(tempDir, "nano-depth2-exclude-tag-topic"),
+      );
+
+      expect(nanoResult.countBefore).toBe(gitResult.countBefore);
+      expect(nanoResult.countAfter).toBe(gitResult.countAfter);
+      expect(nanoResult.shallowBefore).toEqual(gitResult.shallowBefore);
+      expect(nanoResult.shallowAfter).toEqual(gitResult.shallowAfter);
+      expect(nanoResult.shallowAfter.toSorted()).toEqual(
+        [history.mainBoundaryCommit, history.topicBoundaryCommit, history.mergeCommit].toSorted(),
+      );
+    } finally {
+      await gitServer.stop();
+      nanoServer.stop();
+    }
+  });
+
+  test("merge DAG 下 clone --shallow-exclude=<oid> 时与 git-http-backend 一样拒绝请求", async () => {
+    const history = await createFileRepoWithMergeHistory(tempDir);
+    const gitServer = startGitHttpBackendServer(tempDir, "/server.git");
+    const nanoServer = startNanoGitServer(createFileRepositoryBackend(history.bareDir));
+    const gitTarget = join(tempDir, "git-shallow-exclude-oid");
+    const nanoTarget = join(tempDir, "nano-shallow-exclude-oid");
+
+    try {
+      const gitClone = gitWithTimeout(
+        [
+          "-c",
+          "protocol.version=2",
+          "clone",
+          `--shallow-exclude=${history.topicBoundaryCommit}`,
+          gitServer.url,
+          gitTarget,
+        ],
+        tempDir,
+        GIT_TIMEOUT_MS,
+      );
+      const nanoClone = gitWithTimeout(
+        [
+          "-c",
+          "protocol.version=2",
+          "clone",
+          `--shallow-exclude=${history.topicBoundaryCommit}`,
+          nanoServer.url,
+          nanoTarget,
+        ],
+        tempDir,
+        GIT_TIMEOUT_MS,
+      );
+      const [gitResult, nanoResult] = await Promise.allSettled([gitClone, nanoClone]);
+      expect(gitResult.status).toBe("rejected");
+      expect(nanoResult.status).toBe("rejected");
+      if (gitResult.status === "rejected") {
+        expect(String(gitResult.reason)).toContain("HTTP 500");
+      }
+      if (nanoResult.status === "rejected") {
+        expect(String(nanoResult.reason)).toContain("HTTP 500");
+      }
     } finally {
       await gitServer.stop();
       nanoServer.stop();

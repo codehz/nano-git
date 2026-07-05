@@ -10,6 +10,7 @@ import { tryReadObject } from "../../../objects/raw.ts";
 import { createPackWriter } from "../../../pack/writer/pack-writer.ts";
 import { resolveRefHash } from "../../../refs/resolve.ts";
 import { sha1 } from "../../../types/index.ts";
+import { TAGS_PREFIX } from "../../../types/refs.ts";
 import { collectReachable, isAncestor, peelTagChain } from "../../protocol/object-graph.ts";
 import { encodePktLine, encodeFlushPkt, encodeDelimiterPkt } from "../../protocol/pkt-line.ts";
 import {
@@ -34,6 +35,7 @@ export interface FetchServerParams {
   readonly thinPack: boolean;
   readonly noProgress: boolean;
   readonly ofsDelta: boolean;
+  readonly includeTag?: boolean;
   readonly deepen?: number;
   readonly deepenRelative?: boolean;
   readonly deepenSince?: number;
@@ -63,6 +65,7 @@ export function parseFetchArgs(args: string[]): FetchServerParams {
   let thinPack = false;
   let noProgress = false;
   let ofsDelta = false;
+  let includeTag = false;
   let deepen: number | undefined;
   let deepenRelative = false;
   let deepenSince: number | undefined;
@@ -81,6 +84,8 @@ export function parseFetchArgs(args: string[]): FetchServerParams {
       noProgress = true;
     } else if (arg === "ofs-delta") {
       ofsDelta = true;
+    } else if (arg === "include-tag") {
+      includeTag = true;
     } else if (arg === "deepen-relative") {
       deepenRelative = true;
     } else if (arg.startsWith("shallow ")) {
@@ -111,6 +116,7 @@ export function parseFetchArgs(args: string[]): FetchServerParams {
     thinPack,
     noProgress,
     ofsDelta,
+    includeTag,
     deepen,
     deepenRelative,
     deepenSince,
@@ -194,9 +200,10 @@ function resolveExcludedReachable(
   const excludeRoots: SHA1[] = [];
   for (const refName of deepenNot) {
     const hash = resolveDeepenNotTargetHash(backend, refName);
-    if (hash !== null) {
-      excludeRoots.push(hash);
+    if (hash === null) {
+      throw new Error(`fetch: deepen-not is not a ref: ${refName}`);
     }
+    excludeRoots.push(hash);
   }
 
   if (excludeRoots.length === 0) {
@@ -209,16 +216,11 @@ function resolveExcludedReachable(
 function resolveDeepenNotTargetHash(backend: RepositoryBackend, rev: string): SHA1 | null {
   const tryResolveRef = (refName: string): SHA1 | null => {
     const hash = resolveRefHash(backend.refs, refName);
-    return hash;
+    return hash === null ? null : peelTagChain(backend.objects, hash);
   };
 
   if (rev === "HEAD" || rev.startsWith("refs/")) {
     return tryResolveRef(rev);
-  }
-
-  if (/^[0-9a-f]{40}$/.test(rev)) {
-    const oid = sha1(rev);
-    return backend.objects.exists(oid) ? oid : null;
   }
 
   return (
@@ -345,9 +347,8 @@ function createShallowFetchPlan(
 
   if (excludedReachable) {
     for (const want of params.wants) {
-      const peeledWant = peelTagChain(backend.objects, want);
-      if (excludedReachable.has(peeledWant)) {
-        throw new Error(`fetch: want ${peeledWant} is excluded by deepen-not`);
+      if (excludedReachable.has(want)) {
+        throw new Error(`fetch: want ${want} is excluded by deepen-not`);
       }
     }
   }
@@ -402,17 +403,53 @@ function createShallowFetchPlan(
   };
 }
 
+function addAnnotatedTagsToPack(
+  backend: RepositoryBackend,
+  objectsToPack: ReadonlySet<SHA1>,
+): Set<SHA1> {
+  const withTags = new Set(objectsToPack);
+  let changed = true;
+
+  while (changed) {
+    changed = false;
+
+    for (const refName of backend.refs.list(TAGS_PREFIX)) {
+      const hash = resolveRefHash(backend.refs, refName);
+      if (hash === null || withTags.has(hash)) {
+        continue;
+      }
+
+      const obj = tryReadObject(backend.objects, hash);
+      if (obj?.type !== "tag") {
+        continue;
+      }
+
+      if (withTags.has(obj.object)) {
+        withTags.add(hash);
+        changed = true;
+      }
+    }
+  }
+
+  return withTags;
+}
+
 function computeObjectsToPack(
   backend: RepositoryBackend,
   params: FetchServerParams,
   shallowPlan: ShallowFetchPlan,
 ): Set<SHA1> {
+  const finalizeObjectsToPack = (objectsToPack: Set<SHA1>): Set<SHA1> =>
+    params.includeTag ? addAnnotatedTagsToPack(backend, objectsToPack) : objectsToPack;
+
   if (params.haves.length === 0) {
-    return collectReachable(
-      backend.objects,
-      params.wants,
-      "skip-commit-parents",
-      shallowPlan.serverShallow ? new Set(shallowPlan.serverShallow) : undefined,
+    return finalizeObjectsToPack(
+      collectReachable(
+        backend.objects,
+        params.wants,
+        "skip-commit-parents",
+        shallowPlan.serverShallow ? new Set(shallowPlan.serverShallow) : undefined,
+      ),
     );
   }
 
@@ -436,7 +473,7 @@ function computeObjectsToPack(
       result.add(hash);
     }
   }
-  return result;
+  return finalizeObjectsToPack(result);
 }
 
 // ============================================================================
