@@ -181,8 +181,13 @@ function shouldSkipExplicitFetchForLightweightTag(
 function shouldFetchExistingMappingTarget(
   compiled: CompiledImportPlanState,
   mapping: ResolvedMapping,
+  options?: ImportPrepareOptions,
 ): boolean {
   if (!isTagMapping(mapping)) {
+    return true;
+  }
+
+  if (hasShallowFetchRequest(options)) {
     return true;
   }
 
@@ -672,7 +677,10 @@ export async function prepareImportPlan(
       continue;
     }
 
-    if (shouldFetchExistingTargets && shouldFetchExistingMappingTarget(compiled, mapping)) {
+    if (
+      shouldFetchExistingTargets &&
+      shouldFetchExistingMappingTarget(compiled, mapping, options)
+    ) {
       branchFetchTargetHashes.add(mapping.remoteRef.hash);
     }
   }
@@ -689,7 +697,9 @@ export async function prepareImportPlan(
       return true;
     }
 
-    return shouldFetchExistingTargets && shouldFetchExistingMappingTarget(compiled, mapping);
+    return (
+      shouldFetchExistingTargets && shouldFetchExistingMappingTarget(compiled, mapping, options)
+    );
   });
   const wantSequence = fetchMappings.map((mapping) => mapping.remoteRef.hash);
   const objectRoots = [...new Set(wantSequence)] as SHA1[];

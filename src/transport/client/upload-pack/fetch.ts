@@ -871,6 +871,7 @@ export async function negotiateV2Fetch(
 
   const selector = createFetchHaveSelector(haveCandidates, localObjects, knownCommonRefs, {
     replayKnownCommonInFirstRound: options.replayKnownCommonInFirstRound,
+    localShallowBoundaries: options.shallow?.map((oid) => sha1(oid)),
   });
   const commonSet = createGitOidSetState();
   let havesToSend = INITIAL_FLUSH;

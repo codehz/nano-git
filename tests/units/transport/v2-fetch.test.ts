@@ -496,6 +496,51 @@ describe("v2 fetch 协商请求", () => {
     expect(haveLines).toEqual([`have ${tip}`, `have ${middle}`, `have ${root}`]);
   });
 
+  test("本地 shallow 边界存在时，不会再跨边界继续发送祖先 have", async () => {
+    const backend = createMemoryRepositoryBackend();
+    const treeHash = writeObject(backend.objects, { type: "tree", entries: [] });
+    const root = writeObject(backend.objects, {
+      type: "commit",
+      tree: treeHash,
+      parents: [],
+      author: { name: "T", email: "t@t", timestamp: 1, timezone: "+0000" },
+      committer: { name: "T", email: "t@t", timestamp: 1, timezone: "+0000" },
+      message: "root\n",
+    });
+    const middle = writeObject(backend.objects, {
+      type: "commit",
+      tree: treeHash,
+      parents: [root],
+      author: { name: "T", email: "t@t", timestamp: 2, timezone: "+0000" },
+      committer: { name: "T", email: "t@t", timestamp: 2, timezone: "+0000" },
+      message: "middle\n",
+    });
+    const tip = writeObject(backend.objects, {
+      type: "commit",
+      tree: treeHash,
+      parents: [middle],
+      author: { name: "T", email: "t@t", timestamp: 3, timezone: "+0000" },
+      committer: { name: "T", email: "t@t", timestamp: 3, timezone: "+0000" },
+      message: "tip\n",
+    });
+
+    const calls: string[][] = [];
+    const transport = createMockTransport([encodePackfileSection()], calls);
+
+    await negotiateV2Fetch(
+      transport,
+      [sha1("1111111111111111111111111111111111111111")],
+      [tip],
+      [],
+      backend.objects,
+      undefined,
+      { shallow: [tip] },
+    );
+
+    const haveLines = calls[0]!.filter((line) => line.startsWith("have "));
+    expect(haveLines).toEqual([`have ${tip}`]);
+  });
+
   test("若覆盖者不是远端已知公共 ref，首轮仍保留被覆盖 tip 并继续祖先协商", async () => {
     const backend = createMemoryRepositoryBackend();
     const treeHash = writeObject(backend.objects, { type: "tree", entries: [] });

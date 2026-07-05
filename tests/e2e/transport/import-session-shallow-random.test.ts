@@ -80,6 +80,13 @@ describe("Import Session - source-shallow 随机 git CLI 对照", () => {
     });
   });
 
+  test("source-shallow 下 future shallow-since 行为与 git CLI 一致", async () => {
+    await runRandomImportSessionSourceShallowSeeds([73, 101, 137], {
+      followupOperation: "futureShallowSince",
+      strictInitialState: true,
+    });
+  });
+
   test("source-shallow 下 unshallow 行为与 git CLI 一致", async () => {
     await runRandomImportSessionSourceShallowSeeds([59, 89, 109], {
       followupOperation: "unshallow",
@@ -197,6 +204,14 @@ describe("Import Session - source-shallow 随机 git CLI 对照", () => {
   test("merge-history source-shallow 下 shallow-since 拒绝语义与 git CLI 一致", async () => {
     await runRandomImportSessionSourceShallowSeeds([173, 191, 197], {
       followupOperation: "shallowSinceReject",
+      historyShape: "merge",
+      strictInitialState: true,
+    });
+  });
+
+  test("merge-history source-shallow 下 future shallow-since 行为与 git CLI 一致", async () => {
+    await runRandomImportSessionSourceShallowSeeds([269, 271, 277], {
+      followupOperation: "futureShallowSince",
       historyShape: "merge",
       strictInitialState: true,
     });

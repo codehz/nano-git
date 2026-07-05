@@ -48,6 +48,16 @@ function readShallowFile(workDir: string): string[] {
   return content.length === 0 ? [] : content.split(/\n+/);
 }
 
+function readBareShallowFile(gitDir: string): string[] {
+  const shallowPath = join(gitDir, "shallow");
+  if (!existsSync(shallowPath)) {
+    return [];
+  }
+
+  const content = readFileSync(shallowPath, "utf-8").trim();
+  return content.length === 0 ? [] : content.split(/\n+/);
+}
+
 function sortHashes(hashes: readonly string[]): string[] {
   return [...hashes].sort();
 }
@@ -726,6 +736,81 @@ describe("Import Session", () => {
     );
   });
 
+  test("bare 仓库上 refSpecs 的 shallow follow-up 会像 git CLI 一样显式 want tag 且不跨本地 shallow 边界发送 have", async () => {
+    git(["checkout", "main"], workDir);
+    createFile(workDir, "second.txt", "second\n");
+    git(["add", "second.txt"], workDir);
+    git(["commit", "-m", "Second commit"], workDir);
+    git(["tag", "-a", "v2", "-m", "v2"], workDir);
+    git(["push", repoDir, "main"], workDir);
+    git(["push", repoDir, "refs/tags/v2"], workDir);
+
+    const bareCliDir = join(tempDir, "cli-refspec-shallow.git");
+    const nanoDir = join(tempDir, "nano-refspec-shallow.git");
+    const repo = initRepository(nanoDir);
+    const refSpecs = ["refs/heads/*:refs/heads/*", "refs/tags/*:refs/tags/*"];
+
+    git(["clone", "--bare", repoDir, bareCliDir], tempDir);
+    await repo.fetch(server.url, { refSpecs });
+
+    server.clearRequests();
+    const nanoDepthResult = await repo.fetch(server.url, { refSpecs, depth: 1 });
+    const nanoDepthBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    const cliDepthResult = await Promise.allSettled([
+      gitWithTimeout(
+        [
+          "--git-dir",
+          bareCliDir,
+          "-c",
+          "protocol.version=2",
+          "fetch",
+          "--depth=1",
+          server.url,
+          ...refSpecs,
+        ],
+        tempDir,
+        15000,
+      ),
+    ]);
+    const cliDepthBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoDepthResult.objectCount).toBeGreaterThanOrEqual(0);
+    expect(cliDepthResult[0]?.status).toBe("fulfilled");
+    expect(nanoDepthBatches).toEqual(cliDepthBatches);
+    expect(sortHashes(repo.shallow.read())).toEqual(sortHashes(readBareShallowFile(bareCliDir)));
+
+    server.clearRequests();
+    const nanoSinceResult = await Promise.allSettled([
+      repo.fetch(server.url, { refSpecs, shallowSince: 1700000001 }),
+    ]);
+    const nanoSinceBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    const cliSinceResult = await Promise.allSettled([
+      gitWithTimeout(
+        [
+          "--git-dir",
+          bareCliDir,
+          "-c",
+          "protocol.version=2",
+          "fetch",
+          "--shallow-since=@1700000001",
+          server.url,
+          ...refSpecs,
+        ],
+        tempDir,
+        15000,
+      ),
+    ]);
+    const cliSinceBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoSinceResult[0]?.status).toBe(cliSinceResult[0]?.status);
+    expect(nanoSinceBatches).toEqual(cliSinceBatches);
+    expect(sortHashes(repo.shallow.read())).toEqual(sortHashes(readBareShallowFile(bareCliDir)));
+  });
+
   test("本地 shallow 仓库后续 repo.fetch() 会像 git fetch 一样自动物化新增可达 tag", async () => {
     git(["checkout", "main"], workDir);
     createFile(workDir, "initial-tagged.txt", "initial-tagged\n");
@@ -1020,7 +1105,7 @@ describe("Import Session", () => {
     expect(nanoBatches[0]?.filter((line) => line.startsWith("have ")).length).toBeGreaterThan(1);
   });
 
-  test("完整仓库上极端 future shallowSince 会像 git CLI 一样复刻 approxidate 退化发包", async () => {
+  test("完整仓库上多组极端 future shallowSince 会像 git CLI 一样复刻 approxidate 退化发包", async () => {
     git(["checkout", "main"], workDir);
     createFile(workDir, "second.txt", "second\n");
     git(["add", "second.txt"], workDir);
@@ -1036,37 +1121,55 @@ describe("Import Session", () => {
     await gitWithTimeout(["-c", "protocol.version=2", "clone", server.url, cliDir], tempDir, 15000);
     await repo.fetch(server.url);
 
-    server.clearRequests();
-    const beforeCliMaxAge = git(["rev-parse", "--since=@4102444800"], workDir).replace(
-      "--max-age=",
-      "",
-    );
-    const nanoFetch = repo.fetch(server.url, { shallowSince: 4102444800 });
-    const nanoResult = await Promise.allSettled([nanoFetch]);
-    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
-    const afterCliMaxAge = git(["rev-parse", "--since=@4102444800"], workDir).replace(
-      "--max-age=",
-      "",
-    );
+    for (const shallowSince of [
+      4_102_444_800, 4_102_444_801, 4_102_448_400, 4_102_531_200, 4_294_967_295, 4_294_967_296,
+    ]) {
+      server.clearRequests();
+      const beforeNanoMaxAge = git(["rev-parse", `--since=@${shallowSince}`], workDir).replace(
+        "--max-age=",
+        "",
+      );
+      const nanoFetch = repo.fetch(server.url, { shallowSince });
+      const nanoResult = await Promise.allSettled([nanoFetch]);
+      const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+      const afterNanoMaxAge = git(["rev-parse", `--since=@${shallowSince}`], workDir).replace(
+        "--max-age=",
+        "",
+      );
 
-    server.clearRequests();
-    const cliFetch = gitWithTimeout(
-      ["-c", "protocol.version=2", "fetch", "--shallow-since=@4102444800", "origin"],
-      cliDir,
-      15000,
-    );
-    const cliResult = await Promise.allSettled([cliFetch]);
-    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+      server.clearRequests();
+      const beforeCliMaxAge = git(["rev-parse", `--since=@${shallowSince}`], workDir).replace(
+        "--max-age=",
+        "",
+      );
+      const cliFetch = gitWithTimeout(
+        ["-c", "protocol.version=2", "fetch", `--shallow-since=@${shallowSince}`, "origin"],
+        cliDir,
+        15000,
+      );
+      const cliResult = await Promise.allSettled([cliFetch]);
+      const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+      const afterCliMaxAge = git(["rev-parse", `--since=@${shallowSince}`], workDir).replace(
+        "--max-age=",
+        "",
+      );
 
-    expect(nanoResult[0]?.status).toBe("rejected");
-    expect(cliResult[0]?.status).toBe("rejected");
-    expect(nanoBatches).toEqual(cliBatches);
-    expect(nanoBatches).toHaveLength(1);
-    expect([`deepen-since ${beforeCliMaxAge}`, `deepen-since ${afterCliMaxAge}`]).toContain(
-      nanoBatches[0]?.find((line) => line.startsWith("deepen-since ")) ?? "",
-    );
-    expect(nanoBatches[0]).toContain(`want ${thirdCommitHash}`);
-    expect(nanoBatches[0]?.filter((line) => line.startsWith("have ")).length).toBeGreaterThan(1);
+      expect(nanoResult[0]?.status).toBe(cliResult[0]?.status);
+      expect(nanoBatches).toHaveLength(1);
+      expect(cliBatches).toHaveLength(1);
+      expect(nanoBatches[0]?.filter((line) => !line.startsWith("deepen-since "))).toEqual(
+        cliBatches[0]?.filter((line) => !line.startsWith("deepen-since ")),
+      );
+      expect([`deepen-since ${beforeNanoMaxAge}`, `deepen-since ${afterNanoMaxAge}`]).toContain(
+        nanoBatches[0]?.find((line) => line.startsWith("deepen-since ")) ?? "",
+      );
+      expect([`deepen-since ${beforeCliMaxAge}`, `deepen-since ${afterCliMaxAge}`]).toContain(
+        cliBatches[0]?.find((line) => line.startsWith("deepen-since ")) ?? "",
+      );
+      expect(nanoBatches[0]).toContain(`want ${thirdCommitHash}`);
+      expect(nanoBatches[0]?.filter((line) => line.startsWith("have ")).length).toBeGreaterThan(1);
+      expect(sortHashes(repo.shallow.read())).toEqual(sortHashes(readShallowFile(cliDir)));
+    }
   });
 
   test("完整仓库上 repo.fetch({ unshallow: true }) 会像 git CLI 一样直接拒绝且不发请求", async () => {

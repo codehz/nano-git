@@ -37,6 +37,14 @@ describe("Import Session - 完整仓库 follow-up shallow 随机 git CLI 对照"
     });
   });
 
+  test("linear history 下 future shallow-since 行为与 git CLI 一致", async () => {
+    await runRandomImportSessionCompleteFollowupSeeds([79, 83, 89], {
+      followupOperation: "futureShallowSince",
+      historyShape: "linear",
+      strictInitialState: true,
+    });
+  });
+
   test("linear history 下 shallow-exclude=main reject 行为与 git CLI 一致", async () => {
     await runRandomImportSessionCompleteFollowupSeeds([19, 41, 61], {
       followupOperation: "shallowExcludeMainReject",
@@ -80,6 +88,14 @@ describe("Import Session - 完整仓库 follow-up shallow 随机 git CLI 对照"
   test("merge history 下 shallow-since reject 行为与 git CLI 一致", async () => {
     await runRandomImportSessionCompleteFollowupSeeds([109, 149, 181], {
       followupOperation: "shallowSinceReject",
+      historyShape: "merge",
+      strictInitialState: true,
+    });
+  });
+
+  test("merge history 下 future shallow-since 行为与 git CLI 一致", async () => {
+    await runRandomImportSessionCompleteFollowupSeeds([227, 229, 233], {
+      followupOperation: "futureShallowSince",
       historyShape: "merge",
       strictInitialState: true,
     });

@@ -93,6 +93,7 @@ export interface FetchHaveSelector {
 
 interface FetchHaveSelectorOptions {
   readonly replayKnownCommonInFirstRound?: boolean;
+  readonly localShallowBoundaries?: readonly SHA1[];
 }
 
 function compareNodes(a: CommitNegotiationNode, b: CommitNegotiationNode): number {
@@ -344,6 +345,9 @@ export function createFetchHaveSelector(
     nextPushOrder: 0,
     nonCommonRevs: 0,
   };
+  const localShallowBoundaries = new Set(
+    (options.localShallowBoundaries ?? []).map((oid) => sha1(oid)),
+  );
 
   if (knownCommonCandidates) {
     for (const oid of knownCommonCandidates) {
@@ -378,16 +382,18 @@ export function createFetchHaveSelector(
             ? FLAG_COMMON | FLAG_SEEN
             : FLAG_SEEN;
 
-        for (const parent of current.parents) {
-          const parentNode = getCommitNode(state, parent);
-          if (!parentNode) {
-            continue;
-          }
-          if ((parentNode.flags & FLAG_SEEN) === 0) {
-            revListPush(state, parent, parentMark);
-          }
-          if ((parentMark & FLAG_COMMON) !== 0) {
-            markCommon(state, parent, true);
+        if (!localShallowBoundaries.has(current.oid)) {
+          for (const parent of current.parents) {
+            const parentNode = getCommitNode(state, parent);
+            if (!parentNode) {
+              continue;
+            }
+            if ((parentNode.flags & FLAG_SEEN) === 0) {
+              revListPush(state, parent, parentMark);
+            }
+            if ((parentMark & FLAG_COMMON) !== 0) {
+              markCommon(state, parent, true);
+            }
           }
         }
 

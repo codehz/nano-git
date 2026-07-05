@@ -32,6 +32,7 @@ type RandomFollowupOperation =
   | "deepen"
   | "shallowExcludeTag"
   | "shallowSinceReject"
+  | "futureShallowSince"
   | "unshallow";
 type RandomBoundaryTagMode = "none" | "lightweight" | "annotated";
 type RandomHistoryShape = "linear" | "merge";
@@ -69,7 +70,12 @@ interface RandomSourceShallowCliComparisonResult {
   readonly initialCli: RepositorySnapshot;
   readonly finalNano: RepositorySnapshot;
   readonly finalCli: RepositorySnapshot;
+  readonly futureShallowSince?: number;
 }
+
+const FUTURE_SHALLOW_SINCE_SAMPLES = [
+  4_102_444_800, 4_102_444_801, 4_102_448_400, 4_102_531_200, 4_294_967_295, 4_294_967_296,
+] as const;
 
 function createSeededRandom(seed: number): () => number {
   let state = seed >>> 0;
@@ -121,6 +127,10 @@ function parseSeedArguments(args: readonly string[]): {
     }
     if (arg === "--shallow-since") {
       options.followupOperation = "shallowSinceReject";
+      continue;
+    }
+    if (arg === "--future-shallow-since") {
+      options.followupOperation = "futureShallowSince";
       continue;
     }
     if (arg === "--unshallow") {
@@ -454,6 +464,7 @@ function createFollowupOperation(
     "depth1",
     "deepen",
     "shallowSinceReject",
+    "futureShallowSince",
     "unshallow",
   ];
   if (boundaryTagMode !== "none") {
@@ -462,11 +473,58 @@ function createFollowupOperation(
   return pickRandom(rand, operations);
 }
 
+function readCliMaxAge(workDir: string, shallowSince: number): string {
+  return git(["rev-parse", `--since=@${shallowSince}`], workDir).replace("--max-age=", "");
+}
+
+function withoutDeepenSince(batch: readonly string[]): string[] {
+  return batch.filter((line) => !line.startsWith("deepen-since "));
+}
+
+function findDeepenSince(batch: readonly string[]): string | undefined {
+  return batch.find((line) => line.startsWith("deepen-since "));
+}
+
+function futureShallowSinceMatchesCliWindow(params: {
+  readonly nanoBatches: readonly string[][];
+  readonly cliBatches: readonly string[][];
+  readonly beforeNanoMaxAge: string;
+  readonly afterNanoMaxAge: string;
+  readonly beforeCliMaxAge: string;
+  readonly afterCliMaxAge: string;
+}): boolean {
+  if (params.nanoBatches.length !== 1 || params.cliBatches.length !== 1) {
+    return false;
+  }
+
+  const nanoBatch = params.nanoBatches[0]!;
+  const cliBatch = params.cliBatches[0]!;
+  if (
+    JSON.stringify(withoutDeepenSince(nanoBatch)) !== JSON.stringify(withoutDeepenSince(cliBatch))
+  ) {
+    return false;
+  }
+
+  const nanoDeepenSince = findDeepenSince(nanoBatch);
+  const cliDeepenSince = findDeepenSince(cliBatch);
+  return (
+    nanoDeepenSince !== undefined &&
+    cliDeepenSince !== undefined &&
+    [params.beforeNanoMaxAge, params.afterNanoMaxAge].includes(
+      nanoDeepenSince.slice("deepen-since ".length),
+    ) &&
+    [params.beforeCliMaxAge, params.afterCliMaxAge].includes(
+      cliDeepenSince.slice("deepen-since ".length),
+    )
+  );
+}
+
 async function runNanoFollowup(
   repo: ReturnType<typeof initRepository>,
   url: string,
   operation: RandomFollowupOperation,
   boundaryTagName?: string,
+  futureShallowSince?: number,
 ): Promise<void> {
   switch (operation) {
     case "depth1":
@@ -481,6 +539,9 @@ async function runNanoFollowup(
     case "shallowSinceReject":
       await repo.fetch(url, { shallowSince: 0 });
       return;
+    case "futureShallowSince":
+      await repo.fetch(url, { shallowSince: futureShallowSince! });
+      return;
     case "unshallow":
       await repo.fetch(url, { unshallow: true });
       return;
@@ -491,6 +552,7 @@ async function runCliFollowup(
   cliDir: string,
   operation: RandomFollowupOperation,
   boundaryTagName?: string,
+  futureShallowSince?: number,
 ): Promise<void> {
   switch (operation) {
     case "depth1":
@@ -517,6 +579,13 @@ async function runCliFollowup(
     case "shallowSinceReject":
       await gitWithTimeout(
         ["-c", "protocol.version=2", "fetch", "--shallow-since=1970-01-01T00:00:00Z", "origin"],
+        cliDir,
+        15000,
+      );
+      return;
+    case "futureShallowSince":
+      await gitWithTimeout(
+        ["-c", "protocol.version=2", "fetch", `--shallow-since=@${futureShallowSince!}`, "origin"],
         cliDir,
         15000,
       );
@@ -551,6 +620,10 @@ export async function runRandomImportSessionSourceShallowSeed(
     historyShape,
   );
   const followupOperation = createFollowupOperation(rand, boundaryTagMode, options);
+  const futureShallowSince =
+    followupOperation === "futureShallowSince"
+      ? pickRandom(rand, FUTURE_SHALLOW_SINCE_SAMPLES)
+      : undefined;
   const server = startGitHttpBackendServer(tempDir, `/${basename(history.shallowBareDir)}`);
   const repo = initRepository(nanoDir);
 
@@ -582,20 +655,35 @@ export async function runRandomImportSessionSourceShallowSeed(
         initialCli,
         finalNano: initialNano,
         finalCli: initialCli,
+        futureShallowSince,
       };
     }
 
     server.clearRequests();
+    const beforeNanoMaxAge =
+      futureShallowSince !== undefined ? readCliMaxAge(cliDir, futureShallowSince) : undefined;
     const nanoSettled = await Promise.allSettled([
-      runNanoFollowup(repo, server.url, followupOperation, history.boundaryTagName),
+      runNanoFollowup(
+        repo,
+        server.url,
+        followupOperation,
+        history.boundaryTagName,
+        futureShallowSince,
+      ),
     ]);
     const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+    const afterNanoMaxAge =
+      futureShallowSince !== undefined ? readCliMaxAge(cliDir, futureShallowSince) : undefined;
 
     server.clearRequests();
+    const beforeCliMaxAge =
+      futureShallowSince !== undefined ? readCliMaxAge(cliDir, futureShallowSince) : undefined;
     const cliSettled = await Promise.allSettled([
-      runCliFollowup(cliDir, followupOperation, history.boundaryTagName),
+      runCliFollowup(cliDir, followupOperation, history.boundaryTagName, futureShallowSince),
     ]);
     const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+    const afterCliMaxAge =
+      futureShallowSince !== undefined ? readCliMaxAge(cliDir, futureShallowSince) : undefined;
 
     const finalNano = snapshotNanoRepository(repo, nanoDir, tempDir);
     const finalCli = snapshotCliRepository(cliDir);
@@ -603,7 +691,16 @@ export async function runRandomImportSessionSourceShallowSeed(
     const cliStatus = cliSettled[0]!.status;
     const matched =
       nanoStatus === cliStatus &&
-      JSON.stringify(nanoBatches) === JSON.stringify(cliBatches) &&
+      (futureShallowSince === undefined
+        ? JSON.stringify(nanoBatches) === JSON.stringify(cliBatches)
+        : futureShallowSinceMatchesCliWindow({
+            nanoBatches,
+            cliBatches,
+            beforeNanoMaxAge: beforeNanoMaxAge!,
+            afterNanoMaxAge: afterNanoMaxAge!,
+            beforeCliMaxAge: beforeCliMaxAge!,
+            afterCliMaxAge: afterCliMaxAge!,
+          })) &&
       sameComparableSnapshot(finalNano, finalCli, options.strictInitialState === true);
 
     return {
@@ -625,6 +722,7 @@ export async function runRandomImportSessionSourceShallowSeed(
       initialCli,
       finalNano,
       finalCli,
+      futureShallowSince,
     };
   } finally {
     await server.stop();
