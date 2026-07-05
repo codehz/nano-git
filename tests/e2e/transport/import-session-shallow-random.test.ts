@@ -66,6 +66,13 @@ describe("Import Session - source-shallow 随机 git CLI 对照", () => {
     });
   });
 
+  test("source-shallow 下 unshallow 行为与 git CLI 一致", async () => {
+    await runRandomImportSessionSourceShallowSeeds([59, 89, 109], {
+      followupOperation: "unshallow",
+      strictInitialState: true,
+    });
+  });
+
   test("merge-history source-shallow 下完整 clone 后 deepen=1 的请求序列与仓库状态与 git CLI 一致", async () => {
     await runRandomImportSessionSourceShallowSeeds([101, 113, 127], {
       historyShape: "merge",
@@ -75,8 +82,48 @@ describe("Import Session - source-shallow 随机 git CLI 对照", () => {
     });
   });
 
+  test("merge-history source-shallow 下完整 clone 后带 annotated 边界 tag 的 deepen=1 行为与 git CLI 一致", async () => {
+    await runRandomImportSessionSourceShallowSeeds([139, 181, 223], {
+      boundaryTagMode: "annotated",
+      historyShape: "merge",
+      initialMode: "full",
+      followupOperation: "deepen",
+      strictInitialState: true,
+    });
+  });
+
+  test("merge-history source-shallow 下完整 clone 后带 lightweight 边界 tag 的 deepen=1 行为与 git CLI 一致", async () => {
+    await runRandomImportSessionSourceShallowSeeds([167, 227, 257], {
+      boundaryTagMode: "lightweight",
+      historyShape: "merge",
+      initialMode: "full",
+      followupOperation: "deepen",
+      strictInitialState: true,
+    });
+  });
+
   test("merge-history source-shallow 下 depth=1 clone 后 deepen=1 的请求序列与仓库状态与 git CLI 一致", async () => {
     await runRandomImportSessionSourceShallowSeeds([107, 149, 173], {
+      historyShape: "merge",
+      initialMode: "depth1",
+      followupOperation: "deepen",
+      strictInitialState: true,
+    });
+  });
+
+  test("merge-history source-shallow 下 depth=1 clone 后带 lightweight 边界 tag 的 deepen=1 行为与 git CLI 一致", async () => {
+    await runRandomImportSessionSourceShallowSeeds([151, 199, 239], {
+      boundaryTagMode: "lightweight",
+      historyShape: "merge",
+      initialMode: "depth1",
+      followupOperation: "deepen",
+      strictInitialState: true,
+    });
+  });
+
+  test("merge-history source-shallow 下 depth=1 clone 后带 annotated 边界 tag 的 deepen=1 行为与 git CLI 一致", async () => {
+    await runRandomImportSessionSourceShallowSeeds([131, 173, 211], {
+      boundaryTagMode: "annotated",
       historyShape: "merge",
       initialMode: "depth1",
       followupOperation: "deepen",
@@ -127,6 +174,14 @@ describe("Import Session - source-shallow 随机 git CLI 对照", () => {
   test("merge-history source-shallow 下 shallow-since 拒绝语义与 git CLI 一致", async () => {
     await runRandomImportSessionSourceShallowSeeds([173, 191, 197], {
       followupOperation: "shallowSinceReject",
+      historyShape: "merge",
+      strictInitialState: true,
+    });
+  });
+
+  test("merge-history source-shallow 下 unshallow 行为与 git CLI 一致", async () => {
+    await runRandomImportSessionSourceShallowSeeds([157, 211, 263], {
+      followupOperation: "unshallow",
       historyShape: "merge",
       strictInitialState: true,
     });

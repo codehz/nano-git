@@ -183,6 +183,31 @@ describe("v2 协议 - 随机 git CLI 对照", () => {
     });
   });
 
+  test("协商压力模式下 default repo.fetch() + no-tags 的请求序列与 tag 状态与 git CLI 一致", async () => {
+    await runRandomV2CliComparisonSeeds([5011, 5031, 5071], {
+      defaultFetch: true,
+      includeTagAliases: true,
+      includeLightweightTags: true,
+      includeOrphans: true,
+      includeRefAliases: true,
+      includeTags: true,
+      noTags: true,
+      negotiationStress: true,
+    });
+  });
+
+  test("协商压力模式下显式 heads+tags refPatterns 的请求序列与 tag 状态与 git CLI 一致", async () => {
+    await runRandomV2CliComparisonSeeds([4921, 4941, 4981], {
+      explicitTagPatterns: true,
+      includeTagAliases: true,
+      includeLightweightTags: true,
+      includeOrphans: true,
+      includeRefAliases: true,
+      includeTags: true,
+      negotiationStress: true,
+    });
+  });
+
   test("协商压力模式下显式 heads+tags refspec 的请求序列与 refs 状态与 git CLI 一致", async () => {
     await runRandomV2CliComparisonSeeds([4409, 4481, 4547], {
       explicitTagRefSpecs: true,

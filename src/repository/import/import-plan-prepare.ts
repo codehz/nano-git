@@ -381,7 +381,7 @@ async function fetchPreviewObjects(
   const knownCommonRefs =
     options?.disableKnownCommonRefHints === true
       ? []
-      : resolveLocalShallowBoundaries(compiled) === undefined
+      : resolveLocalShallowBoundaries(compiled) === undefined && !hasShallowFetchRequest(options)
         ? collectKnownCommonRefs(compiled, localHaveTips, options)
         : [];
 

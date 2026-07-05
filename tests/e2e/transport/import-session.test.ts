@@ -253,6 +253,87 @@ describe("Import Session", () => {
     ]);
   });
 
+  test("repo.fetch({ unshallow: true }) 会像 git fetch --unshallow 一样补齐历史并清空 shallow", async () => {
+    git(["checkout", "main"], workDir);
+    createFile(workDir, "second.txt", "second\n");
+    git(["add", "second.txt"], workDir);
+    git(["commit", "-m", "Second commit"], workDir);
+    createFile(workDir, "third.txt", "third\n");
+    git(["add", "third.txt"], workDir);
+    git(["commit", "-m", "Third commit"], workDir);
+    const thirdCommitHash = sha1(git(["rev-parse", "HEAD"], workDir));
+    git(["push", repoDir, "main"], workDir);
+
+    const cliDir = join(tempDir, "cli-unshallow");
+    const repo = initRepository(join(tempDir, "nano-unshallow"));
+
+    await gitWithTimeout(
+      ["-c", "protocol.version=2", "clone", "--depth=1", server.url, cliDir],
+      tempDir,
+      15000,
+    );
+    await repo.fetch(server.url, { depth: 1 });
+
+    expect(readShallowFile(cliDir)).toEqual([thirdCommitHash]);
+    expect(repo.shallow.read()).toEqual([thirdCommitHash]);
+
+    server.clearRequests();
+    const nanoResult = await repo.fetch(server.url, { unshallow: true });
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    await gitWithTimeout(
+      ["-c", "protocol.version=2", "fetch", "--unshallow", "origin"],
+      cliDir,
+      15000,
+    );
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoResult.objectCount).toBeGreaterThan(0);
+    expect(nanoBatches).toEqual(cliBatches);
+    expect(repo.readBranch("main")).toBe(thirdCommitHash);
+    expect(repo.shallow.read()).toEqual([]);
+    expect(readShallowFile(cliDir)).toEqual([]);
+  });
+
+  test("完整仓库上 repo.fetch({ deepen: 1 }) 会像 git CLI 一样继续发送祖先 have 且保持 no-op", async () => {
+    git(["checkout", "main"], workDir);
+    createFile(workDir, "second.txt", "second\n");
+    git(["add", "second.txt"], workDir);
+    git(["commit", "-m", "Second commit"], workDir);
+    createFile(workDir, "third.txt", "third\n");
+    git(["add", "third.txt"], workDir);
+    git(["commit", "-m", "Third commit"], workDir);
+    const thirdCommitHash = sha1(git(["rev-parse", "HEAD"], workDir));
+    git(["push", repoDir, "main"], workDir);
+
+    const cliDir = join(tempDir, "cli-complete-deepen");
+    const repo = initRepository(join(tempDir, "nano-complete-deepen"));
+
+    await gitWithTimeout(["-c", "protocol.version=2", "clone", server.url, cliDir], tempDir, 15000);
+    await repo.fetch(server.url);
+
+    server.clearRequests();
+    const nanoResult = await repo.fetch(server.url, { deepen: 1 });
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    await gitWithTimeout(
+      ["-c", "protocol.version=2", "fetch", "--deepen=1", "origin"],
+      cliDir,
+      15000,
+    );
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoResult.objectCount).toBe(0);
+    expect(nanoBatches).toEqual(cliBatches);
+    expect(nanoBatches).toHaveLength(1);
+    expect(nanoBatches[0]).toContain("deepen 1");
+    expect(nanoBatches[0]).toContain("deepen-relative");
+    expect(nanoBatches[0]).toContain(`want ${thirdCommitHash}`);
+    expect(nanoBatches[0]?.filter((line) => line.startsWith("have ")).length).toBeGreaterThan(1);
+  });
+
   test("repo.fetch({ noTags: true }) 会像 git CLI 一样关闭 include-tag 且不导入标签", async () => {
     git(["checkout", "main"], workDir);
     createFile(workDir, "second.txt", "second\n");
@@ -780,6 +861,138 @@ describe("Import Session", () => {
     expect(nanoResult[0]?.status).toBe("rejected");
     expect(cliResult[0]?.status).toBe("rejected");
     expect(nanoBatches).toEqual(cliBatches);
+  });
+
+  test("完整仓库上 repo.fetch({ shallowExclude: [main] }) 会像 git CLI 一样继续发送祖先 have 后再拒绝", async () => {
+    git(["checkout", "main"], workDir);
+    createFile(workDir, "second.txt", "second\n");
+    git(["add", "second.txt"], workDir);
+    git(["commit", "-m", "Second commit"], workDir);
+    createFile(workDir, "third.txt", "third\n");
+    git(["add", "third.txt"], workDir);
+    git(["commit", "-m", "Third commit"], workDir);
+    const thirdCommitHash = sha1(git(["rev-parse", "HEAD"], workDir));
+    git(["push", repoDir, "main"], workDir);
+
+    const cliDir = join(tempDir, "cli-shallow-exclude-main");
+    const repo = initRepository(join(tempDir, "nano-shallow-exclude-main"));
+
+    await gitWithTimeout(["-c", "protocol.version=2", "clone", server.url, cliDir], tempDir, 15000);
+    await repo.fetch(server.url);
+
+    server.clearRequests();
+    const nanoFetch = repo.fetch(server.url, { shallowExclude: ["main"] });
+    const nanoResult = await Promise.allSettled([nanoFetch]);
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    const cliFetch = gitWithTimeout(
+      ["-c", "protocol.version=2", "fetch", "--shallow-exclude=main", "origin"],
+      cliDir,
+      15000,
+    );
+    const cliResult = await Promise.allSettled([cliFetch]);
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoResult[0]?.status).toBe("rejected");
+    expect(cliResult[0]?.status).toBe("rejected");
+    expect(nanoBatches).toEqual(cliBatches);
+    expect(nanoBatches).toHaveLength(1);
+    expect(nanoBatches[0]).toContain("deepen-not main");
+    expect(nanoBatches[0]).toContain(`want ${thirdCommitHash}`);
+    expect(nanoBatches[0]?.filter((line) => line.startsWith("have ")).length).toBeGreaterThan(1);
+  });
+
+  test("完整仓库上 repo.fetch({ shallowExclude: [<oid>] }) 会像 git CLI 一样拒绝并发送相同请求序列", async () => {
+    git(["checkout", "main"], workDir);
+    createFile(workDir, "second.txt", "second\n");
+    git(["add", "second.txt"], workDir);
+    git(["commit", "-m", "Second commit"], workDir);
+    const secondCommitHash = sha1(git(["rev-parse", "HEAD"], workDir));
+    git(["push", repoDir, "main"], workDir);
+
+    const cliDir = join(tempDir, "cli-shallow-exclude-oid");
+    const repo = initRepository(join(tempDir, "nano-shallow-exclude-oid"));
+
+    await gitWithTimeout(["-c", "protocol.version=2", "clone", server.url, cliDir], tempDir, 15000);
+    await repo.fetch(server.url);
+
+    server.clearRequests();
+    const nanoFetch = repo.fetch(server.url, { shallowExclude: [secondCommitHash] });
+    const nanoResult = await Promise.allSettled([nanoFetch]);
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    const cliFetch = gitWithTimeout(
+      ["-c", "protocol.version=2", "fetch", `--shallow-exclude=${secondCommitHash}`, "origin"],
+      cliDir,
+      15000,
+    );
+    const cliResult = await Promise.allSettled([cliFetch]);
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoResult[0]?.status).toBe("rejected");
+    expect(cliResult[0]?.status).toBe("rejected");
+    expect(nanoBatches).toEqual(cliBatches);
+    expect(nanoBatches).toHaveLength(1);
+    expect(nanoBatches[0]).toContain(`deepen-not ${secondCommitHash}`);
+  });
+
+  test("完整仓库上 repo.fetch({ unshallow: true }) 会像 git CLI 一样直接拒绝且不发请求", async () => {
+    const cliDir = join(tempDir, "cli-complete-unshallow");
+    const repo = initRepository(join(tempDir, "nano-complete-unshallow"));
+
+    await gitWithTimeout(["-c", "protocol.version=2", "clone", server.url, cliDir], tempDir, 15000);
+    await repo.fetch(server.url);
+
+    server.clearRequests();
+    const nanoResult = await Promise.allSettled([repo.fetch(server.url, { unshallow: true })]);
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    const cliResult = await Promise.allSettled([
+      gitWithTimeout(["-c", "protocol.version=2", "fetch", "--unshallow", "origin"], cliDir, 15000),
+    ]);
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoResult[0]?.status).toBe("rejected");
+    expect(cliResult[0]?.status).toBe("rejected");
+    expect(nanoBatches).toEqual([]);
+    expect(cliBatches).toEqual([]);
+  });
+
+  test("source shallow 下 repo.fetch({ unshallow: true }) 会像 git CLI 一样保持源浅边界并发送相同请求序列", async () => {
+    await server.stop();
+    await createShallowSourceRepository(tempDir, {
+      repoName: "plain-shallow-source-unshallow.git",
+      upstreamName: "plain-upstream-unshallow.git",
+      workName: "plain-upstream-work-unshallow",
+    });
+    server = startGitHttpBackendServer(tempDir, "/plain-shallow-source-unshallow.git");
+
+    const cliDir = join(tempDir, "cli-source-unshallow");
+    const repo = initRepository(join(tempDir, "nano-source-unshallow"));
+
+    await gitWithTimeout(["-c", "protocol.version=2", "clone", server.url, cliDir], tempDir, 15000);
+    await repo.fetch(server.url);
+
+    expect(sortHashes(repo.shallow.read())).toEqual(sortHashes(readShallowFile(cliDir)));
+
+    server.clearRequests();
+    const nanoResult = await repo.fetch(server.url, { unshallow: true });
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    await gitWithTimeout(
+      ["-c", "protocol.version=2", "fetch", "--unshallow", "origin"],
+      cliDir,
+      15000,
+    );
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoResult.objectCount).toBe(0);
+    expect(nanoBatches).toEqual(cliBatches);
+    expect(sortHashes(repo.shallow.read())).toEqual(sortHashes(readShallowFile(cliDir)));
   });
 
   test("远端分支可镜像到自定义命名空间", async () => {

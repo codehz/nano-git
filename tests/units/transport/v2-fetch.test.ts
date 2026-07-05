@@ -8,10 +8,12 @@ import { describe, test, expect } from "bun:test";
 
 import { createMemoryRepositoryBackend } from "@/backend/memory.ts";
 import { writeObject } from "@/objects/raw.ts";
+import { createPackWriter } from "@/pack/writer/pack-writer.ts";
 import {
   negotiateV2Fetch,
   parseV2FetchResponse,
   v2Fetch,
+  v2FetchObjects,
 } from "@/transport/client/upload-pack/fetch.ts";
 import {
   encodePktLine,
@@ -234,6 +236,63 @@ describe("v2 fetch 协商请求", () => {
       negotiateV2Fetch(transport, ["1111111111111111111111111111111111111111"], [common]),
     ).rejects.toThrow(/Received 'ready' without packfile section/);
     expect(calls).toHaveLength(1);
+  });
+
+  test("done 路径收到空响应时应报错，而不是返回空 shallowUpdate 成功", async () => {
+    const backend = createMemoryRepositoryBackend();
+    const treeHash = writeObject(backend.objects, { type: "tree", entries: [] });
+    const tip = writeObject(backend.objects, {
+      type: "commit",
+      tree: treeHash,
+      parents: [],
+      author: { name: "T", email: "t@t", timestamp: 1, timezone: "+0000" },
+      committer: { name: "T", email: "t@t", timestamp: 1, timezone: "+0000" },
+      message: "tip\n",
+    });
+
+    const calls: string[][] = [];
+    const transport = createMockTransport([Buffer.alloc(0)], calls);
+
+    expect(
+      v2FetchObjects(backend.objects, transport, [tip], [tip], ["shallow"], [], {
+        shallow: [tip],
+        deepenSince: 0,
+      }),
+    ).rejects.toThrow(/Empty fetch response/);
+  });
+
+  test("unshallow 后若父提交仍缺失，应像 git CLI 一样报错", async () => {
+    const backend = createMemoryRepositoryBackend();
+    const treeHash = writeObject(backend.objects, { type: "tree", entries: [] });
+    const tip = writeObject(backend.objects, {
+      type: "commit",
+      tree: treeHash,
+      parents: [sha1("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")],
+      author: { name: "T", email: "t@t", timestamp: 2, timezone: "+0000" },
+      committer: { name: "T", email: "t@t", timestamp: 2, timezone: "+0000" },
+      message: "tip\n",
+    });
+
+    backend.shallow.write([tip]);
+
+    const calls: string[][] = [];
+    const writer = createPackWriter();
+    const response = Buffer.concat([
+      pkt("shallow-info\n"),
+      pkt(`unshallow ${tip}\n`),
+      encodeDelimiterPkt(),
+      pkt("packfile\n"),
+      encodePktLine(Buffer.concat([Buffer.from([0x01]), writer.build()])),
+      encodeFlushPkt(),
+    ]);
+    const transport = createMockTransport([response], calls);
+
+    expect(
+      v2FetchObjects(backend.objects, transport, [tip], [tip], ["shallow"], [], {
+        shallow: [tip],
+        deepenSince: 0,
+      }),
+    ).rejects.toThrow(/missing from the local store/);
   });
 
   test("ACK 过的 common 会在下一轮带 done replay", async () => {

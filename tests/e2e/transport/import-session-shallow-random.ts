@@ -5,7 +5,7 @@
  * - 源仓库自身是 shallow
  * - 初始 clone 为完整 / depth=1
  * - 边界带 lightweight / annotated tag
- * - 后续执行 deepen / shallow-exclude / shallow-since
+ * - 后续执行 deepen / shallow-exclude / shallow-since / unshallow
  *
  * 该文件既可被 bun:test 复用，也可直接通过
  * `bun run tests/e2e/transport/import-session-shallow-random.ts` 执行。
@@ -27,7 +27,7 @@ import { startGitHttpBackendServer } from "./http-server.ts";
 import { initRepository } from "@/repository/file.ts";
 
 type RandomInitialMode = "full" | "depth1";
-type RandomFollowupOperation = "deepen" | "shallowExcludeTag" | "shallowSinceReject";
+type RandomFollowupOperation = "deepen" | "shallowExcludeTag" | "shallowSinceReject" | "unshallow";
 type RandomBoundaryTagMode = "none" | "lightweight" | "annotated";
 type RandomHistoryShape = "linear" | "merge";
 
@@ -112,6 +112,10 @@ function parseSeedArguments(args: readonly string[]): {
     }
     if (arg === "--shallow-since") {
       options.followupOperation = "shallowSinceReject";
+      continue;
+    }
+    if (arg === "--unshallow") {
+      options.followupOperation = "unshallow";
       continue;
     }
     if (arg === "--no-boundary-tag") {
@@ -437,7 +441,7 @@ function createFollowupOperation(
     return options.followupOperation;
   }
 
-  const operations: RandomFollowupOperation[] = ["deepen", "shallowSinceReject"];
+  const operations: RandomFollowupOperation[] = ["deepen", "shallowSinceReject", "unshallow"];
   if (boundaryTagMode !== "none") {
     operations.push("shallowExcludeTag");
   }
@@ -459,6 +463,9 @@ async function runNanoFollowup(
       return;
     case "shallowSinceReject":
       await repo.fetch(url, { shallowSince: 0 });
+      return;
+    case "unshallow":
+      await repo.fetch(url, { unshallow: true });
       return;
   }
 }
@@ -486,6 +493,13 @@ async function runCliFollowup(
     case "shallowSinceReject":
       await gitWithTimeout(
         ["-c", "protocol.version=2", "fetch", "--shallow-since=1970-01-01T00:00:00Z", "origin"],
+        cliDir,
+        15000,
+      );
+      return;
+    case "unshallow":
+      await gitWithTimeout(
+        ["-c", "protocol.version=2", "fetch", "--unshallow", "origin"],
         cliDir,
         15000,
       );

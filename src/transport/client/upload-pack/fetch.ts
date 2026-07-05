@@ -39,6 +39,7 @@
 import { GitError } from "../../../errors.ts";
 import { createPackReader, packObjectToRaw } from "../../../pack/reader/pack-reader.ts";
 import { sha1 } from "../../../types/index.ts";
+import { collectReachable } from "../../protocol/object-graph.ts";
 import {
   encodeDelimiterPkt,
   encodeFlushPkt,
@@ -445,6 +446,10 @@ export function parseV2FetchResponse(
     return parseV2FetchResponse(demultiplexSidebandAll(data), _hasDone, false);
   }
 
+  if (data.length === 0) {
+    throw new V2FetchError("Empty fetch response");
+  }
+
   // 使用 splitPktLinesFromBuffer 优雅处理尾部非 pkt-line 数据
   const { lines: pktLines, trailing } = splitPktLinesFromBuffer(data);
 
@@ -786,6 +791,35 @@ function nextFlush(count: number): number {
   return Math.floor((count * 11) / 10);
 }
 
+function ensureDoneResponseHasPackfile(response: V2FetchResponse): V2FetchResponse {
+  if (!response.packfile || response.packfile.length === 0) {
+    throw new V2FetchError("Received done response without packfile payload");
+  }
+  return response;
+}
+
+function validateUnshallowReachability(
+  db: ObjectDatabase,
+  shallowUpdate: ShallowUpdate | undefined,
+  currentShallow?: readonly string[],
+): void {
+  if (!shallowUpdate || shallowUpdate.unshallow.length === 0) {
+    return;
+  }
+
+  const finalShallow = new Set((currentShallow ?? []).map((hash) => sha1(hash)));
+  for (const hash of shallowUpdate.unshallow) {
+    finalShallow.delete(hash);
+  }
+  for (const hash of shallowUpdate.shallow) {
+    finalShallow.add(hash);
+  }
+
+  for (const hash of shallowUpdate.unshallow) {
+    collectReachable(db, [hash], "throw", finalShallow);
+  }
+}
+
 /**
  * 执行 v2 多轮 fetch 协商
  *
@@ -816,20 +850,22 @@ export async function negotiateV2Fetch(
 
   // 初始 clone：无 haves，直接发送 wants + done
   if (haveCandidates.length === 0) {
-    return v2Fetch(
-      transport,
-      {
-        wants,
-        ...DEFAULT_NEGOTIATION_FETCH_OPTIONS,
-        includeTag: options.includeTag ?? DEFAULT_NEGOTIATION_FETCH_OPTIONS.includeTag,
-        shallow: options.shallow,
-        deepen: options.deepen,
-        deepenRelative: options.deepenRelative,
-        deepenSince: options.deepenSince,
-        deepenNot: options.deepenNot,
-        done: true,
-      },
-      features,
+    return ensureDoneResponseHasPackfile(
+      await v2Fetch(
+        transport,
+        {
+          wants,
+          ...DEFAULT_NEGOTIATION_FETCH_OPTIONS,
+          includeTag: options.includeTag ?? DEFAULT_NEGOTIATION_FETCH_OPTIONS.includeTag,
+          shallow: options.shallow,
+          deepen: options.deepen,
+          deepenRelative: options.deepenRelative,
+          deepenSince: options.deepenSince,
+          deepenNot: options.deepenNot,
+          done: true,
+        },
+        features,
+      ),
     );
   }
 
@@ -887,7 +923,7 @@ export async function negotiateV2Fetch(
     }
 
     if (done) {
-      return response;
+      return ensureDoneResponseHasPackfile(response);
     }
 
     const ack = response.acknowledgments;
@@ -967,6 +1003,8 @@ export async function v2FetchObjects(
     db.ingest(packObjectToRaw(packObj));
     count++;
   }
+
+  validateUnshallowReachability(db, shallowUpdate, options.shallow);
 
   return { objectCount: count, shallowUpdate };
 }
