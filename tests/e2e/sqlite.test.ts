@@ -219,7 +219,9 @@ describe("SQLite 仓库作为 HTTP 客户端", () => {
     {
       using repo = createSqliteRepository(dbPath);
 
-      const result = await repo.fetch(server.url);
+      const result = await repo.fetch(server.url, {
+        refPatterns: ["refs/heads/*", "refs/tags/*"],
+      });
       expect(result.objectCount).toBeGreaterThan(0);
       expect(repo.readRef("HEAD")).toBe(firstCommit);
       expect(repo.readBranch("main")).toBe(firstCommit);
@@ -240,7 +242,9 @@ describe("SQLite 仓库作为 HTTP 客户端", () => {
       const secondCommit = appendCommit(remoteRepo, "SQLite client second", [firstCommit]);
       remoteRepo.updateRef("refs/heads/main", secondCommit);
 
-      const result = await repo.fetch(server.url);
+      const result = await repo.fetch(server.url, {
+        refPatterns: ["refs/heads/*", "refs/tags/*"],
+      });
       expect(result.updatedRefs.some((item) => item.refName === "refs/heads/main")).toBe(true);
       expect(repo.readRef("HEAD")).toBe(secondCommit);
       expect(repo.readBranch("main")).toBe(secondCommit);

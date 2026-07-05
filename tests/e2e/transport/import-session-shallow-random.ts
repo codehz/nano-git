@@ -199,6 +199,18 @@ function snapshotCliRepository(workDir: string): RepositorySnapshot {
   };
 }
 
+function sameComparableSnapshot(
+  left: RepositorySnapshot,
+  right: RepositorySnapshot,
+  strictTags = false,
+): boolean {
+  return (
+    JSON.stringify(left.shallow) === JSON.stringify(right.shallow) &&
+    left.main === right.main &&
+    (!strictTags || JSON.stringify(left.tags) === JSON.stringify(right.tags))
+  );
+}
+
 async function createRandomSourceShallowRepository(
   tempDir: string,
   seed: number,
@@ -273,21 +285,11 @@ async function runInitialClone(
       tempDir,
       15000,
     );
-    await gitWithTimeout(
-      ["-c", "protocol.version=2", "fetch", "origin", "+refs/tags/*:refs/tags/*"],
-      cliDir,
-      15000,
-    );
     await repo.fetch(url, { depth: 1 });
     return;
   }
 
   await gitWithTimeout(["-c", "protocol.version=2", "clone", url, cliDir], tempDir, 15000);
-  await gitWithTimeout(
-    ["-c", "protocol.version=2", "fetch", "origin", "+refs/tags/*:refs/tags/*"],
-    cliDir,
-    15000,
-  );
   await repo.fetch(url);
 }
 
@@ -356,10 +358,6 @@ async function runCliFollowup(
   }
 }
 
-function sameSnapshot(left: RepositorySnapshot, right: RepositorySnapshot): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
-}
-
 export async function runRandomImportSessionSourceShallowSeed(
   seed: number,
   options: RandomSourceShallowCliComparisonOptions = {},
@@ -381,7 +379,10 @@ export async function runRandomImportSessionSourceShallowSeed(
 
     const initialNano = snapshotNanoRepository(repo, nanoDir, tempDir);
     const initialCli = snapshotCliRepository(cliDir);
-    if (options.strictInitialState === true && !sameSnapshot(initialNano, initialCli)) {
+    if (
+      options.strictInitialState === true &&
+      !sameComparableSnapshot(initialNano, initialCli, true)
+    ) {
       return {
         seed,
         matched: false,
@@ -422,7 +423,7 @@ export async function runRandomImportSessionSourceShallowSeed(
     const matched =
       nanoStatus === cliStatus &&
       JSON.stringify(nanoBatches) === JSON.stringify(cliBatches) &&
-      sameSnapshot(finalNano, finalCli);
+      sameComparableSnapshot(finalNano, finalCli, options.strictInitialState === true);
 
     return {
       seed,

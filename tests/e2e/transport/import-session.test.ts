@@ -300,6 +300,29 @@ describe("Import Session", () => {
     expect(git(["tag", "-l"], cliDir)).toBe("");
   });
 
+  test("空仓库首次 repo.fetch() 会像 git clone 一样带回可达 annotated tag", async () => {
+    git(["checkout", "main"], workDir);
+    createFile(workDir, "tagged.txt", "tagged\n");
+    git(["add", "tagged.txt"], workDir);
+    git(["commit", "-m", "Tagged commit"], workDir);
+    const taggedCommitHash = sha1(git(["rev-parse", "HEAD"], workDir));
+    git(["tag", "-a", "v1.0.0", "-m", "v1.0.0"], workDir);
+    const tagHash = git(["rev-parse", "refs/tags/v1.0.0"], workDir);
+    git(["push", repoDir, "main"], workDir);
+    git(["push", repoDir, "refs/tags/v1.0.0"], workDir);
+
+    const repo = initRepository(localDir);
+    const cliDir = join(tempDir, "cli-default-tags");
+
+    await repo.fetch(server.url);
+    await gitWithTimeout(["-c", "protocol.version=2", "clone", server.url, cliDir], tempDir, 15000);
+
+    expect(repo.readBranch("main")).toBe(taggedCommitHash);
+    expect(repo.refs.read("refs/tags/v1.0.0")).toBe(sha1(tagHash));
+    expect(repo.refs.list("refs/tags/")).toEqual(["refs/tags/v1.0.0"]);
+    expect(git(["tag", "-l"], cliDir)).toBe("v1.0.0");
+  });
+
   test("source shallow + lightweight boundary tag 下 repo.fetch({ shallowExclude }) 请求序列与 git CLI 一致", async () => {
     await server.stop();
     const history = await createTaggedShallowSourceRepository(tempDir, {
@@ -369,6 +392,32 @@ describe("Import Session", () => {
     expect(sortHashes(repo.shallow.read())).toEqual(
       sortHashes([history.sourceBoundaryCommit, history.tipCommit]),
     );
+  });
+
+  test("source shallow + annotated boundary tag 下 repo.fetch({ depth: 1 }) 初始状态与 git clone --depth=1 一致", async () => {
+    await server.stop();
+    await createTaggedShallowSourceRepository(tempDir, {
+      annotated: true,
+      repoName: "annotated-tagged-shallow-source-depth1.git",
+      upstreamName: "annotated-tagged-upstream-depth1.git",
+      workName: "annotated-tagged-upstream-work-depth1",
+      tagName: "tag-boundary",
+    });
+    server = startGitHttpBackendServer(tempDir, "/annotated-tagged-shallow-source-depth1.git");
+
+    const cliDir = join(tempDir, "cli-depth1-exclude-annotated");
+    const repo = initRepository(join(tempDir, "nano-depth1-exclude-annotated"));
+
+    await gitWithTimeout(
+      ["-c", "protocol.version=2", "clone", "--depth=1", server.url, cliDir],
+      tempDir,
+      15000,
+    );
+    await repo.fetch(server.url, { depth: 1 });
+
+    expect(sortHashes(repo.shallow.read())).toEqual(sortHashes(readShallowFile(cliDir)));
+    expect(repo.refs.list("refs/tags/")).toEqual([]);
+    expect(git(["tag", "-l"], cliDir)).toBe("");
   });
 
   test("source shallow 下 repo.fetch({ shallowSince }) 会像 git CLI 一样拒绝并发送相同请求序列", async () => {

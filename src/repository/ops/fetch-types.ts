@@ -13,13 +13,15 @@ import type { SHA1 } from "../../types/index.ts";
 export interface RepositoryFetchOptions {
   /**
    * RefSpec 列表，格式如 "refs/heads/main:refs/heads/main"
-   * 传入后完全取代默认映射（远端所有 branches → refs/heads/* + tags → refs/tags/*）。
+   * 传入后完全取代默认映射。
+   * 默认映射只物化远端 branches；如需导入 tags，请显式传入对应 refspec。
    */
   readonly refSpecs?: string[];
 
   /**
    * 仅 fetch 匹配指定 glob 模式的远端 refs（如 "refs/heads/feature/*"），
    * 不 fetch 全部。不可与 refSpecs 同时使用。
+   * 若模式显式包含 `refs/tags/*`，则会像显式 refspec 一样导入本地 tags。
    */
   readonly refPatterns?: string[];
 
@@ -92,7 +94,8 @@ export interface RepositoryFetchOperations {
    * 从远端仓库拉取 refs 和对象
    *
    * 等价于 `git fetch <url>`。
-   * 默认行为：拉取所有远端分支（fast-forward）+ 标签 + 设置 HEAD。
+   * 默认行为：拉取所有远端分支（fast-forward）并设置 HEAD。
+   * 可达 tag 对象仍会通过协议层自动跟随，但不会默认创建本地 tag refs。
    *
    * @param url - 远端仓库 URL
    * @param options - 可选参数

@@ -41,7 +41,36 @@ export async function runFetchToUrl(
     return applyCustomRefSpecs(session, options);
   }
 
-  return applyDefaultMapping(session, options);
+  return applyDefaultMapping(session, options, shouldMaterializeDefaultTags(backend, options));
+}
+
+function hasShallowFetchRequest(options?: RepositoryFetchOptions): boolean {
+  return (
+    options?.depth !== undefined ||
+    options?.deepen !== undefined ||
+    options?.shallowSince !== undefined ||
+    (options?.shallowExclude?.length ?? 0) > 0 ||
+    options?.unshallow === true
+  );
+}
+
+function shouldMaterializeDefaultTags(
+  backend: RepositoryBackend,
+  options?: RepositoryFetchOptions,
+): boolean {
+  if (options?.noTags === true) {
+    return false;
+  }
+
+  if (options?.refPatterns !== undefined) {
+    return true;
+  }
+
+  if (hasShallowFetchRequest(options)) {
+    return false;
+  }
+
+  return backend.refs.listAll().length === 0 && backend.shallow.read().length === 0;
 }
 
 function createImportPrepareOptions(
@@ -69,11 +98,18 @@ function createImportPrepareOptions(
 }
 
 /**
- * 默认 fetch 映射：远端所有 refs → 本地同名 refs + HEAD 更新
+ * 默认 fetch 映射：远端分支 → 本地同名分支 + HEAD 更新
+ *
+ * 默认行为贴近官方 Git：
+ * - 分支会物化到本地 `refs/heads/*`
+ * - 非 shallow 的空仓库首次 fetch 会像 `git clone` 一样把远端 tag 物化到本地
+ * - 其余场景下，tag 仅通过协议层 `include-tag` 自动跟随可达对象，不默认创建本地 `refs/tags/*`
+ * - 若调用方通过 `refPatterns` 显式请求 tag，则按请求物化到本地 `refs/tags/*`
  */
 async function applyDefaultMapping(
   session: ImportSession,
   options?: RepositoryFetchOptions,
+  materializeDefaultTags = false,
 ): Promise<RepositoryFetchResult> {
   const plan = session.plan();
   const prepareOptions = createImportPrepareOptions(options);
@@ -90,8 +126,8 @@ async function applyDefaultMapping(
     });
   }
 
-  // 标签（除非 noTags）
-  if (!options?.noTags) {
+  // 仅在调用方显式请求 tag 模式时物化本地 refs/tags/*
+  if (materializeDefaultTags) {
     const tags = selectedRefs.where((ref) => ref.name.startsWith("refs/tags/"));
     if (tags.refs.length > 0) {
       plan.materialize(tags).toNamespace("refs/tags/*", {
