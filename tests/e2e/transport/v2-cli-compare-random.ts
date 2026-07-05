@@ -107,10 +107,15 @@ function compareBatchesWithRelaxedHaveComparison(
       return false;
     }
 
+    // 这里仅放宽同一轮 have 的排列顺序；成员与重复次数仍需完全一致。
     const nanoHaveCounts = countLines(nanoBatch.filter((line) => line.startsWith("have ")));
     const cliHaveCounts = countLines(cliBatch.filter((line) => line.startsWith("have ")));
+    if (nanoHaveCounts.size !== cliHaveCounts.size) {
+      return false;
+    }
+
     for (const [line, count] of cliHaveCounts) {
-      if ((nanoHaveCounts.get(line) ?? 0) < count) {
+      if (nanoHaveCounts.get(line) !== count) {
         return false;
       }
     }
