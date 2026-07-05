@@ -137,56 +137,72 @@ export function parseFetchArgs(args: string[]): FetchServerParams {
 interface ShallowFetchPlan {
   readonly clientShallow: ReadonlySet<SHA1>;
   readonly serverShallow?: ReadonlySet<SHA1>;
+  readonly sourceShallowResponse?: readonly SHA1[];
   readonly shallowUpdate?: {
     readonly shallow: SHA1[];
     readonly unshallow: SHA1[];
   };
 }
 
+interface SourceReachableShallowInfo {
+  readonly boundarySet: ReadonlySet<SHA1>;
+  readonly responseLines: readonly SHA1[];
+}
+
 function resolveSourceReachableShallowBoundaries(
   backend: RepositoryBackend,
   wants: readonly SHA1[],
-): Set<SHA1> | undefined {
+): SourceReachableShallowInfo | undefined {
   const storedShallow = backend.shallow.read();
   if (storedShallow.length === 0) {
     return undefined;
   }
 
   const storedSet = new Set<SHA1>(storedShallow);
-  const reachableSourceShallow = new Set<SHA1>();
-  const visited = new Set<SHA1>();
-  const queue = wants.map((hash) => peelTagChain(backend.objects, hash));
+  const responseLines: SHA1[] = [];
+  const boundarySet = new Set<SHA1>();
+  const wantRoots = [...new Set(wants.map((hash) => peelTagChain(backend.objects, hash)))];
 
-  while (queue.length > 0) {
-    const current = queue.shift()!;
-    if (visited.has(current)) {
-      continue;
-    }
-    visited.add(current);
+  for (const root of wantRoots) {
+    const queue = [root];
+    const visited = new Set<SHA1>();
+    const seenForWant = new Set<SHA1>();
 
-    if (storedSet.has(current)) {
-      reachableSourceShallow.add(current);
-      continue;
-    }
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      if (visited.has(current)) {
+        continue;
+      }
+      visited.add(current);
 
-    const obj = tryReadObject(backend.objects, current);
-    if (!obj) {
-      continue;
-    }
+      if (storedSet.has(current)) {
+        boundarySet.add(current);
+        if (!seenForWant.has(current)) {
+          responseLines.push(current);
+          seenForWant.add(current);
+        }
+        continue;
+      }
 
-    if (obj.type === "tag") {
-      queue.push(obj.object);
-      continue;
-    }
+      const obj = tryReadObject(backend.objects, current);
+      if (!obj) {
+        continue;
+      }
 
-    if (obj.type === "commit") {
-      for (const parent of obj.parents) {
-        queue.push(parent);
+      if (obj.type === "tag") {
+        queue.push(obj.object);
+        continue;
+      }
+
+      if (obj.type === "commit") {
+        for (const parent of obj.parents) {
+          queue.push(parent);
+        }
       }
     }
   }
 
-  return reachableSourceShallow.size > 0 ? reachableSourceShallow : undefined;
+  return boundarySet.size > 0 ? { boundarySet, responseLines } : undefined;
 }
 
 function resolveExcludedReachable(
@@ -341,9 +357,11 @@ function createShallowFetchPlan(
   params: FetchServerParams,
 ): ShallowFetchPlan {
   const clientShallow = new Set<SHA1>(params.shallow);
-  const sourceShallow = resolveSourceReachableShallowBoundaries(backend, params.wants);
+  const sourceShallowInfo = resolveSourceReachableShallowBoundaries(backend, params.wants);
+  const sourceShallow = sourceShallowInfo?.boundarySet;
   const excludedReachable = resolveExcludedReachable(backend, params.deepenNot);
   let serverShallow = sourceShallow ? new Set(sourceShallow) : undefined;
+  let sourceShallowResponse = sourceShallowInfo?.responseLines;
 
   if (excludedReachable) {
     for (const want of params.wants) {
@@ -378,7 +396,15 @@ function createShallowFetchPlan(
     if (params.deepenSince !== undefined && depthLimitedState.selectedCommitCount === 0) {
       throw new Error("fetch: no commits selected for shallow requests");
     }
-    serverShallow = serverShallow ? new Set(serverShallow) : new Set<SHA1>();
+    if (params.deepenSince !== undefined && sourceShallow) {
+      for (const hash of sourceShallow) {
+        if (depthLimitedState.visited.has(hash)) {
+          throw new Error("fetch: deepen-since cannot traverse source shallow boundary");
+        }
+      }
+    }
+    serverShallow = new Set<SHA1>();
+    sourceShallowResponse = undefined;
     for (const hash of depthLimitedState.boundary) {
       serverShallow.add(hash);
     }
@@ -393,12 +419,25 @@ function createShallowFetchPlan(
     return { clientShallow };
   }
 
-  const shallow = [...serverShallow].filter((hash) => !clientShallow.has(hash));
+  const shallow: SHA1[] = [];
+  if (sourceShallowResponse) {
+    for (const hash of sourceShallowResponse) {
+      if (!clientShallow.has(hash)) {
+        shallow.push(hash);
+      }
+    }
+  }
+  for (const hash of serverShallow) {
+    if (!clientShallow.has(hash) && !sourceShallow?.has(hash)) {
+      shallow.push(hash);
+    }
+  }
   const unshallow = [...clientShallow].filter((hash) => !serverShallow.has(hash));
 
   return {
     clientShallow,
     serverShallow,
+    sourceShallowResponse,
     shallowUpdate: shallow.length > 0 || unshallow.length > 0 ? { shallow, unshallow } : undefined,
   };
 }
@@ -507,6 +546,20 @@ function encodeSidebandData(payload: string | Buffer, channel = CHANNEL_PACKFILE
   return encodePktLine(Buffer.concat([Buffer.from([channel]), data]));
 }
 
+function shouldEmitShallowInfoSection(
+  params: FetchServerParams,
+  shallowPlan: ShallowFetchPlan,
+): boolean {
+  return (
+    shallowPlan.shallowUpdate !== undefined ||
+    params.shallow.length > 0 ||
+    params.deepen !== undefined ||
+    params.deepenRelative === true ||
+    params.deepenSince !== undefined ||
+    params.deepenNot.length > 0
+  );
+}
+
 // ============================================================================
 // fetch 响应生成
 // ============================================================================
@@ -549,18 +602,18 @@ function generatePackfileResponse(
     parts.push(encodeDelimiterPkt());
   }
 
-  if (shallowPlan.shallowUpdate) {
+  if (shouldEmitShallowInfoSection(params, shallowPlan)) {
     parts.push(
       params.sidebandAll ? encodeSidebandData("shallow-info\n") : encodePktLine("shallow-info\n"),
     );
-    for (const hash of shallowPlan.shallowUpdate.shallow) {
+    for (const hash of shallowPlan.shallowUpdate?.shallow ?? []) {
       parts.push(
         params.sidebandAll
           ? encodeSidebandData(`shallow ${hash}\n`)
           : encodePktLine(`shallow ${hash}\n`),
       );
     }
-    for (const hash of shallowPlan.shallowUpdate.unshallow) {
+    for (const hash of shallowPlan.shallowUpdate?.unshallow ?? []) {
       parts.push(
         params.sidebandAll
           ? encodeSidebandData(`unshallow ${hash}\n`)

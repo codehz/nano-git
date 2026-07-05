@@ -571,6 +571,93 @@ describe("generateFetchResponse — clone", () => {
     expect(parsed.packfile).toBeDefined();
   });
 
+  test("源仓库自身是 shallow 且另一个 want 直接命中边界时会重复回送 shallow", () => {
+    const { backend, sourceBoundaryCommit, tipCommit } = createShallowSourceRepo();
+    const buf = generateFetchResponse(backend, {
+      wants: [tipCommit, sourceBoundaryCommit],
+      haves: [],
+      shallow: [],
+      wantRefs: [],
+      done: true,
+      thinPack: false,
+      noProgress: false,
+      ofsDelta: true,
+      deepenRelative: false,
+      deepenNot: [],
+    });
+
+    const parsed = parseV2FetchResponse(buf, true, false);
+    expect(parsed.shallowInfo).toEqual({
+      shallow: [sourceBoundaryCommit, sourceBoundaryCommit],
+      unshallow: [],
+    });
+  });
+
+  test("源仓库自身是 shallow 且 depth=1 时只把 tip 标记为浅边界", () => {
+    const { backend, tipCommit } = createShallowSourceRepo();
+    const buf = generateFetchResponse(backend, {
+      wants: [tipCommit],
+      haves: [],
+      shallow: [],
+      wantRefs: [],
+      done: true,
+      thinPack: false,
+      noProgress: false,
+      ofsDelta: true,
+      deepen: 1,
+      deepenRelative: false,
+      deepenNot: [],
+    });
+
+    const parsed = parseV2FetchResponse(buf, true, false);
+    expect(parsed.shallowInfo).toEqual({
+      shallow: [tipCommit],
+      unshallow: [],
+    });
+  });
+
+  test("源仓库自身是 shallow 且 deepen-since 会覆盖到源边界时拒绝请求", () => {
+    const { backend, tipCommit } = createShallowSourceRepo();
+    expect(() =>
+      generateFetchResponse(backend, {
+        wants: [tipCommit],
+        haves: [],
+        shallow: [],
+        wantRefs: [],
+        done: true,
+        thinPack: false,
+        noProgress: false,
+        ofsDelta: true,
+        deepenRelative: false,
+        deepenSince: 1000000,
+        deepenNot: [],
+      }),
+    ).toThrow(/deepen-since cannot traverse source shallow boundary/);
+  });
+
+  test("源仓库自身是 shallow 且 deepen-since 只保留 tip 时不再保留旧源边界", () => {
+    const { backend, tipCommit } = createShallowSourceRepo();
+    const buf = generateFetchResponse(backend, {
+      wants: [tipCommit],
+      haves: [],
+      shallow: [],
+      wantRefs: [],
+      done: true,
+      thinPack: false,
+      noProgress: false,
+      ofsDelta: true,
+      deepenRelative: false,
+      deepenSince: 1000002,
+      deepenNot: [],
+    });
+
+    const parsed = parseV2FetchResponse(buf, true, false);
+    expect(parsed.shallowInfo).toEqual({
+      shallow: [tipCommit],
+      unshallow: [],
+    });
+  });
+
   test("depth=1 时返回 shallow-info，并把 tip 标记为浅边界", () => {
     const { backend, developCommit } = createTestRepo();
     const buf = generateFetchResponse(backend, {

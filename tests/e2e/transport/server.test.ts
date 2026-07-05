@@ -324,6 +324,24 @@ async function cloneThenDeepenShallowSource(
   return { shallowBefore, shallowAfter, countBefore, countAfter };
 }
 
+async function cloneShallowSourceDepthOne(
+  url: string,
+  targetDir: string,
+): Promise<{
+  readonly shallow: string[];
+  readonly count: string;
+}> {
+  await gitWithTimeout(
+    ["-c", "protocol.version=2", "clone", "--depth=1", url, targetDir],
+    dirname(targetDir),
+    GIT_TIMEOUT_MS,
+  );
+  return {
+    shallow: readShallowFile(targetDir),
+    count: await gitWithTimeout(["rev-list", "--count", "HEAD"], targetDir, GIT_TIMEOUT_MS),
+  };
+}
+
 async function createShallowSourceRepository(rootDir: string): Promise<{
   readonly shallowBareDir: string;
   readonly sourceBoundaryCommit: string;
@@ -359,6 +377,50 @@ async function createShallowSourceRepository(rootDir: string): Promise<{
     GIT_TIMEOUT_MS,
   );
   const sourceBoundaryCommit = readBareShallowFile(shallowBareDir)[0]!;
+
+  return { shallowBareDir, sourceBoundaryCommit, tipCommit };
+}
+
+async function createTaggedShallowSourceRepository(rootDir: string): Promise<{
+  readonly shallowBareDir: string;
+  readonly sourceBoundaryCommit: string;
+  readonly tipCommit: string;
+}> {
+  const upstreamBareDir = join(rootDir, "tagged-upstream.git");
+  const workDir = join(rootDir, "tagged-upstream-work");
+  const shallowBareDir = join(rootDir, "tagged-shallow-source.git");
+
+  await gitWithTimeout(["init", "--bare", "-b", "main", upstreamBareDir], rootDir, GIT_TIMEOUT_MS);
+  await gitWithTimeout(["init", "-b", "main", workDir], rootDir, GIT_TIMEOUT_MS);
+  await gitWithTimeout(["remote", "add", "origin", upstreamBareDir], workDir, GIT_TIMEOUT_MS);
+
+  await writeTrackedFile(workDir, "c1.txt", "c1\n");
+  await gitWithTimeout(["commit", "-m", "c1"], workDir, GIT_TIMEOUT_MS);
+  await writeTrackedFile(workDir, "c2.txt", "c2\n");
+  await gitWithTimeout(["commit", "-m", "c2"], workDir, GIT_TIMEOUT_MS);
+  await writeTrackedFile(workDir, "c3.txt", "c3\n");
+  await gitWithTimeout(["commit", "-m", "c3"], workDir, GIT_TIMEOUT_MS);
+  const sourceBoundaryCommit = await gitWithTimeout(["rev-parse", "HEAD"], workDir, GIT_TIMEOUT_MS);
+  await gitWithTimeout(["tag", "tag-c3-light"], workDir, GIT_TIMEOUT_MS);
+  await writeTrackedFile(workDir, "c4.txt", "c4\n");
+  await gitWithTimeout(["commit", "-m", "c4"], workDir, GIT_TIMEOUT_MS);
+  await gitWithTimeout(
+    ["push", "-u", "origin", "main", "refs/tags/tag-c3-light"],
+    workDir,
+    GIT_TIMEOUT_MS,
+  );
+
+  await gitWithTimeout(
+    ["clone", "--bare", "--depth=2", `file://${upstreamBareDir}`, shallowBareDir],
+    rootDir,
+    GIT_TIMEOUT_MS,
+  );
+
+  const tipCommit = await gitWithTimeout(
+    ["--git-dir", shallowBareDir, "rev-parse", "refs/heads/main"],
+    rootDir,
+    GIT_TIMEOUT_MS,
+  );
 
   return { shallowBareDir, sourceBoundaryCommit, tipCommit };
 }
@@ -1126,6 +1188,37 @@ describe("Smart HTTP 服务端 — shallow 结果对照", () => {
     }
   });
 
+  test("源仓库自身是 shallow 且 lightweight tag 指向源边界时，clone 原始 shallow 文件与 git-http-backend 一致", async () => {
+    const history = await createTaggedShallowSourceRepository(tempDir);
+    const gitServer = startGitHttpBackendServer(tempDir, "/tagged-shallow-source.git");
+    const nanoServer = startNanoGitServer(createFileRepositoryBackend(history.shallowBareDir));
+    const gitTarget = join(tempDir, "git-tagged-shallow-source-clone");
+    const nanoTarget = join(tempDir, "nano-tagged-shallow-source-clone");
+
+    try {
+      await gitWithTimeout(
+        ["-c", "protocol.version=2", "clone", gitServer.url, gitTarget],
+        tempDir,
+        GIT_TIMEOUT_MS,
+      );
+      await gitWithTimeout(
+        ["-c", "protocol.version=2", "clone", nanoServer.url, nanoTarget],
+        tempDir,
+        GIT_TIMEOUT_MS,
+      );
+
+      expect(readShallowFile(nanoTarget)).toEqual(readShallowFile(gitTarget));
+      expect(readShallowFile(nanoTarget)).toEqual([
+        history.sourceBoundaryCommit,
+        history.sourceBoundaryCommit,
+      ]);
+      expect(await readLocalTagRefs(nanoTarget)).toEqual(await readLocalTagRefs(gitTarget));
+    } finally {
+      await gitServer.stop();
+      nanoServer.stop();
+    }
+  });
+
   test("源仓库自身是 shallow 时，clone 后 fetch --deepen=1 结果与 git-http-backend 一致", async () => {
     const history = await createShallowSourceRepository(tempDir);
     const gitServer = startGitHttpBackendServer(tempDir, "/shallow-source.git");
@@ -1147,6 +1240,112 @@ describe("Smart HTTP 服务端 — shallow 结果对照", () => {
       expect(nanoResult.shallowAfter).toEqual(gitResult.shallowAfter);
       expect(nanoResult.shallowBefore).toEqual([history.sourceBoundaryCommit]);
       expect(nanoResult.shallowAfter).toEqual([history.sourceBoundaryCommit]);
+    } finally {
+      await gitServer.stop();
+      nanoServer.stop();
+    }
+  });
+
+  test("源仓库自身是 shallow 且 lightweight tag 指向源边界时，clone 后 fetch --deepen=1 会像 git-http-backend 一样去重 shallow 文件", async () => {
+    const history = await createTaggedShallowSourceRepository(tempDir);
+    const gitServer = startGitHttpBackendServer(tempDir, "/tagged-shallow-source.git");
+    const nanoServer = startNanoGitServer(createFileRepositoryBackend(history.shallowBareDir));
+    const gitTarget = join(tempDir, "git-tagged-shallow-source-deepen");
+    const nanoTarget = join(tempDir, "nano-tagged-shallow-source-deepen");
+
+    try {
+      await gitWithTimeout(
+        ["-c", "protocol.version=2", "clone", gitServer.url, gitTarget],
+        tempDir,
+        GIT_TIMEOUT_MS,
+      );
+      await gitWithTimeout(
+        ["-c", "protocol.version=2", "clone", nanoServer.url, nanoTarget],
+        tempDir,
+        GIT_TIMEOUT_MS,
+      );
+      await gitWithTimeout(
+        ["-c", "protocol.version=2", "fetch", "--deepen=1", "origin"],
+        gitTarget,
+        GIT_TIMEOUT_MS,
+      );
+      await gitWithTimeout(
+        ["-c", "protocol.version=2", "fetch", "--deepen=1", "origin"],
+        nanoTarget,
+        GIT_TIMEOUT_MS,
+      );
+
+      expect(readShallowFile(nanoTarget)).toEqual(readShallowFile(gitTarget));
+      expect(readShallowFile(nanoTarget)).toEqual([history.sourceBoundaryCommit]);
+      expect(await readLocalTagRefs(nanoTarget)).toEqual(await readLocalTagRefs(gitTarget));
+    } finally {
+      await gitServer.stop();
+      nanoServer.stop();
+    }
+  });
+
+  test("源仓库自身是 shallow 时，clone --depth=1 结果与 git-http-backend 一致", async () => {
+    const history = await createShallowSourceRepository(tempDir);
+    const gitServer = startGitHttpBackendServer(tempDir, "/shallow-source.git");
+    const nanoServer = startNanoGitServer(createFileRepositoryBackend(history.shallowBareDir));
+
+    try {
+      const gitResult = await cloneShallowSourceDepthOne(
+        gitServer.url,
+        join(tempDir, "git-shallow-source-depth1"),
+      );
+      const nanoResult = await cloneShallowSourceDepthOne(
+        nanoServer.url,
+        join(tempDir, "nano-shallow-source-depth1"),
+      );
+
+      expect(nanoResult.count).toBe(gitResult.count);
+      expect(nanoResult.shallow).toEqual(gitResult.shallow);
+      expect(nanoResult.shallow).toEqual([history.tipCommit]);
+    } finally {
+      await gitServer.stop();
+      nanoServer.stop();
+    }
+  });
+
+  test("源仓库自身是 shallow 时，clone 后 fetch --shallow-since=1970-01-01 与 git-http-backend 一样拒绝请求", async () => {
+    const history = await createShallowSourceRepository(tempDir);
+    const gitServer = startGitHttpBackendServer(tempDir, "/shallow-source.git");
+    const nanoServer = startNanoGitServer(createFileRepositoryBackend(history.shallowBareDir));
+    const gitTarget = join(tempDir, "git-shallow-source-since");
+    const nanoTarget = join(tempDir, "nano-shallow-source-since");
+
+    try {
+      await gitWithTimeout(
+        ["-c", "protocol.version=2", "clone", gitServer.url, gitTarget],
+        tempDir,
+        GIT_TIMEOUT_MS,
+      );
+      await gitWithTimeout(
+        ["-c", "protocol.version=2", "clone", nanoServer.url, nanoTarget],
+        tempDir,
+        GIT_TIMEOUT_MS,
+      );
+
+      const gitFetch = gitWithTimeout(
+        ["-c", "protocol.version=2", "fetch", "--shallow-since=1970-01-01", "origin"],
+        gitTarget,
+        GIT_TIMEOUT_MS,
+      );
+      const nanoFetch = gitWithTimeout(
+        ["-c", "protocol.version=2", "fetch", "--shallow-since=1970-01-01", "origin"],
+        nanoTarget,
+        GIT_TIMEOUT_MS,
+      );
+      const [gitResult, nanoResult] = await Promise.allSettled([gitFetch, nanoFetch]);
+      expect(gitResult.status).toBe("rejected");
+      expect(nanoResult.status).toBe("rejected");
+      if (gitResult.status === "rejected") {
+        expect(String(gitResult.reason)).toContain("HTTP 500");
+      }
+      if (nanoResult.status === "rejected") {
+        expect(String(nanoResult.reason)).toContain("HTTP 500");
+      }
     } finally {
       await gitServer.stop();
       nanoServer.stop();
