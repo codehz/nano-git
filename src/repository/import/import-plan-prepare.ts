@@ -15,6 +15,7 @@ import {
   type CompiledImportPlanState,
   type LocalPrecondition,
   type PreparedImportPlanState,
+  type ResolvedMapping,
 } from "./import-plan-types.ts";
 
 import type { SHA1 } from "../../types/index.ts";
@@ -138,7 +139,44 @@ function validateImportPrepareOptions(
   }
 }
 
+function isTagMapping(mapping: ResolvedMapping): boolean {
+  return mapping.localRef.startsWith("refs/tags/");
+}
+
+function shouldFetchExistingMappingTarget(
+  compiled: CompiledImportPlanState,
+  mapping: ResolvedMapping,
+): boolean {
+  if (!isTagMapping(mapping)) {
+    return true;
+  }
+
+  const currentHash = resolveRefHash(compiled.backend.refs, mapping.localRef);
+  return currentHash === null || currentHash !== mapping.remoteRef.hash;
+}
+
+function shouldIncludeTag(
+  fetchMappings: readonly ResolvedMapping[],
+  compiled: CompiledImportPlanState,
+  options?: ImportPrepareOptions,
+): boolean {
+  if (options?.noTags === true) {
+    return false;
+  }
+
+  if (fetchMappings.some((mapping) => isTagMapping(mapping))) {
+    return false;
+  }
+
+  if (compiled.wantsExplicitTags && !hasShallowFetchRequest(options)) {
+    return false;
+  }
+
+  return true;
+}
+
 function createNegotiationFetchOptions(
+  fetchMappings: readonly ResolvedMapping[],
   compiled: CompiledImportPlanState,
   options?: ImportPrepareOptions,
 ): {
@@ -153,7 +191,7 @@ function createNegotiationFetchOptions(
   const useUnshallow = options?.unshallow === true;
 
   return {
-    includeTag: !compiled.wantsExplicitTags,
+    includeTag: shouldIncludeTag(fetchMappings, compiled, options),
     shallow,
     deepen: useUnshallow ? INFINITE_DEPTH : (options?.depth ?? options?.deepen),
     deepenRelative: options?.deepen !== undefined,
@@ -162,9 +200,21 @@ function createNegotiationFetchOptions(
   };
 }
 
+function shouldUseKnownCommonAdvertisementRef(
+  refName: string,
+  options?: ImportPrepareOptions,
+): boolean {
+  if (options?.noTags === true && refName.startsWith("refs/tags/")) {
+    return false;
+  }
+
+  return true;
+}
+
 function collectKnownCommonRefs(
   compiled: CompiledImportPlanState,
   localHaveTips: readonly SHA1[],
+  options?: ImportPrepareOptions,
 ): SHA1[] {
   if (localHaveTips.length === 0) {
     return [];
@@ -175,6 +225,10 @@ function collectKnownCommonRefs(
   const knownCommonSeen = new Set<SHA1>();
 
   for (const ref of compiled.advertisement.refs) {
+    if (!shouldUseKnownCommonAdvertisementRef(ref.name, options)) {
+      continue;
+    }
+
     const peeled = ref.peeled ?? peelTagChain(compiled.backend.objects, ref.hash);
     if (
       !compiled.backend.objects.exists(peeled) ||
@@ -231,6 +285,7 @@ function captureLocalPreconditions(
 
 async function fetchPreviewObjects(
   compiled: CompiledImportPlanState,
+  fetchMappings: readonly ResolvedMapping[],
   wantSequence: readonly SHA1[],
   localPreconditions: readonly LocalPrecondition[],
   options?: ImportPrepareOptions,
@@ -240,7 +295,10 @@ async function fetchPreviewObjects(
   }
 
   const localHaveTips = collectNegotiationLocalHaveTips(compiled);
-  const knownCommonRefs = collectKnownCommonRefs(compiled, localHaveTips);
+  const knownCommonRefs =
+    resolveLocalShallowBoundaries(compiled) === undefined
+      ? collectKnownCommonRefs(compiled, localHaveTips, options)
+      : [];
 
   if (compiled.v2Transport) {
     const v2Wants = wantSequence.map((hash) => hash);
@@ -252,7 +310,7 @@ async function fetchPreviewObjects(
       v2Haves,
       compiled.fetchFeatures ? [...compiled.fetchFeatures] : undefined,
       knownCommonRefs,
-      createNegotiationFetchOptions(compiled, options),
+      createNegotiationFetchOptions(fetchMappings, compiled, options),
     );
     validateLocalPreconditions(compiled.backend, localPreconditions);
     return { objectCount, shallowUpdate };
@@ -495,10 +553,18 @@ export async function prepareImportPlan(
 
   const localPreconditions = captureLocalPreconditions(compiled);
   const shouldFetchExistingTargets = hasShallowFetchRequest(options);
-  const wantSequence = compiled.resolvedMappings
-    .filter((mapping) => !compiled.conflictedTargets.has(mapping.localRef))
-    .map((mapping) => mapping.remoteRef.hash)
-    .filter((hash) => shouldFetchExistingTargets || !compiled.backend.objects.exists(hash));
+  const fetchMappings = compiled.resolvedMappings.filter((mapping) => {
+    if (compiled.conflictedTargets.has(mapping.localRef)) {
+      return false;
+    }
+
+    if (!compiled.backend.objects.exists(mapping.remoteRef.hash)) {
+      return true;
+    }
+
+    return shouldFetchExistingTargets && shouldFetchExistingMappingTarget(compiled, mapping);
+  });
+  const wantSequence = fetchMappings.map((mapping) => mapping.remoteRef.hash);
   const objectRoots = [...new Set(wantSequence)] as SHA1[];
 
   let prefetchedObjects = 0;
@@ -506,6 +572,7 @@ export async function prepareImportPlan(
   try {
     const fetchPreview = await fetchPreviewObjects(
       compiled,
+      fetchMappings,
       wantSequence,
       localPreconditions,
       options,

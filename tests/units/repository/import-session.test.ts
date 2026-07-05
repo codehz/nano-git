@@ -1887,6 +1887,116 @@ describe("apply 错误处理", () => {
     expect(fetchCall).not.toContain(`have ${danglingCommitHash}`);
   });
 
+  test("未变化远端 ref 即使不在本轮 want 中，也应作为 known-common 提示裁剪祖先 have", async () => {
+    const backend = createMemoryRepositoryBackend();
+    const treeHash = writeObject(backend.objects, { type: "tree", entries: [] });
+    const rootCommitHash = writeObject(backend.objects, {
+      type: "commit",
+      tree: treeHash,
+      parents: [],
+      author: { name: "Test", email: "test@test", timestamp: 1, timezone: "+0000" },
+      committer: { name: "Test", email: "test@test", timestamp: 1, timezone: "+0000" },
+      message: "root commit\n",
+    });
+    const featureCommitHash = writeObject(backend.objects, {
+      type: "commit",
+      tree: treeHash,
+      parents: [rootCommitHash],
+      author: { name: "Test", email: "test@test", timestamp: 2, timezone: "+0000" },
+      committer: { name: "Test", email: "test@test", timestamp: 2, timezone: "+0000" },
+      message: "feature old\n",
+    });
+    const stableCommitHash = writeObject(backend.objects, {
+      type: "commit",
+      tree: treeHash,
+      parents: [featureCommitHash],
+      author: { name: "Test", email: "test@test", timestamp: 3, timezone: "+0000" },
+      committer: { name: "Test", email: "test@test", timestamp: 3, timezone: "+0000" },
+      message: "stable common\n",
+    });
+    const mainCommitHash = writeObject(backend.objects, {
+      type: "commit",
+      tree: treeHash,
+      parents: [stableCommitHash],
+      author: { name: "Test", email: "test@test", timestamp: 4, timezone: "+0000" },
+      committer: { name: "Test", email: "test@test", timestamp: 4, timezone: "+0000" },
+      message: "main old\n",
+    });
+
+    backend.refs.write("refs/heads/main", mainCommitHash);
+    backend.refs.write("refs/heads/stable", stableCommitHash);
+    backend.refs.write("refs/heads/feature", featureCommitHash);
+    backend.refs.write("HEAD", "ref: refs/heads/main");
+
+    const remoteFeature = {
+      type: "commit" as const,
+      tree: treeHash,
+      parents: [featureCommitHash],
+      author: { name: "Test", email: "test@test", timestamp: 5, timezone: "+0000" },
+      committer: { name: "Test", email: "test@test", timestamp: 5, timezone: "+0000" },
+      message: "feature new\n",
+    };
+    const remoteMain = {
+      type: "commit" as const,
+      tree: treeHash,
+      parents: [mainCommitHash],
+      author: { name: "Test", email: "test@test", timestamp: 6, timezone: "+0000" },
+      committer: { name: "Test", email: "test@test", timestamp: 6, timezone: "+0000" },
+      message: "main new\n",
+    };
+    const remoteFeatureRaw = encodeObject(remoteFeature);
+    const remoteMainRaw = encodeObject(remoteMain);
+
+    const writer = createPackWriter();
+    writer.addRaw(remoteFeatureRaw);
+    writer.addRaw(remoteMainRaw);
+    const packfileResponse = Buffer.concat([
+      encodePktLine("packfile\n"),
+      encodePktLine(Buffer.concat([Buffer.from([0x01]), writer.build()])),
+      encodeFlushPkt(),
+    ]);
+    const negotiationResponse = Buffer.concat([
+      encodePktLine("acknowledgments\n"),
+      encodePktLine("NAK\n"),
+      encodeFlushPkt(),
+    ]);
+
+    const calls: string[][] = [];
+    const mockV2Transport: V2GitServiceTransport = {
+      advertise: async () => ({ capabilities: {}, commands: [] }),
+      command: async (_command, args) => {
+        calls.push([...(args ?? [])]);
+        return args?.includes("done") ? packfileResponse : negotiationResponse;
+      },
+    };
+
+    const adv: RefAdvertisement = {
+      capabilities: {},
+      refs: [
+        { hash: remoteMainRaw.hash, name: "HEAD", symrefTarget: "refs/heads/main" },
+        { hash: remoteMainRaw.hash, name: "refs/heads/main" },
+        { hash: remoteFeatureRaw.hash, name: "refs/heads/feature" },
+        { hash: stableCommitHash, name: "refs/heads/stable" },
+      ],
+      defaultBranch: "refs/heads/main",
+    };
+    const session = createImportSession(MOCK_SOURCE, backend, adv, mockV2Transport);
+
+    const preview = await previewDraft(
+      session
+        .plan()
+        .materialize(session.select("refs/heads/*"))
+        .toNamespace("refs/heads/*", { policy: { mode: "fast-forward" } }),
+    );
+
+    expect(preview.canApply).toBe(true);
+    const fetchCall = calls.find((args) => args.includes(`want ${remoteMainRaw.hash}`));
+    expect(fetchCall).toBeDefined();
+    expect(fetchCall).toContain(`have ${mainCommitHash}`);
+    expect(fetchCall).toContain(`have ${stableCommitHash}`);
+    expect(fetchCall).not.toContain(`have ${featureCommitHash}`);
+  });
+
   test("远端 annotated tag 对象缺失但 peeled commit 本地可达时，应使用 peeled commit 作为 known-common", async () => {
     const backend = createMemoryRepositoryBackend();
     const treeHash = writeObject(backend.objects, { type: "tree", entries: [] });
@@ -1956,6 +2066,150 @@ describe("apply 错误处理", () => {
     expect(fetchCall).toBeDefined();
     expect(fetchCall).toContain(`have ${localCommitHash}`);
     expect(fetchCall).not.toContain(`have ${rootCommitHash}`);
+  });
+
+  test("显式抓取分支与 annotated tag 时不应再附带 include-tag", async () => {
+    const backend = createMemoryRepositoryBackend();
+    const treeHash = writeObject(backend.objects, { type: "tree", entries: [] });
+    const localCommitHash = writeObject(backend.objects, {
+      type: "commit",
+      tree: treeHash,
+      parents: [],
+      author: { name: "Test", email: "test@test", timestamp: 1, timezone: "+0000" },
+      committer: { name: "Test", email: "test@test", timestamp: 1, timezone: "+0000" },
+      message: "local commit\n",
+    });
+    const remoteCommit = {
+      type: "commit" as const,
+      tree: treeHash,
+      parents: [localCommitHash],
+      author: { name: "Test", email: "test@test", timestamp: 2, timezone: "+0000" },
+      committer: { name: "Test", email: "test@test", timestamp: 2, timezone: "+0000" },
+      message: "remote commit\n",
+    };
+    const remoteCommitRaw = encodeObject(remoteCommit);
+    const remoteCommitHash = remoteCommitRaw.hash;
+    const remoteTag = {
+      type: "tag" as const,
+      object: remoteCommitHash,
+      objectType: "commit" as const,
+      tag: "v-next",
+      tagger: { name: "Test", email: "test@test", timestamp: 3, timezone: "+0000" },
+      message: "v-next\n",
+    };
+    const remoteTagRaw = encodeObject(remoteTag);
+
+    backend.refs.write("refs/heads/main", localCommitHash);
+    backend.refs.write("HEAD", "ref: refs/heads/main");
+
+    const writer = createPackWriter();
+    writer.addRaw(remoteCommitRaw);
+    writer.addRaw(remoteTagRaw);
+    const packfileResponse = Buffer.concat([
+      encodePktLine("packfile\n"),
+      encodePktLine(Buffer.concat([Buffer.from([0x01]), writer.build()])),
+      encodeFlushPkt(),
+    ]);
+
+    const calls: string[][] = [];
+    const mockV2Transport: V2GitServiceTransport = {
+      advertise: async () => ({ capabilities: {}, commands: [] }),
+      command: async (_command, args) => {
+        calls.push([...(args ?? [])]);
+        return packfileResponse;
+      },
+    };
+
+    const adv: RefAdvertisement = {
+      capabilities: {},
+      refs: [
+        { hash: remoteCommitHash, name: "HEAD", symrefTarget: "refs/heads/main" },
+        { hash: remoteCommitHash, name: "refs/heads/main" },
+        { hash: remoteTagRaw.hash, name: "refs/tags/v-next", peeled: remoteCommitHash },
+      ],
+      defaultBranch: "refs/heads/main",
+    };
+    const session = createImportSession(MOCK_SOURCE, backend, adv, mockV2Transport);
+
+    const preview = await previewDraft(
+      session
+        .plan()
+        .materialize(session.select("refs/heads/*"))
+        .toNamespace("refs/heads/*", { policy: { mode: "fast-forward" } })
+        .materialize(session.select("refs/tags/*"))
+        .toNamespace("refs/tags/*", { policy: { mode: "create-only" } }),
+    );
+
+    expect(preview.canApply).toBe(true);
+    const fetchCall = calls.find((args) => args.includes(`want ${remoteCommitHash}`));
+    expect(fetchCall).toBeDefined();
+    expect(fetchCall).toContain(`want ${remoteTagRaw.hash}`);
+    expect(fetchCall).toContain(`have ${localCommitHash}`);
+    expect(fetchCall).not.toContain("include-tag");
+  });
+
+  test("noTags 会关闭 include-tag 自动跟随", async () => {
+    const backend = createMemoryRepositoryBackend();
+    const treeHash = writeObject(backend.objects, { type: "tree", entries: [] });
+    const localCommitHash = writeObject(backend.objects, {
+      type: "commit",
+      tree: treeHash,
+      parents: [],
+      author: { name: "Test", email: "test@test", timestamp: 1, timezone: "+0000" },
+      committer: { name: "Test", email: "test@test", timestamp: 1, timezone: "+0000" },
+      message: "local commit\n",
+    });
+    const remoteCommit = {
+      type: "commit" as const,
+      tree: treeHash,
+      parents: [localCommitHash],
+      author: { name: "Test", email: "test@test", timestamp: 2, timezone: "+0000" },
+      committer: { name: "Test", email: "test@test", timestamp: 2, timezone: "+0000" },
+      message: "remote commit\n",
+    };
+    const remoteCommitRaw = encodeObject(remoteCommit);
+    const remoteCommitHash = remoteCommitRaw.hash;
+
+    backend.refs.write("refs/heads/main", localCommitHash);
+    backend.refs.write("HEAD", "ref: refs/heads/main");
+
+    const writer = createPackWriter();
+    writer.addRaw(remoteCommitRaw);
+    const packfileResponse = Buffer.concat([
+      encodePktLine("packfile\n"),
+      encodePktLine(Buffer.concat([Buffer.from([0x01]), writer.build()])),
+      encodeFlushPkt(),
+    ]);
+
+    const calls: string[][] = [];
+    const mockV2Transport: V2GitServiceTransport = {
+      advertise: async () => ({ capabilities: {}, commands: [] }),
+      command: async (_command, args) => {
+        calls.push([...(args ?? [])]);
+        return packfileResponse;
+      },
+    };
+
+    const adv: RefAdvertisement = {
+      capabilities: {},
+      refs: [
+        { hash: remoteCommitHash, name: "HEAD", symrefTarget: "refs/heads/main" },
+        { hash: remoteCommitHash, name: "refs/heads/main" },
+      ],
+      defaultBranch: "refs/heads/main",
+    };
+    const session = createImportSession(MOCK_SOURCE, backend, adv, mockV2Transport);
+
+    const preview = await previewDraft(
+      session.plan().materialize(session.select("refs/heads/*")).toNamespace("refs/heads/*"),
+      { noTags: true },
+    );
+
+    expect(preview.canApply).toBe(true);
+    const fetchCall = calls.find((args) => args.includes(`want ${remoteCommitHash}`));
+    expect(fetchCall).toBeDefined();
+    expect(fetchCall).toContain(`have ${localCommitHash}`);
+    expect(fetchCall).not.toContain("include-tag");
   });
 
   test("目标符号引用在 prepare 生成预览后漂移时 apply 失败", async () => {

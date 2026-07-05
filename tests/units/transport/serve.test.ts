@@ -658,6 +658,62 @@ describe("generateFetchResponse — clone", () => {
     });
   });
 
+  test("源仓库自身是 shallow 且 lightweight tag 指向源边界时，deepen-not 不会误报缺失父提交", () => {
+    const { backend, sourceBoundaryCommit, tipCommit } = createShallowSourceRepo();
+    backend.refs.write("refs/tags/tag-boundary", sourceBoundaryCommit);
+
+    const buf = generateFetchResponse(backend, {
+      wants: [tipCommit],
+      haves: [tipCommit, sourceBoundaryCommit],
+      shallow: [sourceBoundaryCommit],
+      wantRefs: [],
+      done: true,
+      thinPack: false,
+      noProgress: false,
+      ofsDelta: true,
+      deepenRelative: false,
+      deepenNot: ["tag-boundary"],
+    });
+
+    const parsed = parseV2FetchResponse(buf, true, false);
+    expect(parsed.shallowInfo).toEqual({
+      shallow: [tipCommit],
+      unshallow: [],
+    });
+  });
+
+  test("源仓库自身是 shallow 且 annotated tag 指向源边界时，deepen-not 不会误报缺失父提交", () => {
+    const { backend, sourceBoundaryCommit, tipCommit } = createShallowSourceRepo();
+    const boundaryTag = writeObject(backend.objects, {
+      type: "tag" as const,
+      object: sourceBoundaryCommit,
+      objectType: "commit" as const,
+      tag: "tag-boundary",
+      tagger: { name: "Test", email: "test@test", timestamp: 1000003, timezone: "+0000" },
+      message: "tag-boundary\n",
+    });
+    backend.refs.write("refs/tags/tag-boundary", boundaryTag);
+
+    const buf = generateFetchResponse(backend, {
+      wants: [tipCommit],
+      haves: [tipCommit, sourceBoundaryCommit],
+      shallow: [sourceBoundaryCommit],
+      wantRefs: [],
+      done: true,
+      thinPack: false,
+      noProgress: false,
+      ofsDelta: true,
+      deepenRelative: false,
+      deepenNot: ["tag-boundary"],
+    });
+
+    const parsed = parseV2FetchResponse(buf, true, false);
+    expect(parsed.shallowInfo).toEqual({
+      shallow: [tipCommit],
+      unshallow: [],
+    });
+  });
+
   test("depth=1 时返回 shallow-info，并把 tip 标记为浅边界", () => {
     const { backend, developCommit } = createTestRepo();
     const buf = generateFetchResponse(backend, {

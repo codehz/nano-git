@@ -48,6 +48,7 @@ function createImportPrepareOptions(
   options?: RepositoryFetchOptions,
 ): ImportPrepareOptions | undefined {
   if (
+    options?.noTags !== true &&
     options?.depth === undefined &&
     options?.deepen === undefined &&
     options?.shallowSince === undefined &&
@@ -58,6 +59,7 @@ function createImportPrepareOptions(
   }
 
   return {
+    noTags: options?.noTags,
     depth: options?.depth,
     deepen: options?.deepen,
     shallowSince: options?.shallowSince,

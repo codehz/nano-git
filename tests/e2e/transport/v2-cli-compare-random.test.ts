@@ -15,6 +15,13 @@ describe("v2 协议 - 随机 git CLI 对照", () => {
     await runRandomV2CliComparisonSeeds([19, 63, 107], { includeTags: true });
   });
 
+  test("带远端 tag 且 no-tags 的随机 seed 请求序列与 git CLI 一致", async () => {
+    await runRandomV2CliComparisonSeeds([19, 63, 107], {
+      includeTags: true,
+      noTags: true,
+    });
+  });
+
   test("带 orphan 分支的随机 seed 请求序列与 git CLI 一致", async () => {
     await runRandomV2CliComparisonSeeds([23, 71, 149], { includeOrphans: true });
   });
@@ -79,8 +86,18 @@ describe("v2 协议 - 随机 git CLI 对照", () => {
     });
   });
 
+  test("带 tag alias burst、mixed tags 与 ref alias 且 no-tags 的随机 seed 请求序列与 git CLI 一致", async () => {
+    await runRandomV2CliComparisonSeeds([2217, 2286, 2344], {
+      includeTagAliases: true,
+      includeLightweightTags: true,
+      includeRefAliases: true,
+      includeTags: true,
+      noTags: true,
+    });
+  });
+
   test("带 tag alias burst、mixed tags、ref alias 与 orphan 分支的随机 seed 请求序列与 git CLI 一致", async () => {
-    await runRandomV2CliComparisonSeeds([2363, 2421, 2488], {
+    await runRandomV2CliComparisonSeeds([2363, 2421, 2488, 2501], {
       includeTagAliases: true,
       includeLightweightTags: true,
       includeOrphans: true,

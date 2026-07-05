@@ -227,6 +227,14 @@ export interface ImportPreparedPreview {
  */
 export interface ImportPrepareOptions {
   /**
+   * 禁止通过协议层 `include-tag` 自动跟随可达标签
+   *
+   * 主要供 repository.fetch({ noTags: true }) 透传，
+   * 使高层行为对齐 `git fetch --no-tags`。
+   */
+  readonly noTags?: boolean;
+
+  /**
    * 目标绝对深度（对标 `git fetch --depth=<n>`）
    *
    * 含义是“从远端 tip 起保留 n 层历史”。

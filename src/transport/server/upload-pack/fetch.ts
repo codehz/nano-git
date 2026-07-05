@@ -208,6 +208,7 @@ function resolveSourceReachableShallowBoundaries(
 function resolveExcludedReachable(
   backend: RepositoryBackend,
   deepenNot: readonly string[],
+  shallowBoundaries?: ReadonlySet<SHA1>,
 ): ReadonlySet<SHA1> | undefined {
   if (deepenNot.length === 0) {
     return undefined;
@@ -226,7 +227,12 @@ function resolveExcludedReachable(
     return undefined;
   }
 
-  return collectReachable(backend.objects, excludeRoots, "skip-commit-parents");
+  return collectReachable(
+    backend.objects,
+    excludeRoots,
+    "skip-commit-parents",
+    shallowBoundaries ? new Set(shallowBoundaries) : undefined,
+  );
 }
 
 function resolveDeepenNotTargetHash(backend: RepositoryBackend, rev: string): SHA1 | null {
@@ -359,7 +365,7 @@ function createShallowFetchPlan(
   const clientShallow = new Set<SHA1>(params.shallow);
   const sourceShallowInfo = resolveSourceReachableShallowBoundaries(backend, params.wants);
   const sourceShallow = sourceShallowInfo?.boundarySet;
-  const excludedReachable = resolveExcludedReachable(backend, params.deepenNot);
+  const excludedReachable = resolveExcludedReachable(backend, params.deepenNot, sourceShallow);
   let serverShallow = sourceShallow ? new Set(sourceShallow) : undefined;
   let sourceShallowResponse = sourceShallowInfo?.responseLines;
 
