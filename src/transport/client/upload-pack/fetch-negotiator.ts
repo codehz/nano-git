@@ -94,6 +94,7 @@ export interface FetchHaveSelector {
 interface FetchHaveSelectorOptions {
   readonly replayKnownCommonInFirstRound?: boolean;
   readonly localShallowBoundaries?: readonly SHA1[];
+  readonly deferAncestorExpansionUntilRelease?: boolean;
 }
 
 function compareNodes(a: CommitNegotiationNode, b: CommitNegotiationNode): number {
@@ -348,6 +349,29 @@ export function createFetchHaveSelector(
   const localShallowBoundaries = new Set(
     (options.localShallowBoundaries ?? []).map((oid) => sha1(oid)),
   );
+  const pendingAncestorExpansion: CommitNegotiationNode[] = [];
+
+  function expandParents(current: CommitNegotiationNode): void {
+    const parentMark =
+      (current.flags & (FLAG_COMMON | FLAG_COMMON_REF)) !== 0 ? FLAG_COMMON | FLAG_SEEN : FLAG_SEEN;
+
+    if (localShallowBoundaries.has(current.oid)) {
+      return;
+    }
+
+    for (const parent of current.parents) {
+      const parentNode = getCommitNode(state, parent);
+      if (!parentNode) {
+        continue;
+      }
+      if ((parentNode.flags & FLAG_SEEN) === 0) {
+        revListPush(state, parent, parentMark);
+      }
+      if ((parentMark & FLAG_COMMON) !== 0) {
+        markCommon(state, parent, true);
+      }
+    }
+  }
 
   if (knownCommonCandidates) {
     for (const oid of knownCommonCandidates) {
@@ -377,24 +401,10 @@ export function createFetchHaveSelector(
         }
 
         const shouldSend = (current.flags & FLAG_COMMON) === 0;
-        const parentMark =
-          (current.flags & (FLAG_COMMON | FLAG_COMMON_REF)) !== 0
-            ? FLAG_COMMON | FLAG_SEEN
-            : FLAG_SEEN;
-
-        if (!localShallowBoundaries.has(current.oid)) {
-          for (const parent of current.parents) {
-            const parentNode = getCommitNode(state, parent);
-            if (!parentNode) {
-              continue;
-            }
-            if ((parentNode.flags & FLAG_SEEN) === 0) {
-              revListPush(state, parent, parentMark);
-            }
-            if ((parentMark & FLAG_COMMON) !== 0) {
-              markCommon(state, parent, true);
-            }
-          }
+        if (options.deferAncestorExpansionUntilRelease === true) {
+          pendingAncestorExpansion.push(current);
+        } else {
+          expandParents(current);
         }
 
         if (shouldSend && (current.flags & FLAG_SENT) === 0) {
@@ -414,6 +424,14 @@ export function createFetchHaveSelector(
       pushKnownCommon(state, oid);
     },
 
-    releaseAncestors(): void {},
+    releaseAncestors(): void {
+      if (options.deferAncestorExpansionUntilRelease !== true) {
+        return;
+      }
+
+      while (pendingAncestorExpansion.length > 0) {
+        expandParents(pendingAncestorExpansion.shift()!);
+      }
+    },
   };
 }

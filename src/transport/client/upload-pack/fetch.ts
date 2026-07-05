@@ -111,6 +111,7 @@ interface NegotiationFetchOptions {
   readonly deepenSince?: number | string;
   readonly deepenNot?: string[];
   readonly replayKnownCommonInFirstRound?: boolean;
+  readonly deferAncestorExpansionUntilRelease?: boolean;
 }
 
 interface GitOidSetState {
@@ -872,6 +873,7 @@ export async function negotiateV2Fetch(
   const selector = createFetchHaveSelector(haveCandidates, localObjects, knownCommonRefs, {
     replayKnownCommonInFirstRound: options.replayKnownCommonInFirstRound,
     localShallowBoundaries: options.shallow?.map((oid) => sha1(oid)),
+    deferAncestorExpansionUntilRelease: options.deferAncestorExpansionUntilRelease,
   });
   const commonSet = createGitOidSetState();
   let havesToSend = INITIAL_FLUSH;

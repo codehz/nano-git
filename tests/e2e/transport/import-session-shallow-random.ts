@@ -42,6 +42,8 @@ type RandomFetchMode =
   | "branchOnlyRefSpecs"
   | "tagOnlyPatterns"
   | "tagOnlyRefSpecs"
+  | "headTagPatterns"
+  | "headTagRefSpecs"
   | "exactBranchPattern"
   | "customNamespaceRefSpec";
 
@@ -51,6 +53,7 @@ interface RandomSourceShallowCliComparisonOptions {
   readonly boundaryTagMode?: RandomBoundaryTagMode;
   readonly historyShape?: RandomHistoryShape;
   readonly fetchMode?: RandomFetchMode;
+  readonly noTags?: boolean;
   readonly strictInitialState?: boolean;
 }
 
@@ -93,6 +96,8 @@ const BRANCH_ONLY_PATTERNS = ["refs/heads/*"] as const;
 const BRANCH_ONLY_REFSPECS = ["refs/heads/*:refs/heads/*"] as const;
 const TAG_ONLY_PATTERNS = ["refs/tags/*"] as const;
 const TAG_ONLY_REFSPECS = ["refs/tags/*:refs/tags/*"] as const;
+const HEAD_TAG_PATTERNS = ["refs/heads/*", "refs/tags/*"] as const;
+const HEAD_TAG_REFSPECS = ["refs/heads/*:refs/heads/*", "refs/tags/*:refs/tags/*"] as const;
 const EXACT_BRANCH_PATTERNS = ["refs/heads/main"] as const;
 const EXACT_BRANCH_REFSPECS = ["refs/heads/main:refs/heads/main"] as const;
 const CUSTOM_NAMESPACE_REFSPECS = ["refs/heads/main:refs/remotes/origin/main"] as const;
@@ -122,6 +127,7 @@ function parseSeedArguments(args: readonly string[]): {
     boundaryTagMode?: RandomBoundaryTagMode;
     historyShape?: RandomHistoryShape;
     fetchMode?: RandomFetchMode;
+    noTags?: boolean;
     strictInitialState?: boolean;
   } = {};
 
@@ -194,12 +200,24 @@ function parseSeedArguments(args: readonly string[]): {
       options.fetchMode = "tagOnlyRefSpecs";
       continue;
     }
+    if (arg === "--heads-tags-patterns") {
+      options.fetchMode = "headTagPatterns";
+      continue;
+    }
+    if (arg === "--heads-tags-refspecs") {
+      options.fetchMode = "headTagRefSpecs";
+      continue;
+    }
     if (arg === "--exact-branch-pattern") {
       options.fetchMode = "exactBranchPattern";
       continue;
     }
     if (arg === "--custom-namespace-refspec") {
       options.fetchMode = "customNamespaceRefSpec";
+      continue;
+    }
+    if (arg === "--no-tags") {
+      options.noTags = true;
       continue;
     }
     if (arg === "--strict-initial-state") {
@@ -333,6 +351,8 @@ function getComparableRefsForFetchMode(
   switch (fetchMode) {
     case "branchOnlyPatterns":
     case "branchOnlyRefSpecs":
+    case "headTagPatterns":
+    case "headTagRefSpecs":
     case "exactBranchPattern":
       return refs.filter((line) => line.includes(" refs/heads/") || line.includes(" refs/tags/"));
     case "tagOnlyPatterns":
@@ -375,6 +395,8 @@ function getFetchModePatterns(fetchMode: RandomFetchMode): readonly string[] | u
       return BRANCH_ONLY_PATTERNS;
     case "tagOnlyPatterns":
       return TAG_ONLY_PATTERNS;
+    case "headTagPatterns":
+      return HEAD_TAG_PATTERNS;
     case "exactBranchPattern":
       return EXACT_BRANCH_PATTERNS;
     default:
@@ -390,6 +412,9 @@ function getFetchModeRefSpecs(fetchMode: RandomFetchMode): readonly string[] | u
     case "tagOnlyPatterns":
     case "tagOnlyRefSpecs":
       return TAG_ONLY_REFSPECS;
+    case "headTagPatterns":
+    case "headTagRefSpecs":
+      return HEAD_TAG_REFSPECS;
     case "exactBranchPattern":
       return EXACT_BRANCH_REFSPECS;
     case "customNamespaceRefSpec":
@@ -401,6 +426,7 @@ function getFetchModeRefSpecs(fetchMode: RandomFetchMode): readonly string[] | u
 
 function buildNanoFetchOptions(
   fetchMode: RandomFetchMode,
+  noTags = false,
   shallowOptions: {
     readonly depth?: number;
     readonly deepen?: number;
@@ -414,6 +440,7 @@ function buildNanoFetchOptions(
   return {
     ...(refPatterns ? { refPatterns: [...refPatterns] } : {}),
     ...(refSpecs && refPatterns === undefined ? { refSpecs: [...refSpecs] } : {}),
+    ...(noTags ? { noTags: true } : {}),
     ...shallowOptions,
   };
 }
@@ -593,13 +620,14 @@ async function runInitialNanoClone(
   url: string,
   initialMode: RandomInitialMode,
   fetchMode: RandomFetchMode,
+  noTags = false,
 ): Promise<void> {
   if (initialMode === "depth1") {
-    await repo.fetch(url, buildNanoFetchOptions(fetchMode, { depth: 1 }));
+    await repo.fetch(url, buildNanoFetchOptions(fetchMode, noTags, { depth: 1 }));
     return;
   }
 
-  await repo.fetch(url, buildNanoFetchOptions(fetchMode));
+  await repo.fetch(url, buildNanoFetchOptions(fetchMode, noTags));
 }
 
 async function runInitialCliClone(
@@ -608,6 +636,7 @@ async function runInitialCliClone(
   initialMode: RandomInitialMode,
   tempDir: string,
   fetchMode: RandomFetchMode,
+  noTags = false,
 ): Promise<void> {
   if (usesBareCliRepo(fetchMode)) {
     const refSpecs = getFetchModeRefSpecs(fetchMode);
@@ -617,6 +646,9 @@ async function runInitialCliClone(
     git(["init", "--bare", cliDir], tempDir);
     git(["--git-dir", cliDir, "remote", "add", "origin", url], tempDir);
     const cliArgs = ["--git-dir", cliDir, "-c", "protocol.version=2", "fetch"];
+    if (noTags) {
+      cliArgs.push("--no-tags");
+    }
     if (initialMode === "depth1") {
       cliArgs.push("--depth=1");
     }
@@ -627,14 +659,26 @@ async function runInitialCliClone(
 
   if (initialMode === "depth1") {
     await gitWithTimeout(
-      ["-c", "protocol.version=2", "clone", "--depth=1", url, cliDir],
+      [
+        "-c",
+        "protocol.version=2",
+        "clone",
+        ...(noTags ? ["--no-tags"] : []),
+        "--depth=1",
+        url,
+        cliDir,
+      ],
       tempDir,
       15000,
     );
     return;
   }
 
-  await gitWithTimeout(["-c", "protocol.version=2", "clone", url, cliDir], tempDir, 15000);
+  await gitWithTimeout(
+    ["-c", "protocol.version=2", "clone", ...(noTags ? ["--no-tags"] : []), url, cliDir],
+    tempDir,
+    15000,
+  );
 }
 
 function createFollowupOperation(
@@ -710,33 +754,34 @@ async function runNanoFollowup(
   url: string,
   operation: RandomFollowupOperation,
   fetchMode: RandomFetchMode,
+  noTags = false,
   boundaryTagName?: string,
   futureShallowSince?: number,
 ): Promise<void> {
   switch (operation) {
     case "depth1":
-      await repo.fetch(url, buildNanoFetchOptions(fetchMode, { depth: 1 }));
+      await repo.fetch(url, buildNanoFetchOptions(fetchMode, noTags, { depth: 1 }));
       return;
     case "deepen":
-      await repo.fetch(url, buildNanoFetchOptions(fetchMode, { deepen: 1 }));
+      await repo.fetch(url, buildNanoFetchOptions(fetchMode, noTags, { deepen: 1 }));
       return;
     case "shallowExcludeTag":
       await repo.fetch(
         url,
-        buildNanoFetchOptions(fetchMode, { shallowExclude: [boundaryTagName!] }),
+        buildNanoFetchOptions(fetchMode, noTags, { shallowExclude: [boundaryTagName!] }),
       );
       return;
     case "shallowSinceReject":
-      await repo.fetch(url, buildNanoFetchOptions(fetchMode, { shallowSince: 0 }));
+      await repo.fetch(url, buildNanoFetchOptions(fetchMode, noTags, { shallowSince: 0 }));
       return;
     case "futureShallowSince":
       await repo.fetch(
         url,
-        buildNanoFetchOptions(fetchMode, { shallowSince: futureShallowSince! }),
+        buildNanoFetchOptions(fetchMode, noTags, { shallowSince: futureShallowSince! }),
       );
       return;
     case "unshallow":
-      await repo.fetch(url, buildNanoFetchOptions(fetchMode, { unshallow: true }));
+      await repo.fetch(url, buildNanoFetchOptions(fetchMode, noTags, { unshallow: true }));
       return;
   }
 }
@@ -746,11 +791,15 @@ async function runCliFollowup(
   cwd: string,
   operation: RandomFollowupOperation,
   fetchMode: RandomFetchMode,
+  noTags = false,
   boundaryTagName?: string,
   futureShallowSince?: number,
 ): Promise<void> {
   const cliArgs = ["-c", "protocol.version=2", "fetch"];
   const refSpecs = getFetchModeRefSpecs(fetchMode);
+  if (noTags) {
+    cliArgs.push("--no-tags");
+  }
   if (operation === "depth1") {
     cliArgs.push("--depth=1");
   } else if (operation === "deepen") {
@@ -800,6 +849,7 @@ export async function runRandomImportSessionSourceShallowSeed(
     options.boundaryTagMode ?? pickRandom(rand, ["none", "lightweight", "annotated"]);
   const historyShape = options.historyShape ?? "linear";
   const fetchMode = options.fetchMode ?? "default";
+  const noTags = options.noTags === true;
   const history = await createRandomSourceShallowRepository(
     tempDir,
     seed,
@@ -817,10 +867,10 @@ export async function runRandomImportSessionSourceShallowSeed(
 
   try {
     const initialNanoSettled = await Promise.allSettled([
-      runInitialNanoClone(repo, server.url, initialMode, fetchMode),
+      runInitialNanoClone(repo, server.url, initialMode, fetchMode, noTags),
     ]);
     const initialCliSettled = await Promise.allSettled([
-      runInitialCliClone(server.url, cliDir, initialMode, tempDir, fetchMode),
+      runInitialCliClone(server.url, cliDir, initialMode, tempDir, fetchMode, noTags),
     ]);
 
     const initialNano = snapshotNanoRepository(repo, nanoDir, tempDir);
@@ -894,6 +944,7 @@ export async function runRandomImportSessionSourceShallowSeed(
         server.url,
         followupOperation,
         fetchMode,
+        noTags,
         history.boundaryTagName,
         futureShallowSince,
       ),
@@ -911,6 +962,7 @@ export async function runRandomImportSessionSourceShallowSeed(
         tempDir,
         followupOperation,
         fetchMode,
+        noTags,
         history.boundaryTagName,
         futureShallowSince,
       ),

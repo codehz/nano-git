@@ -305,6 +305,14 @@ export interface ImportPrepareOptions {
   readonly disableKnownCommonRefHints?: boolean;
 
   /**
+   * 限制 advertisement 派生 known-common 提示可使用的 ref 前缀
+   *
+   * 主要供显式 tag-only fetch 贴近官方 git CLI：
+   * 仅复用远端 tag 广告，不把无关的 branch head 混入 known-common 提示。
+   */
+  readonly knownCommonAdvertisementPrefixes?: readonly string[];
+
+  /**
    * advertisement 的 HEAD 是否参与 known-common ref 提示
    *
    * 默认 fetch 更接近官方 git clone/fetch 的分支跟随路径，
@@ -312,6 +320,14 @@ export interface ImportPrepareOptions {
    * 以避免 HEAD 抢占同时间戳提交的首轮 have 顺序。
    */
   readonly includeAdvertisementHeadInKnownCommon?: boolean;
+
+  /**
+   * 是否等到一轮 ACK 之后再展开已发送 have 的祖先
+   *
+   * 主要供显式 tag-only fetch 贴近官方 git CLI：
+   * 首轮优先只发送本地 tag tip，对应祖先等 ACK 后再决定是否继续展开。
+   */
+  readonly deferAncestorExpansionUntilRelease?: boolean;
 
   /**
    * source-shallow 远端的 ref 更新对齐策略

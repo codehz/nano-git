@@ -125,7 +125,9 @@ function createImportPrepareOptions(
   preferLocalHaveOrderForKnownCommon = false,
   replayKnownCommonInFirstRound = false,
   disableKnownCommonRefHints = false,
+  knownCommonAdvertisementPrefixes?: readonly string[],
   includeAdvertisementHeadInKnownCommon = true,
+  deferAncestorExpansionUntilRelease = false,
   enforceGitFetchSourceShallowRefRules = false,
 ): ImportPrepareOptions | undefined {
   if (
@@ -138,7 +140,9 @@ function createImportPrepareOptions(
     preferLocalHaveOrderForKnownCommon !== true &&
     replayKnownCommonInFirstRound !== true &&
     disableKnownCommonRefHints !== true &&
+    knownCommonAdvertisementPrefixes === undefined &&
     includeAdvertisementHeadInKnownCommon !== false &&
+    deferAncestorExpansionUntilRelease !== true &&
     enforceGitFetchSourceShallowRefRules !== true &&
     options?.depth === undefined &&
     options?.deepen === undefined &&
@@ -160,8 +164,10 @@ function createImportPrepareOptions(
     preferLocalHaveOrderForKnownCommon: preferLocalHaveOrderForKnownCommon || undefined,
     replayKnownCommonInFirstRound: replayKnownCommonInFirstRound || undefined,
     disableKnownCommonRefHints: disableKnownCommonRefHints || undefined,
+    knownCommonAdvertisementPrefixes,
     includeAdvertisementHeadInKnownCommon:
       includeAdvertisementHeadInKnownCommon === false ? false : undefined,
+    deferAncestorExpansionUntilRelease: deferAncestorExpansionUntilRelease || undefined,
     sourceShallowRefUpdateMode: enforceGitFetchSourceShallowRefRules
       ? "git-fetch-explicit"
       : undefined,
@@ -196,6 +202,7 @@ async function applyDefaultMapping(
   const branches = selectedRefs.where((ref) => ref.name.startsWith("refs/heads/"));
   const selectedTags = selectedRefs.where((ref) => ref.name.startsWith("refs/tags/"));
   const requestedExplicitTags = refPatternsRequestExplicitTags(options?.refPatterns);
+  const shouldNarrowTagOnlyNegotiation = !hasShallowFetchRequest(options);
 
   if (
     isCanonicalHeadsAndTagsRefPatterns(options?.refPatterns) &&
@@ -222,6 +229,9 @@ async function applyDefaultMapping(
       branches.refs.length === 0,
       false,
       false,
+      branches.refs.length === 0 && shouldNarrowTagOnlyNegotiation ? ["refs/tags/"] : undefined,
+      true,
+      shouldNarrowTagOnlyNegotiation,
     );
   }
 
@@ -240,6 +250,9 @@ async function applyDefaultMapping(
       false,
       false,
       false,
+      shouldNarrowTagOnlyNegotiation ? ["refs/tags/"] : undefined,
+      true,
+      shouldNarrowTagOnlyNegotiation,
     );
   }
 
@@ -309,7 +322,9 @@ async function applyDefaultMapping(
           false,
           false,
           false,
+          undefined,
           options?.refPatterns !== undefined ? false : true,
+          false,
           options?.refPatterns !== undefined,
         ),
       )
@@ -336,6 +351,7 @@ async function applyDefaultMapping(
           false,
           false,
           false,
+          undefined,
           options?.refPatterns !== undefined ? false : true,
           options?.refPatterns !== undefined,
         ),
@@ -359,7 +375,9 @@ async function applyDefaultRefProjection(
   preferLocalHaveOrderForKnownCommon = false,
   replayKnownCommonInFirstRound = false,
   disableKnownCommonRefHints = false,
+  knownCommonAdvertisementPrefixes?: readonly string[],
   includeAdvertisementHeadInKnownCommon = true,
+  deferAncestorExpansionUntilRelease = false,
 ): Promise<RepositoryFetchResult> {
   const plan = session.plan();
   const prepareOptions = createImportPrepareOptions(
@@ -372,7 +390,9 @@ async function applyDefaultRefProjection(
     preferLocalHaveOrderForKnownCommon,
     replayKnownCommonInFirstRound,
     disableKnownCommonRefHints,
+    knownCommonAdvertisementPrefixes,
     includeAdvertisementHeadInKnownCommon,
+    deferAncestorExpansionUntilRelease,
     options?.refPatterns !== undefined,
   );
 
@@ -436,6 +456,11 @@ async function applyCustomRefSpecs(
   if (tagRefs) {
     materializeTags(plan, tagRefs, initialDefaultTags);
   }
+  const deferAncestorExpansionUntilRelease =
+    !hasShallowFetchRequest(options) &&
+    explicitTagRefSpecs &&
+    selectedRemoteRefs.length > 0 &&
+    selectedRemoteRefs.every((ref) => ref.name.startsWith("refs/tags/"));
 
   const prepareOptions = createImportPrepareOptions(
     options,
@@ -447,7 +472,9 @@ async function applyCustomRefSpecs(
     false,
     false,
     false,
+    deferAncestorExpansionUntilRelease ? ["refs/tags/"] : undefined,
     false,
+    deferAncestorExpansionUntilRelease,
     true,
   );
   const prepared = await plan.build().prepare(prepareOptions);

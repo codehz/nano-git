@@ -280,4 +280,58 @@ describe("Import Session - source-shallow 随机 git CLI 对照", () => {
       strictInitialState: true,
     });
   });
+
+  test("source-shallow 下 noTags + 显式 tag-only refPatterns 的初始 full fetch 语义与 bare git CLI 一致", async () => {
+    await runRandomImportSessionSourceShallowSeeds([503, 521, 547], {
+      boundaryTagMode: "annotated",
+      fetchMode: "tagOnlyPatterns",
+      followupOperation: "depth1",
+      initialMode: "full",
+      noTags: true,
+      strictInitialState: true,
+    });
+  });
+
+  test("source-shallow 下 noTags + 显式 heads+tags refPatterns 的初始 full fetch 拒绝语义与 bare git CLI 一致", async () => {
+    await runRandomImportSessionSourceShallowSeeds([557, 571, 587], {
+      boundaryTagMode: "annotated",
+      fetchMode: "headTagPatterns",
+      followupOperation: "depth1",
+      initialMode: "full",
+      noTags: true,
+      strictInitialState: true,
+    });
+  });
+
+  test("source-shallow 下 noTags + 显式 tag-only refSpecs 的初始 full fetch 语义与 bare git CLI 一致", async () => {
+    await runRandomImportSessionSourceShallowSeeds([593, 607, 617], {
+      boundaryTagMode: "annotated",
+      fetchMode: "tagOnlyRefSpecs",
+      followupOperation: "depth1",
+      initialMode: "full",
+      noTags: true,
+      strictInitialState: true,
+    });
+  });
+
+  test("source-shallow 下 noTags + 显式 heads+tags refSpecs 的初始 full fetch 拒绝语义与 bare git CLI 一致", async () => {
+    await runRandomImportSessionSourceShallowSeeds([631, 643, 659], {
+      boundaryTagMode: "annotated",
+      fetchMode: "headTagRefSpecs",
+      followupOperation: "depth1",
+      initialMode: "full",
+      noTags: true,
+      strictInitialState: true,
+    });
+  });
+
+  test("source-shallow 下 noTags + 显式 custom namespace refSpec 的初始 full fetch 语义与 bare git CLI 一致", async () => {
+    await runRandomImportSessionSourceShallowSeeds([673, 691, 709], {
+      fetchMode: "customNamespaceRefSpec",
+      followupOperation: "depth1",
+      initialMode: "full",
+      noTags: true,
+      strictInitialState: true,
+    });
+  });
 });

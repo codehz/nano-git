@@ -252,6 +252,7 @@ function createNegotiationFetchOptions(
   readonly deepenSince?: string;
   readonly deepenNot?: string[];
   readonly replayKnownCommonInFirstRound?: boolean;
+  readonly deferAncestorExpansionUntilRelease?: boolean;
 } {
   const shallow = resolveLocalShallowBoundaries(compiled)?.map((hash) => hash);
   const useUnshallow = options?.unshallow === true;
@@ -267,6 +268,7 @@ function createNegotiationFetchOptions(
         : undefined,
     deepenNot: options?.shallowExclude ? [...options.shallowExclude] : undefined,
     replayKnownCommonInFirstRound: options?.replayKnownCommonInFirstRound,
+    deferAncestorExpansionUntilRelease: options?.deferAncestorExpansionUntilRelease,
   };
 }
 
@@ -274,6 +276,13 @@ function shouldUseKnownCommonAdvertisementRef(
   refName: string,
   options?: ImportPrepareOptions,
 ): boolean {
+  if (
+    options?.knownCommonAdvertisementPrefixes !== undefined &&
+    !options.knownCommonAdvertisementPrefixes.some((prefix) => refName.startsWith(prefix))
+  ) {
+    return false;
+  }
+
   if (refName === "HEAD" && options?.includeAdvertisementHeadInKnownCommon === false) {
     return false;
   }

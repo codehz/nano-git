@@ -338,7 +338,7 @@ describe("v2 协议 - 随机 git CLI 对照", () => {
   });
 
   test("协商压力模式下显式 tag-only refspec 的请求语义与 refs 状态与 git CLI 一致", async () => {
-    await runRandomV2CliComparisonSeeds([4409, 4481, 4547], {
+    await runRandomV2CliComparisonSeeds([4409, 4417, 4481, 4547], {
       explicitTagOnlyRefSpecs: true,
       includeTagAliases: true,
       includeLightweightTags: true,
@@ -364,7 +364,7 @@ describe("v2 协议 - 随机 git CLI 对照", () => {
   });
 
   test("协商压力模式下 noTags + 显式 tag-only refspec 的请求语义与 refs 状态与 git CLI 一致", async () => {
-    await runRandomV2CliComparisonSeeds([4409, 4481, 4547], {
+    await runRandomV2CliComparisonSeeds([4409, 4417, 4481, 4547], {
       explicitTagOnlyRefSpecs: true,
       includeTagAliases: true,
       includeLightweightTags: true,

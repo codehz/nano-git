@@ -851,6 +851,400 @@ describe("Import Session", () => {
     expect(git(["--git-dir", bareCliDir, "rev-parse", "refs/tags/v2"], tempDir)).toBe(tagHash);
   });
 
+  test("bare 仓库上 tag-only refSpecs 的 full follow-up 会像 git CLI 一样走两轮协商并避免把祖先 branch tip 混入 have", async () => {
+    git(["checkout", "main"], workDir);
+    createFile(workDir, "b.txt", "B\n");
+    git(["add", "b.txt"], workDir);
+    git(["commit", "-m", "B"], workDir);
+    createFile(workDir, "c.txt", "C\n");
+    git(["add", "c.txt"], workDir);
+    git(["commit", "-m", "C"], workDir);
+    createFile(workDir, "d.txt", "D\n");
+    git(["add", "d.txt"], workDir);
+    git(["commit", "-m", "D"], workDir);
+    const branchAnchorHash = sha1(git(["rev-parse", "HEAD~2"], workDir));
+    const middleTagTargetHash = sha1(git(["rev-parse", "HEAD~1"], workDir));
+    const topTagTargetHash = sha1(git(["rev-parse", "HEAD"], workDir));
+    git(["push", repoDir, "main"], workDir);
+
+    git(["checkout", "-b", "old", branchAnchorHash], workDir);
+    git(["push", repoDir, "old"], workDir);
+    git(["checkout", "main"], workDir);
+
+    git(["tag", "t-b", branchAnchorHash], workDir);
+    git(["tag", "t-c", middleTagTargetHash], workDir);
+    git(["tag", "-a", "t-d", "-m", "t-d", topTagTargetHash], workDir);
+    git(["push", repoDir, "refs/tags/t-b"], workDir);
+    git(["push", repoDir, "refs/tags/t-c"], workDir);
+    git(["push", repoDir, "refs/tags/t-d"], workDir);
+
+    const bareCliDir = join(tempDir, "cli-tag-only-refspec-two-round.git");
+    const nanoDir = join(tempDir, "nano-tag-only-refspec-two-round.git");
+    const repo = initRepository(nanoDir);
+    const refSpecs = ["refs/tags/*:refs/tags/*"];
+
+    git(["init", "--bare", bareCliDir], tempDir);
+    git(["--git-dir", bareCliDir, "remote", "add", "origin", server.url], tempDir);
+    await repo.fetch(server.url, { refSpecs });
+    await gitWithTimeout(
+      ["--git-dir", bareCliDir, "-c", "protocol.version=2", "fetch", "origin", ...refSpecs],
+      tempDir,
+      15000,
+    );
+
+    git(["checkout", "main"], workDir);
+    createFile(workDir, "e.txt", "E\n");
+    git(["add", "e.txt"], workDir);
+    git(["commit", "-m", "E"], workDir);
+    const newMainTagTargetHash = sha1(git(["rev-parse", "HEAD"], workDir));
+    git(["tag", "t-e", newMainTagTargetHash], workDir);
+    git(["push", repoDir, "main"], workDir);
+    git(["push", repoDir, "refs/tags/t-e"], workDir);
+
+    git(["checkout", "old"], workDir);
+    createFile(workDir, "old-2.txt", "O2\n");
+    git(["add", "old-2.txt"], workDir);
+    git(["commit", "-m", "O2"], workDir);
+    git(["tag", "-a", "t-old2", "-m", "t-old2"], workDir);
+    const newOldAnnotatedTagHash = sha1(git(["rev-parse", "refs/tags/t-old2"], workDir));
+    git(["push", repoDir, "old"], workDir);
+    git(["push", repoDir, "refs/tags/t-old2"], workDir);
+
+    server.clearRequests();
+    const nanoResult = await repo.fetch(server.url, { refSpecs });
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    await gitWithTimeout(
+      ["--git-dir", bareCliDir, "-c", "protocol.version=2", "fetch", "origin", ...refSpecs],
+      tempDir,
+      15000,
+    );
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoResult.objectCount).toBeGreaterThanOrEqual(0);
+    expect(nanoBatches).toEqual(cliBatches);
+    expect(nanoBatches).toHaveLength(2);
+    expect(nanoBatches[0]).toContain(`want ${newMainTagTargetHash}`);
+    expect(nanoBatches[0]).toContain(`want ${newOldAnnotatedTagHash}`);
+    expect(nanoBatches[0]).toContain(`have ${topTagTargetHash}`);
+    expect(nanoBatches[0]).not.toContain(`have ${middleTagTargetHash}`);
+    expect(nanoBatches[0]).not.toContain(`have ${branchAnchorHash}`);
+    expect(nanoBatches[0]).not.toContain("done");
+    expect(nanoBatches[1]).toContain(`have ${topTagTargetHash}`);
+    expect(nanoBatches[1]).toContain("done");
+    expect(nanoBatches[1]).not.toContain(`have ${branchAnchorHash}`);
+  });
+
+  test("bare 仓库上 tag-only refPatterns 的 full follow-up 会像 git CLI 一样走两轮协商并避免把祖先 branch tip 混入 have", async () => {
+    git(["checkout", "main"], workDir);
+    createFile(workDir, "b.txt", "B\n");
+    git(["add", "b.txt"], workDir);
+    git(["commit", "-m", "B"], workDir);
+    createFile(workDir, "c.txt", "C\n");
+    git(["add", "c.txt"], workDir);
+    git(["commit", "-m", "C"], workDir);
+    createFile(workDir, "d.txt", "D\n");
+    git(["add", "d.txt"], workDir);
+    git(["commit", "-m", "D"], workDir);
+    const branchAnchorHash = sha1(git(["rev-parse", "HEAD~2"], workDir));
+    const middleTagTargetHash = sha1(git(["rev-parse", "HEAD~1"], workDir));
+    const topTagTargetHash = sha1(git(["rev-parse", "HEAD"], workDir));
+    git(["push", repoDir, "main"], workDir);
+
+    git(["checkout", "-b", "old", branchAnchorHash], workDir);
+    git(["push", repoDir, "old"], workDir);
+    git(["checkout", "main"], workDir);
+
+    git(["tag", "t-b", branchAnchorHash], workDir);
+    git(["tag", "t-c", middleTagTargetHash], workDir);
+    git(["tag", "-a", "t-d", "-m", "t-d", topTagTargetHash], workDir);
+    git(["push", repoDir, "refs/tags/t-b"], workDir);
+    git(["push", repoDir, "refs/tags/t-c"], workDir);
+    git(["push", repoDir, "refs/tags/t-d"], workDir);
+
+    const bareCliDir = join(tempDir, "cli-tag-only-refpatterns-two-round.git");
+    const nanoDir = join(tempDir, "nano-tag-only-refpatterns-two-round.git");
+    const repo = initRepository(nanoDir);
+    const refPatterns = ["refs/tags/*"];
+
+    git(["init", "--bare", bareCliDir], tempDir);
+    git(["--git-dir", bareCliDir, "remote", "add", "origin", server.url], tempDir);
+    await repo.fetch(server.url, { refPatterns });
+    await gitWithTimeout(
+      [
+        "--git-dir",
+        bareCliDir,
+        "-c",
+        "protocol.version=2",
+        "fetch",
+        "origin",
+        "refs/tags/*:refs/tags/*",
+      ],
+      tempDir,
+      15000,
+    );
+
+    git(["checkout", "main"], workDir);
+    createFile(workDir, "e.txt", "E\n");
+    git(["add", "e.txt"], workDir);
+    git(["commit", "-m", "E"], workDir);
+    const newMainTagTargetHash = sha1(git(["rev-parse", "HEAD"], workDir));
+    git(["tag", "t-e", newMainTagTargetHash], workDir);
+    git(["push", repoDir, "main"], workDir);
+    git(["push", repoDir, "refs/tags/t-e"], workDir);
+
+    git(["checkout", "old"], workDir);
+    createFile(workDir, "old-2.txt", "O2\n");
+    git(["add", "old-2.txt"], workDir);
+    git(["commit", "-m", "O2"], workDir);
+    git(["tag", "-a", "t-old2", "-m", "t-old2"], workDir);
+    const newOldAnnotatedTagHash = sha1(git(["rev-parse", "refs/tags/t-old2"], workDir));
+    git(["push", repoDir, "old"], workDir);
+    git(["push", repoDir, "refs/tags/t-old2"], workDir);
+
+    server.clearRequests();
+    const nanoResult = await repo.fetch(server.url, { refPatterns });
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    await gitWithTimeout(
+      [
+        "--git-dir",
+        bareCliDir,
+        "-c",
+        "protocol.version=2",
+        "fetch",
+        "origin",
+        "refs/tags/*:refs/tags/*",
+      ],
+      tempDir,
+      15000,
+    );
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoResult.objectCount).toBeGreaterThanOrEqual(0);
+    expect(nanoBatches).toEqual(cliBatches);
+    expect(nanoBatches).toHaveLength(2);
+    expect(nanoBatches[0]).toContain(`want ${newMainTagTargetHash}`);
+    expect(nanoBatches[0]).toContain(`want ${newOldAnnotatedTagHash}`);
+    expect(nanoBatches[0]).toContain(`have ${topTagTargetHash}`);
+    expect(nanoBatches[0]).not.toContain(`have ${middleTagTargetHash}`);
+    expect(nanoBatches[0]).not.toContain(`have ${branchAnchorHash}`);
+    expect(nanoBatches[0]).not.toContain("done");
+    expect(nanoBatches[1]).toContain(`have ${topTagTargetHash}`);
+    expect(nanoBatches[1]).toContain("done");
+    expect(nanoBatches[1]).not.toContain(`have ${branchAnchorHash}`);
+  });
+
+  test("bare 仓库上 noTags + tag-only refSpecs 的 full follow-up 会像 git CLI 一样走两轮协商且不发送 include-tag", async () => {
+    git(["checkout", "main"], workDir);
+    createFile(workDir, "b.txt", "B\n");
+    git(["add", "b.txt"], workDir);
+    git(["commit", "-m", "B"], workDir);
+    createFile(workDir, "c.txt", "C\n");
+    git(["add", "c.txt"], workDir);
+    git(["commit", "-m", "C"], workDir);
+    createFile(workDir, "d.txt", "D\n");
+    git(["add", "d.txt"], workDir);
+    git(["commit", "-m", "D"], workDir);
+    const branchAnchorHash = sha1(git(["rev-parse", "HEAD~2"], workDir));
+    const middleTagTargetHash = sha1(git(["rev-parse", "HEAD~1"], workDir));
+    const topTagTargetHash = sha1(git(["rev-parse", "HEAD"], workDir));
+    git(["push", repoDir, "main"], workDir);
+
+    git(["checkout", "-b", "old", branchAnchorHash], workDir);
+    git(["push", repoDir, "old"], workDir);
+    git(["checkout", "main"], workDir);
+
+    git(["tag", "t-b", branchAnchorHash], workDir);
+    git(["tag", "t-c", middleTagTargetHash], workDir);
+    git(["tag", "-a", "t-d", "-m", "t-d", topTagTargetHash], workDir);
+    git(["push", repoDir, "refs/tags/t-b"], workDir);
+    git(["push", repoDir, "refs/tags/t-c"], workDir);
+    git(["push", repoDir, "refs/tags/t-d"], workDir);
+
+    const bareCliDir = join(tempDir, "cli-no-tags-tag-only-refspec-two-round.git");
+    const nanoDir = join(tempDir, "nano-no-tags-tag-only-refspec-two-round.git");
+    const repo = initRepository(nanoDir);
+    const refSpecs = ["refs/tags/*:refs/tags/*"];
+
+    git(["init", "--bare", bareCliDir], tempDir);
+    git(["--git-dir", bareCliDir, "remote", "add", "origin", server.url], tempDir);
+    await repo.fetch(server.url, { noTags: true, refSpecs });
+    await gitWithTimeout(
+      [
+        "--git-dir",
+        bareCliDir,
+        "-c",
+        "protocol.version=2",
+        "fetch",
+        "--no-tags",
+        "origin",
+        ...refSpecs,
+      ],
+      tempDir,
+      15000,
+    );
+
+    git(["checkout", "main"], workDir);
+    createFile(workDir, "e.txt", "E\n");
+    git(["add", "e.txt"], workDir);
+    git(["commit", "-m", "E"], workDir);
+    const newMainTagTargetHash = sha1(git(["rev-parse", "HEAD"], workDir));
+    git(["tag", "t-e", newMainTagTargetHash], workDir);
+    git(["push", repoDir, "main"], workDir);
+    git(["push", repoDir, "refs/tags/t-e"], workDir);
+
+    git(["checkout", "old"], workDir);
+    createFile(workDir, "old-2.txt", "O2\n");
+    git(["add", "old-2.txt"], workDir);
+    git(["commit", "-m", "O2"], workDir);
+    git(["tag", "-a", "t-old2", "-m", "t-old2"], workDir);
+    const newOldAnnotatedTagHash = sha1(git(["rev-parse", "refs/tags/t-old2"], workDir));
+    git(["push", repoDir, "old"], workDir);
+    git(["push", repoDir, "refs/tags/t-old2"], workDir);
+
+    server.clearRequests();
+    const nanoResult = await repo.fetch(server.url, { noTags: true, refSpecs });
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    await gitWithTimeout(
+      [
+        "--git-dir",
+        bareCliDir,
+        "-c",
+        "protocol.version=2",
+        "fetch",
+        "--no-tags",
+        "origin",
+        ...refSpecs,
+      ],
+      tempDir,
+      15000,
+    );
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoResult.objectCount).toBeGreaterThanOrEqual(0);
+    expect(nanoBatches).toEqual(cliBatches);
+    expect(nanoBatches).toHaveLength(2);
+    expect(nanoBatches[0]).not.toContain("include-tag");
+    expect(nanoBatches[0]).toContain(`want ${newMainTagTargetHash}`);
+    expect(nanoBatches[0]).toContain(`want ${newOldAnnotatedTagHash}`);
+    expect(nanoBatches[0]).toContain(`have ${topTagTargetHash}`);
+    expect(nanoBatches[0]).not.toContain(`have ${middleTagTargetHash}`);
+    expect(nanoBatches[0]).not.toContain(`have ${branchAnchorHash}`);
+    expect(nanoBatches[0]).not.toContain("done");
+    expect(nanoBatches[1]).toContain(`have ${topTagTargetHash}`);
+    expect(nanoBatches[1]).toContain("done");
+    expect(nanoBatches[1]).not.toContain(`have ${branchAnchorHash}`);
+  });
+
+  test("bare 仓库上 noTags + tag-only refPatterns 的 full follow-up 会像 git CLI 一样走两轮协商且不发送 include-tag", async () => {
+    git(["checkout", "main"], workDir);
+    createFile(workDir, "b.txt", "B\n");
+    git(["add", "b.txt"], workDir);
+    git(["commit", "-m", "B"], workDir);
+    createFile(workDir, "c.txt", "C\n");
+    git(["add", "c.txt"], workDir);
+    git(["commit", "-m", "C"], workDir);
+    createFile(workDir, "d.txt", "D\n");
+    git(["add", "d.txt"], workDir);
+    git(["commit", "-m", "D"], workDir);
+    const branchAnchorHash = sha1(git(["rev-parse", "HEAD~2"], workDir));
+    const middleTagTargetHash = sha1(git(["rev-parse", "HEAD~1"], workDir));
+    const topTagTargetHash = sha1(git(["rev-parse", "HEAD"], workDir));
+    git(["push", repoDir, "main"], workDir);
+
+    git(["checkout", "-b", "old", branchAnchorHash], workDir);
+    git(["push", repoDir, "old"], workDir);
+    git(["checkout", "main"], workDir);
+
+    git(["tag", "t-b", branchAnchorHash], workDir);
+    git(["tag", "t-c", middleTagTargetHash], workDir);
+    git(["tag", "-a", "t-d", "-m", "t-d", topTagTargetHash], workDir);
+    git(["push", repoDir, "refs/tags/t-b"], workDir);
+    git(["push", repoDir, "refs/tags/t-c"], workDir);
+    git(["push", repoDir, "refs/tags/t-d"], workDir);
+
+    const bareCliDir = join(tempDir, "cli-no-tags-tag-only-refpatterns-two-round.git");
+    const nanoDir = join(tempDir, "nano-no-tags-tag-only-refpatterns-two-round.git");
+    const repo = initRepository(nanoDir);
+    const refPatterns = ["refs/tags/*"];
+
+    git(["init", "--bare", bareCliDir], tempDir);
+    git(["--git-dir", bareCliDir, "remote", "add", "origin", server.url], tempDir);
+    await repo.fetch(server.url, { noTags: true, refPatterns });
+    await gitWithTimeout(
+      [
+        "--git-dir",
+        bareCliDir,
+        "-c",
+        "protocol.version=2",
+        "fetch",
+        "--no-tags",
+        "origin",
+        "refs/tags/*:refs/tags/*",
+      ],
+      tempDir,
+      15000,
+    );
+
+    git(["checkout", "main"], workDir);
+    createFile(workDir, "e.txt", "E\n");
+    git(["add", "e.txt"], workDir);
+    git(["commit", "-m", "E"], workDir);
+    const newMainTagTargetHash = sha1(git(["rev-parse", "HEAD"], workDir));
+    git(["tag", "t-e", newMainTagTargetHash], workDir);
+    git(["push", repoDir, "main"], workDir);
+    git(["push", repoDir, "refs/tags/t-e"], workDir);
+
+    git(["checkout", "old"], workDir);
+    createFile(workDir, "old-2.txt", "O2\n");
+    git(["add", "old-2.txt"], workDir);
+    git(["commit", "-m", "O2"], workDir);
+    git(["tag", "-a", "t-old2", "-m", "t-old2"], workDir);
+    const newOldAnnotatedTagHash = sha1(git(["rev-parse", "refs/tags/t-old2"], workDir));
+    git(["push", repoDir, "old"], workDir);
+    git(["push", repoDir, "refs/tags/t-old2"], workDir);
+
+    server.clearRequests();
+    const nanoResult = await repo.fetch(server.url, { noTags: true, refPatterns });
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    await gitWithTimeout(
+      [
+        "--git-dir",
+        bareCliDir,
+        "-c",
+        "protocol.version=2",
+        "fetch",
+        "--no-tags",
+        "origin",
+        "refs/tags/*:refs/tags/*",
+      ],
+      tempDir,
+      15000,
+    );
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoResult.objectCount).toBeGreaterThanOrEqual(0);
+    expect(nanoBatches).toEqual(cliBatches);
+    expect(nanoBatches).toHaveLength(2);
+    expect(nanoBatches[0]).not.toContain("include-tag");
+    expect(nanoBatches[0]).toContain(`want ${newMainTagTargetHash}`);
+    expect(nanoBatches[0]).toContain(`want ${newOldAnnotatedTagHash}`);
+    expect(nanoBatches[0]).toContain(`have ${topTagTargetHash}`);
+    expect(nanoBatches[0]).not.toContain(`have ${middleTagTargetHash}`);
+    expect(nanoBatches[0]).not.toContain(`have ${branchAnchorHash}`);
+    expect(nanoBatches[0]).not.toContain("done");
+    expect(nanoBatches[1]).toContain(`have ${topTagTargetHash}`);
+    expect(nanoBatches[1]).toContain("done");
+    expect(nanoBatches[1]).not.toContain(`have ${branchAnchorHash}`);
+  });
+
   test("bare 仓库上 tag-only refPatterns 的 shallow follow-up 会像 git CLI 一样继续显式 want tag 并保持状态一致", async () => {
     git(["checkout", "main"], workDir);
     createFile(workDir, "second.txt", "second\n");
