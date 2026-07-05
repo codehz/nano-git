@@ -29,11 +29,13 @@ import { initRepository } from "@/repository/file.ts";
 type RandomInitialMode = "full" | "depth1";
 type RandomFollowupOperation = "deepen" | "shallowExcludeTag" | "shallowSinceReject";
 type RandomBoundaryTagMode = "none" | "lightweight" | "annotated";
+type RandomHistoryShape = "linear" | "merge";
 
 interface RandomSourceShallowCliComparisonOptions {
   readonly initialMode?: RandomInitialMode;
   readonly followupOperation?: RandomFollowupOperation;
   readonly boundaryTagMode?: RandomBoundaryTagMode;
+  readonly historyShape?: RandomHistoryShape;
   readonly strictInitialState?: boolean;
 }
 
@@ -50,6 +52,7 @@ interface RandomSourceShallowCliComparisonResult {
   readonly initialMode: RandomInitialMode;
   readonly followupOperation: RandomFollowupOperation;
   readonly boundaryTagMode: RandomBoundaryTagMode;
+  readonly historyShape: RandomHistoryShape;
   readonly sourceDepth: number;
   readonly historyLength: number;
   readonly boundaryTagName?: string;
@@ -86,6 +89,8 @@ function parseSeedArguments(args: readonly string[]): {
     initialMode?: RandomInitialMode;
     followupOperation?: RandomFollowupOperation;
     boundaryTagMode?: RandomBoundaryTagMode;
+    historyShape?: RandomHistoryShape;
+    strictInitialState?: boolean;
   } = {};
 
   for (const arg of args) {
@@ -119,6 +124,18 @@ function parseSeedArguments(args: readonly string[]): {
     }
     if (arg === "--annotated-boundary-tag") {
       options.boundaryTagMode = "annotated";
+      continue;
+    }
+    if (arg === "--linear-history") {
+      options.historyShape = "linear";
+      continue;
+    }
+    if (arg === "--merge-history") {
+      options.historyShape = "merge";
+      continue;
+    }
+    if (arg === "--strict-initial-state") {
+      options.strictInitialState = true;
       continue;
     }
     seedArgs.push(arg);
@@ -155,6 +172,15 @@ function parseSeedArguments(args: readonly string[]): {
 
 function readCliShallowSync(workDir: string): string[] {
   const shallowPath = join(workDir, ".git", "shallow");
+  if (!existsSync(shallowPath)) {
+    return [];
+  }
+  const content = readFileSync(shallowPath, "utf-8").trim();
+  return content.length === 0 ? [] : content.split(/\n+/);
+}
+
+function readBareShallowSync(gitDir: string): string[] {
+  const shallowPath = join(gitDir, "shallow");
   if (!existsSync(shallowPath)) {
     return [];
   }
@@ -216,6 +242,26 @@ async function createRandomSourceShallowRepository(
   seed: number,
   rand: () => number,
   boundaryTagMode: RandomBoundaryTagMode,
+  historyShape: RandomHistoryShape,
+): Promise<{
+  readonly shallowBareDir: string;
+  readonly historyLength: number;
+  readonly sourceDepth: number;
+  readonly boundaryCommit: string;
+  readonly boundaryTagName?: string;
+}> {
+  if (historyShape === "merge") {
+    return createRandomMergeSourceShallowRepository(tempDir, seed, rand, boundaryTagMode);
+  }
+
+  return createRandomLinearSourceShallowRepository(tempDir, seed, rand, boundaryTagMode);
+}
+
+async function createRandomLinearSourceShallowRepository(
+  tempDir: string,
+  seed: number,
+  rand: () => number,
+  boundaryTagMode: RandomBoundaryTagMode,
 ): Promise<{
   readonly shallowBareDir: string;
   readonly historyLength: number;
@@ -266,6 +312,95 @@ async function createRandomSourceShallowRepository(
   return {
     shallowBareDir,
     historyLength,
+    sourceDepth,
+    boundaryCommit,
+    boundaryTagName,
+  };
+}
+
+async function createRandomMergeSourceShallowRepository(
+  tempDir: string,
+  seed: number,
+  rand: () => number,
+  boundaryTagMode: RandomBoundaryTagMode,
+): Promise<{
+  readonly shallowBareDir: string;
+  readonly historyLength: number;
+  readonly sourceDepth: number;
+  readonly boundaryCommit: string;
+  readonly boundaryTagName?: string;
+}> {
+  const upstreamBareDir = join(tempDir, `source-upstream-${seed}.git`);
+  const workDir = join(tempDir, `source-upstream-work-${seed}`);
+  const shallowBareDir = join(tempDir, `source-shallow-${seed}.git`);
+  const baseCommitCount = 3 + Math.floor(rand() * 2);
+  const topicCommitCount = 2 + Math.floor(rand() * 2);
+  const mainAdvanceCount = 1 + Math.floor(rand() * 2);
+  const sourceDepth = 3;
+
+  git(["init", "--bare", "-b", "main", upstreamBareDir], tempDir);
+  git(["init", "-b", "main", workDir], tempDir);
+  git(["remote", "add", "origin", upstreamBareDir], workDir);
+
+  for (let index = 0; index < baseCommitCount; index++) {
+    createFile(workDir, `base-${index + 1}.txt`, `base-${index + 1}\n`);
+    git(["add", `base-${index + 1}.txt`], workDir);
+    git(["commit", "-m", `base-${index + 1}`], workDir);
+  }
+
+  const splitOffset = Math.min(baseCommitCount - 1, 1 + Math.floor(rand() * 2));
+  git(["checkout", "-b", "topic", `main~${splitOffset}`], workDir);
+  for (let index = 0; index < topicCommitCount; index++) {
+    createFile(workDir, `topic-${index + 1}.txt`, `topic-${index + 1}\n`);
+    git(["add", `topic-${index + 1}.txt`], workDir);
+    git(["commit", "-m", `topic-${index + 1}`], workDir);
+  }
+  const topicBoundaryCommit = git(["rev-parse", "HEAD"], workDir);
+
+  git(["checkout", "main"], workDir);
+  for (let index = 0; index < mainAdvanceCount; index++) {
+    createFile(workDir, `main-advance-${index + 1}.txt`, `main-advance-${index + 1}\n`);
+    git(["add", `main-advance-${index + 1}.txt`], workDir);
+    git(["commit", "-m", `main-advance-${index + 1}`], workDir);
+  }
+  const mainBoundaryCommit = git(["rev-parse", "HEAD"], workDir);
+
+  const boundaryCommit = rand() < 0.5 ? topicBoundaryCommit : mainBoundaryCommit;
+  let boundaryTagName: string | undefined;
+  if (boundaryTagMode !== "none") {
+    boundaryTagName = `boundary-${seed}`;
+    if (boundaryTagMode === "annotated") {
+      git(["tag", "-a", boundaryTagName, boundaryCommit, "-m", boundaryTagName], workDir);
+    } else {
+      git(["tag", boundaryTagName, boundaryCommit], workDir);
+    }
+  }
+
+  git(["merge", "--no-ff", "topic", "-m", `merge-topic-${seed}`], workDir);
+  createFile(workDir, "tail-after-merge.txt", "tail-after-merge\n");
+  git(["add", "tail-after-merge.txt"], workDir);
+  git(["commit", "-m", "tail-after-merge"], workDir);
+
+  const pushArgs = ["push", "-u", "origin", "main", "topic"];
+  if (boundaryTagName) {
+    pushArgs.push(`refs/tags/${boundaryTagName}`);
+  }
+  git(pushArgs, workDir);
+  git(
+    ["clone", "--bare", `--depth=${sourceDepth}`, `file://${upstreamBareDir}`, shallowBareDir],
+    tempDir,
+  );
+
+  const shallowEntries = readBareShallowSync(shallowBareDir);
+  if (!shallowEntries.includes(boundaryCommit)) {
+    throw new Error(
+      `merge source-shallow seed ${seed} did not preserve expected boundary tag target`,
+    );
+  }
+
+  return {
+    shallowBareDir,
+    historyLength: baseCommitCount + topicCommitCount + mainAdvanceCount + 2,
     sourceDepth,
     boundaryCommit,
     boundaryTagName,
@@ -369,7 +504,14 @@ export async function runRandomImportSessionSourceShallowSeed(
   const initialMode = options.initialMode ?? pickRandom(rand, ["full", "depth1"]);
   const boundaryTagMode =
     options.boundaryTagMode ?? pickRandom(rand, ["none", "lightweight", "annotated"]);
-  const history = await createRandomSourceShallowRepository(tempDir, seed, rand, boundaryTagMode);
+  const historyShape = options.historyShape ?? "linear";
+  const history = await createRandomSourceShallowRepository(
+    tempDir,
+    seed,
+    rand,
+    boundaryTagMode,
+    historyShape,
+  );
   const followupOperation = createFollowupOperation(rand, boundaryTagMode, options);
   const server = startGitHttpBackendServer(tempDir, `/${basename(history.shallowBareDir)}`);
   const repo = initRepository(nanoDir);
@@ -390,6 +532,7 @@ export async function runRandomImportSessionSourceShallowSeed(
         initialMode,
         followupOperation,
         boundaryTagMode,
+        historyShape,
         sourceDepth: history.sourceDepth,
         historyLength: history.historyLength,
         boundaryTagName: history.boundaryTagName,
@@ -432,6 +575,7 @@ export async function runRandomImportSessionSourceShallowSeed(
       initialMode,
       followupOperation,
       boundaryTagMode,
+      historyShape,
       sourceDepth: history.sourceDepth,
       historyLength: history.historyLength,
       boundaryTagName: history.boundaryTagName,

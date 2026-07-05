@@ -65,4 +65,31 @@ describe("Import Session - source-shallow 随机 git CLI 对照", () => {
       strictInitialState: true,
     });
   });
+
+  test("merge-history source-shallow 下完整 clone 后 deepen=1 的请求序列与仓库状态与 git CLI 一致", async () => {
+    await runRandomImportSessionSourceShallowSeeds([101, 113, 127], {
+      historyShape: "merge",
+      initialMode: "full",
+      followupOperation: "deepen",
+      strictInitialState: true,
+    });
+  });
+
+  test("merge-history source-shallow 下 depth=1 clone 后 shallow-exclude 边界 annotated tag 的行为与 git CLI 一致", async () => {
+    await runRandomImportSessionSourceShallowSeeds([131, 149, 167], {
+      boundaryTagMode: "annotated",
+      followupOperation: "shallowExcludeTag",
+      historyShape: "merge",
+      initialMode: "depth1",
+      strictInitialState: true,
+    });
+  });
+
+  test("merge-history source-shallow 下 shallow-since 拒绝语义与 git CLI 一致", async () => {
+    await runRandomImportSessionSourceShallowSeeds([173, 191, 197], {
+      followupOperation: "shallowSinceReject",
+      historyShape: "merge",
+      strictInitialState: true,
+    });
+  });
 });
