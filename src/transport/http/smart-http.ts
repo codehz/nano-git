@@ -138,7 +138,7 @@ async function handleUploadPack(
     if (err instanceof UploadPackServiceError) {
       return errorResponse(400, err.message);
     }
-    throw err;
+    return errorResponse(500, err instanceof Error ? err.message : String(err));
   }
 
   return new Response(response, {

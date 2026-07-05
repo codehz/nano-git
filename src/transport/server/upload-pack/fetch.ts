@@ -137,6 +137,52 @@ interface ShallowFetchPlan {
   };
 }
 
+function resolveSourceReachableShallowBoundaries(
+  backend: RepositoryBackend,
+  wants: readonly SHA1[],
+): Set<SHA1> | undefined {
+  const storedShallow = backend.shallow.read();
+  if (storedShallow.length === 0) {
+    return undefined;
+  }
+
+  const storedSet = new Set<SHA1>(storedShallow);
+  const reachableSourceShallow = new Set<SHA1>();
+  const visited = new Set<SHA1>();
+  const queue = wants.map((hash) => peelTagChain(backend.objects, hash));
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (visited.has(current)) {
+      continue;
+    }
+    visited.add(current);
+
+    if (storedSet.has(current)) {
+      reachableSourceShallow.add(current);
+      continue;
+    }
+
+    const obj = tryReadObject(backend.objects, current);
+    if (!obj) {
+      continue;
+    }
+
+    if (obj.type === "tag") {
+      queue.push(obj.object);
+      continue;
+    }
+
+    if (obj.type === "commit") {
+      for (const parent of obj.parents) {
+        queue.push(parent);
+      }
+    }
+  }
+
+  return reachableSourceShallow.size > 0 ? reachableSourceShallow : undefined;
+}
+
 function resolveExcludedReachable(
   backend: RepositoryBackend,
   deepenNot: readonly string[],
@@ -182,29 +228,45 @@ function resolveDeepenNotTargetHash(backend: RepositoryBackend, rev: string): SH
   );
 }
 
-function computeDepthLimitedShallowBoundary(
+interface DepthLimitedShallowState {
+  readonly boundary: Set<SHA1>;
+  readonly visited: Set<SHA1>;
+  readonly selectedCommitCount: number;
+}
+
+function computeDepthLimitedShallowState(
   backend: RepositoryBackend,
   wants: readonly SHA1[],
   maxDepth: number,
   deepenSince: number | undefined,
   excludedReachable: ReadonlySet<SHA1> | undefined,
-): Set<SHA1> {
+): DepthLimitedShallowState {
   const boundary = new Set<SHA1>();
+  const visited = new Set<SHA1>();
   const queue = wants.map((hash) => ({ hash: peelTagChain(backend.objects, hash), depth: 1 }));
-  const visited = new Map<SHA1, number>();
+  const visitedDepth = new Map<SHA1, number>();
+  let selectedCommitCount = 0;
 
   while (queue.length > 0) {
     const current = queue.shift()!;
-    const previousDepth = visited.get(current.hash);
+    const previousDepth = visitedDepth.get(current.hash);
     if (previousDepth !== undefined && previousDepth <= current.depth) {
       continue;
     }
-    visited.set(current.hash, current.depth);
+    visitedDepth.set(current.hash, current.depth);
 
     const obj = tryReadObject(backend.objects, current.hash);
     if (!obj || obj.type !== "commit") {
+      visited.add(current.hash);
       continue;
     }
+
+    if (deepenSince !== undefined && obj.committer.timestamp < deepenSince) {
+      continue;
+    }
+
+    selectedCommitCount++;
+    visited.add(current.hash);
 
     let omittedParent = false;
     for (const parent of obj.parents) {
@@ -234,7 +296,7 @@ function computeDepthLimitedShallowBoundary(
     }
   }
 
-  return boundary;
+  return { boundary, visited, selectedCommitCount };
 }
 
 function computeRelativeDeepenBoundary(
@@ -277,24 +339,53 @@ function createShallowFetchPlan(
   params: FetchServerParams,
 ): ShallowFetchPlan {
   const clientShallow = new Set<SHA1>(params.shallow);
+  const sourceShallow = resolveSourceReachableShallowBoundaries(backend, params.wants);
   const excludedReachable = resolveExcludedReachable(backend, params.deepenNot);
-  let serverShallow: Set<SHA1> | undefined;
+  let serverShallow = sourceShallow ? new Set(sourceShallow) : undefined;
+
+  if (excludedReachable) {
+    for (const want of params.wants) {
+      const peeledWant = peelTagChain(backend.objects, want);
+      if (excludedReachable.has(peeledWant)) {
+        throw new Error(`fetch: want ${peeledWant} is excluded by deepen-not`);
+      }
+    }
+  }
 
   if (params.deepenRelative && params.deepen !== undefined) {
-    serverShallow = computeRelativeDeepenBoundary(backend, params.shallow, params.deepen);
+    const relativeBoundary = computeRelativeDeepenBoundary(backend, params.shallow, params.deepen);
+    if (serverShallow) {
+      for (const hash of relativeBoundary) {
+        serverShallow.add(hash);
+      }
+    } else {
+      serverShallow = relativeBoundary;
+    }
   } else if (
     params.deepen !== undefined ||
     params.deepenSince !== undefined ||
     params.deepenNot.length > 0
   ) {
     const maxDepth = params.deepen ?? Number.MAX_SAFE_INTEGER;
-    serverShallow = computeDepthLimitedShallowBoundary(
+    const depthLimitedState = computeDepthLimitedShallowState(
       backend,
       params.wants,
       maxDepth,
       params.deepenSince,
       excludedReachable,
     );
+    if (params.deepenSince !== undefined && depthLimitedState.selectedCommitCount === 0) {
+      throw new Error("fetch: no commits selected for shallow requests");
+    }
+    serverShallow = serverShallow ? new Set(serverShallow) : new Set<SHA1>();
+    for (const hash of depthLimitedState.boundary) {
+      serverShallow.add(hash);
+    }
+    for (const hash of clientShallow) {
+      if (!depthLimitedState.visited.has(hash) || depthLimitedState.boundary.has(hash)) {
+        serverShallow.add(hash);
+      }
+    }
   }
 
   if (!serverShallow) {

@@ -96,6 +96,16 @@ function readShallowFile(workDir: string): string[] {
   return content.length === 0 ? [] : content.split(/\n+/);
 }
 
+function readBareShallowFile(repoDir: string): string[] {
+  const shallowPath = join(repoDir, "shallow");
+  if (!existsSync(shallowPath)) {
+    return [];
+  }
+
+  const content = readFileSync(shallowPath, "utf-8").trim();
+  return content.length === 0 ? [] : content.split(/\n+/);
+}
+
 async function writeTrackedFile(workDir: string, filename: string, content: string): Promise<void> {
   writeFileSync(join(workDir, filename), content, "utf-8");
   await gitWithTimeout(["add", filename], workDir, GIT_TIMEOUT_MS);
@@ -148,6 +158,27 @@ async function createFileRepoWithMergeHistory(rootDir: string): Promise<{
   };
 }
 
+async function createLinearHistoryRepo(rootDir: string): Promise<{
+  readonly bareDir: string;
+}> {
+  const bareDir = join(rootDir, "linear-server.git");
+  const workDir = join(rootDir, "linear-work");
+
+  await gitWithTimeout(["init", "--bare", "-b", "main", bareDir], rootDir, GIT_TIMEOUT_MS);
+  await gitWithTimeout(["init", "-b", "main", workDir], rootDir, GIT_TIMEOUT_MS);
+  await gitWithTimeout(["remote", "add", "origin", bareDir], workDir, GIT_TIMEOUT_MS);
+
+  await writeTrackedFile(workDir, "c1.txt", "c1\n");
+  await gitWithTimeout(["commit", "-m", "c1"], workDir, GIT_TIMEOUT_MS);
+  await writeTrackedFile(workDir, "c2.txt", "c2\n");
+  await gitWithTimeout(["commit", "-m", "c2"], workDir, GIT_TIMEOUT_MS);
+  await writeTrackedFile(workDir, "c3.txt", "c3\n");
+  await gitWithTimeout(["commit", "-m", "c3"], workDir, GIT_TIMEOUT_MS);
+  await gitWithTimeout(["push", "-u", "origin", "main"], workDir, GIT_TIMEOUT_MS);
+
+  return { bareDir };
+}
+
 async function cloneAndDeepenMergeRepo(
   url: string,
   targetDir: string,
@@ -182,6 +213,117 @@ async function cloneAndDeepenMergeRepo(
   );
 
   return { shallowBefore, shallowAfter, countBefore, countAfter };
+}
+
+async function cloneDepthTwoThenShallowExcludeTopic(
+  url: string,
+  targetDir: string,
+): Promise<{
+  readonly shallowBefore: string[];
+  readonly shallowAfter: string[];
+  readonly countBefore: string;
+  readonly countAfter: string;
+}> {
+  await gitWithTimeout(
+    ["-c", "protocol.version=2", "clone", "--depth=2", url, targetDir],
+    dirname(targetDir),
+    GIT_TIMEOUT_MS,
+  );
+  const shallowBefore = readShallowFile(targetDir);
+  const countBefore = await gitWithTimeout(
+    ["rev-list", "--count", "HEAD"],
+    targetDir,
+    GIT_TIMEOUT_MS,
+  );
+
+  await gitWithTimeout(
+    ["-c", "protocol.version=2", "fetch", "--shallow-exclude=topic", "origin"],
+    targetDir,
+    GIT_TIMEOUT_MS,
+  );
+  const shallowAfter = readShallowFile(targetDir);
+  const countAfter = await gitWithTimeout(
+    ["rev-list", "--count", "HEAD"],
+    targetDir,
+    GIT_TIMEOUT_MS,
+  );
+
+  return { shallowBefore, shallowAfter, countBefore, countAfter };
+}
+
+async function cloneThenDeepenShallowSource(
+  url: string,
+  targetDir: string,
+): Promise<{
+  readonly shallowBefore: string[];
+  readonly shallowAfter: string[];
+  readonly countBefore: string;
+  readonly countAfter: string;
+}> {
+  await gitWithTimeout(
+    ["-c", "protocol.version=2", "clone", url, targetDir],
+    dirname(targetDir),
+    GIT_TIMEOUT_MS,
+  );
+  const shallowBefore = readShallowFile(targetDir);
+  const countBefore = await gitWithTimeout(
+    ["rev-list", "--count", "HEAD"],
+    targetDir,
+    GIT_TIMEOUT_MS,
+  );
+
+  await gitWithTimeout(
+    ["-c", "protocol.version=2", "fetch", "--deepen=1", "origin"],
+    targetDir,
+    GIT_TIMEOUT_MS,
+  );
+  const shallowAfter = readShallowFile(targetDir);
+  const countAfter = await gitWithTimeout(
+    ["rev-list", "--count", "HEAD"],
+    targetDir,
+    GIT_TIMEOUT_MS,
+  );
+
+  return { shallowBefore, shallowAfter, countBefore, countAfter };
+}
+
+async function createShallowSourceRepository(rootDir: string): Promise<{
+  readonly shallowBareDir: string;
+  readonly sourceBoundaryCommit: string;
+  readonly tipCommit: string;
+}> {
+  const upstreamBareDir = join(rootDir, "upstream.git");
+  const workDir = join(rootDir, "upstream-work");
+  const shallowBareDir = join(rootDir, "shallow-source.git");
+
+  await gitWithTimeout(["init", "--bare", "-b", "main", upstreamBareDir], rootDir, GIT_TIMEOUT_MS);
+  await gitWithTimeout(["init", "-b", "main", workDir], rootDir, GIT_TIMEOUT_MS);
+  await gitWithTimeout(["remote", "add", "origin", upstreamBareDir], workDir, GIT_TIMEOUT_MS);
+
+  await writeTrackedFile(workDir, "c1.txt", "c1\n");
+  await gitWithTimeout(["commit", "-m", "c1"], workDir, GIT_TIMEOUT_MS);
+  await writeTrackedFile(workDir, "c2.txt", "c2\n");
+  await gitWithTimeout(["commit", "-m", "c2"], workDir, GIT_TIMEOUT_MS);
+  await writeTrackedFile(workDir, "c3.txt", "c3\n");
+  await gitWithTimeout(["commit", "-m", "c3"], workDir, GIT_TIMEOUT_MS);
+  await writeTrackedFile(workDir, "c4.txt", "c4\n");
+  await gitWithTimeout(["commit", "-m", "c4"], workDir, GIT_TIMEOUT_MS);
+  await gitWithTimeout(["push", "-u", "origin", "main"], workDir, GIT_TIMEOUT_MS);
+
+  await gitWithTimeout(
+    ["clone", "--bare", "--depth=2", `file://${upstreamBareDir}`, shallowBareDir],
+    rootDir,
+    GIT_TIMEOUT_MS,
+  );
+
+  const tipCommit = await gitWithTimeout(
+    ["--git-dir", shallowBareDir, "rev-parse", "refs/heads/main"],
+    rootDir,
+    GIT_TIMEOUT_MS,
+  );
+  const sourceBoundaryCommit = readBareShallowFile(shallowBareDir)[0]!;
+
+  return { shallowBareDir, sourceBoundaryCommit, tipCommit };
 }
 
 describe("Smart HTTP 服务端 — nano-git 客户端", () => {
@@ -638,6 +780,248 @@ describe("Smart HTTP 服务端 — shallow 结果对照", () => {
       expect(
         await gitWithTimeout(["rev-list", "--count", "HEAD"], nanoTarget, GIT_TIMEOUT_MS),
       ).toBe(await gitWithTimeout(["rev-list", "--count", "HEAD"], gitTarget, GIT_TIMEOUT_MS));
+    } finally {
+      await gitServer.stop();
+      nanoServer.stop();
+    }
+  });
+
+  test("merge DAG 下 clone --depth=2 后 fetch --shallow-exclude=topic 的 shallow 结果与 git-http-backend 一致", async () => {
+    const history = await createFileRepoWithMergeHistory(tempDir);
+    const gitServer = startGitHttpBackendServer(tempDir, "/server.git");
+    const nanoServer = startNanoGitServer(createFileRepositoryBackend(history.bareDir));
+
+    try {
+      const gitResult = await cloneDepthTwoThenShallowExcludeTopic(
+        gitServer.url,
+        join(tempDir, "git-depth2-exclude-topic"),
+      );
+      const nanoResult = await cloneDepthTwoThenShallowExcludeTopic(
+        nanoServer.url,
+        join(tempDir, "nano-depth2-exclude-topic"),
+      );
+
+      expect(nanoResult.countBefore).toBe(gitResult.countBefore);
+      expect(nanoResult.countAfter).toBe(gitResult.countAfter);
+      expect(nanoResult.shallowBefore).toEqual(gitResult.shallowBefore);
+      expect(nanoResult.shallowAfter).toEqual(gitResult.shallowAfter);
+      expect(nanoResult.shallowAfter.toSorted()).toEqual(
+        [history.mainBoundaryCommit, history.topicBoundaryCommit, history.mergeCommit].toSorted(),
+      );
+    } finally {
+      await gitServer.stop();
+      nanoServer.stop();
+    }
+  });
+
+  test("merge DAG 下 clone --branch topic --shallow-exclude=main 时与 git-http-backend 一样拒绝请求", async () => {
+    const history = await createFileRepoWithMergeHistory(tempDir);
+    const gitServer = startGitHttpBackendServer(tempDir, "/server.git");
+    const nanoServer = startNanoGitServer(createFileRepositoryBackend(history.bareDir));
+    const gitTarget = join(tempDir, "git-topic-exclude-main");
+    const nanoTarget = join(tempDir, "nano-topic-exclude-main");
+
+    try {
+      const gitClone = gitWithTimeout(
+        [
+          "-c",
+          "protocol.version=2",
+          "clone",
+          "--branch",
+          "topic",
+          "--shallow-exclude=main",
+          gitServer.url,
+          gitTarget,
+        ],
+        tempDir,
+        GIT_TIMEOUT_MS,
+      );
+      const nanoClone = gitWithTimeout(
+        [
+          "-c",
+          "protocol.version=2",
+          "clone",
+          "--branch",
+          "topic",
+          "--shallow-exclude=main",
+          nanoServer.url,
+          nanoTarget,
+        ],
+        tempDir,
+        GIT_TIMEOUT_MS,
+      );
+      const [gitResult, nanoResult] = await Promise.allSettled([gitClone, nanoClone]);
+      expect(gitResult.status).toBe("rejected");
+      expect(nanoResult.status).toBe("rejected");
+      if (gitResult.status === "rejected") {
+        expect(String(gitResult.reason)).toContain("HTTP 500");
+      }
+      if (nanoResult.status === "rejected") {
+        expect(String(nanoResult.reason)).toContain("HTTP 500");
+      }
+    } finally {
+      await gitServer.stop();
+      nanoServer.stop();
+    }
+  });
+
+  test("merge DAG 下 shallow topic 后 fetch --shallow-exclude=main 时与 git-http-backend 一样拒绝请求", async () => {
+    const history = await createFileRepoWithMergeHistory(tempDir);
+    const gitServer = startGitHttpBackendServer(tempDir, "/server.git");
+    const nanoServer = startNanoGitServer(createFileRepositoryBackend(history.bareDir));
+    const gitTarget = join(tempDir, "git-topic-depth1");
+    const nanoTarget = join(tempDir, "nano-topic-depth1");
+
+    try {
+      await gitWithTimeout(
+        [
+          "-c",
+          "protocol.version=2",
+          "clone",
+          "--branch",
+          "topic",
+          "--depth=1",
+          gitServer.url,
+          gitTarget,
+        ],
+        tempDir,
+        GIT_TIMEOUT_MS,
+      );
+      await gitWithTimeout(
+        [
+          "-c",
+          "protocol.version=2",
+          "clone",
+          "--branch",
+          "topic",
+          "--depth=1",
+          nanoServer.url,
+          nanoTarget,
+        ],
+        tempDir,
+        GIT_TIMEOUT_MS,
+      );
+
+      const gitFetch = gitWithTimeout(
+        ["-c", "protocol.version=2", "fetch", "--shallow-exclude=main", "origin"],
+        gitTarget,
+        GIT_TIMEOUT_MS,
+      );
+      const nanoFetch = gitWithTimeout(
+        ["-c", "protocol.version=2", "fetch", "--shallow-exclude=main", "origin"],
+        nanoTarget,
+        GIT_TIMEOUT_MS,
+      );
+      const [gitResult, nanoResult] = await Promise.allSettled([gitFetch, nanoFetch]);
+      expect(gitResult.status).toBe("rejected");
+      expect(nanoResult.status).toBe("rejected");
+      if (gitResult.status === "rejected") {
+        expect(String(gitResult.reason)).toContain("HTTP 500");
+      }
+      if (nanoResult.status === "rejected") {
+        expect(String(nanoResult.reason)).toContain("HTTP 500");
+      }
+    } finally {
+      await gitServer.stop();
+      nanoServer.stop();
+    }
+  });
+
+  test("源仓库自身是 shallow 时，clone 结果与 git-http-backend 一致", async () => {
+    const history = await createShallowSourceRepository(tempDir);
+    const gitServer = startGitHttpBackendServer(tempDir, "/shallow-source.git");
+    const nanoServer = startNanoGitServer(createFileRepositoryBackend(history.shallowBareDir));
+    const gitTarget = join(tempDir, "git-shallow-source-clone");
+    const nanoTarget = join(tempDir, "nano-shallow-source-clone");
+
+    try {
+      await gitWithTimeout(
+        ["-c", "protocol.version=2", "clone", gitServer.url, gitTarget],
+        tempDir,
+        GIT_TIMEOUT_MS,
+      );
+      await gitWithTimeout(
+        ["-c", "protocol.version=2", "clone", nanoServer.url, nanoTarget],
+        tempDir,
+        GIT_TIMEOUT_MS,
+      );
+
+      expect(readShallowFile(nanoTarget)).toEqual(readShallowFile(gitTarget));
+      expect(readShallowFile(nanoTarget)).toEqual([history.sourceBoundaryCommit]);
+      expect(
+        await gitWithTimeout(["rev-list", "--count", "HEAD"], nanoTarget, GIT_TIMEOUT_MS),
+      ).toBe(await gitWithTimeout(["rev-list", "--count", "HEAD"], gitTarget, GIT_TIMEOUT_MS));
+    } finally {
+      await gitServer.stop();
+      nanoServer.stop();
+    }
+  });
+
+  test("源仓库自身是 shallow 时，clone 后 fetch --deepen=1 结果与 git-http-backend 一致", async () => {
+    const history = await createShallowSourceRepository(tempDir);
+    const gitServer = startGitHttpBackendServer(tempDir, "/shallow-source.git");
+    const nanoServer = startNanoGitServer(createFileRepositoryBackend(history.shallowBareDir));
+
+    try {
+      const gitResult = await cloneThenDeepenShallowSource(
+        gitServer.url,
+        join(tempDir, "git-shallow-source-deepen"),
+      );
+      const nanoResult = await cloneThenDeepenShallowSource(
+        nanoServer.url,
+        join(tempDir, "nano-shallow-source-deepen"),
+      );
+
+      expect(nanoResult.countBefore).toBe(gitResult.countBefore);
+      expect(nanoResult.countAfter).toBe(gitResult.countAfter);
+      expect(nanoResult.shallowBefore).toEqual(gitResult.shallowBefore);
+      expect(nanoResult.shallowAfter).toEqual(gitResult.shallowAfter);
+      expect(nanoResult.shallowBefore).toEqual([history.sourceBoundaryCommit]);
+      expect(nanoResult.shallowAfter).toEqual([history.sourceBoundaryCommit]);
+    } finally {
+      await gitServer.stop();
+      nanoServer.stop();
+    }
+  });
+
+  test("depth=1 后 fetch --shallow-since=未来时间 时与 git-http-backend 一样拒绝请求", async () => {
+    const history = await createLinearHistoryRepo(tempDir);
+    const gitServer = startGitHttpBackendServer(tempDir, "/linear-server.git");
+    const nanoServer = startNanoGitServer(createFileRepositoryBackend(history.bareDir));
+    const gitTarget = join(tempDir, "git-linear-shallow-since-future");
+    const nanoTarget = join(tempDir, "nano-linear-shallow-since-future");
+
+    try {
+      await gitWithTimeout(
+        ["-c", "protocol.version=2", "clone", "--depth=1", gitServer.url, gitTarget],
+        tempDir,
+        GIT_TIMEOUT_MS,
+      );
+      await gitWithTimeout(
+        ["-c", "protocol.version=2", "clone", "--depth=1", nanoServer.url, nanoTarget],
+        tempDir,
+        GIT_TIMEOUT_MS,
+      );
+
+      const gitFetch = gitWithTimeout(
+        ["-c", "protocol.version=2", "fetch", "--shallow-since=2100-01-01", "origin"],
+        gitTarget,
+        GIT_TIMEOUT_MS,
+      );
+      const nanoFetch = gitWithTimeout(
+        ["-c", "protocol.version=2", "fetch", "--shallow-since=2100-01-01", "origin"],
+        nanoTarget,
+        GIT_TIMEOUT_MS,
+      );
+      const [gitResult, nanoResult] = await Promise.allSettled([gitFetch, nanoFetch]);
+      expect(gitResult.status).toBe("rejected");
+      expect(nanoResult.status).toBe("rejected");
+      if (gitResult.status === "rejected") {
+        expect(String(gitResult.reason)).toContain("HTTP 500");
+      }
+      if (nanoResult.status === "rejected") {
+        expect(String(nanoResult.reason)).toContain("HTTP 500");
+      }
     } finally {
       await gitServer.stop();
       nanoServer.stop();

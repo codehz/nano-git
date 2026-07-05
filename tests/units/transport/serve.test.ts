@@ -182,6 +182,50 @@ function createMergeShallowRepo(): MergeShallowRepoFixtures {
   };
 }
 
+interface ShallowSourceRepoFixtures {
+  backend: ReturnType<typeof createMemoryRepositoryBackend>;
+  sourceBoundaryCommit: SHA1;
+  tipCommit: SHA1;
+}
+
+function createShallowSourceRepo(): ShallowSourceRepoFixtures {
+  const backend = createMemoryRepositoryBackend({
+    initialRefs: new Map<string, string>([["HEAD", "ref: refs/heads/main"]]),
+  });
+
+  const blobHash = writeObject(backend.objects, {
+    type: "blob" as const,
+    content: Buffer.from("shallow source"),
+  });
+  const treeHash = writeObject(backend.objects, {
+    type: "tree" as const,
+    entries: [{ mode: "100644", name: "source.txt", hash: blobHash }],
+  });
+
+  const missingParent = sha1("1111111111111111111111111111111111111111");
+  const sourceBoundaryCommit = writeObject(backend.objects, {
+    type: "commit" as const,
+    tree: treeHash,
+    parents: [missingParent],
+    author: { name: "Test", email: "test@test", timestamp: 1000001, timezone: "+0000" },
+    committer: { name: "Test", email: "test@test", timestamp: 1000001, timezone: "+0000" },
+    message: "source boundary\n",
+  });
+  const tipCommit = writeObject(backend.objects, {
+    type: "commit" as const,
+    tree: treeHash,
+    parents: [sourceBoundaryCommit],
+    author: { name: "Test", email: "test@test", timestamp: 1000002, timezone: "+0000" },
+    committer: { name: "Test", email: "test@test", timestamp: 1000002, timezone: "+0000" },
+    message: "tip\n",
+  });
+
+  backend.refs.write("refs/heads/main", tipCommit);
+  backend.shallow.write([sourceBoundaryCommit]);
+
+  return { backend, sourceBoundaryCommit, tipCommit };
+}
+
 // ============================================================================
 // parseCommandRequest
 // ============================================================================
@@ -501,6 +545,29 @@ describe("generateLsRefsResponse", () => {
 // ============================================================================
 
 describe("generateFetchResponse — clone", () => {
+  test("源仓库自身是 shallow 时会回送 shallow-info，并允许在边界处截断对象图", () => {
+    const { backend, sourceBoundaryCommit, tipCommit } = createShallowSourceRepo();
+    const buf = generateFetchResponse(backend, {
+      wants: [tipCommit],
+      haves: [],
+      shallow: [],
+      wantRefs: [],
+      done: true,
+      thinPack: false,
+      noProgress: false,
+      ofsDelta: true,
+      deepenRelative: false,
+      deepenNot: [],
+    });
+
+    const parsed = parseV2FetchResponse(buf, true, false);
+    expect(parsed.shallowInfo).toEqual({
+      shallow: [sourceBoundaryCommit],
+      unshallow: [],
+    });
+    expect(parsed.packfile).toBeDefined();
+  });
+
   test("depth=1 时返回 shallow-info，并把 tip 标记为浅边界", () => {
     const { backend, developCommit } = createTestRepo();
     const buf = generateFetchResponse(backend, {
@@ -746,6 +813,25 @@ describe("generateFetchResponse — incremental fetch", () => {
     });
   });
 
+  test("deepen-since 若筛掉全部 commit 则拒绝请求", () => {
+    const { backend, developCommit } = createTestRepo();
+    expect(() =>
+      generateFetchResponse(backend, {
+        wants: [developCommit],
+        haves: [developCommit],
+        shallow: [developCommit],
+        wantRefs: [],
+        done: true,
+        thinPack: false,
+        noProgress: false,
+        ofsDelta: true,
+        deepenRelative: false,
+        deepenSince: 2000000,
+        deepenNot: [],
+      }),
+    ).toThrow(/no commits selected for shallow requests/);
+  });
+
   test("deepen-not 会把排除 ref 可达历史之外的提交设为新的浅边界", () => {
     const { backend, developCommit } = createTestRepo();
     const buf = generateFetchResponse(backend, {
@@ -780,7 +866,7 @@ describe("generateFetchResponse — incremental fetch", () => {
       noProgress: false,
       ofsDelta: true,
       deepenRelative: false,
-      deepenNot: ["develop"],
+      deepenNot: ["main"],
     });
 
     const parsed = parseV2FetchResponse(buf, true, false);
@@ -788,6 +874,47 @@ describe("generateFetchResponse — incremental fetch", () => {
       shallow: [developCommit],
       unshallow: [],
     });
+  });
+
+  test("deepen-not 在已有 shallow merge DAG 上会保留未触达的旧边界", () => {
+    const { backend, mainBoundaryCommit, topicBoundaryCommit, mergeCommit } =
+      createMergeShallowRepo();
+    const buf = generateFetchResponse(backend, {
+      wants: [mergeCommit],
+      haves: [mergeCommit],
+      shallow: [mainBoundaryCommit, topicBoundaryCommit],
+      wantRefs: [],
+      done: true,
+      thinPack: false,
+      noProgress: false,
+      ofsDelta: true,
+      deepenRelative: false,
+      deepenNot: ["topic"],
+    });
+
+    const parsed = parseV2FetchResponse(buf, true, false);
+    expect(parsed.shallowInfo).toEqual({
+      shallow: [mergeCommit],
+      unshallow: [],
+    });
+  });
+
+  test("deepen-not 若把 want 本身排除掉则拒绝请求", () => {
+    const { backend, topicBoundaryCommit } = createMergeShallowRepo();
+    expect(() =>
+      generateFetchResponse(backend, {
+        wants: [topicBoundaryCommit],
+        haves: [],
+        shallow: [],
+        wantRefs: [],
+        done: true,
+        thinPack: false,
+        noProgress: false,
+        ofsDelta: true,
+        deepenRelative: false,
+        deepenNot: ["main"],
+      }),
+    ).toThrow(/excluded by deepen-not/);
   });
 
   test("有 haves 时返回丢勒集 packfile", () => {

@@ -159,6 +159,28 @@ describe("collectReachable()", () => {
     expect(result.size).toBe(5);
     expect(result.has(blob)).toBe(true);
   });
+
+  test("命中 shallow 边界 commit 时停止向父链展开", () => {
+    const store = createMemoryObjectStore();
+    const blob = makeBlob(store, "shallow");
+    const tree = makeTree(store, [{ mode: "100644", name: "f.txt", hash: blob }]);
+    const missingParent = sha1("1111111111111111111111111111111111111111");
+    const shallowCommit = makeCommit(store, tree, [missingParent]);
+    const tipCommit = makeCommit(store, tree, [shallowCommit]);
+
+    const result = collectReachable(
+      store,
+      [tipCommit],
+      "skip-commit-parents",
+      new Set([shallowCommit]),
+    );
+
+    expect(result.has(tipCommit)).toBe(true);
+    expect(result.has(shallowCommit)).toBe(true);
+    expect(result.has(tree)).toBe(true);
+    expect(result.has(blob)).toBe(true);
+    expect(result.has(missingParent)).toBe(false);
+  });
 });
 
 // ============================================================================

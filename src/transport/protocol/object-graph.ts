@@ -94,6 +94,11 @@ function collectReachableFrom(
       return;
     case "commit":
       collectReachableFrom(source, obj.tree, reachable, missing, shallowBoundaries, false);
+      // shallow 边界 commit 自身仍需计入可达集合并保留其 tree，
+      // 但父提交应在此处截断，不能继续向更老历史展开。
+      if (shallowBoundaries?.has(hash)) {
+        return;
+      }
       for (const parent of obj.parents) {
         collectReachableFrom(source, parent, reachable, missing, shallowBoundaries, true);
       }
