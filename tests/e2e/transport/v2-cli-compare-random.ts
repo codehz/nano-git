@@ -24,6 +24,7 @@ interface RandomCliComparisonResult {
 interface RandomCliComparisonOptions {
   readonly includeTags?: boolean;
   readonly includeLightweightTags?: boolean;
+  readonly includeTagAliases?: boolean;
   readonly includeOrphans?: boolean;
   readonly includeRefAliases?: boolean;
 }
@@ -156,6 +157,19 @@ function createRandomTag(
   createAnnotatedTag(workDir, tagName);
 }
 
+function createTagBurst(
+  workDir: string,
+  tagNamePrefix: string,
+  rand: () => number,
+  options: RandomCliComparisonOptions,
+): number {
+  const tagCount = options.includeTagAliases ? 2 + Math.floor(rand() * 2) : 1;
+  for (let index = 0; index < tagCount; index++) {
+    createRandomTag(workDir, `${tagNamePrefix}-${index}`, rand, options);
+  }
+  return tagCount;
+}
+
 function createOrphanBranch(workDir: string, branch: string, serial: number) {
   git(["checkout", "--orphan", branch], workDir);
   git(["rm", "-rf", "."], workDir);
@@ -179,6 +193,7 @@ function parseSeedArguments(args: readonly string[]): {
   const options: {
     includeTags?: boolean;
     includeLightweightTags?: boolean;
+    includeTagAliases?: boolean;
     includeOrphans?: boolean;
     includeRefAliases?: boolean;
   } = {};
@@ -191,6 +206,11 @@ function parseSeedArguments(args: readonly string[]): {
     if (arg === "--lightweight-tags") {
       options.includeTags = true;
       options.includeLightweightTags = true;
+      continue;
+    }
+    if (arg === "--tag-aliases") {
+      options.includeTags = true;
+      options.includeTagAliases = true;
       continue;
     }
     if (arg === "--orphans") {
@@ -311,7 +331,7 @@ export async function runRandomV2CliComparisonSeed(
       if (options.includeTags && opRoll < 0.36) {
         const branch = pickRandom(rand, allBranchNames());
         git(["checkout", branch], workDir);
-        createRandomTag(workDir, `v${seed}-${tagSerial++}`, rand, options);
+        tagSerial += createTagBurst(workDir, `v${seed}-${tagSerial}`, rand, options);
         continue;
       }
 
@@ -363,7 +383,7 @@ export async function runRandomV2CliComparisonSeed(
       if (options.includeTags && opRoll < 0.24) {
         const branch = pickRandom(rand, allBranchNames());
         git(["checkout", branch], workDir);
-        createRandomTag(workDir, `post-v${seed}-${tagSerial++}`, rand, options);
+        tagSerial += createTagBurst(workDir, `post-v${seed}-${tagSerial}`, rand, options);
         continue;
       }
 

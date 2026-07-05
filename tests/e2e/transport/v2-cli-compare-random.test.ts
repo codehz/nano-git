@@ -62,4 +62,30 @@ describe("v2 协议 - 随机 git CLI 对照", () => {
       includeTags: true,
     });
   });
+
+  test("带 tag alias burst 的随机 seed 请求序列与 git CLI 一致", async () => {
+    await runRandomV2CliComparisonSeeds([2073, 2134, 2198], {
+      includeTagAliases: true,
+      includeTags: true,
+    });
+  });
+
+  test("带 tag alias burst、mixed tags 与 ref alias 的随机 seed 请求序列与 git CLI 一致", async () => {
+    await runRandomV2CliComparisonSeeds([2217, 2286, 2344], {
+      includeTagAliases: true,
+      includeLightweightTags: true,
+      includeRefAliases: true,
+      includeTags: true,
+    });
+  });
+
+  test("带 tag alias burst、mixed tags、ref alias 与 orphan 分支的随机 seed 请求序列与 git CLI 一致", async () => {
+    await runRandomV2CliComparisonSeeds([2363, 2421, 2488], {
+      includeTagAliases: true,
+      includeLightweightTags: true,
+      includeOrphans: true,
+      includeRefAliases: true,
+      includeTags: true,
+    });
+  });
 });

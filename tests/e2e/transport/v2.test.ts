@@ -289,6 +289,178 @@ describe("v2 协议 - fetch 命令", () => {
   });
 });
 
+describe("v2 协议 - shallow/deepen fetch", () => {
+  let tempDir: string;
+  let serverRepoDir: string;
+  let workDir: string;
+  let server: ReturnType<typeof startGitHttpBackendServer>;
+  let url: string;
+  let tipHash: string;
+  let parentHash: string;
+
+  beforeEach(async () => {
+    tempDir = createTempDir("e2e-v2-shallow-fetch");
+    const serverRepo = createServerRepo(tempDir, "server.git");
+    serverRepoDir = serverRepo.repoDir;
+    workDir = serverRepo.workDir;
+
+    createFile(workDir, "b.txt", "B\n");
+    git(["add", "b.txt"], workDir);
+    git(["commit", "-m", "B"], workDir);
+    git(["push", serverRepoDir, "main"], workDir);
+
+    createFile(workDir, "c.txt", "C\n");
+    git(["add", "c.txt"], workDir);
+    git(["commit", "-m", "C"], workDir);
+    tipHash = git(["rev-parse", "HEAD"], workDir);
+    parentHash = git(["rev-parse", "HEAD~1"], workDir);
+    git(["push", serverRepoDir, "main"], workDir);
+
+    server = startGitHttpBackendServer(tempDir, "/server.git");
+    url = server.url;
+  });
+
+  afterEach(async () => {
+    await server?.stop();
+    cleanupDir(tempDir);
+  });
+
+  test("shallow deepen 请求序列与 git CLI 一致，且 shallow-info 解析正确", async () => {
+    const cliDir = join(tempDir, "local-git-shallow");
+    await gitWithTimeout(
+      ["-c", "protocol.version=2", "clone", "--depth=1", url, cliDir],
+      tempDir,
+      15000,
+    );
+
+    const transport = createV2HttpTransport(url);
+    const caps = await transport.advertise();
+    const fetchFeatures = caps.commands.find((command) => command.name === "fetch")?.features;
+
+    server.clearRequests();
+    const fetchResult = await v2Fetch(
+      transport,
+      {
+        wants: [tipHash],
+        haves: [tipHash],
+        shallow: [tipHash],
+        deepen: 1,
+        deepenRelative: true,
+        thinPack: true,
+        noProgress: true,
+        includeTag: true,
+        ofsDelta: true,
+      },
+      fetchFeatures,
+    );
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(fetchResult.packfile).toBeDefined();
+    expect(fetchResult.packfile!.length).toBeGreaterThan(0);
+    expect(fetchResult.shallowInfo).toEqual({
+      shallow: [parentHash],
+      unshallow: [tipHash],
+    });
+
+    server.clearRequests();
+    await gitWithTimeout(
+      ["-c", "protocol.version=2", "fetch", "--deepen=1", "origin"],
+      cliDir,
+      15000,
+    );
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoBatches).toEqual(cliBatches);
+  });
+
+  test("shallow-since 请求序列与 git CLI 一致", async () => {
+    const cliDir = join(tempDir, "local-git-shallow-since");
+    await gitWithTimeout(
+      ["-c", "protocol.version=2", "clone", "--depth=1", url, cliDir],
+      tempDir,
+      15000,
+    );
+
+    const transport = createV2HttpTransport(url);
+    const caps = await transport.advertise();
+    const fetchFeatures = caps.commands.find((command) => command.name === "fetch")?.features;
+
+    server.clearRequests();
+    await v2Fetch(
+      transport,
+      {
+        wants: [tipHash],
+        haves: [tipHash],
+        shallow: [tipHash],
+        deepenSince: 1672548608,
+        thinPack: true,
+        noProgress: true,
+        includeTag: true,
+        ofsDelta: true,
+      },
+      fetchFeatures,
+    );
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    await gitWithTimeout(
+      ["-c", "protocol.version=2", "fetch", "--shallow-since=@1672548608", "origin"],
+      cliDir,
+      15000,
+    );
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoBatches).toEqual(cliBatches);
+  });
+
+  test("shallow-exclude 请求序列与 git CLI 一致", async () => {
+    git(["checkout", "-b", "topic", "HEAD~1"], workDir);
+    createFile(workDir, "topic.txt", "topic\n");
+    git(["add", "topic.txt"], workDir);
+    git(["commit", "-m", "topic"], workDir);
+    const topicHash = git(["rev-parse", "HEAD"], workDir);
+    git(["push", serverRepoDir, "topic"], workDir);
+
+    const cliDir = join(tempDir, "local-git-shallow-exclude");
+    await gitWithTimeout(
+      ["-c", "protocol.version=2", "clone", "--depth=1", "--branch", "topic", url, cliDir],
+      tempDir,
+      15000,
+    );
+
+    const transport = createV2HttpTransport(url);
+    const caps = await transport.advertise();
+    const fetchFeatures = caps.commands.find((command) => command.name === "fetch")?.features;
+
+    server.clearRequests();
+    await v2Fetch(
+      transport,
+      {
+        wants: [topicHash],
+        haves: [topicHash],
+        shallow: [topicHash],
+        deepenNot: ["main"],
+        thinPack: true,
+        noProgress: true,
+        includeTag: true,
+        ofsDelta: true,
+      },
+      fetchFeatures,
+    );
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    await gitWithTimeout(
+      ["-c", "protocol.version=2", "fetch", "--shallow-exclude=main", "origin"],
+      cliDir,
+      15000,
+    );
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoBatches).toEqual(cliBatches);
+  });
+});
+
 describe("v2 协议 - ImportSession 透明升级", () => {
   let tempDir: string;
   let localDir: string;

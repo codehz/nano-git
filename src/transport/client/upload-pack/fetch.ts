@@ -344,30 +344,6 @@ export async function v2Fetch(
   if (useSidebandAll) args.push("sideband-all");
   if (params.waitForDone) args.push("wait-for-done");
 
-  // want 列表
-  for (const oid of params.wants) {
-    args.push(`want ${oid}`);
-  }
-
-  // want-ref（需要 ref-in-want 特性支持）
-  if (params.wantRefs && hasFeature("ref-in-want")) {
-    for (const ref of params.wantRefs) {
-      args.push(`want-ref ${ref}`);
-    }
-  }
-
-  // have 列表：即使带 done，协议也允许同时发送 have 终止协商。
-  if (params.haves) {
-    for (const oid of params.haves) {
-      args.push(`have ${oid}`);
-    }
-  }
-
-  // done 标记
-  if (params.done) {
-    args.push("done");
-  }
-
   // shallow 参数
   if (params.shallow && hasFeature("shallow")) {
     for (const oid of params.shallow) {
@@ -395,6 +371,30 @@ export async function v2Fetch(
 
   if (params.filter && hasFeature("filter")) {
     args.push(`filter ${params.filter}`);
+  }
+
+  // want 列表
+  for (const oid of params.wants) {
+    args.push(`want ${oid}`);
+  }
+
+  // want-ref（需要 ref-in-want 特性支持）
+  if (params.wantRefs && hasFeature("ref-in-want")) {
+    for (const ref of params.wantRefs) {
+      args.push(`want-ref ${ref}`);
+    }
+  }
+
+  // have 列表：即使带 done，协议也允许同时发送 have 终止协商。
+  if (params.haves) {
+    for (const oid of params.haves) {
+      args.push(`have ${oid}`);
+    }
+  }
+
+  // done 标记
+  if (params.done) {
+    args.push("done");
   }
 
   // capabilities-list（仅放通用能力，如 agent）
