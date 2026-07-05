@@ -1,0 +1,105 @@
+/**
+ * 完整仓库 follow-up shallow 请求的随机 git CLI 对照回归
+ */
+
+import { describe, test } from "bun:test";
+
+import { runRandomImportSessionCompleteFollowupSeeds } from "./import-session-complete-followup-random.ts";
+
+describe("Import Session - 完整仓库 follow-up shallow 随机 git CLI 对照", () => {
+  test("linear history 下 depth=1 行为与 git CLI 一致", async () => {
+    await runRandomImportSessionCompleteFollowupSeeds([11, 29, 47], {
+      followupOperation: "depth1",
+      historyShape: "linear",
+      strictInitialState: true,
+    });
+  });
+
+  test("linear history 下 deepen no-op 行为与 git CLI 一致", async () => {
+    await runRandomImportSessionCompleteFollowupSeeds([13, 31, 53], {
+      followupOperation: "deepenNoop",
+      historyShape: "linear",
+      strictInitialState: true,
+    });
+  });
+
+  test("linear history 下 shallow-since reject 行为与 git CLI 一致", async () => {
+    await runRandomImportSessionCompleteFollowupSeeds([17, 37, 59], {
+      followupOperation: "shallowSinceReject",
+      historyShape: "linear",
+      strictInitialState: true,
+    });
+  });
+
+  test("linear history 下 shallow-exclude=main reject 行为与 git CLI 一致", async () => {
+    await runRandomImportSessionCompleteFollowupSeeds([19, 41, 61], {
+      followupOperation: "shallowExcludeMainReject",
+      historyShape: "linear",
+      strictInitialState: true,
+    });
+  });
+
+  test("linear history 下 shallow-exclude=<oid> reject 行为与 git CLI 一致", async () => {
+    await runRandomImportSessionCompleteFollowupSeeds([23, 43, 67], {
+      followupOperation: "shallowExcludeOidReject",
+      historyShape: "linear",
+      strictInitialState: true,
+    });
+  });
+
+  test("linear history 下 unshallow reject 行为与 git CLI 一致", async () => {
+    await runRandomImportSessionCompleteFollowupSeeds([27, 49, 71], {
+      followupOperation: "unshallowReject",
+      historyShape: "linear",
+      strictInitialState: true,
+    });
+  });
+
+  test("merge history 下 depth=1 行为与 git CLI 一致", async () => {
+    await runRandomImportSessionCompleteFollowupSeeds([101, 131, 163], {
+      followupOperation: "depth1",
+      historyShape: "merge",
+      strictInitialState: true,
+    });
+  });
+
+  test("merge history 下 deepen no-op 行为与 git CLI 一致", async () => {
+    await runRandomImportSessionCompleteFollowupSeeds([107, 139, 173], {
+      followupOperation: "deepenNoop",
+      historyShape: "merge",
+      strictInitialState: true,
+    });
+  });
+
+  test("merge history 下 shallow-since reject 行为与 git CLI 一致", async () => {
+    await runRandomImportSessionCompleteFollowupSeeds([109, 149, 181], {
+      followupOperation: "shallowSinceReject",
+      historyShape: "merge",
+      strictInitialState: true,
+    });
+  });
+
+  test("merge history 下 shallow-exclude=main reject 行为与 git CLI 一致", async () => {
+    await runRandomImportSessionCompleteFollowupSeeds([113, 151, 191], {
+      followupOperation: "shallowExcludeMainReject",
+      historyShape: "merge",
+      strictInitialState: true,
+    });
+  });
+
+  test("merge history 下 shallow-exclude=<oid> reject 行为与 git CLI 一致", async () => {
+    await runRandomImportSessionCompleteFollowupSeeds([127, 157, 197], {
+      followupOperation: "shallowExcludeOidReject",
+      historyShape: "merge",
+      strictInitialState: true,
+    });
+  });
+
+  test("merge history 下 unshallow reject 行为与 git CLI 一致", async () => {
+    await runRandomImportSessionCompleteFollowupSeeds([137, 167, 211], {
+      followupOperation: "unshallowReject",
+      historyShape: "merge",
+      strictInitialState: true,
+    });
+  });
+});
