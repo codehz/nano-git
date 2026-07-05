@@ -62,6 +62,10 @@ function sortHashes(hashes: readonly string[]): string[] {
   return [...hashes].sort();
 }
 
+function sortUniqueHashes(hashes: readonly string[]): string[] {
+  return [...new Set(hashes)].sort();
+}
+
 async function createTaggedShallowSourceRepository(
   rootDir: string,
   options: {
@@ -93,7 +97,7 @@ async function createTaggedShallowSourceRepository(
   createFile(workDir, "c3.txt", "c3\n");
   git(["add", "c3.txt"], workDir);
   git(["commit", "-m", "c3"], workDir);
-  const sourceBoundaryCommit = git(["rev-parse", "HEAD"], workDir);
+  const sourceBoundaryCommit = sha1(git(["rev-parse", "HEAD"], workDir));
 
   if (options.annotated) {
     git(["tag", "-a", options.tagName, "-m", options.tagName], workDir);
@@ -107,7 +111,9 @@ async function createTaggedShallowSourceRepository(
   git(["push", "-u", "origin", "main", `refs/tags/${options.tagName}`], workDir);
   git(["clone", "--bare", "--depth=2", `file://${upstreamBareDir}`, shallowBareDir], rootDir);
 
-  const tipCommit = git(["--git-dir", shallowBareDir, "rev-parse", "refs/heads/main"], rootDir);
+  const tipCommit = sha1(
+    git(["--git-dir", shallowBareDir, "rev-parse", "refs/heads/main"], rootDir),
+  );
   return { shallowBareDir, sourceBoundaryCommit, tipCommit };
 }
 
@@ -140,15 +146,163 @@ async function createShallowSourceRepository(
   createFile(workDir, "c3.txt", "c3\n");
   git(["add", "c3.txt"], workDir);
   git(["commit", "-m", "c3"], workDir);
-  const sourceBoundaryCommit = git(["rev-parse", "HEAD"], workDir);
+  const sourceBoundaryCommit = sha1(git(["rev-parse", "HEAD"], workDir));
   createFile(workDir, "c4.txt", "c4\n");
   git(["add", "c4.txt"], workDir);
   git(["commit", "-m", "c4"], workDir);
   git(["push", "-u", "origin", "main"], workDir);
   git(["clone", "--bare", "--depth=2", `file://${upstreamBareDir}`, shallowBareDir], rootDir);
 
-  const tipCommit = git(["--git-dir", shallowBareDir, "rev-parse", "refs/heads/main"], rootDir);
+  const tipCommit = sha1(
+    git(["--git-dir", shallowBareDir, "rev-parse", "refs/heads/main"], rootDir),
+  );
   return { shallowBareDir, sourceBoundaryCommit, tipCommit };
+}
+
+async function createMergeShallowSourceRepository(
+  rootDir: string,
+  options: {
+    readonly repoName: string;
+    readonly upstreamName: string;
+    readonly workName: string;
+  },
+): Promise<{
+  readonly shallowBareDir: string;
+  readonly tipCommit: string;
+  readonly mergeCommit: string;
+  readonly topicBoundaryCommit: string;
+  readonly mainBoundaryCommit: string;
+}> {
+  const upstreamBareDir = join(rootDir, options.upstreamName);
+  const workDir = join(rootDir, options.workName);
+  const shallowBareDir = join(rootDir, options.repoName);
+
+  git(["init", "--bare", "-b", "main", upstreamBareDir], rootDir);
+  git(["init", "-b", "main", workDir], rootDir);
+  git(["remote", "add", "origin", upstreamBareDir], workDir);
+
+  for (const name of ["base-1", "base-2", "base-3"]) {
+    createFile(workDir, `${name}.txt`, `${name}\n`);
+    git(["add", `${name}.txt`], workDir);
+    git(["commit", "-m", name], workDir);
+  }
+
+  git(["checkout", "-b", "topic", "main~1"], workDir);
+  for (const name of ["topic-1", "topic-2"]) {
+    createFile(workDir, `${name}.txt`, `${name}\n`);
+    git(["add", `${name}.txt`], workDir);
+    git(["commit", "-m", name], workDir);
+  }
+  const topicBoundaryCommit = sha1(git(["rev-parse", "HEAD"], workDir));
+
+  git(["checkout", "main"], workDir);
+  createFile(workDir, "main-advance-1.txt", "main-advance-1\n");
+  git(["add", "main-advance-1.txt"], workDir);
+  git(["commit", "-m", "main-advance-1"], workDir);
+  const mainBoundaryCommit = sha1(git(["rev-parse", "HEAD"], workDir));
+
+  git(["merge", "--no-ff", "topic", "-m", "merge-topic"], workDir);
+  const mergeCommit = sha1(git(["rev-parse", "HEAD"], workDir));
+
+  createFile(workDir, "tail-after-merge.txt", "tail-after-merge\n");
+  git(["add", "tail-after-merge.txt"], workDir);
+  git(["commit", "-m", "tail-after-merge"], workDir);
+  git(["push", "-u", "origin", "main", "topic"], workDir);
+  git(["clone", "--bare", "--depth=3", `file://${upstreamBareDir}`, shallowBareDir], rootDir);
+
+  const shallowEntries = sortHashes(readBareShallowFile(shallowBareDir));
+  expect(shallowEntries).toEqual(sortHashes([topicBoundaryCommit, mainBoundaryCommit]));
+
+  const tipCommit = sha1(
+    git(["--git-dir", shallowBareDir, "rev-parse", "refs/heads/main"], rootDir),
+  );
+  return {
+    shallowBareDir,
+    tipCommit,
+    mergeCommit,
+    topicBoundaryCommit,
+    mainBoundaryCommit,
+  };
+}
+
+async function createTaggedMergeShallowSourceRepository(
+  rootDir: string,
+  options: {
+    readonly annotated?: boolean;
+    readonly repoName: string;
+    readonly upstreamName: string;
+    readonly workName: string;
+    readonly tagName: string;
+    readonly tagTarget: "main-boundary" | "topic-boundary";
+  },
+): Promise<{
+  readonly shallowBareDir: string;
+  readonly tipCommit: string;
+  readonly mergeCommit: string;
+  readonly topicBoundaryCommit: string;
+  readonly mainBoundaryCommit: string;
+  readonly tagHash: string;
+}> {
+  const upstreamBareDir = join(rootDir, options.upstreamName);
+  const workDir = join(rootDir, options.workName);
+  const shallowBareDir = join(rootDir, options.repoName);
+
+  git(["init", "--bare", "-b", "main", upstreamBareDir], rootDir);
+  git(["init", "-b", "main", workDir], rootDir);
+  git(["remote", "add", "origin", upstreamBareDir], workDir);
+
+  for (const name of ["base-1", "base-2", "base-3"]) {
+    createFile(workDir, `${name}.txt`, `${name}\n`);
+    git(["add", `${name}.txt`], workDir);
+    git(["commit", "-m", name], workDir);
+  }
+
+  git(["checkout", "-b", "topic", "main~1"], workDir);
+  for (const name of ["topic-1", "topic-2"]) {
+    createFile(workDir, `${name}.txt`, `${name}\n`);
+    git(["add", `${name}.txt`], workDir);
+    git(["commit", "-m", name], workDir);
+  }
+  const topicBoundaryCommit = sha1(git(["rev-parse", "HEAD"], workDir));
+
+  git(["checkout", "main"], workDir);
+  createFile(workDir, "main-advance-1.txt", "main-advance-1\n");
+  git(["add", "main-advance-1.txt"], workDir);
+  git(["commit", "-m", "main-advance-1"], workDir);
+  const mainBoundaryCommit = sha1(git(["rev-parse", "HEAD"], workDir));
+
+  const tagTarget =
+    options.tagTarget === "topic-boundary" ? topicBoundaryCommit : mainBoundaryCommit;
+  if (options.annotated) {
+    git(["tag", "-a", options.tagName, tagTarget, "-m", options.tagName], workDir);
+  } else {
+    git(["tag", options.tagName, tagTarget], workDir);
+  }
+  const tagHash = sha1(git(["rev-parse", `refs/tags/${options.tagName}`], workDir));
+
+  git(["merge", "--no-ff", "topic", "-m", "merge-topic"], workDir);
+  const mergeCommit = sha1(git(["rev-parse", "HEAD"], workDir));
+
+  createFile(workDir, "tail-after-merge.txt", "tail-after-merge\n");
+  git(["add", "tail-after-merge.txt"], workDir);
+  git(["commit", "-m", "tail-after-merge"], workDir);
+  git(["push", "-u", "origin", "main", "topic", `refs/tags/${options.tagName}`], workDir);
+  git(["clone", "--bare", "--depth=3", `file://${upstreamBareDir}`, shallowBareDir], rootDir);
+
+  const shallowEntries = sortHashes(readBareShallowFile(shallowBareDir));
+  expect(shallowEntries).toEqual(sortHashes([topicBoundaryCommit, mainBoundaryCommit]));
+
+  const tipCommit = sha1(
+    git(["--git-dir", shallowBareDir, "rev-parse", "refs/heads/main"], rootDir),
+  );
+  return {
+    shallowBareDir,
+    tipCommit,
+    mergeCommit,
+    topicBoundaryCommit,
+    mainBoundaryCommit,
+    tagHash,
+  };
 }
 
 describe("Import Session", () => {
@@ -2884,7 +3038,9 @@ describe("Import Session", () => {
     await gitWithTimeout(["-c", "protocol.version=2", "clone", server.url, cliDir], tempDir, 15000);
     await repo.fetch(server.url);
 
-    expect(sortHashes(repo.shallow.read())).toEqual(sortHashes(readShallowFile(cliDir)));
+    expect(sortUniqueHashes(repo.shallow.read())).toEqual(
+      sortUniqueHashes(readShallowFile(cliDir)),
+    );
 
     server.clearRequests();
     const nanoResult = await repo.fetch(server.url, { unshallow: true });
@@ -2901,6 +3057,201 @@ describe("Import Session", () => {
     expect(nanoResult.objectCount).toBe(0);
     expect(nanoBatches).toEqual(cliBatches);
     expect(sortHashes(repo.shallow.read())).toEqual(sortHashes(readShallowFile(cliDir)));
+  });
+
+  test("merge-history source shallow 下完整 clone 后 repo.fetch({ deepen: 1 }) 会像 git CLI 一样保持双浅边界并发送相同 have", async () => {
+    await server.stop();
+    const history = await createMergeShallowSourceRepository(tempDir, {
+      repoName: "merge-shallow-source-deepen.git",
+      upstreamName: "merge-upstream-deepen.git",
+      workName: "merge-upstream-work-deepen",
+    });
+    server = startGitHttpBackendServer(tempDir, "/merge-shallow-source-deepen.git");
+
+    const cliDir = join(tempDir, "cli-merge-source-deepen");
+    const repo = initRepository(join(tempDir, "nano-merge-source-deepen"));
+
+    await gitWithTimeout(["-c", "protocol.version=2", "clone", server.url, cliDir], tempDir, 15000);
+    await repo.fetch(server.url);
+
+    expect(sortUniqueHashes(repo.shallow.read())).toEqual(
+      sortUniqueHashes(readShallowFile(cliDir)),
+    );
+    expect(sortHashes(repo.shallow.read())).toEqual(
+      sortHashes([history.topicBoundaryCommit, history.mainBoundaryCommit]),
+    );
+
+    server.clearRequests();
+    const nanoResult = await repo.fetch(server.url, { deepen: 1 });
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    await gitWithTimeout(
+      ["-c", "protocol.version=2", "fetch", "--deepen=1", "origin"],
+      cliDir,
+      15000,
+    );
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoResult.objectCount).toBe(0);
+    expect(nanoBatches).toEqual(cliBatches);
+    expect(nanoBatches).toEqual([
+      [
+        "command=fetch",
+        "object-format=sha1",
+        "thin-pack",
+        "no-progress",
+        "include-tag",
+        "ofs-delta",
+        `shallow ${history.topicBoundaryCommit}`,
+        `shallow ${history.mainBoundaryCommit}`,
+        "deepen 1",
+        "deepen-relative",
+        `want ${history.tipCommit}`,
+        `have ${history.tipCommit}`,
+        `have ${history.mergeCommit}`,
+        `have ${history.mainBoundaryCommit}`,
+        `have ${history.topicBoundaryCommit}`,
+      ],
+    ]);
+    expect(sortUniqueHashes(repo.shallow.read())).toEqual(
+      sortUniqueHashes(readShallowFile(cliDir)),
+    );
+    expect(sortHashes(repo.shallow.read())).toEqual(
+      sortHashes([history.topicBoundaryCommit, history.mainBoundaryCommit]),
+    );
+  });
+
+  test("merge-history source shallow 下完整 clone 后 repo.fetch({ unshallow: true }) 会像 git CLI 一样发送 deepen 2147483647 且保持双浅边界", async () => {
+    await server.stop();
+    const history = await createMergeShallowSourceRepository(tempDir, {
+      repoName: "merge-shallow-source-unshallow.git",
+      upstreamName: "merge-upstream-unshallow.git",
+      workName: "merge-upstream-work-unshallow",
+    });
+    server = startGitHttpBackendServer(tempDir, "/merge-shallow-source-unshallow.git");
+
+    const cliDir = join(tempDir, "cli-merge-source-unshallow");
+    const repo = initRepository(join(tempDir, "nano-merge-source-unshallow"));
+
+    await gitWithTimeout(["-c", "protocol.version=2", "clone", server.url, cliDir], tempDir, 15000);
+    await repo.fetch(server.url);
+
+    expect(sortUniqueHashes(repo.shallow.read())).toEqual(
+      sortUniqueHashes(readShallowFile(cliDir)),
+    );
+    expect(sortHashes(repo.shallow.read())).toEqual(
+      sortHashes([history.topicBoundaryCommit, history.mainBoundaryCommit]),
+    );
+
+    server.clearRequests();
+    const nanoResult = await repo.fetch(server.url, { unshallow: true });
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    await gitWithTimeout(
+      ["-c", "protocol.version=2", "fetch", "--unshallow", "origin"],
+      cliDir,
+      15000,
+    );
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoResult.objectCount).toBe(0);
+    expect(nanoBatches).toEqual(cliBatches);
+    expect(nanoBatches).toEqual([
+      [
+        "command=fetch",
+        "object-format=sha1",
+        "thin-pack",
+        "no-progress",
+        "include-tag",
+        "ofs-delta",
+        `shallow ${history.topicBoundaryCommit}`,
+        `shallow ${history.mainBoundaryCommit}`,
+        "deepen 2147483647",
+        `want ${history.tipCommit}`,
+        `have ${history.tipCommit}`,
+        `have ${history.mergeCommit}`,
+        `have ${history.mainBoundaryCommit}`,
+        `have ${history.topicBoundaryCommit}`,
+      ],
+    ]);
+    expect(sortUniqueHashes(repo.shallow.read())).toEqual(
+      sortUniqueHashes(readShallowFile(cliDir)),
+    );
+    expect(sortHashes(repo.shallow.read())).toEqual(
+      sortHashes([history.topicBoundaryCommit, history.mainBoundaryCommit]),
+    );
+  });
+
+  test("merge-history source shallow + annotated boundary tag 下 repo.fetch({ shallowExclude }) 会像 git CLI 一样拒绝且保持 tag/shallow 状态不变", async () => {
+    await server.stop();
+    const history = await createTaggedMergeShallowSourceRepository(tempDir, {
+      annotated: true,
+      repoName: "merge-tagged-shallow-source-exclude.git",
+      upstreamName: "merge-tagged-upstream-exclude.git",
+      workName: "merge-tagged-upstream-work-exclude",
+      tagName: "tag-boundary",
+      tagTarget: "topic-boundary",
+    });
+    server = startGitHttpBackendServer(tempDir, "/merge-tagged-shallow-source-exclude.git");
+
+    const cliDir = join(tempDir, "cli-merge-source-shallow-exclude");
+    const repo = initRepository(join(tempDir, "nano-merge-source-shallow-exclude"));
+
+    await gitWithTimeout(["-c", "protocol.version=2", "clone", server.url, cliDir], tempDir, 15000);
+    await repo.fetch(server.url);
+
+    expect(sortUniqueHashes(repo.shallow.read())).toEqual(
+      sortUniqueHashes(readShallowFile(cliDir)),
+    );
+    expect(sortHashes(repo.shallow.read())).toEqual(
+      sortHashes([history.topicBoundaryCommit, history.mainBoundaryCommit]),
+    );
+    expect(repo.refs.read("refs/tags/tag-boundary")).toBe(history.tagHash);
+
+    server.clearRequests();
+    const nanoFetch = repo.fetch(server.url, { shallowExclude: ["tag-boundary"] });
+    expect(nanoFetch).rejects.toBeInstanceOf(Error);
+    await Promise.allSettled([nanoFetch]);
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    const cliFetch = gitWithTimeout(
+      ["-c", "protocol.version=2", "fetch", "--shallow-exclude=tag-boundary", "origin"],
+      cliDir,
+      15000,
+    );
+    expect(cliFetch).rejects.toBeInstanceOf(Error);
+    await Promise.allSettled([cliFetch]);
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoBatches).toEqual(cliBatches);
+    expect(nanoBatches).toEqual([
+      [
+        "command=fetch",
+        "object-format=sha1",
+        "thin-pack",
+        "no-progress",
+        "include-tag",
+        "ofs-delta",
+        `shallow ${history.topicBoundaryCommit}`,
+        `shallow ${history.mainBoundaryCommit}`,
+        "deepen-not tag-boundary",
+        `want ${history.tipCommit}`,
+        `have ${history.tipCommit}`,
+        `have ${history.topicBoundaryCommit}`,
+        `have ${history.mergeCommit}`,
+        `have ${history.mainBoundaryCommit}`,
+      ],
+    ]);
+    expect(repo.refs.read("refs/tags/tag-boundary")).toBe(history.tagHash);
+    expect(sortUniqueHashes(repo.shallow.read())).toEqual(
+      sortUniqueHashes(readShallowFile(cliDir)),
+    );
+    expect(sortHashes(repo.shallow.read())).toEqual(
+      sortHashes([history.topicBoundaryCommit, history.mainBoundaryCommit]),
+    );
   });
 
   test("source shallow 下显式 branch-only refPatterns 的初始 full fetch 会像 bare git CLI 一样拒绝且不落地 refs", async () => {
@@ -2948,6 +3299,108 @@ describe("Import Session", () => {
     expect(repo.shallow.read()).toEqual([]);
     expect(git(["--git-dir", bareCliDir, "for-each-ref", "--format=%(refname)"], tempDir)).toBe("");
     expect(readBareShallowFile(bareCliDir)).toEqual([]);
+  });
+
+  test("source shallow 下显式 branch-only refSpecs 的 depth=1 初始 fetch 与 deepen follow-up 会像 bare git CLI 一样成功并推进 shallow 边界", async () => {
+    await server.stop();
+    const history = await createShallowSourceRepository(tempDir, {
+      repoName: "plain-shallow-source-branch-only-refspec-depth1.git",
+      upstreamName: "plain-upstream-branch-only-refspec-depth1.git",
+      workName: "plain-upstream-work-branch-only-refspec-depth1",
+    });
+    server = startGitHttpBackendServer(
+      tempDir,
+      "/plain-shallow-source-branch-only-refspec-depth1.git",
+    );
+
+    const bareCliDir = join(tempDir, "cli-source-branch-only-refspec-depth1.git");
+    const repo = initRepository(join(tempDir, "nano-source-branch-only-refspec-depth1.git"));
+    const refSpecs = ["refs/heads/*:refs/heads/*"];
+
+    git(["init", "--bare", bareCliDir], tempDir);
+    git(["--git-dir", bareCliDir, "remote", "add", "origin", server.url], tempDir);
+
+    server.clearRequests();
+    const nanoInitialResult = await repo.fetch(server.url, { refSpecs, depth: 1 });
+    const nanoInitialBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    await gitWithTimeout(
+      [
+        "--git-dir",
+        bareCliDir,
+        "-c",
+        "protocol.version=2",
+        "fetch",
+        "--depth=1",
+        "origin",
+        ...refSpecs,
+      ],
+      tempDir,
+      15000,
+    );
+    const cliInitialBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoInitialResult.objectCount).toBeGreaterThanOrEqual(0);
+    expect(nanoInitialBatches).toEqual(cliInitialBatches);
+    expect(nanoInitialBatches).toEqual([
+      [
+        "command=fetch",
+        "object-format=sha1",
+        "thin-pack",
+        "no-progress",
+        "include-tag",
+        "ofs-delta",
+        "deepen 1",
+        `want ${history.tipCommit}`,
+        "done",
+      ],
+    ]);
+    expect(repo.readBranch("main") === history.tipCommit).toBe(true);
+    expect(sortHashes(repo.shallow.read())).toEqual(sortHashes(readBareShallowFile(bareCliDir)));
+    expect(sortHashes(repo.shallow.read())).toEqual(sortHashes([history.tipCommit]));
+
+    server.clearRequests();
+    const nanoFollowupResult = await repo.fetch(server.url, { refSpecs, deepen: 1 });
+    const nanoFollowupBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    await gitWithTimeout(
+      [
+        "--git-dir",
+        bareCliDir,
+        "-c",
+        "protocol.version=2",
+        "fetch",
+        "--deepen=1",
+        "origin",
+        ...refSpecs,
+      ],
+      tempDir,
+      15000,
+    );
+    const cliFollowupBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoFollowupResult.objectCount).toBeGreaterThanOrEqual(0);
+    expect(nanoFollowupBatches).toEqual(cliFollowupBatches);
+    expect(nanoFollowupBatches).toEqual([
+      [
+        "command=fetch",
+        "object-format=sha1",
+        "thin-pack",
+        "no-progress",
+        "include-tag",
+        "ofs-delta",
+        `shallow ${history.tipCommit}`,
+        "deepen 1",
+        "deepen-relative",
+        `want ${history.tipCommit}`,
+        `have ${history.tipCommit}`,
+      ],
+    ]);
+    expect(repo.readBranch("main") === history.tipCommit).toBe(true);
+    expect(sortHashes(repo.shallow.read())).toEqual(sortHashes(readBareShallowFile(bareCliDir)));
+    expect(sortHashes(repo.shallow.read())).toEqual(sortHashes([history.sourceBoundaryCommit]));
   });
 
   test("source shallow 下显式 exact branch refPattern 的初始 full fetch 会像 bare git CLI 一样拒绝且不落地 refs", async () => {
@@ -3033,6 +3486,69 @@ describe("Import Session", () => {
     expect(readBareShallowFile(bareCliDir)).toEqual([]);
   });
 
+  test("source shallow 下显式 custom namespace refSpec 的 unshallow follow-up 会像 bare git CLI 一样直接拒绝且不发请求", async () => {
+    await server.stop();
+    await createShallowSourceRepository(tempDir, {
+      repoName: "plain-shallow-source-custom-ns-unshallow.git",
+      upstreamName: "plain-upstream-custom-ns-unshallow.git",
+      workName: "plain-upstream-work-custom-ns-unshallow",
+    });
+    server = startGitHttpBackendServer(tempDir, "/plain-shallow-source-custom-ns-unshallow.git");
+
+    const bareCliDir = join(tempDir, "cli-source-custom-ns-unshallow.git");
+    const repo = initRepository(join(tempDir, "nano-source-custom-ns-unshallow.git"));
+    const refSpecs = ["refs/heads/main:refs/remotes/origin/main"];
+
+    git(["init", "--bare", bareCliDir], tempDir);
+    git(["--git-dir", bareCliDir, "remote", "add", "origin", server.url], tempDir);
+
+    await repo.fetch(server.url, { refSpecs });
+    await gitWithTimeout(
+      ["--git-dir", bareCliDir, "-c", "protocol.version=2", "fetch", "origin", ...refSpecs],
+      tempDir,
+      15000,
+    );
+
+    expect(repo.refs.read("refs/remotes/origin/main")).toBeNull();
+    expect(repo.shallow.read()).toEqual([]);
+    expect(git(["--git-dir", bareCliDir, "for-each-ref", "--format=%(refname)"], tempDir)).toBe("");
+    expect(readBareShallowFile(bareCliDir)).toEqual([]);
+
+    server.clearRequests();
+    const nanoResult = await Promise.allSettled([
+      repo.fetch(server.url, { refSpecs, unshallow: true }),
+    ]);
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    const cliResult = await Promise.allSettled([
+      gitWithTimeout(
+        [
+          "--git-dir",
+          bareCliDir,
+          "-c",
+          "protocol.version=2",
+          "fetch",
+          "--unshallow",
+          "origin",
+          ...refSpecs,
+        ],
+        tempDir,
+        15000,
+      ),
+    ]);
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoResult[0]?.status).toBe("rejected");
+    expect(cliResult[0]?.status).toBe("rejected");
+    expect(nanoBatches).toEqual([]);
+    expect(cliBatches).toEqual([]);
+    expect(repo.refs.read("refs/remotes/origin/main")).toBeNull();
+    expect(repo.shallow.read()).toEqual([]);
+    expect(git(["--git-dir", bareCliDir, "for-each-ref", "--format=%(refname)"], tempDir)).toBe("");
+    expect(readBareShallowFile(bareCliDir)).toEqual([]);
+  });
+
   test("source shallow + annotated boundary tag 下显式 tag-only refPatterns 的 shallow-since follow-up 会像 bare git CLI 一样拒绝且不落地 tag", async () => {
     await server.stop();
     await createTaggedShallowSourceRepository(tempDir, {
@@ -3104,6 +3620,91 @@ describe("Import Session", () => {
       git(["--git-dir", bareCliDir, "for-each-ref", "--format=%(refname)", "refs/tags"], tempDir),
     ).toBe("");
     expect(readBareShallowFile(bareCliDir)).toEqual([]);
+  });
+
+  test("source shallow + annotated boundary tag 下显式 tag-only refSpecs 的 shallow-exclude follow-up 会像 bare git CLI 一样拒绝且保持 tag/shallow 状态不变", async () => {
+    await server.stop();
+    const history = await createTaggedShallowSourceRepository(tempDir, {
+      annotated: true,
+      repoName: "annotated-tagged-source-tag-only-refspec.git",
+      upstreamName: "annotated-tagged-upstream-tag-only-refspec.git",
+      workName: "annotated-tagged-upstream-work-tag-only-refspec",
+      tagName: "tag-boundary",
+    });
+    server = startGitHttpBackendServer(tempDir, "/annotated-tagged-source-tag-only-refspec.git");
+
+    const bareCliDir = join(tempDir, "cli-source-tag-only-refspec.git");
+    const nanoDir = join(tempDir, "nano-source-tag-only-refspec.git");
+    const repo = initRepository(nanoDir);
+    const refSpecs = ["refs/tags/*:refs/tags/*"];
+
+    git(["init", "--bare", bareCliDir], tempDir);
+    git(["--git-dir", bareCliDir, "remote", "add", "origin", server.url], tempDir);
+
+    await repo.fetch(server.url, { refSpecs, depth: 1 });
+    await gitWithTimeout(
+      [
+        "--git-dir",
+        bareCliDir,
+        "-c",
+        "protocol.version=2",
+        "fetch",
+        "--depth=1",
+        "origin",
+        ...refSpecs,
+      ],
+      tempDir,
+      15000,
+    );
+
+    const tagHash = repo.refs.read("refs/tags/tag-boundary");
+    expect(tagHash).not.toBeNull();
+    expect(sortHashes(repo.shallow.read())).toEqual(sortHashes(readBareShallowFile(bareCliDir)));
+    expect(sortHashes(repo.shallow.read())).toEqual(sortHashes([history.sourceBoundaryCommit]));
+
+    server.clearRequests();
+    const nanoFetch = repo.fetch(server.url, { refSpecs, shallowExclude: ["tag-boundary"] });
+    expect(nanoFetch).rejects.toBeInstanceOf(Error);
+    await Promise.allSettled([nanoFetch]);
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    const cliFetch = gitWithTimeout(
+      [
+        "--git-dir",
+        bareCliDir,
+        "-c",
+        "protocol.version=2",
+        "fetch",
+        "--shallow-exclude=tag-boundary",
+        "origin",
+        ...refSpecs,
+      ],
+      tempDir,
+      15000,
+    );
+    expect(cliFetch).rejects.toBeInstanceOf(Error);
+    await Promise.allSettled([cliFetch]);
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoBatches).toEqual(cliBatches);
+    expect(nanoBatches).toEqual([
+      [
+        "command=fetch",
+        "object-format=sha1",
+        "thin-pack",
+        "no-progress",
+        "include-tag",
+        "ofs-delta",
+        `shallow ${history.sourceBoundaryCommit}`,
+        "deepen-not tag-boundary",
+        `want ${tagHash}`,
+        `have ${history.sourceBoundaryCommit}`,
+      ],
+    ]);
+    expect(repo.refs.read("refs/tags/tag-boundary")).toBe(tagHash);
+    expect(sortHashes(repo.shallow.read())).toEqual(sortHashes(readBareShallowFile(bareCliDir)));
+    expect(sortHashes(repo.shallow.read())).toEqual(sortHashes([history.sourceBoundaryCommit]));
   });
 
   test("source shallow + noTags + 显式 tag-only refPatterns 的初始 full fetch 会像 bare git CLI 一样成功但不落地 tag", async () => {

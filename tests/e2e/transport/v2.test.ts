@@ -1127,6 +1127,43 @@ describe("v2 协议 - git-http-backend ready cut-point", () => {
     expect(parsed.packfile).toBeDefined();
     expect(mainCommitHash).not.toBe(featureCommitHash);
   });
+
+  test("同一轮 have 的祖先/后代顺序只影响 ACK 去冗余形态，不影响 ready 与 packfile 结果", async () => {
+    async function requestWithHaves(haves: readonly string[]) {
+      const body = Buffer.concat([
+        encodePktLine("command=fetch\n"),
+        encodePktLine("agent=nano-git-test\n"),
+        encodePktLine("object-format=sha1\n"),
+        encodeDelimiterPkt(),
+        encodePktLine(`want ${latestMainCommitHash}\n`),
+        ...haves.map((have) => encodePktLine(`have ${have}\n`)),
+        encodeFlushPkt(),
+      ]);
+
+      const response = await fetch(`${url}/git-upload-pack`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/x-git-upload-pack-request",
+          "git-protocol": "version=2",
+        },
+        body,
+      });
+
+      expect(response.status).toBe(200);
+      return parseV2FetchResponse(Buffer.from(await response.arrayBuffer()), false, false);
+    }
+
+    const ancestorFirst = await requestWithHaves([mainCommitHash, latestMainCommitHash]);
+    const descendantFirst = await requestWithHaves([latestMainCommitHash, mainCommitHash]);
+
+    expect(ancestorFirst.acknowledgments?.acks).toEqual([mainCommitHash, latestMainCommitHash]);
+    expect(descendantFirst.acknowledgments?.acks).toEqual([latestMainCommitHash]);
+
+    expect(ancestorFirst.acknowledgments?.ready).toBe(true);
+    expect(descendantFirst.acknowledgments?.ready).toBe(true);
+    expect(ancestorFirst.packfile).toBeDefined();
+    expect(descendantFirst.packfile).toBeDefined();
+  });
 });
 
 describe("v2 协议 - ready cut-point 端到端协商", () => {
