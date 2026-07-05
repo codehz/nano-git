@@ -314,6 +314,16 @@ export interface ImportPrepareOptions {
   readonly includeAdvertisementHeadInKnownCommon?: boolean;
 
   /**
+   * source-shallow 远端的 ref 更新对齐策略
+   *
+   * 默认允许将远端 shallow 边界写入本地；
+   * `git-fetch-explicit` 更贴近官方 `git fetch <refspec>`，
+   * 会在“本地当前不是 shallow、且本次也不是显式 shallow 请求”时，
+   * 拒绝依赖新增 shallow roots 的 ref 更新。
+   */
+  readonly sourceShallowRefUpdateMode?: "git-fetch-explicit";
+
+  /**
    * 目标绝对深度（对标 `git fetch --depth=<n>`）
    *
    * 含义是“从远端 tip 起保留 n 层历史”。

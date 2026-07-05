@@ -1984,6 +1984,209 @@ describe("Import Session", () => {
     expect(sortHashes(repo.shallow.read())).toEqual(sortHashes(readShallowFile(cliDir)));
   });
 
+  test("source shallow 下显式 branch-only refPatterns 的初始 full fetch 会像 bare git CLI 一样拒绝且不落地 refs", async () => {
+    await server.stop();
+    await createShallowSourceRepository(tempDir, {
+      repoName: "plain-shallow-source-branch-only.git",
+      upstreamName: "plain-upstream-branch-only.git",
+      workName: "plain-upstream-work-branch-only",
+    });
+    server = startGitHttpBackendServer(tempDir, "/plain-shallow-source-branch-only.git");
+
+    const bareCliDir = join(tempDir, "cli-source-branch-only.git");
+    const repo = initRepository(join(tempDir, "nano-source-branch-only.git"));
+    const refPatterns = ["refs/heads/*"];
+
+    git(["init", "--bare", bareCliDir], tempDir);
+    git(["--git-dir", bareCliDir, "remote", "add", "origin", server.url], tempDir);
+
+    server.clearRequests();
+    const nanoFetch = repo.fetch(server.url, { refPatterns });
+    expect(nanoFetch).rejects.toBeInstanceOf(Error);
+    await Promise.allSettled([nanoFetch]);
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    const cliFetch = gitWithTimeout(
+      [
+        "--git-dir",
+        bareCliDir,
+        "-c",
+        "protocol.version=2",
+        "fetch",
+        "origin",
+        "refs/heads/*:refs/heads/*",
+      ],
+      tempDir,
+      15000,
+    );
+    expect(cliFetch).rejects.toBeInstanceOf(Error);
+    await Promise.allSettled([cliFetch]);
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoBatches).toEqual(cliBatches);
+    expect(repo.readBranch("main")).toBeNull();
+    expect(repo.shallow.read()).toEqual([]);
+    expect(git(["--git-dir", bareCliDir, "for-each-ref", "--format=%(refname)"], tempDir)).toBe("");
+    expect(readBareShallowFile(bareCliDir)).toEqual([]);
+  });
+
+  test("source shallow 下显式 exact branch refPattern 的初始 full fetch 会像 bare git CLI 一样拒绝且不落地 refs", async () => {
+    await server.stop();
+    await createShallowSourceRepository(tempDir, {
+      repoName: "plain-shallow-source-exact-branch.git",
+      upstreamName: "plain-upstream-exact-branch.git",
+      workName: "plain-upstream-work-exact-branch",
+    });
+    server = startGitHttpBackendServer(tempDir, "/plain-shallow-source-exact-branch.git");
+
+    const bareCliDir = join(tempDir, "cli-source-exact-branch.git");
+    const repo = initRepository(join(tempDir, "nano-source-exact-branch.git"));
+    const refPatterns = ["refs/heads/main"];
+
+    git(["init", "--bare", bareCliDir], tempDir);
+    git(["--git-dir", bareCliDir, "remote", "add", "origin", server.url], tempDir);
+
+    server.clearRequests();
+    const nanoFetch = repo.fetch(server.url, { refPatterns });
+    expect(nanoFetch).rejects.toBeInstanceOf(Error);
+    await Promise.allSettled([nanoFetch]);
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    const cliFetch = gitWithTimeout(
+      [
+        "--git-dir",
+        bareCliDir,
+        "-c",
+        "protocol.version=2",
+        "fetch",
+        "origin",
+        "refs/heads/main:refs/heads/main",
+      ],
+      tempDir,
+      15000,
+    );
+    expect(cliFetch).rejects.toBeInstanceOf(Error);
+    await Promise.allSettled([cliFetch]);
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoBatches).toEqual(cliBatches);
+    expect(repo.readBranch("main")).toBeNull();
+    expect(repo.shallow.read()).toEqual([]);
+    expect(git(["--git-dir", bareCliDir, "for-each-ref", "--format=%(refname)"], tempDir)).toBe("");
+    expect(readBareShallowFile(bareCliDir)).toEqual([]);
+  });
+
+  test("source shallow 下显式 custom namespace refSpec 的初始 full fetch 会像 bare git CLI 一样成功但跳过 ref 更新", async () => {
+    await server.stop();
+    await createShallowSourceRepository(tempDir, {
+      repoName: "plain-shallow-source-custom-ns.git",
+      upstreamName: "plain-upstream-custom-ns.git",
+      workName: "plain-upstream-work-custom-ns",
+    });
+    server = startGitHttpBackendServer(tempDir, "/plain-shallow-source-custom-ns.git");
+
+    const bareCliDir = join(tempDir, "cli-source-custom-ns.git");
+    const repo = initRepository(join(tempDir, "nano-source-custom-ns.git"));
+    const refSpecs = ["refs/heads/main:refs/remotes/origin/main"];
+
+    git(["init", "--bare", bareCliDir], tempDir);
+    git(["--git-dir", bareCliDir, "remote", "add", "origin", server.url], tempDir);
+
+    server.clearRequests();
+    const nanoResult = await repo.fetch(server.url, { refSpecs });
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    await gitWithTimeout(
+      ["--git-dir", bareCliDir, "-c", "protocol.version=2", "fetch", "origin", ...refSpecs],
+      tempDir,
+      15000,
+    );
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoResult.objectCount).toBeGreaterThanOrEqual(0);
+    expect(nanoBatches).toEqual(cliBatches);
+    expect(repo.refs.read("refs/remotes/origin/main")).toBeNull();
+    expect(repo.shallow.read()).toEqual([]);
+    expect(git(["--git-dir", bareCliDir, "for-each-ref", "--format=%(refname)"], tempDir)).toBe("");
+    expect(readBareShallowFile(bareCliDir)).toEqual([]);
+  });
+
+  test("source shallow + annotated boundary tag 下显式 tag-only refPatterns 的 shallow-since follow-up 会像 bare git CLI 一样拒绝且不落地 tag", async () => {
+    await server.stop();
+    await createTaggedShallowSourceRepository(tempDir, {
+      annotated: true,
+      repoName: "annotated-tagged-source-tag-only.git",
+      upstreamName: "annotated-tagged-upstream-tag-only.git",
+      workName: "annotated-tagged-upstream-work-tag-only",
+      tagName: "tag-boundary",
+    });
+    server = startGitHttpBackendServer(tempDir, "/annotated-tagged-source-tag-only.git");
+
+    const bareCliDir = join(tempDir, "cli-source-tag-only.git");
+    const nanoDir = join(tempDir, "nano-source-tag-only.git");
+    const repo = initRepository(nanoDir);
+    const refPatterns = ["refs/tags/*"];
+
+    git(["init", "--bare", bareCliDir], tempDir);
+    git(["--git-dir", bareCliDir, "remote", "add", "origin", server.url], tempDir);
+
+    await repo.fetch(server.url, { refPatterns });
+    await gitWithTimeout(
+      [
+        "--git-dir",
+        bareCliDir,
+        "-c",
+        "protocol.version=2",
+        "fetch",
+        "origin",
+        "refs/tags/*:refs/tags/*",
+      ],
+      tempDir,
+      15000,
+    );
+
+    expect(repo.refs.list("refs/tags/")).toEqual([]);
+    expect(
+      git(["--git-dir", bareCliDir, "for-each-ref", "--format=%(refname)", "refs/tags"], tempDir),
+    ).toBe("");
+
+    server.clearRequests();
+    const nanoFetch = repo.fetch(server.url, { refPatterns, shallowSince: 0 });
+    expect(nanoFetch).rejects.toBeInstanceOf(Error);
+    await Promise.allSettled([nanoFetch]);
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    const cliFetch = gitWithTimeout(
+      [
+        "--git-dir",
+        bareCliDir,
+        "-c",
+        "protocol.version=2",
+        "fetch",
+        "--shallow-since=1970-01-01T00:00:00Z",
+        "origin",
+        "refs/tags/*:refs/tags/*",
+      ],
+      tempDir,
+      15000,
+    );
+    expect(cliFetch).rejects.toBeInstanceOf(Error);
+    await Promise.allSettled([cliFetch]);
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoBatches).toEqual(cliBatches);
+    expect(repo.refs.list("refs/tags/")).toEqual([]);
+    expect(repo.shallow.read()).toEqual([]);
+    expect(
+      git(["--git-dir", bareCliDir, "for-each-ref", "--format=%(refname)", "refs/tags"], tempDir),
+    ).toBe("");
+    expect(readBareShallowFile(bareCliDir)).toEqual([]);
+  });
+
   test("远端分支可镜像到自定义命名空间", async () => {
     git(["checkout", "-b", "feature"], workDir);
     createFile(workDir, "feature.txt", "feature branch\n");

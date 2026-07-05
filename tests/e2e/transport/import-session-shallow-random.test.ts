@@ -224,4 +224,60 @@ describe("Import Session - source-shallow 随机 git CLI 对照", () => {
       strictInitialState: true,
     });
   });
+
+  test("source-shallow 下显式 branch-only refPatterns 的初始 full fetch 拒绝行为与 bare git CLI 一致", async () => {
+    await runRandomImportSessionSourceShallowSeeds([281, 307, 331], {
+      fetchMode: "branchOnlyPatterns",
+      followupOperation: "depth1",
+      initialMode: "full",
+      strictInitialState: true,
+    });
+  });
+
+  test("source-shallow 下显式 branch-only refSpecs 的 deepen follow-up 行为与 bare git CLI 一致", async () => {
+    await runRandomImportSessionSourceShallowSeeds([293, 317, 347], {
+      fetchMode: "branchOnlyRefSpecs",
+      followupOperation: "deepen",
+      initialMode: "depth1",
+      strictInitialState: true,
+    });
+  });
+
+  test("source-shallow 下显式 tag-only refPatterns 的 shallow-since reject 行为与 bare git CLI 一致", async () => {
+    await runRandomImportSessionSourceShallowSeeds([353, 373, 389], {
+      boundaryTagMode: "annotated",
+      fetchMode: "tagOnlyPatterns",
+      followupOperation: "shallowSinceReject",
+      initialMode: "full",
+      strictInitialState: true,
+    });
+  });
+
+  test("source-shallow 下显式 tag-only refSpecs 的 boundary tag shallow-exclude 行为与 bare git CLI 一致", async () => {
+    await runRandomImportSessionSourceShallowSeeds([367, 383, 401], {
+      boundaryTagMode: "annotated",
+      fetchMode: "tagOnlyRefSpecs",
+      followupOperation: "shallowExcludeTag",
+      initialMode: "depth1",
+      strictInitialState: true,
+    });
+  });
+
+  test("source-shallow 下显式 exact-branch refPattern 的初始 full fetch 拒绝行为与 bare git CLI 一致", async () => {
+    await runRandomImportSessionSourceShallowSeeds([419, 433, 449], {
+      fetchMode: "exactBranchPattern",
+      followupOperation: "depth1",
+      initialMode: "full",
+      strictInitialState: true,
+    });
+  });
+
+  test("source-shallow 下显式 custom namespace refSpec 的 unshallow 行为与 bare git CLI 一致", async () => {
+    await runRandomImportSessionSourceShallowSeeds([467, 479, 491], {
+      fetchMode: "customNamespaceRefSpec",
+      followupOperation: "unshallow",
+      initialMode: "full",
+      strictInitialState: true,
+    });
+  });
 });

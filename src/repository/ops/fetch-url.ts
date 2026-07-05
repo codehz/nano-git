@@ -126,6 +126,7 @@ function createImportPrepareOptions(
   replayKnownCommonInFirstRound = false,
   disableKnownCommonRefHints = false,
   includeAdvertisementHeadInKnownCommon = true,
+  enforceGitFetchSourceShallowRefRules = false,
 ): ImportPrepareOptions | undefined {
   if (
     options?.noTags !== true &&
@@ -138,6 +139,7 @@ function createImportPrepareOptions(
     replayKnownCommonInFirstRound !== true &&
     disableKnownCommonRefHints !== true &&
     includeAdvertisementHeadInKnownCommon !== false &&
+    enforceGitFetchSourceShallowRefRules !== true &&
     options?.depth === undefined &&
     options?.deepen === undefined &&
     options?.shallowSince === undefined &&
@@ -160,6 +162,9 @@ function createImportPrepareOptions(
     disableKnownCommonRefHints: disableKnownCommonRefHints || undefined,
     includeAdvertisementHeadInKnownCommon:
       includeAdvertisementHeadInKnownCommon === false ? false : undefined,
+    sourceShallowRefUpdateMode: enforceGitFetchSourceShallowRefRules
+      ? "git-fetch-explicit"
+      : undefined,
     depth: options?.depth,
     deepen: options?.deepen,
     shallowSince: options?.shallowSince,
@@ -305,6 +310,7 @@ async function applyDefaultMapping(
           false,
           false,
           options?.refPatterns !== undefined ? false : true,
+          options?.refPatterns !== undefined,
         ),
       )
   ).apply();
@@ -331,6 +337,7 @@ async function applyDefaultMapping(
           false,
           false,
           options?.refPatterns !== undefined ? false : true,
+          options?.refPatterns !== undefined,
         ),
       )
   ).apply();
@@ -366,6 +373,7 @@ async function applyDefaultRefProjection(
     replayKnownCommonInFirstRound,
     disableKnownCommonRefHints,
     includeAdvertisementHeadInKnownCommon,
+    options?.refPatterns !== undefined,
   );
 
   // 所有远端分支 → refs/heads/*（fast-forward）
@@ -440,11 +448,16 @@ async function applyCustomRefSpecs(
     false,
     false,
     false,
+    true,
   );
   const prepared = await plan.build().prepare(prepareOptions);
   if (prepared.preview.canApply) {
     const result = await prepared.apply();
-    if (!shouldFollowImplicitTags || !tagRefs) {
+    if (
+      !shouldFollowImplicitTags ||
+      !tagRefs ||
+      previewHasSourceShallowRefRejection(prepared.preview)
+    ) {
       return convertToFetchResult(result);
     }
 
@@ -616,4 +629,10 @@ function mergeFetchResults(
     objectCount: primary.objectCount + secondary.objectCount,
     progress: [...primary.progress, ...secondary.progress],
   };
+}
+
+function previewHasSourceShallowRefRejection(preview: ImportPreparedPreview): boolean {
+  return preview.diagnostics.some((diagnostic) =>
+    diagnostic.message.includes("source-shallow 拒绝更新"),
+  );
 }

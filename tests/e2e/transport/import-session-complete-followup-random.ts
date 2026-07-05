@@ -34,10 +34,19 @@ type RandomFollowupOperation =
   | "shallowExcludeOidReject"
   | "unshallowReject";
 type RandomHistoryShape = "linear" | "merge";
+type RandomFetchMode =
+  | "default"
+  | "branchOnlyPatterns"
+  | "branchOnlyRefSpecs"
+  | "tagOnlyPatterns"
+  | "tagOnlyRefSpecs"
+  | "exactBranchPattern"
+  | "customNamespaceRefSpec";
 
 interface RandomCompleteFollowupCliComparisonOptions {
   readonly followupOperation?: RandomFollowupOperation;
   readonly historyShape?: RandomHistoryShape;
+  readonly fetchMode?: RandomFetchMode;
   readonly strictInitialState?: boolean;
 }
 
@@ -45,6 +54,7 @@ interface RepositorySnapshot {
   readonly shallow: readonly string[];
   readonly tags: readonly string[];
   readonly main: string | null;
+  readonly refs: readonly string[];
 }
 
 interface RandomCompleteFollowupCliComparisonResult {
@@ -53,6 +63,7 @@ interface RandomCompleteFollowupCliComparisonResult {
   readonly mismatchPhase?: "initial" | "followup";
   readonly followupOperation: RandomFollowupOperation;
   readonly historyShape: RandomHistoryShape;
+  readonly fetchMode: RandomFetchMode;
   readonly historyLength: number;
   readonly tipCommit: string;
   readonly nanoBatches: string[][];
@@ -69,6 +80,13 @@ interface RandomCompleteFollowupCliComparisonResult {
 const FUTURE_SHALLOW_SINCE_SAMPLES = [
   4_102_444_800, 4_102_444_801, 4_102_448_400, 4_102_531_200, 4_294_967_295, 4_294_967_296,
 ] as const;
+const BRANCH_ONLY_PATTERNS = ["refs/heads/*"] as const;
+const BRANCH_ONLY_REFSPECS = ["refs/heads/*:refs/heads/*"] as const;
+const TAG_ONLY_PATTERNS = ["refs/tags/*"] as const;
+const TAG_ONLY_REFSPECS = ["refs/tags/*:refs/tags/*"] as const;
+const EXACT_BRANCH_PATTERNS = ["refs/heads/main"] as const;
+const EXACT_BRANCH_REFSPECS = ["refs/heads/main:refs/heads/main"] as const;
+const CUSTOM_NAMESPACE_REFSPECS = ["refs/heads/main:refs/remotes/origin/main"] as const;
 
 function createSeededRandom(seed: number): () => number {
   let state = seed >>> 0;
@@ -92,6 +110,7 @@ function parseSeedArguments(args: readonly string[]): {
   const options: {
     followupOperation?: RandomFollowupOperation;
     historyShape?: RandomHistoryShape;
+    fetchMode?: RandomFetchMode;
     strictInitialState?: boolean;
   } = {};
 
@@ -130,6 +149,30 @@ function parseSeedArguments(args: readonly string[]): {
     }
     if (arg === "--merge-history") {
       options.historyShape = "merge";
+      continue;
+    }
+    if (arg === "--branch-only-patterns") {
+      options.fetchMode = "branchOnlyPatterns";
+      continue;
+    }
+    if (arg === "--branch-only-refspecs") {
+      options.fetchMode = "branchOnlyRefSpecs";
+      continue;
+    }
+    if (arg === "--tag-only-patterns") {
+      options.fetchMode = "tagOnlyPatterns";
+      continue;
+    }
+    if (arg === "--tag-only-refspecs") {
+      options.fetchMode = "tagOnlyRefSpecs";
+      continue;
+    }
+    if (arg === "--exact-branch-pattern") {
+      options.fetchMode = "exactBranchPattern";
+      continue;
+    }
+    if (arg === "--custom-namespace-refspec") {
+      options.fetchMode = "customNamespaceRefSpec";
       continue;
     }
     if (arg === "--strict-initial-state") {
@@ -177,6 +220,15 @@ function readCliShallowSync(workDir: string): string[] {
   return content.length === 0 ? [] : content.split(/\n+/);
 }
 
+function readBareShallowSync(gitDir: string): string[] {
+  const shallowPath = join(gitDir, "shallow");
+  if (!existsSync(shallowPath)) {
+    return [];
+  }
+  const content = readFileSync(shallowPath, "utf-8").trim();
+  return content.length === 0 ? [] : content.split(/\n+/);
+}
+
 function readBareTagNames(gitDir: string, cwd: string): string[] {
   const output = git(
     ["--git-dir", gitDir, "for-each-ref", "--format=%(refname)", "refs/tags"],
@@ -185,8 +237,24 @@ function readBareTagNames(gitDir: string, cwd: string): string[] {
   return output.length === 0 ? [] : output.split(/\n+/);
 }
 
+function readBareRefEntries(gitDir: string, cwd: string): string[] {
+  const output = git(
+    ["--git-dir", gitDir, "for-each-ref", "--format=%(objectname) %(refname)"],
+    cwd,
+  );
+  return output.length === 0 ? [] : output.split(/\n+/);
+}
+
 function readWorktreeTagNames(workDir: string): string[] {
   const output = git(["tag", "-l", "--format=%(refname)"], workDir);
+  return output.length === 0 ? [] : output.split(/\n+/);
+}
+
+function readWorktreeRefEntries(workDir: string): string[] {
+  const output = git(
+    ["--git-dir", join(workDir, ".git"), "for-each-ref", "--format=%(objectname) %(refname)"],
+    workDir,
+  );
   return output.length === 0 ? [] : output.split(/\n+/);
 }
 
@@ -212,6 +280,7 @@ function snapshotNanoRepository(
     shallow: sortStrings(repo.shallow.read()),
     tags: sortStrings(readBareTagNames(gitDir, cwd)),
     main: repo.readBranch("main"),
+    refs: sortStrings(readBareRefEntries(gitDir, cwd)),
   };
 }
 
@@ -220,15 +289,141 @@ function snapshotCliRepository(workDir: string): RepositorySnapshot {
     shallow: sortStrings(readCliShallowSync(workDir)),
     tags: sortStrings(readWorktreeTagNames(workDir)),
     main: gitRevParse(workDir, "HEAD"),
+    refs: sortStrings(readWorktreeRefEntries(workDir)),
   };
 }
 
-function sameComparableSnapshot(left: RepositorySnapshot, right: RepositorySnapshot): boolean {
+function snapshotCliBareRepository(gitDir: string, cwd: string): RepositorySnapshot {
+  const refs = sortStrings(readBareRefEntries(gitDir, cwd));
+  const mainEntry = refs.find((line) => line.endsWith(" refs/heads/main"));
+  return {
+    shallow: sortStrings(readBareShallowSync(gitDir)),
+    tags: sortStrings(readBareTagNames(gitDir, cwd)),
+    main: mainEntry?.split(" ")[0] ?? null,
+    refs,
+  };
+}
+
+function usesBareCliRepo(fetchMode: RandomFetchMode): boolean {
+  return fetchMode !== "default";
+}
+
+function getComparableRefsForFetchMode(
+  refs: readonly string[],
+  fetchMode: RandomFetchMode,
+): readonly string[] {
+  switch (fetchMode) {
+    case "branchOnlyPatterns":
+    case "branchOnlyRefSpecs":
+    case "exactBranchPattern":
+      return refs.filter((line) => line.includes(" refs/heads/") || line.includes(" refs/tags/"));
+    case "tagOnlyPatterns":
+    case "tagOnlyRefSpecs":
+      return refs.filter((line) => line.includes(" refs/tags/"));
+    case "customNamespaceRefSpec":
+      return refs.filter(
+        (line) => line.includes(" refs/remotes/origin/") || line.includes(" refs/tags/"),
+      );
+    default:
+      return refs;
+  }
+}
+
+function sameComparableSnapshot(
+  left: RepositorySnapshot,
+  right: RepositorySnapshot,
+  fetchMode: RandomFetchMode,
+): boolean {
+  if (usesBareCliRepo(fetchMode)) {
+    return (
+      JSON.stringify(left.shallow) === JSON.stringify(right.shallow) &&
+      JSON.stringify(left.tags) === JSON.stringify(right.tags) &&
+      JSON.stringify(getComparableRefsForFetchMode(left.refs, fetchMode)) ===
+        JSON.stringify(getComparableRefsForFetchMode(right.refs, fetchMode))
+    );
+  }
+
   return (
     JSON.stringify(left.shallow) === JSON.stringify(right.shallow) &&
     left.main === right.main &&
     JSON.stringify(left.tags) === JSON.stringify(right.tags)
   );
+}
+
+function getFetchModePatterns(fetchMode: RandomFetchMode): readonly string[] | undefined {
+  switch (fetchMode) {
+    case "branchOnlyPatterns":
+      return BRANCH_ONLY_PATTERNS;
+    case "tagOnlyPatterns":
+      return TAG_ONLY_PATTERNS;
+    case "exactBranchPattern":
+      return EXACT_BRANCH_PATTERNS;
+    default:
+      return undefined;
+  }
+}
+
+function getFetchModeRefSpecs(fetchMode: RandomFetchMode): readonly string[] | undefined {
+  switch (fetchMode) {
+    case "branchOnlyPatterns":
+    case "branchOnlyRefSpecs":
+      return BRANCH_ONLY_REFSPECS;
+    case "tagOnlyPatterns":
+    case "tagOnlyRefSpecs":
+      return TAG_ONLY_REFSPECS;
+    case "exactBranchPattern":
+      return EXACT_BRANCH_REFSPECS;
+    case "customNamespaceRefSpec":
+      return CUSTOM_NAMESPACE_REFSPECS;
+    default:
+      return undefined;
+  }
+}
+
+function buildNanoFetchOptions(
+  fetchMode: RandomFetchMode,
+  shallowOptions: {
+    readonly depth?: number;
+    readonly deepen?: number;
+    readonly shallowSince?: number;
+    readonly shallowExclude?: readonly string[];
+    readonly unshallow?: boolean;
+  } = {},
+) {
+  const refPatterns = getFetchModePatterns(fetchMode);
+  const refSpecs = getFetchModeRefSpecs(fetchMode);
+  return {
+    ...(refPatterns ? { refPatterns: [...refPatterns] } : {}),
+    ...(refSpecs && refPatterns === undefined ? { refSpecs: [...refSpecs] } : {}),
+    ...shallowOptions,
+  };
+}
+
+async function runInitialSync(
+  repo: ReturnType<typeof initRepository>,
+  url: string,
+  cliDir: string,
+  tempDir: string,
+  fetchMode: RandomFetchMode,
+): Promise<void> {
+  if (usesBareCliRepo(fetchMode)) {
+    const refSpecs = getFetchModeRefSpecs(fetchMode);
+    if (refSpecs === undefined) {
+      throw new Error(`Missing CLI refSpecs for fetch mode ${fetchMode}`);
+    }
+    git(["init", "--bare", cliDir], tempDir);
+    git(["--git-dir", cliDir, "remote", "add", "origin", url], tempDir);
+    await repo.fetch(url, buildNanoFetchOptions(fetchMode));
+    await gitWithTimeout(
+      ["--git-dir", cliDir, "-c", "protocol.version=2", "fetch", "origin", ...refSpecs],
+      tempDir,
+      15000,
+    );
+    return;
+  }
+
+  await gitWithTimeout(["-c", "protocol.version=2", "clone", url, cliDir], tempDir, 15000);
+  await repo.fetch(url);
 }
 
 async function createRandomLinearRepository(
@@ -429,88 +624,82 @@ async function runNanoFollowup(
   url: string,
   operation: RandomFollowupOperation,
   tipCommit: string,
+  fetchMode: RandomFetchMode,
   futureShallowSince?: number,
 ): Promise<void> {
   switch (operation) {
     case "depth1":
-      await repo.fetch(url, { depth: 1 });
+      await repo.fetch(url, buildNanoFetchOptions(fetchMode, { depth: 1 }));
       return;
     case "deepenNoop":
-      await repo.fetch(url, { deepen: 1 });
+      await repo.fetch(url, buildNanoFetchOptions(fetchMode, { deepen: 1 }));
       return;
     case "shallowSinceReject":
-      await repo.fetch(url, { shallowSince: 1700000001 });
+      await repo.fetch(url, buildNanoFetchOptions(fetchMode, { shallowSince: 1700000001 }));
       return;
     case "futureShallowSince":
-      await repo.fetch(url, { shallowSince: futureShallowSince! });
+      await repo.fetch(
+        url,
+        buildNanoFetchOptions(fetchMode, { shallowSince: futureShallowSince! }),
+      );
       return;
     case "shallowExcludeMainReject":
-      await repo.fetch(url, { shallowExclude: ["main"] });
+      await repo.fetch(url, buildNanoFetchOptions(fetchMode, { shallowExclude: ["main"] }));
       return;
     case "shallowExcludeOidReject":
-      await repo.fetch(url, { shallowExclude: [tipCommit] });
+      await repo.fetch(url, buildNanoFetchOptions(fetchMode, { shallowExclude: [tipCommit] }));
       return;
     case "unshallowReject":
-      await repo.fetch(url, { unshallow: true });
+      await repo.fetch(url, buildNanoFetchOptions(fetchMode, { unshallow: true }));
       return;
   }
 }
 
 async function runCliFollowup(
   cliDir: string,
+  cwd: string,
   operation: RandomFollowupOperation,
   tipCommit: string,
+  fetchMode: RandomFetchMode,
   futureShallowSince?: number,
 ): Promise<void> {
+  const cliArgs = ["-c", "protocol.version=2", "fetch"];
+  const refSpecs = getFetchModeRefSpecs(fetchMode);
+  if (operation === "depth1") {
+    cliArgs.push("--depth=1");
+  } else if (operation === "deepenNoop") {
+    cliArgs.push("--deepen=1");
+  } else if (operation === "shallowSinceReject") {
+    cliArgs.push("--shallow-since=@1700000001");
+  } else if (operation === "futureShallowSince") {
+    cliArgs.push(`--shallow-since=@${futureShallowSince!}`);
+  } else if (operation === "shallowExcludeMainReject") {
+    cliArgs.push("--shallow-exclude=main");
+  } else if (operation === "shallowExcludeOidReject") {
+    cliArgs.push(`--shallow-exclude=${tipCommit}`);
+  } else if (operation === "unshallowReject") {
+    cliArgs.push("--unshallow");
+  }
+
+  if (usesBareCliRepo(fetchMode)) {
+    if (refSpecs === undefined) {
+      throw new Error(`Missing CLI refSpecs for fetch mode ${fetchMode}`);
+    }
+    cliArgs.push("origin", ...refSpecs);
+    await gitWithTimeout(["--git-dir", cliDir, ...cliArgs], cwd, 15000);
+    return;
+  }
+
+  cliArgs.push("origin");
   switch (operation) {
     case "depth1":
-      await gitWithTimeout(
-        ["-c", "protocol.version=2", "fetch", "--depth=1", "origin"],
-        cliDir,
-        15000,
-      );
-      return;
     case "deepenNoop":
-      await gitWithTimeout(
-        ["-c", "protocol.version=2", "fetch", "--deepen=1", "origin"],
-        cliDir,
-        15000,
-      );
-      return;
     case "shallowSinceReject":
-      await gitWithTimeout(
-        ["-c", "protocol.version=2", "fetch", "--shallow-since=@1700000001", "origin"],
-        cliDir,
-        15000,
-      );
-      return;
     case "futureShallowSince":
-      await gitWithTimeout(
-        ["-c", "protocol.version=2", "fetch", `--shallow-since=@${futureShallowSince!}`, "origin"],
-        cliDir,
-        15000,
-      );
-      return;
     case "shallowExcludeMainReject":
-      await gitWithTimeout(
-        ["-c", "protocol.version=2", "fetch", "--shallow-exclude=main", "origin"],
-        cliDir,
-        15000,
-      );
-      return;
     case "shallowExcludeOidReject":
-      await gitWithTimeout(
-        ["-c", "protocol.version=2", "fetch", `--shallow-exclude=${tipCommit}`, "origin"],
-        cliDir,
-        15000,
-      );
-      return;
     case "unshallowReject":
-      await gitWithTimeout(
-        ["-c", "protocol.version=2", "fetch", "--unshallow", "origin"],
-        cliDir,
-        15000,
-      );
+      await gitWithTimeout(cliArgs, cliDir, 15000);
       return;
   }
 }
@@ -524,6 +713,7 @@ export async function runRandomImportSessionCompleteFollowupSeed(
   const cliDir = join(tempDir, "cli");
   const nanoDir = join(tempDir, "nano.git");
   const historyShape = options.historyShape ?? pickRandom(rand, ["linear", "merge"]);
+  const fetchMode = options.fetchMode ?? "default";
   const history = await createRandomCompleteRepository(tempDir, seed, rand, historyShape);
   const followupOperation = createFollowupOperation(rand, options);
   const futureShallowSince =
@@ -534,18 +724,23 @@ export async function runRandomImportSessionCompleteFollowupSeed(
   const repo = initRepository(nanoDir);
 
   try {
-    await gitWithTimeout(["-c", "protocol.version=2", "clone", server.url, cliDir], tempDir, 15000);
-    await repo.fetch(server.url);
+    await runInitialSync(repo, server.url, cliDir, tempDir, fetchMode);
 
     const initialNano = snapshotNanoRepository(repo, nanoDir, tempDir);
-    const initialCli = snapshotCliRepository(cliDir);
-    if (options.strictInitialState === true && !sameComparableSnapshot(initialNano, initialCli)) {
+    const initialCli = usesBareCliRepo(fetchMode)
+      ? snapshotCliBareRepository(cliDir, tempDir)
+      : snapshotCliRepository(cliDir);
+    if (
+      options.strictInitialState === true &&
+      !sameComparableSnapshot(initialNano, initialCli, fetchMode)
+    ) {
       return {
         seed,
         matched: false,
         mismatchPhase: "initial",
         followupOperation,
         historyShape,
+        fetchMode,
         historyLength: history.historyLength,
         tipCommit: history.tipCommit,
         nanoBatches: [],
@@ -563,7 +758,14 @@ export async function runRandomImportSessionCompleteFollowupSeed(
     const beforeNanoMaxAge =
       futureShallowSince !== undefined ? readCliMaxAge(cliDir, futureShallowSince) : undefined;
     const nanoSettled = await Promise.allSettled([
-      runNanoFollowup(repo, server.url, followupOperation, history.tipCommit, futureShallowSince),
+      runNanoFollowup(
+        repo,
+        server.url,
+        followupOperation,
+        history.tipCommit,
+        fetchMode,
+        futureShallowSince,
+      ),
     ]);
     const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
     const afterNanoMaxAge =
@@ -573,14 +775,23 @@ export async function runRandomImportSessionCompleteFollowupSeed(
     const beforeCliMaxAge =
       futureShallowSince !== undefined ? readCliMaxAge(cliDir, futureShallowSince) : undefined;
     const cliSettled = await Promise.allSettled([
-      runCliFollowup(cliDir, followupOperation, history.tipCommit, futureShallowSince),
+      runCliFollowup(
+        cliDir,
+        tempDir,
+        followupOperation,
+        history.tipCommit,
+        fetchMode,
+        futureShallowSince,
+      ),
     ]);
     const cliBatches = getNormalizedFetchCommandBatches(server.requests);
     const afterCliMaxAge =
       futureShallowSince !== undefined ? readCliMaxAge(cliDir, futureShallowSince) : undefined;
 
     const finalNano = snapshotNanoRepository(repo, nanoDir, tempDir);
-    const finalCli = snapshotCliRepository(cliDir);
+    const finalCli = usesBareCliRepo(fetchMode)
+      ? snapshotCliBareRepository(cliDir, tempDir)
+      : snapshotCliRepository(cliDir);
     const nanoStatus = nanoSettled[0]!.status;
     const cliStatus = cliSettled[0]!.status;
     const matched =
@@ -595,7 +806,7 @@ export async function runRandomImportSessionCompleteFollowupSeed(
             beforeCliMaxAge: beforeCliMaxAge!,
             afterCliMaxAge: afterCliMaxAge!,
           })) &&
-      sameComparableSnapshot(finalNano, finalCli);
+      sameComparableSnapshot(finalNano, finalCli, fetchMode);
 
     return {
       seed,
@@ -603,6 +814,7 @@ export async function runRandomImportSessionCompleteFollowupSeed(
       mismatchPhase: matched ? undefined : "followup",
       followupOperation,
       historyShape,
+      fetchMode,
       historyLength: history.historyLength,
       tipCommit: history.tipCommit,
       nanoBatches,

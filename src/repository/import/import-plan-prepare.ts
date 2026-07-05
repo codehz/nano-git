@@ -104,6 +104,20 @@ function createPreparedPreview(params: {
   });
 }
 
+function shouldApplyGitFetchExplicitSourceShallowRules(
+  localShallowBoundaries: readonly SHA1[] | undefined,
+  shallowUpdate: ShallowUpdate | undefined,
+  options?: ImportPrepareOptions,
+): boolean {
+  return (
+    options?.sourceShallowRefUpdateMode === "git-fetch-explicit" &&
+    localShallowBoundaries === undefined &&
+    options?.depth === undefined &&
+    shallowUpdate !== undefined &&
+    shallowUpdate.shallow.length > 0
+  );
+}
+
 function resolveLocalShallowBoundaries(compiled: CompiledImportPlanState): SHA1[] | undefined {
   const localShallow = compiled.backend.shallow.read();
   return localShallow.length > 0 ? localShallow : undefined;
@@ -573,6 +587,78 @@ function finalizePreparedState(
     });
     if (mapping.localRef.startsWith("refs/heads/")) {
       validHeadTargets.add(mapping.localRef);
+    }
+  }
+
+  if (
+    shouldApplyGitFetchExplicitSourceShallowRules(localShallowBoundaries, shallowUpdate, options)
+  ) {
+    const rejectedHeadOps = refOperations.filter((op) => op.localRef.startsWith("refs/heads/"));
+    const rejectedNonHeadOps = refOperations.filter((op) => !op.localRef.startsWith("refs/heads/"));
+
+    if (rejectedHeadOps.length > 0) {
+      for (const op of rejectedHeadOps) {
+        diagnostics.push({
+          level: "error",
+          message:
+            `${describeView(op.viewLabel)}：source-shallow 拒绝更新 "${op.localRef}"，` +
+            "官方 git fetch 在该路径下不会接受新的 shallow roots。",
+          refName: op.localRef,
+        });
+      }
+      refOperations.length = 0;
+      validHeadTargets.clear();
+      shallowUpdate = undefined;
+    } else if (rejectedNonHeadOps.length > 0) {
+      for (const op of rejectedNonHeadOps) {
+        diagnostics.push({
+          level: "warn",
+          message:
+            `${describeView(op.viewLabel)}：source-shallow 拒绝更新 "${op.localRef}"，` +
+            "官方 git fetch 在该路径下会跳过该 ref。",
+          refName: op.localRef,
+        });
+      }
+      refOperations.length = 0;
+      validHeadTargets.clear();
+      shallowUpdate = undefined;
+    }
+  }
+
+  if (
+    options?.sourceShallowRefUpdateMode === "git-fetch-explicit" &&
+    localShallowBoundaries === undefined &&
+    refOperations.some((op) => !op.localRef.startsWith("refs/heads/"))
+  ) {
+    const effectiveShallow = shallowUpdate?.shallow
+      ? new Set<SHA1>(shallowUpdate.shallow)
+      : undefined;
+    const incompleteNonHeadOps = refOperations.filter((op) => {
+      if (op.localRef.startsWith("refs/heads/")) {
+        return false;
+      }
+
+      try {
+        collectReachable(compiled.backend.objects, [op.newHash], "throw", effectiveShallow);
+        return false;
+      } catch {
+        return true;
+      }
+    });
+
+    if (incompleteNonHeadOps.length > 0) {
+      for (const op of incompleteNonHeadOps) {
+        diagnostics.push({
+          level: "error",
+          message:
+            `${describeView(op.viewLabel)}：source-shallow 拒绝更新 "${op.localRef}"，` +
+            "远端未提供完整对象图，官方 git fetch 在该路径下会直接失败。",
+          refName: op.localRef,
+        });
+      }
+      refOperations.length = 0;
+      validHeadTargets.clear();
+      shallowUpdate = undefined;
     }
   }
 
