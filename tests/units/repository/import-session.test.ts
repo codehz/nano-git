@@ -23,7 +23,10 @@ import {
 } from "@/transport/protocol/pkt-line.ts";
 import { sha1 } from "@/types/index.ts";
 
-import type { ImportPlanDraft } from "@/repository/import/import-session-types.ts";
+import type {
+  ImportPlanDraft,
+  ImportPrepareOptions,
+} from "@/repository/import/import-session-types.ts";
 import type { V2GitServiceTransport } from "@/transport/client/upload-pack/types.ts";
 import type { RemoteRef, RefAdvertisement } from "@/transport/protocol/types.ts";
 
@@ -95,21 +98,21 @@ function createMockAdvertisement(overrides?: Partial<RefAdvertisement>): RefAdve
 
 const MOCK_SOURCE = { url: "https://example.com/repo.git" };
 
-async function prepareDraft(draft: ImportPlanDraft) {
-  return draft.build().prepare();
+async function prepareDraft(draft: ImportPlanDraft, options?: ImportPrepareOptions) {
+  return draft.build().prepare(options);
 }
 
-async function previewDraft(draft: ImportPlanDraft) {
+async function previewDraft(draft: ImportPlanDraft, options?: ImportPrepareOptions) {
   const plan = draft.build();
-  const prepared = await plan.prepare();
+  const prepared = await plan.prepare(options);
   return Object.freeze({
     ...prepared.preview,
     selectedRefs: plan.inspect().selectedRefs,
   });
 }
 
-async function applyDraft(draft: ImportPlanDraft) {
-  return (await prepareDraft(draft)).apply();
+async function applyDraft(draft: ImportPlanDraft, options?: ImportPrepareOptions) {
+  return (await prepareDraft(draft, options)).apply();
 }
 
 function inspectDraft(draft: ImportPlanDraft) {
@@ -1090,7 +1093,7 @@ describe("apply 写 ref", () => {
       ],
       defaultBranch: "refs/heads/main",
     };
-    const session = createImportSession(MOCK_SOURCE, backend, adv, mockV2Transport);
+    const session = createImportSession(MOCK_SOURCE, backend, adv, mockV2Transport, ["shallow"]);
 
     const prepared = await prepareDraft(
       session.plan().materialize(session.defaultBranch()).toBranch("main"),
@@ -1110,6 +1113,189 @@ describe("apply 写 ref", () => {
     });
     expect(backend.shallow.read()).toEqual([remoteCommitHash]);
     expect(result.updatedRefs.get("refs/heads/main")).toBe(remoteCommitHash);
+  });
+
+  test("deepen 会在对象已存在时继续发起 fetch，并携带 shallow/deepen 参数", async () => {
+    const backend = createMemoryRepositoryBackend();
+    const remoteBackend = createMemoryRepositoryBackend();
+    const tree = {
+      type: "tree" as const,
+      entries: [],
+    };
+    const treeHash = writeObject(remoteBackend.objects, tree);
+    const parent = {
+      type: "commit" as const,
+      tree: treeHash,
+      parents: [],
+      author: { name: "Test", email: "test@test", timestamp: 1, timezone: "+0000" },
+      committer: { name: "Test", email: "test@test", timestamp: 1, timezone: "+0000" },
+      message: "parent\n",
+    };
+    const parentHash = writeObject(remoteBackend.objects, parent);
+    const tip = {
+      type: "commit" as const,
+      tree: treeHash,
+      parents: [parentHash],
+      author: { name: "Test", email: "test@test", timestamp: 2, timezone: "+0000" },
+      committer: { name: "Test", email: "test@test", timestamp: 2, timezone: "+0000" },
+      message: "tip\n",
+    };
+    const tipHash = writeObject(remoteBackend.objects, tip);
+
+    writeObject(backend.objects, tree);
+    writeObject(backend.objects, tip);
+    backend.refs.write("refs/heads/main", tipHash);
+    backend.refs.write("HEAD", "ref: refs/heads/main");
+    backend.shallow.write([tipHash]);
+
+    const writer = createPackWriter();
+    writer.addRaw(encodeObject(parent));
+    const calls: string[][] = [];
+    const fetchResponse = Buffer.concat([
+      encodePktLine("shallow-info\n"),
+      encodePktLine(`shallow ${parentHash}\n`),
+      encodePktLine(`unshallow ${tipHash}\n`),
+      encodeDelimiterPkt(),
+      encodePktLine("packfile\n"),
+      encodePktLine(Buffer.concat([Buffer.from([0x01]), writer.build()])),
+      encodeFlushPkt(),
+    ]);
+    const mockV2Transport: V2GitServiceTransport = {
+      advertise: async () => ({ capabilities: {}, commands: [] }),
+      command: async (_command, args) => {
+        calls.push([...(args ?? [])]);
+        return fetchResponse;
+      },
+    };
+    const adv: RefAdvertisement = {
+      capabilities: {},
+      refs: [
+        { hash: tipHash, name: "HEAD", symrefTarget: "refs/heads/main" },
+        { hash: tipHash, name: "refs/heads/main" },
+      ],
+      defaultBranch: "refs/heads/main",
+    };
+    const session = createImportSession(MOCK_SOURCE, backend, adv, mockV2Transport, ["shallow"]);
+
+    const prepared = await prepareDraft(
+      session.plan().materialize(session.defaultBranch()).toBranch("main"),
+      { deepen: 1 },
+    );
+
+    expect(calls).toEqual([
+      [
+        "thin-pack",
+        "no-progress",
+        "include-tag",
+        "ofs-delta",
+        `shallow ${tipHash}`,
+        "deepen 1",
+        "deepen-relative",
+        `want ${tipHash}`,
+        `have ${tipHash}`,
+      ],
+    ]);
+    expect(prepared.preview.prefetchedObjects).toBe(1);
+    expect(prepared.preview.shallowUpdate).toEqual({
+      shallow: [parentHash],
+      unshallow: [tipHash],
+    });
+
+    const result = await prepared.apply();
+    expect(result.importedObjects).toBe(1);
+    expect(backend.shallow.read()).toEqual([parentHash]);
+  });
+
+  test("shallowSince 会在对象已存在时透传为 deepen-since 请求", async () => {
+    const backend = createMemoryRepositoryBackend();
+    const remoteBackend = createMemoryRepositoryBackend();
+    const tree = {
+      type: "tree" as const,
+      entries: [],
+    };
+    const treeHash = writeObject(remoteBackend.objects, tree);
+    const parent = {
+      type: "commit" as const,
+      tree: treeHash,
+      parents: [],
+      author: { name: "Test", email: "test@test", timestamp: 1, timezone: "+0000" },
+      committer: { name: "Test", email: "test@test", timestamp: 1, timezone: "+0000" },
+      message: "parent\n",
+    };
+    const parentHash = writeObject(remoteBackend.objects, parent);
+    const tip = {
+      type: "commit" as const,
+      tree: treeHash,
+      parents: [parentHash],
+      author: { name: "Test", email: "test@test", timestamp: 2, timezone: "+0000" },
+      committer: { name: "Test", email: "test@test", timestamp: 2, timezone: "+0000" },
+      message: "tip\n",
+    };
+    const tipHash = writeObject(remoteBackend.objects, tip);
+
+    writeObject(backend.objects, tree);
+    writeObject(backend.objects, tip);
+    backend.refs.write("refs/heads/main", tipHash);
+    backend.refs.write("HEAD", "ref: refs/heads/main");
+    backend.shallow.write([tipHash]);
+
+    const writer = createPackWriter();
+    writer.addRaw(encodeObject(parent));
+    const calls: string[][] = [];
+    const fetchResponse = Buffer.concat([
+      encodePktLine("shallow-info\n"),
+      encodePktLine(`shallow ${parentHash}\n`),
+      encodePktLine(`unshallow ${tipHash}\n`),
+      encodeDelimiterPkt(),
+      encodePktLine("packfile\n"),
+      encodePktLine(Buffer.concat([Buffer.from([0x01]), writer.build()])),
+      encodeFlushPkt(),
+    ]);
+    const mockV2Transport: V2GitServiceTransport = {
+      advertise: async () => ({ capabilities: {}, commands: [] }),
+      command: async (_command, args) => {
+        calls.push([...(args ?? [])]);
+        return fetchResponse;
+      },
+    };
+    const adv: RefAdvertisement = {
+      capabilities: {},
+      refs: [
+        { hash: tipHash, name: "HEAD", symrefTarget: "refs/heads/main" },
+        { hash: tipHash, name: "refs/heads/main" },
+      ],
+      defaultBranch: "refs/heads/main",
+    };
+    const session = createImportSession(MOCK_SOURCE, backend, adv, mockV2Transport, ["shallow"]);
+
+    await prepareDraft(session.plan().materialize(session.defaultBranch()).toBranch("main"), {
+      shallowSince: 1672548608,
+    });
+
+    expect(calls).toEqual([
+      [
+        "thin-pack",
+        "no-progress",
+        "include-tag",
+        "ofs-delta",
+        `shallow ${tipHash}`,
+        "deepen-since 1672548608",
+        `want ${tipHash}`,
+        `have ${tipHash}`,
+      ],
+    ]);
+  });
+
+  test("unshallow 在完整仓库上会直接报错", async () => {
+    const { backend, commitHash } = createRepoWithObjects();
+    const adv = createAdvForCommit(commitHash);
+    const session = createImportSession(MOCK_SOURCE, backend, adv);
+
+    expect(
+      prepareDraft(session.plan().materialize(session.defaultBranch()).toBranch("main"), {
+        unshallow: true,
+      }),
+    ).rejects.toThrow(/shallow 仓库/);
   });
 
   test("toBranch + setHead 设置 HEAD", async () => {

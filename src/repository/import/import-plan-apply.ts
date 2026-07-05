@@ -11,6 +11,8 @@ export function createPreparedImportPlan(
   preparedState: PreparedImportPlanState,
 ): PreparedImportPlan {
   let consumed = false;
+  const localShallow = backend.shallow.read();
+  const localShallowSet = localShallow.length > 0 ? new Set<SHA1>(localShallow) : undefined;
   const hasShallowUpdate =
     preparedState.shallowUpdate !== undefined &&
     (preparedState.shallowUpdate.shallow.length > 0 ||
@@ -77,7 +79,7 @@ export function createPreparedImportPlan(
               `导入计划校验失败：ref "${op.localRef}" 当前存在，但无法解析为可比较的提交哈希。`,
             );
           }
-          if (!isAncestor(backend.objects, currentHash, op.newHash)) {
+          if (!isAncestor(backend.objects, currentHash, op.newHash, localShallowSet)) {
             throw new Error(
               `导入计划校验失败：ref "${op.localRef}" 无法 fast-forward。` +
                 `当前 ${currentHash}，目标 ${op.newHash}。`,

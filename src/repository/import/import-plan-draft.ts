@@ -19,6 +19,7 @@ export function createImportPlanDraft(
   backend: RepositoryBackend,
   advertisement: Readonly<RefAdvertisement>,
   v2Transport?: V2GitServiceTransport,
+  fetchFeatures?: readonly string[],
 ): ImportPlanDraft {
   const actions: ImportMaterializationIntent[] = [];
 
@@ -80,7 +81,14 @@ export function createImportPlanDraft(
 
     build() {
       const snapshot = actions.map((action) => ({ ...action }));
-      return createImportPlan(backend, advertisement, v2Transport, snapshot, prepareImportPlan);
+      return createImportPlan(
+        backend,
+        advertisement,
+        v2Transport,
+        fetchFeatures,
+        snapshot,
+        prepareImportPlan,
+      );
     },
   };
 

@@ -38,8 +38,20 @@ export interface RepositoryFetchOptions {
   /** 强制更新（对标 `git fetch --force`，等价于所有 refspec 加 + 前缀） */
   readonly force?: boolean;
 
-  /** 浅 fetch 深度（⚠️ ImportSession 当前不支持，传此值会静默忽略） */
+  /** 绝对 shallow 深度（对标 `git fetch --depth=<n>`） */
   readonly depth?: number;
+
+  /** 相对 shallow 加深层数（对标 `git fetch --deepen=<n>`） */
+  readonly deepen?: number;
+
+  /** 基于时间扩展 shallow 历史，使用 Unix 时间戳秒数 */
+  readonly shallowSince?: number;
+
+  /** 排除指定远端分支/标签可达历史，可多次指定 */
+  readonly shallowExclude?: readonly string[];
+
+  /** 将 shallow 仓库尽量补齐为完整仓库（对标 `git fetch --unshallow`） */
+  readonly unshallow?: boolean;
 }
 
 /**

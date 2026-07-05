@@ -105,6 +105,83 @@ function createTestRepo(): TestRepoFixtures {
   return { backend, mainCommit, developCommit, orphanCommit, blobHash };
 }
 
+interface MergeShallowRepoFixtures {
+  backend: ReturnType<typeof createMemoryRepositoryBackend>;
+  rootCommit: SHA1;
+  mainBoundaryCommit: SHA1;
+  topicAncestorCommit: SHA1;
+  topicBoundaryCommit: SHA1;
+  mergeCommit: SHA1;
+}
+
+function createMergeShallowRepo(): MergeShallowRepoFixtures {
+  const backend = createMemoryRepositoryBackend({
+    initialRefs: new Map<string, string>([["HEAD", "ref: refs/heads/main"]]),
+  });
+
+  const blobHash = writeObject(backend.objects, {
+    type: "blob" as const,
+    content: Buffer.from("merge shallow"),
+  });
+  const treeHash = writeObject(backend.objects, {
+    type: "tree" as const,
+    entries: [{ mode: "100644", name: "merge.txt", hash: blobHash }],
+  });
+
+  const rootCommit = writeObject(backend.objects, {
+    type: "commit" as const,
+    tree: treeHash,
+    parents: [],
+    author: { name: "Test", email: "test@test", timestamp: 1000000, timezone: "+0000" },
+    committer: { name: "Test", email: "test@test", timestamp: 1000000, timezone: "+0000" },
+    message: "root\n",
+  });
+  const topicAncestorCommit = writeObject(backend.objects, {
+    type: "commit" as const,
+    tree: treeHash,
+    parents: [rootCommit],
+    author: { name: "Test", email: "test@test", timestamp: 1000001, timezone: "+0000" },
+    committer: { name: "Test", email: "test@test", timestamp: 1000001, timezone: "+0000" },
+    message: "topic ancestor\n",
+  });
+  const mainBoundaryCommit = writeObject(backend.objects, {
+    type: "commit" as const,
+    tree: treeHash,
+    parents: [rootCommit],
+    author: { name: "Test", email: "test@test", timestamp: 1000002, timezone: "+0000" },
+    committer: { name: "Test", email: "test@test", timestamp: 1000002, timezone: "+0000" },
+    message: "main boundary\n",
+  });
+  const topicBoundaryCommit = writeObject(backend.objects, {
+    type: "commit" as const,
+    tree: treeHash,
+    parents: [topicAncestorCommit],
+    author: { name: "Test", email: "test@test", timestamp: 1000003, timezone: "+0000" },
+    committer: { name: "Test", email: "test@test", timestamp: 1000003, timezone: "+0000" },
+    message: "topic boundary\n",
+  });
+  const mergeCommit = writeObject(backend.objects, {
+    type: "commit" as const,
+    tree: treeHash,
+    parents: [mainBoundaryCommit, topicBoundaryCommit],
+    author: { name: "Test", email: "test@test", timestamp: 1000004, timezone: "+0000" },
+    committer: { name: "Test", email: "test@test", timestamp: 1000004, timezone: "+0000" },
+    message: "merge\n",
+  });
+
+  backend.refs.write("refs/heads/main", mergeCommit);
+  backend.refs.write("refs/heads/topic", topicBoundaryCommit);
+
+  return {
+    backend,
+    rootCommit,
+    mainBoundaryCommit,
+    topicAncestorCommit,
+    topicBoundaryCommit,
+    mergeCommit,
+  };
+}
+
 // ============================================================================
 // parseCommandRequest
 // ============================================================================
@@ -286,6 +363,25 @@ describe("parseFetchArgs", () => {
     expect(params.waitForDone).toBe(true);
     expect(params.haves).toEqual([sha1("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]);
   });
+
+  test("解析 shallow / deepen 参数", () => {
+    const hash = sha1("95d09f2b10159347eece71399a7e2e907ea3df4f");
+    const shallowHash = sha1("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    const params = parseFetchArgs([
+      `want ${hash}`,
+      `shallow ${shallowHash}`,
+      "deepen 3",
+      "deepen-relative",
+      "deepen-since 1672548608",
+      "deepen-not refs/heads/main",
+    ]);
+
+    expect(params.shallow).toEqual([shallowHash]);
+    expect(params.deepen).toBe(3);
+    expect(params.deepenRelative).toBe(true);
+    expect(params.deepenSince).toBe(1672548608);
+    expect(params.deepenNot).toEqual(["refs/heads/main"]);
+  });
 });
 
 // ============================================================================
@@ -405,16 +501,44 @@ describe("generateLsRefsResponse", () => {
 // ============================================================================
 
 describe("generateFetchResponse — clone", () => {
-  test("发送 done 时返回 packfile", () => {
-    const { backend, mainCommit } = createTestRepo();
+  test("depth=1 时返回 shallow-info，并把 tip 标记为浅边界", () => {
+    const { backend, developCommit } = createTestRepo();
     const buf = generateFetchResponse(backend, {
-      wants: [mainCommit],
+      wants: [developCommit],
       haves: [],
+      shallow: [],
       wantRefs: [],
       done: true,
       thinPack: false,
       noProgress: false,
       ofsDelta: true,
+      deepen: 1,
+      deepenRelative: false,
+      deepenSince: undefined,
+      deepenNot: [],
+    });
+
+    const parsed = parseV2FetchResponse(buf, true, false);
+    expect(parsed.shallowInfo).toEqual({
+      shallow: [developCommit],
+      unshallow: [],
+    });
+    expect(parsed.packfile).toBeDefined();
+  });
+
+  test("发送 done 时返回 packfile", () => {
+    const { backend, mainCommit } = createTestRepo();
+    const buf = generateFetchResponse(backend, {
+      wants: [mainCommit],
+      haves: [],
+      shallow: [],
+      wantRefs: [],
+      done: true,
+      thinPack: false,
+      noProgress: false,
+      ofsDelta: true,
+      deepenRelative: false,
+      deepenNot: [],
     });
 
     const text = buf.toString("utf-8");
@@ -432,11 +556,14 @@ describe("generateFetchResponse — clone", () => {
     const buf = generateFetchResponse(backend, {
       wants: [mainCommit],
       haves: [],
+      shallow: [],
       wantRefs: [],
       done: true,
       thinPack: false,
       noProgress: false,
       ofsDelta: true,
+      deepenRelative: false,
+      deepenNot: [],
     });
 
     // packfile 节后的 side-band 数据应包含 "PACK"
@@ -450,11 +577,14 @@ describe("generateFetchResponse — clone", () => {
     const buf = generateFetchResponse(backend, {
       wants: [fakeHash],
       haves: [],
+      shallow: [],
       wantRefs: [],
       done: true,
       thinPack: false,
       noProgress: false,
       ofsDelta: true,
+      deepenRelative: false,
+      deepenNot: [],
     });
 
     const text = buf.toString("utf-8");
@@ -467,11 +597,14 @@ describe("generateFetchResponse — clone", () => {
       generateFetchResponse(backend, {
         wants: [],
         haves: [],
+        shallow: [],
         wantRefs: [],
         done: true,
         thinPack: false,
         noProgress: false,
         ofsDelta: true,
+        deepenRelative: false,
+        deepenNot: [],
       }),
     ).toThrow("no wants or want-refs");
   });
@@ -481,11 +614,14 @@ describe("generateFetchResponse — clone", () => {
     const buf = generateFetchResponse(backend, {
       wants: [],
       haves: [],
+      shallow: [],
       wantRefs: ["refs/heads/main"],
       done: true,
       thinPack: false,
       noProgress: false,
       ofsDelta: true,
+      deepenRelative: false,
+      deepenNot: [],
     });
 
     // 应返回 packfile
@@ -499,16 +635,174 @@ describe("generateFetchResponse — clone", () => {
 // ============================================================================
 
 describe("generateFetchResponse — incremental fetch", () => {
-  test("有 haves 时返回丢勒集 packfile", () => {
-    const { backend, mainCommit, developCommit } = createTestRepo();
+  test("deepen-relative 时返回新的 shallow-info，并只发送超出旧边界的祖先", () => {
+    const { backend, developCommit, blobHash } = createTestRepo();
+    const treeHash = writeObject(backend.objects, {
+      type: "tree" as const,
+      entries: [{ mode: "100644", name: "readme.txt", hash: blobHash }],
+    });
+    const tipCommit = writeObject(backend.objects, {
+      type: "commit" as const,
+      tree: treeHash,
+      parents: [developCommit],
+      author: { name: "Test", email: "test@test", timestamp: 1000002, timezone: "+0000" },
+      committer: { name: "Test", email: "test@test", timestamp: 1000002, timezone: "+0000" },
+      message: "tip commit\n",
+    });
     const buf = generateFetchResponse(backend, {
-      wants: [developCommit],
-      haves: [mainCommit],
+      wants: [tipCommit],
+      haves: [tipCommit],
+      shallow: [tipCommit],
       wantRefs: [],
       done: true,
       thinPack: false,
       noProgress: false,
       ofsDelta: true,
+      deepen: 1,
+      deepenRelative: true,
+      deepenSince: undefined,
+      deepenNot: [],
+    });
+
+    const parsed = parseV2FetchResponse(buf, true, false);
+    expect(parsed.shallowInfo).toEqual({
+      shallow: [developCommit],
+      unshallow: [tipCommit],
+    });
+    expect(parsed.packfile).toBeDefined();
+  });
+
+  test("deepen-relative 在 merge DAG 下会保留 root commit 作为新的浅边界", () => {
+    const {
+      backend,
+      rootCommit,
+      mainBoundaryCommit,
+      topicAncestorCommit,
+      topicBoundaryCommit,
+      mergeCommit,
+    } = createMergeShallowRepo();
+    const buf = generateFetchResponse(backend, {
+      wants: [mergeCommit],
+      haves: [mergeCommit],
+      shallow: [mainBoundaryCommit, topicBoundaryCommit],
+      wantRefs: [],
+      done: true,
+      thinPack: false,
+      noProgress: false,
+      ofsDelta: true,
+      deepen: 1,
+      deepenRelative: true,
+      deepenSince: undefined,
+      deepenNot: [],
+    });
+
+    const parsed = parseV2FetchResponse(buf, true, false);
+    expect(parsed.shallowInfo).toEqual({
+      shallow: [rootCommit, topicAncestorCommit],
+      unshallow: [mainBoundaryCommit, topicBoundaryCommit],
+    });
+  });
+
+  test("deepen-since 会把早于阈值的 parent 截断为新的浅边界", () => {
+    const { backend, blobHash, mainCommit } = createTestRepo();
+    const treeHash = writeObject(backend.objects, {
+      type: "tree" as const,
+      entries: [{ mode: "100644", name: "readme.txt", hash: blobHash }],
+    });
+    const recentCommit = writeObject(backend.objects, {
+      type: "commit" as const,
+      tree: treeHash,
+      parents: [mainCommit],
+      author: { name: "Test", email: "test@test", timestamp: 1000005, timezone: "+0000" },
+      committer: { name: "Test", email: "test@test", timestamp: 1000005, timezone: "+0000" },
+      message: "recent commit\n",
+    });
+    const tipCommit = writeObject(backend.objects, {
+      type: "commit" as const,
+      tree: treeHash,
+      parents: [recentCommit],
+      author: { name: "Test", email: "test@test", timestamp: 1000010, timezone: "+0000" },
+      committer: { name: "Test", email: "test@test", timestamp: 1000010, timezone: "+0000" },
+      message: "tip commit\n",
+    });
+    const buf = generateFetchResponse(backend, {
+      wants: [tipCommit],
+      haves: [],
+      shallow: [],
+      wantRefs: [],
+      done: true,
+      thinPack: false,
+      noProgress: false,
+      ofsDelta: true,
+      deepenRelative: false,
+      deepenSince: 1000002,
+      deepenNot: [],
+    });
+
+    const parsed = parseV2FetchResponse(buf, true, false);
+    expect(parsed.shallowInfo).toEqual({
+      shallow: [recentCommit],
+      unshallow: [],
+    });
+  });
+
+  test("deepen-not 会把排除 ref 可达历史之外的提交设为新的浅边界", () => {
+    const { backend, developCommit } = createTestRepo();
+    const buf = generateFetchResponse(backend, {
+      wants: [developCommit],
+      haves: [],
+      shallow: [],
+      wantRefs: [],
+      done: true,
+      thinPack: false,
+      noProgress: false,
+      ofsDelta: true,
+      deepenRelative: false,
+      deepenNot: ["refs/heads/main"],
+    });
+
+    const parsed = parseV2FetchResponse(buf, true, false);
+    expect(parsed.shallowInfo).toEqual({
+      shallow: [developCommit],
+      unshallow: [],
+    });
+  });
+
+  test("deepen-not 支持分支短名", () => {
+    const { backend, developCommit } = createTestRepo();
+    const buf = generateFetchResponse(backend, {
+      wants: [developCommit],
+      haves: [],
+      shallow: [],
+      wantRefs: [],
+      done: true,
+      thinPack: false,
+      noProgress: false,
+      ofsDelta: true,
+      deepenRelative: false,
+      deepenNot: ["develop"],
+    });
+
+    const parsed = parseV2FetchResponse(buf, true, false);
+    expect(parsed.shallowInfo).toEqual({
+      shallow: [developCommit],
+      unshallow: [],
+    });
+  });
+
+  test("有 haves 时返回丢勒集 packfile", () => {
+    const { backend, mainCommit, developCommit } = createTestRepo();
+    const buf = generateFetchResponse(backend, {
+      wants: [developCommit],
+      haves: [mainCommit],
+      shallow: [],
+      wantRefs: [],
+      done: true,
+      thinPack: false,
+      noProgress: false,
+      ofsDelta: true,
+      deepenRelative: false,
+      deepenNot: [],
     });
 
     const text = buf.toString("utf-8");
@@ -520,11 +814,14 @@ describe("generateFetchResponse — incremental fetch", () => {
     const buf = generateFetchResponse(backend, {
       wants: [developCommit],
       haves: [],
+      shallow: [],
       wantRefs: [],
       done: false,
       thinPack: false,
       noProgress: false,
       ofsDelta: true,
+      deepenRelative: false,
+      deepenNot: [],
     });
 
     const text = buf.toString("utf-8");
@@ -537,11 +834,14 @@ describe("generateFetchResponse — incremental fetch", () => {
     const buf = generateFetchResponse(backend, {
       wants: [developCommit],
       haves: [mainCommit],
+      shallow: [],
       wantRefs: [],
       done: false,
       thinPack: false,
       noProgress: false,
       ofsDelta: true,
+      deepenRelative: false,
+      deepenNot: [],
     });
 
     const text = buf.toString("utf-8");
@@ -560,11 +860,14 @@ describe("generateFetchResponse — incremental fetch", () => {
     const buf = generateFetchResponse(backend, {
       wants: [developCommit],
       haves: [developCommit, mainCommit],
+      shallow: [],
       wantRefs: [],
       done: false,
       thinPack: false,
       noProgress: false,
       ofsDelta: true,
+      deepenRelative: false,
+      deepenNot: [],
     });
 
     const parsed = parseV2FetchResponse(buf, false, false);
@@ -577,11 +880,14 @@ describe("generateFetchResponse — incremental fetch", () => {
     const buf = generateFetchResponse(backend, {
       wants: [developCommit],
       haves: [mainCommit, developCommit],
+      shallow: [],
       wantRefs: [],
       done: false,
       thinPack: false,
       noProgress: false,
       ofsDelta: true,
+      deepenRelative: false,
+      deepenNot: [],
     });
 
     const parsed = parseV2FetchResponse(buf, false, false);
@@ -594,11 +900,14 @@ describe("generateFetchResponse — incremental fetch", () => {
     const buf = generateFetchResponse(backend, {
       wants: [developCommit],
       haves: [orphanCommit],
+      shallow: [],
       wantRefs: [],
       done: false,
       thinPack: false,
       noProgress: false,
       ofsDelta: true,
+      deepenRelative: false,
+      deepenNot: [],
     });
 
     const text = buf.toString("utf-8");
@@ -626,11 +935,14 @@ describe("generateFetchResponse — incremental fetch", () => {
     const buf = generateFetchResponse(backend, {
       wants: [nextMainCommit],
       haves: [developCommit],
+      shallow: [],
       wantRefs: [],
       done: false,
       thinPack: false,
       noProgress: false,
       ofsDelta: true,
+      deepenRelative: false,
+      deepenNot: [],
     });
 
     const parsed = parseV2FetchResponse(buf, false, false);
@@ -644,6 +956,7 @@ describe("generateFetchResponse — incremental fetch", () => {
     const buf = generateFetchResponse(backend, {
       wants: [developCommit],
       haves: [mainCommit],
+      shallow: [],
       wantRefs: [],
       done: false,
       sidebandAll: false,
@@ -651,6 +964,8 @@ describe("generateFetchResponse — incremental fetch", () => {
       thinPack: false,
       noProgress: false,
       ofsDelta: true,
+      deepenRelative: false,
+      deepenNot: [],
     });
 
     const text = buf.toString("utf-8");
@@ -665,6 +980,7 @@ describe("generateFetchResponse — incremental fetch", () => {
     const buf = generateFetchResponse(backend, {
       wants: [developCommit],
       haves: [mainCommit],
+      shallow: [],
       wantRefs: [],
       done: false,
       sidebandAll: true,
@@ -672,6 +988,8 @@ describe("generateFetchResponse — incremental fetch", () => {
       thinPack: false,
       noProgress: false,
       ofsDelta: true,
+      deepenRelative: false,
+      deepenNot: [],
     });
 
     const text = buf.toString("hex");
@@ -688,11 +1006,14 @@ describe("generateFetchResponse — incremental fetch", () => {
     const buf = generateFetchResponse(backend, {
       wants: [],
       haves: [],
+      shallow: [],
       wantRefs: ["refs/heads/main"],
       done: true,
       thinPack: false,
       noProgress: false,
       ofsDelta: true,
+      deepenRelative: false,
+      deepenNot: [],
     });
 
     const text = buf.toString("utf-8");

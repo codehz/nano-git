@@ -220,12 +220,52 @@ export interface ImportPreparedPreview {
 }
 
 /**
+ * prepare() 阶段的对象抓取选项
+ *
+ * 用于控制一次导入计划在 prepare() 时发出的 fetch 请求形态。
+ * 未指定 shallow 参数时，会自动回退当前仓库 backend.shallow 中的边界。
+ */
+export interface ImportPrepareOptions {
+  /**
+   * 目标绝对深度（对标 `git fetch --depth=<n>`）
+   *
+   * 含义是“从远端 tip 起保留 n 层历史”。
+   * 对已是 shallow 的仓库，也会尝试将历史调整到该绝对深度。
+   */
+  readonly depth?: number;
+
+  /**
+   * 相对加深层数（对标 `git fetch --deepen=<n>`）
+   *
+   * 含义是“从当前 shallow 边界再向后扩展 n 层历史”。
+   */
+  readonly deepen?: number;
+
+  /**
+   * 基于时间扩展 shallow 历史（对标 `git fetch --shallow-since=<timestamp>`）
+   *
+   * 这里使用 Unix 时间戳秒数，避免把近似日期解析规则泄漏到库 API 中。
+   */
+  readonly shallowSince?: number;
+
+  /**
+   * 排除指定远端分支/标签可达历史（对标 `git fetch --shallow-exclude=<ref>`）
+   */
+  readonly shallowExclude?: readonly string[];
+
+  /**
+   * 将 shallow 仓库尽量补齐为完整仓库（对标 `git fetch --unshallow`）
+   */
+  readonly unshallow?: boolean;
+}
+
+/**
  * 已编译的导入计划
  */
 export interface ImportPlan {
   inspect(): ImportPlanInspection;
 
-  prepare(): Promise<PreparedImportPlan>;
+  prepare(options?: ImportPrepareOptions): Promise<PreparedImportPlan>;
 }
 
 /**

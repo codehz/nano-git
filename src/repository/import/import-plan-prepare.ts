@@ -21,11 +21,15 @@ import type { SHA1 } from "../../types/index.ts";
 import type { ShallowUpdate } from "../../types/shallow.ts";
 import type {
   ImportDiagnostic,
+  ImportPrepareOptions,
   ImportPreparedPreview,
   PlannedHeadOperation,
   PlannedRefDeletion,
   PlannedRefOperation,
 } from "./import-session-types.ts";
+
+/** `git fetch --unshallow` 在协议层使用的无限深度常量 */
+const INFINITE_DEPTH = 0x7fffffff;
 
 function collectNegotiationLocalHaveTips(compiled: CompiledImportPlanState): SHA1[] {
   const refNames = compiled.backend.refs.listAll();
@@ -92,6 +96,70 @@ function createPreparedPreview(params: {
     diagnostics: params.diagnostics,
     canApply: !params.diagnostics.some((diagnostic) => diagnostic.level === "error"),
   });
+}
+
+function resolveLocalShallowBoundaries(compiled: CompiledImportPlanState): SHA1[] | undefined {
+  const localShallow = compiled.backend.shallow.read();
+  return localShallow.length > 0 ? localShallow : undefined;
+}
+
+function hasShallowFetchRequest(options?: ImportPrepareOptions): boolean {
+  return (
+    options?.depth !== undefined ||
+    options?.deepen !== undefined ||
+    options?.shallowSince !== undefined ||
+    (options?.shallowExclude?.length ?? 0) > 0 ||
+    options?.unshallow === true
+  );
+}
+
+function validateImportPrepareOptions(
+  compiled: CompiledImportPlanState,
+  options?: ImportPrepareOptions,
+): void {
+  if (options?.depth !== undefined && options.depth < 1) {
+    throw new Error(`depth 必须是正整数，当前为 ${options.depth}。`);
+  }
+
+  if (options?.deepen !== undefined && options.deepen < 1) {
+    throw new Error(`deepen 必须是正整数，当前为 ${options.deepen}。`);
+  }
+
+  if (options?.depth !== undefined && options?.deepen !== undefined) {
+    throw new Error("depth 与 deepen 不能同时指定。");
+  }
+
+  if (options?.depth !== undefined && options?.unshallow) {
+    throw new Error("depth 与 unshallow 不能同时指定。");
+  }
+
+  if (options?.unshallow && resolveLocalShallowBoundaries(compiled) === undefined) {
+    throw new Error("unshallow 仅适用于 shallow 仓库。");
+  }
+}
+
+function createNegotiationFetchOptions(
+  compiled: CompiledImportPlanState,
+  options?: ImportPrepareOptions,
+): {
+  readonly includeTag: boolean;
+  readonly shallow?: string[];
+  readonly deepen?: number;
+  readonly deepenRelative?: boolean;
+  readonly deepenSince?: number;
+  readonly deepenNot?: string[];
+} {
+  const shallow = resolveLocalShallowBoundaries(compiled)?.map((hash) => hash);
+  const useUnshallow = options?.unshallow === true;
+
+  return {
+    includeTag: !compiled.wantsExplicitTags,
+    shallow,
+    deepen: useUnshallow ? INFINITE_DEPTH : (options?.depth ?? options?.deepen),
+    deepenRelative: options?.deepen !== undefined,
+    deepenSince: options?.shallowSince,
+    deepenNot: options?.shallowExclude ? [...options.shallowExclude] : undefined,
+  };
 }
 
 function collectKnownCommonRefs(
@@ -165,6 +233,7 @@ async function fetchPreviewObjects(
   compiled: CompiledImportPlanState,
   wantSequence: readonly SHA1[],
   localPreconditions: readonly LocalPrecondition[],
+  options?: ImportPrepareOptions,
 ): Promise<{ objectCount: number; shallowUpdate?: ShallowUpdate }> {
   if (wantSequence.length === 0) {
     return { objectCount: 0 };
@@ -181,9 +250,9 @@ async function fetchPreviewObjects(
       compiled.v2Transport,
       v2Wants,
       v2Haves,
-      undefined,
+      compiled.fetchFeatures ? [...compiled.fetchFeatures] : undefined,
       knownCommonRefs,
-      { includeTag: !compiled.wantsExplicitTags },
+      createNegotiationFetchOptions(compiled, options),
     );
     validateLocalPreconditions(compiled.backend, localPreconditions);
     return { objectCount, shallowUpdate };
@@ -203,6 +272,9 @@ function finalizePreparedState(
   const refOperations: PlannedRefOperation[] = [];
   const validHeadTargets = new Set<string>();
   const localRefs = getLocalRefs(compiled.backend.refs);
+  const localShallowBoundaries = resolveLocalShallowBoundaries(compiled);
+  const localShallowSet =
+    localShallowBoundaries !== undefined ? new Set<SHA1>(localShallowBoundaries) : undefined;
 
   for (const mapping of compiled.resolvedMappings) {
     if (compiled.conflictedTargets.has(mapping.localRef)) {
@@ -275,7 +347,7 @@ function finalizePreparedState(
         continue;
       }
 
-      if (!isAncestor(compiled.backend.objects, existingHash, targetHash)) {
+      if (!isAncestor(compiled.backend.objects, existingHash, targetHash, localShallowSet)) {
         diagnostics.push({
           level: "error",
           message:
@@ -400,6 +472,7 @@ function finalizePreparedState(
 
 export async function prepareImportPlan(
   compiled: CompiledImportPlanState,
+  options?: ImportPrepareOptions,
 ): Promise<PreparedImportPlanState> {
   if (compiled.diagnostics.some((diagnostic) => diagnostic.level === "error")) {
     return {
@@ -418,17 +491,25 @@ export async function prepareImportPlan(
     };
   }
 
+  validateImportPrepareOptions(compiled, options);
+
   const localPreconditions = captureLocalPreconditions(compiled);
+  const shouldFetchExistingTargets = hasShallowFetchRequest(options);
   const wantSequence = compiled.resolvedMappings
     .filter((mapping) => !compiled.conflictedTargets.has(mapping.localRef))
     .map((mapping) => mapping.remoteRef.hash)
-    .filter((hash) => !compiled.backend.objects.exists(hash));
+    .filter((hash) => shouldFetchExistingTargets || !compiled.backend.objects.exists(hash));
   const objectRoots = [...new Set(wantSequence)] as SHA1[];
 
   let prefetchedObjects = 0;
   let shallowUpdate: ShallowUpdate | undefined;
   try {
-    const fetchPreview = await fetchPreviewObjects(compiled, wantSequence, localPreconditions);
+    const fetchPreview = await fetchPreviewObjects(
+      compiled,
+      wantSequence,
+      localPreconditions,
+      options,
+    );
     prefetchedObjects = fetchPreview.objectCount;
     shallowUpdate = fetchPreview.shallowUpdate;
   } catch (err: unknown) {

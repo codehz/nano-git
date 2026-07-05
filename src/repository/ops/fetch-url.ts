@@ -9,7 +9,11 @@ import { createRepoImportOperations } from "../import/import-session.ts";
 
 import type { RepositoryBackend } from "../../backend/types.ts";
 import type { RemoteSource } from "../../remote/types.ts";
-import type { ImportSession, ImportApplyResult } from "../import/import-session-types.ts";
+import type {
+  ImportPrepareOptions,
+  ImportSession,
+  ImportApplyResult,
+} from "../import/import-session-types.ts";
 import type {
   RepositoryFetchOptions,
   RepositoryFetchResult,
@@ -40,6 +44,28 @@ export async function runFetchToUrl(
   return applyDefaultMapping(session, options);
 }
 
+function createImportPrepareOptions(
+  options?: RepositoryFetchOptions,
+): ImportPrepareOptions | undefined {
+  if (
+    options?.depth === undefined &&
+    options?.deepen === undefined &&
+    options?.shallowSince === undefined &&
+    (options?.shallowExclude?.length ?? 0) === 0 &&
+    options?.unshallow !== true
+  ) {
+    return undefined;
+  }
+
+  return {
+    depth: options?.depth,
+    deepen: options?.deepen,
+    shallowSince: options?.shallowSince,
+    shallowExclude: options?.shallowExclude,
+    unshallow: options?.unshallow,
+  };
+}
+
 /**
  * 默认 fetch 映射：远端所有 refs → 本地同名 refs + HEAD 更新
  */
@@ -48,9 +74,13 @@ async function applyDefaultMapping(
   options?: RepositoryFetchOptions,
 ): Promise<RepositoryFetchResult> {
   const plan = session.plan();
+  const prepareOptions = createImportPrepareOptions(options);
+  const selectedRefs = options?.refPatterns
+    ? session.selectRefs(options.refPatterns)
+    : session.allRefs();
 
   // 所有远端分支 → refs/heads/*（fast-forward）
-  const branches = session.select("refs/heads/*");
+  const branches = selectedRefs.where((ref) => ref.name.startsWith("refs/heads/"));
   if (branches.refs.length > 0) {
     plan.materialize(branches).toNamespace("refs/heads/*", {
       policy: { mode: "fast-forward" },
@@ -60,7 +90,7 @@ async function applyDefaultMapping(
 
   // 标签（除非 noTags）
   if (!options?.noTags) {
-    const tags = session.select("refs/tags/*");
+    const tags = selectedRefs.where((ref) => ref.name.startsWith("refs/tags/"));
     if (tags.refs.length > 0) {
       plan.materialize(tags).toNamespace("refs/tags/*", {
         policy: { mode: "fast-forward" },
@@ -70,11 +100,14 @@ async function applyDefaultMapping(
 
   // HEAD → 跟随默认分支
   const defaultBranch = session.defaultBranch();
-  if (defaultBranch.refs.length > 0) {
+  if (
+    defaultBranch.refs.length > 0 &&
+    branches.refs.some((ref) => ref.name === defaultBranch.refs[0]?.name)
+  ) {
     plan.materialize(defaultBranch).setHead();
   }
 
-  const result = await (await plan.build().prepare()).apply();
+  const result = await (await plan.build().prepare(prepareOptions)).apply();
   return convertToFetchResult(result);
 }
 
@@ -86,6 +119,7 @@ async function applyCustomRefSpecs(
   options: RepositoryFetchOptions,
 ): Promise<RepositoryFetchResult> {
   const plan = session.plan();
+  const prepareOptions = createImportPrepareOptions(options);
 
   for (const specStr of options.refSpecs ?? []) {
     const spec = parseRefSpec(specStr);
@@ -103,7 +137,7 @@ async function applyCustomRefSpecs(
     }
   }
 
-  const result = await (await plan.build().prepare()).apply();
+  const result = await (await plan.build().prepare(prepareOptions)).apply();
   return convertToFetchResult(result);
 }
 

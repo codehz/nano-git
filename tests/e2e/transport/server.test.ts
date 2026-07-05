@@ -7,9 +7,13 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 import { createTempDir, cleanupDir, gitWithTimeout } from "../helpers.ts";
+import { startGitHttpBackendServer } from "./http-server.ts";
 import { startNanoGitServer, createDefaultBackend } from "./nano-git-server.ts";
+import { createFileRepositoryBackend } from "@/backend/file.ts";
 import { writeObject } from "@/objects/raw.ts";
 import { initRepository } from "@/repository/file.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
@@ -80,6 +84,104 @@ function addRootCommit(backend: RepositoryBackend, msg: string): SHA1 {
     committer: { name: "E2E", email: "e2e@test", timestamp: 2000000100, timezone: "+0000" },
     message: `${msg}\n`,
   });
+}
+
+function readShallowFile(workDir: string): string[] {
+  const shallowPath = join(workDir, ".git", "shallow");
+  if (!existsSync(shallowPath)) {
+    return [];
+  }
+
+  const content = readFileSync(shallowPath, "utf-8").trim();
+  return content.length === 0 ? [] : content.split(/\n+/);
+}
+
+async function writeTrackedFile(workDir: string, filename: string, content: string): Promise<void> {
+  writeFileSync(join(workDir, filename), content, "utf-8");
+  await gitWithTimeout(["add", filename], workDir, GIT_TIMEOUT_MS);
+}
+
+async function createFileRepoWithMergeHistory(rootDir: string): Promise<{
+  readonly bareDir: string;
+  readonly rootCommit: string;
+  readonly mainBoundaryCommit: string;
+  readonly topicAncestorCommit: string;
+  readonly topicBoundaryCommit: string;
+  readonly mergeCommit: string;
+}> {
+  const bareDir = join(rootDir, "server.git");
+  const workDir = join(rootDir, "work");
+
+  await gitWithTimeout(["init", "--bare", "-b", "main", bareDir], rootDir, GIT_TIMEOUT_MS);
+  await gitWithTimeout(["init", "-b", "main", workDir], rootDir, GIT_TIMEOUT_MS);
+  await gitWithTimeout(["remote", "add", "origin", bareDir], workDir, GIT_TIMEOUT_MS);
+
+  await writeTrackedFile(workDir, "root.txt", "root\n");
+  await gitWithTimeout(["commit", "-m", "root"], workDir, GIT_TIMEOUT_MS);
+  const rootCommit = await gitWithTimeout(["rev-parse", "HEAD"], workDir, GIT_TIMEOUT_MS);
+  await gitWithTimeout(["push", "-u", "origin", "main"], workDir, GIT_TIMEOUT_MS);
+
+  await gitWithTimeout(["checkout", "-b", "topic"], workDir, GIT_TIMEOUT_MS);
+  await writeTrackedFile(workDir, "topic-ancestor.txt", "topic ancestor\n");
+  await gitWithTimeout(["commit", "-m", "topic ancestor"], workDir, GIT_TIMEOUT_MS);
+  const topicAncestorCommit = await gitWithTimeout(["rev-parse", "HEAD"], workDir, GIT_TIMEOUT_MS);
+  await writeTrackedFile(workDir, "topic-boundary.txt", "topic boundary\n");
+  await gitWithTimeout(["commit", "-m", "topic boundary"], workDir, GIT_TIMEOUT_MS);
+  const topicBoundaryCommit = await gitWithTimeout(["rev-parse", "HEAD"], workDir, GIT_TIMEOUT_MS);
+  await gitWithTimeout(["push", "-u", "origin", "topic"], workDir, GIT_TIMEOUT_MS);
+
+  await gitWithTimeout(["checkout", "main"], workDir, GIT_TIMEOUT_MS);
+  await writeTrackedFile(workDir, "main-boundary.txt", "main boundary\n");
+  await gitWithTimeout(["commit", "-m", "main boundary"], workDir, GIT_TIMEOUT_MS);
+  const mainBoundaryCommit = await gitWithTimeout(["rev-parse", "HEAD"], workDir, GIT_TIMEOUT_MS);
+  await gitWithTimeout(["merge", "--no-ff", "topic", "-m", "merge topic"], workDir, GIT_TIMEOUT_MS);
+  const mergeCommit = await gitWithTimeout(["rev-parse", "HEAD"], workDir, GIT_TIMEOUT_MS);
+  await gitWithTimeout(["push", "origin", "main", "topic"], workDir, GIT_TIMEOUT_MS);
+
+  return {
+    bareDir,
+    rootCommit,
+    mainBoundaryCommit,
+    topicAncestorCommit,
+    topicBoundaryCommit,
+    mergeCommit,
+  };
+}
+
+async function cloneAndDeepenMergeRepo(
+  url: string,
+  targetDir: string,
+): Promise<{
+  readonly shallowBefore: string[];
+  readonly shallowAfter: string[];
+  readonly countBefore: string;
+  readonly countAfter: string;
+}> {
+  await gitWithTimeout(
+    ["-c", "protocol.version=2", "clone", "--depth=2", url, targetDir],
+    dirname(targetDir),
+    GIT_TIMEOUT_MS,
+  );
+  const shallowBefore = readShallowFile(targetDir);
+  const countBefore = await gitWithTimeout(
+    ["rev-list", "--count", "HEAD"],
+    targetDir,
+    GIT_TIMEOUT_MS,
+  );
+
+  await gitWithTimeout(
+    ["-c", "protocol.version=2", "fetch", "--deepen=1", "origin"],
+    targetDir,
+    GIT_TIMEOUT_MS,
+  );
+  const shallowAfter = readShallowFile(targetDir);
+  const countAfter = await gitWithTimeout(
+    ["rev-list", "--count", "HEAD"],
+    targetDir,
+    GIT_TIMEOUT_MS,
+  );
+
+  return { shallowBefore, shallowAfter, countBefore, countAfter };
 }
 
 describe("Smart HTTP 服务端 — nano-git 客户端", () => {
@@ -233,6 +335,50 @@ describe("Smart HTTP 服务端 — nano-git 客户端", () => {
       features,
     );
     expect(pack.packfile).toBeDefined();
+  });
+
+  test("v2 fetch shallow/deepen 会返回正确的 shallow-info", async () => {
+    const firstHash = sha1(server.backend.refs.read("refs/heads/main")!);
+    const secondHash = addCommit(server.backend, firstHash, "shallow second");
+    const thirdHash = addCommit(server.backend, secondHash, "shallow third");
+    server.backend.refs.write("refs/heads/main", thirdHash);
+
+    const transport = createV2HttpTransport(server.url);
+    const caps = await transport.advertise();
+    const features = caps.commands.find((c) => c.name === "fetch")?.features ?? [];
+
+    const shallowClone = await v2Fetch(
+      transport,
+      {
+        wants: [thirdHash],
+        ofsDelta: true,
+        done: true,
+        deepen: 1,
+      },
+      features,
+    );
+    expect(shallowClone.shallowInfo).toEqual({
+      shallow: [thirdHash],
+      unshallow: [],
+    });
+
+    const deepened = await v2Fetch(
+      transport,
+      {
+        wants: [thirdHash],
+        haves: [thirdHash],
+        shallow: [thirdHash],
+        ofsDelta: true,
+        done: true,
+        deepen: 1,
+        deepenRelative: true,
+      },
+      features,
+    );
+    expect(deepened.shallowInfo).toEqual({
+      shallow: [secondHash],
+      unshallow: [thirdHash],
+    });
   });
 });
 
@@ -391,5 +537,110 @@ describe("Smart HTTP 服务端 — git CLI e2e", () => {
     );
     expect(remoteMain).toBe(newMainHash);
     expect(remoteOrphan).toBe(orphanHash);
+  });
+
+  test("git clone --depth=1 后可继续 fetch --deepen=1", async () => {
+    const secondHash = addCommit(
+      server.backend,
+      sha1(server.backend.refs.read("refs/heads/main")!),
+      "depth second",
+    );
+    const thirdHash = addCommit(server.backend, secondHash, "depth third");
+    server.backend.refs.write("refs/heads/main", thirdHash);
+
+    const target = `${tempDir}/cloned-shallow`;
+
+    await gitWithTimeout(
+      [...GIT_V2_ARGS, "clone", "--depth=1", server.url, target],
+      tempDir,
+      GIT_TIMEOUT_MS,
+    );
+
+    const shallowBefore = await gitWithTimeout(
+      [...GIT_V2_ARGS, "rev-list", "--count", "HEAD"],
+      target,
+      GIT_TIMEOUT_MS,
+    );
+    expect(shallowBefore).toBe("1");
+
+    await gitWithTimeout([...GIT_V2_ARGS, "fetch", "--deepen=1", "origin"], target, GIT_TIMEOUT_MS);
+
+    const shallowAfter = await gitWithTimeout(
+      [...GIT_V2_ARGS, "rev-list", "--count", "HEAD"],
+      target,
+      GIT_TIMEOUT_MS,
+    );
+    expect(shallowAfter).toBe("2");
+  });
+});
+
+describe("Smart HTTP 服务端 — shallow 结果对照", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir("e2e-server-shallow-compare");
+  });
+
+  afterEach(() => {
+    cleanupDir(tempDir);
+  });
+
+  test("merge DAG 下 clone --depth=2 后 fetch --deepen=1 的 shallow 结果与 git-http-backend 一致", async () => {
+    const history = await createFileRepoWithMergeHistory(tempDir);
+    const gitServer = startGitHttpBackendServer(tempDir, "/server.git");
+    const nanoServer = startNanoGitServer(createFileRepositoryBackend(history.bareDir));
+
+    try {
+      const gitResult = await cloneAndDeepenMergeRepo(gitServer.url, join(tempDir, "git-cli"));
+      const nanoResult = await cloneAndDeepenMergeRepo(nanoServer.url, join(tempDir, "nano-cli"));
+
+      expect(nanoResult.countBefore).toBe(gitResult.countBefore);
+      expect(nanoResult.countAfter).toBe(gitResult.countAfter);
+      expect(nanoResult.shallowBefore).toEqual(gitResult.shallowBefore);
+      expect(nanoResult.shallowAfter).toEqual(gitResult.shallowAfter);
+      expect(nanoResult.shallowAfter.toSorted()).toEqual(
+        [history.rootCommit, history.topicAncestorCommit].toSorted(),
+      );
+    } finally {
+      await gitServer.stop();
+      nanoServer.stop();
+    }
+  });
+
+  test("merge DAG 下 clone --shallow-exclude=topic 的 shallow 结果与 git-http-backend 一致", async () => {
+    const history = await createFileRepoWithMergeHistory(tempDir);
+    const gitServer = startGitHttpBackendServer(tempDir, "/server.git");
+    const nanoServer = startNanoGitServer(createFileRepositoryBackend(history.bareDir));
+
+    try {
+      const gitTarget = join(tempDir, "git-shallow-exclude");
+      const nanoTarget = join(tempDir, "nano-shallow-exclude");
+
+      await gitWithTimeout(
+        ["-c", "protocol.version=2", "clone", "--shallow-exclude=topic", gitServer.url, gitTarget],
+        tempDir,
+        GIT_TIMEOUT_MS,
+      );
+      await gitWithTimeout(
+        [
+          "-c",
+          "protocol.version=2",
+          "clone",
+          "--shallow-exclude=topic",
+          nanoServer.url,
+          nanoTarget,
+        ],
+        tempDir,
+        GIT_TIMEOUT_MS,
+      );
+
+      expect(readShallowFile(nanoTarget)).toEqual(readShallowFile(gitTarget));
+      expect(
+        await gitWithTimeout(["rev-list", "--count", "HEAD"], nanoTarget, GIT_TIMEOUT_MS),
+      ).toBe(await gitWithTimeout(["rev-list", "--count", "HEAD"], gitTarget, GIT_TIMEOUT_MS));
+    } finally {
+      await gitServer.stop();
+      nanoServer.stop();
+    }
   });
 });

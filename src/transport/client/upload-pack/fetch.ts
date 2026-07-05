@@ -104,6 +104,11 @@ const DEFAULT_NEGOTIATION_FETCH_OPTIONS = {
 
 interface NegotiationFetchOptions {
   readonly includeTag?: boolean;
+  readonly shallow?: string[];
+  readonly deepen?: number;
+  readonly deepenRelative?: boolean;
+  readonly deepenSince?: number;
+  readonly deepenNot?: string[];
 }
 
 interface GitOidSetState {
@@ -523,7 +528,52 @@ export function parseV2FetchResponse(
     }
   }
 
+  validateV2FetchResponseSections(
+    sections.map((section) => section.header),
+    result,
+  );
+
   return result as V2FetchResponse;
+}
+
+function validateV2FetchResponseSections(
+  headers: readonly string[],
+  result: {
+    acknowledgments?: { nak?: boolean; acks: string[]; ready?: boolean };
+    shallowInfo?: { shallow: string[]; unshallow: string[] };
+    wantedRefs?: Array<{ oid: string; refname: string }>;
+    packfileUris?: Array<{ oid: string; uri: string }>;
+    packfile?: Buffer;
+  },
+): void {
+  const hasPackfileSection = headers.includes("packfile");
+  const hasPackPayload = result.packfile !== undefined;
+  const otherSections = headers.filter((header) => header !== "acknowledgments");
+
+  if (result.acknowledgments?.ready && !hasPackfileSection) {
+    throw new V2FetchError("Received 'ready' without packfile section");
+  }
+
+  if (result.acknowledgments && !result.acknowledgments.ready && otherSections.length > 0) {
+    throw new V2FetchError("Received extra sections without 'ready'");
+  }
+
+  if (
+    !hasPackfileSection &&
+    (result.shallowInfo !== undefined ||
+      result.wantedRefs !== undefined ||
+      result.packfileUris !== undefined)
+  ) {
+    throw new V2FetchError("Received pack-related sections without packfile section");
+  }
+
+  if (hasPackfileSection && !hasPackPayload) {
+    throw new V2FetchError("Missing packfile payload in packfile section");
+  }
+
+  if (hasPackfileSection && headers[headers.length - 1] !== "packfile") {
+    throw new V2FetchError("Packfile section must be the last response section");
+  }
 }
 
 function demultiplexSidebandAll(data: Buffer): Buffer {
@@ -771,6 +821,11 @@ export async function negotiateV2Fetch(
         wants,
         ...DEFAULT_NEGOTIATION_FETCH_OPTIONS,
         includeTag: options.includeTag ?? DEFAULT_NEGOTIATION_FETCH_OPTIONS.includeTag,
+        shallow: options.shallow,
+        deepen: options.deepen,
+        deepenRelative: options.deepenRelative,
+        deepenSince: options.deepenSince,
+        deepenNot: options.deepenNot,
         done: true,
       },
       features,
@@ -810,6 +865,11 @@ export async function negotiateV2Fetch(
         haves: roundHaves,
         ...DEFAULT_NEGOTIATION_FETCH_OPTIONS,
         includeTag: options.includeTag ?? DEFAULT_NEGOTIATION_FETCH_OPTIONS.includeTag,
+        shallow: options.shallow,
+        deepen: options.deepen,
+        deepenRelative: options.deepenRelative,
+        deepenSince: options.deepenSince,
+        deepenNot: options.deepenNot,
         done,
       },
       features,
@@ -839,20 +899,8 @@ export async function negotiateV2Fetch(
       }
     }
 
-    // 规范要求 ready 响应应与 packfile 同帧返回；若对端实现更保守，
-    // 则补发一轮带 done 的请求兜底。
     if (ack.ready) {
-      return v2Fetch(
-        transport,
-        {
-          wants,
-          haves: iterateGitOidSet(commonSet),
-          ...DEFAULT_NEGOTIATION_FETCH_OPTIONS,
-          includeTag: options.includeTag ?? DEFAULT_NEGOTIATION_FETCH_OPTIONS.includeTag,
-          done: true,
-        },
-        features,
-      );
+      throw new V2FetchError("Received 'ready' without packfile payload");
     }
 
     selector.releaseAncestors();

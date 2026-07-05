@@ -10,6 +10,7 @@ import { join } from "node:path";
 
 import { cleanupDir, createFile, createTempDir, git, gitFsck, gitRevParse } from "../helpers.ts";
 import { createServerRepo } from "./helpers.ts";
+import { getNormalizedFetchCommandBatches } from "./helpers.ts";
 import { startGitHttpBackendServer } from "./http-server.ts";
 import { initRepository } from "@/repository/file.ts";
 import { sha1 } from "@/types/index.ts";
@@ -81,6 +82,63 @@ describe("Import Session", () => {
     const fsckOutput = gitFsck(localDir);
     expect(fsckOutput).not.toContain("error");
     expect(fsckOutput).not.toContain("broken");
+  });
+
+  test("repo.fetch({ depth / deepen }) 会对齐 shallow 请求语义并持久化边界", async () => {
+    git(["checkout", "main"], workDir);
+    createFile(workDir, "second.txt", "second\n");
+    git(["add", "second.txt"], workDir);
+    git(["commit", "-m", "Second commit"], workDir);
+    const secondCommitHash = sha1(git(["rev-parse", "HEAD"], workDir));
+    createFile(workDir, "third.txt", "third\n");
+    git(["add", "third.txt"], workDir);
+    git(["commit", "-m", "Third commit"], workDir);
+    const thirdCommitHash = sha1(git(["rev-parse", "HEAD"], workDir));
+    git(["push", repoDir, "main"], workDir);
+
+    const repo = initRepository(localDir);
+
+    server.clearRequests();
+    const firstResult = await repo.fetch(server.url, { depth: 1 });
+
+    expect(firstResult.objectCount).toBeGreaterThan(0);
+    expect(repo.readBranch("main")).toBe(thirdCommitHash);
+    expect(repo.shallow.read()).toEqual([thirdCommitHash]);
+    expect(getNormalizedFetchCommandBatches(server.requests)).toEqual([
+      [
+        "command=fetch",
+        "object-format=sha1",
+        "thin-pack",
+        "no-progress",
+        "include-tag",
+        "ofs-delta",
+        "deepen 1",
+        `want ${thirdCommitHash}`,
+        "done",
+      ],
+    ]);
+
+    server.clearRequests();
+    const secondResult = await repo.fetch(server.url, { deepen: 1 });
+
+    expect(secondResult.objectCount).toBeGreaterThan(0);
+    expect(repo.readBranch("main")).toBe(thirdCommitHash);
+    expect(repo.shallow.read()).toEqual([secondCommitHash]);
+    expect(getNormalizedFetchCommandBatches(server.requests)).toEqual([
+      [
+        "command=fetch",
+        "object-format=sha1",
+        "thin-pack",
+        "no-progress",
+        "include-tag",
+        "ofs-delta",
+        `shallow ${thirdCommitHash}`,
+        "deepen 1",
+        "deepen-relative",
+        `want ${thirdCommitHash}`,
+        `have ${thirdCommitHash}`,
+      ],
+    ]);
   });
 
   test("远端分支可镜像到自定义命名空间", async () => {

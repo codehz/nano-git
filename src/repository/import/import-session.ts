@@ -6,6 +6,7 @@
  */
 
 import { resolveSymbolicRef } from "../../refs/resolve.ts";
+import { getCommandFeatures } from "../../transport/client/upload-pack/capability-advertisement.ts";
 import { createV2HttpTransport } from "../../transport/client/upload-pack/http.ts";
 import { lsRefs, lsRefsToRefAdvertisement } from "../../transport/client/upload-pack/ls-refs.ts";
 import { HEAD_REF, HEADS_PREFIX, TAGS_PREFIX } from "../../types/refs.ts";
@@ -41,6 +42,7 @@ function createImportSession(
   backend: RepositoryBackend,
   advertisement: RefAdvertisement,
   v2Transport?: V2GitServiceTransport,
+  fetchFeatures?: readonly string[],
 ): ImportSession {
   const frozenSource = Object.freeze({
     url: source.url,
@@ -113,7 +115,7 @@ function createImportSession(
     },
 
     plan(): ImportPlanDraft {
-      return createImportPlanDraft(backend, frozenAdvertisement, v2Transport);
+      return createImportPlanDraft(backend, frozenAdvertisement, v2Transport, fetchFeatures);
     },
   };
 }
@@ -154,6 +156,7 @@ export function createRepoImportOperations(
           token: source.token,
           headers: source.headers,
         });
+      const capabilityAdvertisement = await v2Transport.advertise();
 
       const lsRefsEntries = await lsRefs(v2Transport, {
         symrefs: true,
@@ -163,7 +166,13 @@ export function createRepoImportOperations(
       });
 
       const advertisement = lsRefsToRefAdvertisement(lsRefsEntries);
-      return createImportSession(source, backend, advertisement, v2Transport);
+      return createImportSession(
+        source,
+        backend,
+        advertisement,
+        v2Transport,
+        getCommandFeatures(capabilityAdvertisement, "fetch"),
+      );
     },
   };
 }

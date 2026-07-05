@@ -26,6 +26,7 @@ import type { SHA1 } from "../../../types/index.ts";
 export interface FetchServerParams {
   readonly wants: SHA1[];
   readonly haves: SHA1[];
+  readonly shallow: SHA1[];
   readonly wantRefs: string[];
   readonly done: boolean;
   readonly sidebandAll?: boolean;
@@ -33,6 +34,10 @@ export interface FetchServerParams {
   readonly thinPack: boolean;
   readonly noProgress: boolean;
   readonly ofsDelta: boolean;
+  readonly deepen?: number;
+  readonly deepenRelative?: boolean;
+  readonly deepenSince?: number;
+  readonly deepenNot: string[];
 }
 
 /**
@@ -50,6 +55,7 @@ export interface FetchServerParams {
 export function parseFetchArgs(args: string[]): FetchServerParams {
   const wants: SHA1[] = [];
   const haves: SHA1[] = [];
+  const shallow: SHA1[] = [];
   const wantRefs: string[] = [];
   let done = false;
   let sidebandAll = false;
@@ -57,6 +63,10 @@ export function parseFetchArgs(args: string[]): FetchServerParams {
   let thinPack = false;
   let noProgress = false;
   let ofsDelta = false;
+  let deepen: number | undefined;
+  let deepenRelative = false;
+  let deepenSince: number | undefined;
+  const deepenNot: string[] = [];
 
   for (const arg of args) {
     if (arg === "done") {
@@ -71,6 +81,16 @@ export function parseFetchArgs(args: string[]): FetchServerParams {
       noProgress = true;
     } else if (arg === "ofs-delta") {
       ofsDelta = true;
+    } else if (arg === "deepen-relative") {
+      deepenRelative = true;
+    } else if (arg.startsWith("shallow ")) {
+      shallow.push(sha1(arg.slice(8).trim()));
+    } else if (arg.startsWith("deepen ")) {
+      deepen = Number.parseInt(arg.slice(7).trim(), 10);
+    } else if (arg.startsWith("deepen-since ")) {
+      deepenSince = Number.parseInt(arg.slice(13).trim(), 10);
+    } else if (arg.startsWith("deepen-not ")) {
+      deepenNot.push(arg.slice(11).trim());
     } else if (arg.startsWith("want ")) {
       wants.push(sha1(arg.slice(5).trim()));
     } else if (arg.startsWith("have ")) {
@@ -78,11 +98,24 @@ export function parseFetchArgs(args: string[]): FetchServerParams {
     } else if (arg.startsWith("want-ref ")) {
       wantRefs.push(arg.slice(9).trim());
     }
-    // shallow/deepen/filter 等参数暂时忽略
-    // （shallow 场景下支持传递边界但不做剪裁）
   }
 
-  return { wants, haves, wantRefs, done, sidebandAll, waitForDone, thinPack, noProgress, ofsDelta };
+  return {
+    wants,
+    haves,
+    shallow,
+    wantRefs,
+    done,
+    sidebandAll,
+    waitForDone,
+    thinPack,
+    noProgress,
+    ofsDelta,
+    deepen,
+    deepenRelative,
+    deepenSince,
+    deepenNot,
+  };
 }
 
 // ============================================================================
@@ -95,14 +128,216 @@ export function parseFetchArgs(args: string[]): FetchServerParams {
  * - 无 haves（clone）：返回所有 want 对象及其可达对象
  * - 有 haves（增量 fetch）：返回 want 可达对象与 have 可达对象的差集
  */
-function computeObjectsToPack(backend: RepositoryBackend, params: FetchServerParams): Set<SHA1> {
+interface ShallowFetchPlan {
+  readonly clientShallow: ReadonlySet<SHA1>;
+  readonly serverShallow?: ReadonlySet<SHA1>;
+  readonly shallowUpdate?: {
+    readonly shallow: SHA1[];
+    readonly unshallow: SHA1[];
+  };
+}
+
+function resolveExcludedReachable(
+  backend: RepositoryBackend,
+  deepenNot: readonly string[],
+): ReadonlySet<SHA1> | undefined {
+  if (deepenNot.length === 0) {
+    return undefined;
+  }
+
+  const excludeRoots: SHA1[] = [];
+  for (const refName of deepenNot) {
+    const hash = resolveDeepenNotTargetHash(backend, refName);
+    if (hash !== null) {
+      excludeRoots.push(hash);
+    }
+  }
+
+  if (excludeRoots.length === 0) {
+    return undefined;
+  }
+
+  return collectReachable(backend.objects, excludeRoots, "skip-commit-parents");
+}
+
+function resolveDeepenNotTargetHash(backend: RepositoryBackend, rev: string): SHA1 | null {
+  const tryResolveRef = (refName: string): SHA1 | null => {
+    const hash = resolveRefHash(backend.refs, refName);
+    return hash;
+  };
+
+  if (rev === "HEAD" || rev.startsWith("refs/")) {
+    return tryResolveRef(rev);
+  }
+
+  if (/^[0-9a-f]{40}$/.test(rev)) {
+    const oid = sha1(rev);
+    return backend.objects.exists(oid) ? oid : null;
+  }
+
+  return (
+    tryResolveRef(`refs/heads/${rev}`) ??
+    tryResolveRef(`refs/tags/${rev}`) ??
+    tryResolveRef(`refs/remotes/${rev}`)
+  );
+}
+
+function computeDepthLimitedShallowBoundary(
+  backend: RepositoryBackend,
+  wants: readonly SHA1[],
+  maxDepth: number,
+  deepenSince: number | undefined,
+  excludedReachable: ReadonlySet<SHA1> | undefined,
+): Set<SHA1> {
+  const boundary = new Set<SHA1>();
+  const queue = wants.map((hash) => ({ hash: peelTagChain(backend.objects, hash), depth: 1 }));
+  const visited = new Map<SHA1, number>();
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    const previousDepth = visited.get(current.hash);
+    if (previousDepth !== undefined && previousDepth <= current.depth) {
+      continue;
+    }
+    visited.set(current.hash, current.depth);
+
+    const obj = tryReadObject(backend.objects, current.hash);
+    if (!obj || obj.type !== "commit") {
+      continue;
+    }
+
+    let omittedParent = false;
+    for (const parent of obj.parents) {
+      if (excludedReachable?.has(parent)) {
+        omittedParent = true;
+        continue;
+      }
+
+      const parentObj = tryReadObject(backend.objects, parent);
+      if (parentObj?.type === "commit" && deepenSince !== undefined) {
+        if (parentObj.committer.timestamp < deepenSince) {
+          omittedParent = true;
+          continue;
+        }
+      }
+
+      if (current.depth >= maxDepth) {
+        omittedParent = true;
+        continue;
+      }
+
+      queue.push({ hash: parent, depth: current.depth + 1 });
+    }
+
+    if (omittedParent) {
+      boundary.add(current.hash);
+    }
+  }
+
+  return boundary;
+}
+
+function computeRelativeDeepenBoundary(
+  backend: RepositoryBackend,
+  currentShallow: readonly SHA1[],
+  deepen: number,
+): Set<SHA1> {
+  const boundary = new Set<SHA1>();
+  const queue = currentShallow.map((hash) => ({ hash, depth: 0 }));
+  const visited = new Map<SHA1, number>();
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    const previousDepth = visited.get(current.hash);
+    if (previousDepth !== undefined && previousDepth <= current.depth) {
+      continue;
+    }
+    visited.set(current.hash, current.depth);
+
+    const obj = tryReadObject(backend.objects, current.hash);
+    if (!obj || obj.type !== "commit") {
+      continue;
+    }
+
+    if (current.depth >= deepen) {
+      boundary.add(current.hash);
+      continue;
+    }
+
+    for (const parent of obj.parents) {
+      queue.push({ hash: parent, depth: current.depth + 1 });
+    }
+  }
+
+  return boundary;
+}
+
+function createShallowFetchPlan(
+  backend: RepositoryBackend,
+  params: FetchServerParams,
+): ShallowFetchPlan {
+  const clientShallow = new Set<SHA1>(params.shallow);
+  const excludedReachable = resolveExcludedReachable(backend, params.deepenNot);
+  let serverShallow: Set<SHA1> | undefined;
+
+  if (params.deepenRelative && params.deepen !== undefined) {
+    serverShallow = computeRelativeDeepenBoundary(backend, params.shallow, params.deepen);
+  } else if (
+    params.deepen !== undefined ||
+    params.deepenSince !== undefined ||
+    params.deepenNot.length > 0
+  ) {
+    const maxDepth = params.deepen ?? Number.MAX_SAFE_INTEGER;
+    serverShallow = computeDepthLimitedShallowBoundary(
+      backend,
+      params.wants,
+      maxDepth,
+      params.deepenSince,
+      excludedReachable,
+    );
+  }
+
+  if (!serverShallow) {
+    return { clientShallow };
+  }
+
+  const shallow = [...serverShallow].filter((hash) => !clientShallow.has(hash));
+  const unshallow = [...clientShallow].filter((hash) => !serverShallow.has(hash));
+
+  return {
+    clientShallow,
+    serverShallow,
+    shallowUpdate: shallow.length > 0 || unshallow.length > 0 ? { shallow, unshallow } : undefined,
+  };
+}
+
+function computeObjectsToPack(
+  backend: RepositoryBackend,
+  params: FetchServerParams,
+  shallowPlan: ShallowFetchPlan,
+): Set<SHA1> {
   if (params.haves.length === 0) {
-    return collectReachable(backend.objects, params.wants, "skip-commit-parents");
+    return collectReachable(
+      backend.objects,
+      params.wants,
+      "skip-commit-parents",
+      shallowPlan.serverShallow ? new Set(shallowPlan.serverShallow) : undefined,
+    );
   }
 
   // 增量 fetch：A - B
-  const wantReachable = collectReachable(backend.objects, params.wants, "skip-commit-parents");
-  const haveReachable = collectReachable(backend.objects, params.haves, "skip-commit-parents");
+  const wantReachable = collectReachable(
+    backend.objects,
+    params.wants,
+    "skip-commit-parents",
+    shallowPlan.serverShallow ? new Set(shallowPlan.serverShallow) : undefined,
+  );
+  const haveReachable = collectReachable(
+    backend.objects,
+    params.haves,
+    "skip-commit-parents",
+    shallowPlan.clientShallow.size > 0 ? new Set(shallowPlan.clientShallow) : undefined,
+  );
 
   const result = new Set<SHA1>();
   for (const hash of wantReachable) {
@@ -175,6 +410,7 @@ function generatePackfileResponse(
   backend: RepositoryBackend,
   params: FetchServerParams,
   wantedRefs: ReadonlyArray<{ refname: string; oid: SHA1 }>,
+  shallowPlan: ShallowFetchPlan,
   ackSection?: Buffer,
 ): Buffer {
   const parts: Buffer[] = [];
@@ -182,6 +418,27 @@ function generatePackfileResponse(
   // acknowledgments 节（仅协商命中 ready 时）：与后续节之间以 delim-pkt 分隔。
   if (ackSection !== undefined) {
     parts.push(ackSection);
+    parts.push(encodeDelimiterPkt());
+  }
+
+  if (shallowPlan.shallowUpdate) {
+    parts.push(
+      params.sidebandAll ? encodeSidebandData("shallow-info\n") : encodePktLine("shallow-info\n"),
+    );
+    for (const hash of shallowPlan.shallowUpdate.shallow) {
+      parts.push(
+        params.sidebandAll
+          ? encodeSidebandData(`shallow ${hash}\n`)
+          : encodePktLine(`shallow ${hash}\n`),
+      );
+    }
+    for (const hash of shallowPlan.shallowUpdate.unshallow) {
+      parts.push(
+        params.sidebandAll
+          ? encodeSidebandData(`unshallow ${hash}\n`)
+          : encodePktLine(`unshallow ${hash}\n`),
+      );
+    }
     parts.push(encodeDelimiterPkt());
   }
 
@@ -202,7 +459,7 @@ function generatePackfileResponse(
   }
 
   // 计算要发送的对象集合
-  const toPack = computeObjectsToPack(backend, params);
+  const toPack = computeObjectsToPack(backend, params, shallowPlan);
 
   // 构建 packfile
   const writer = createPackWriter();
@@ -457,6 +714,7 @@ export function generateFetchResponse(
   }
 
   const effectiveParams: FetchServerParams = { ...params, wants: effectiveWants };
+  const shallowPlan = createShallowFetchPlan(backend, effectiveParams);
 
   if (effectiveParams.wants.length === 0) {
     throw new UploadPackServiceError("fetch: no wants resolved");
@@ -464,7 +722,7 @@ export function generateFetchResponse(
 
   if (params.done) {
     // 带 done：直接发送 packfile（无 acknowledgments 节）
-    return generatePackfileResponse(backend, effectiveParams, wantedRefs);
+    return generatePackfileResponse(backend, effectiveParams, wantedRefs, shallowPlan);
   }
 
   // 无 done：协商阶段
@@ -472,7 +730,7 @@ export function generateFetchResponse(
 
   if (ready) {
     // 命中 ready：必须在同一响应中紧接 packfile（git 要求 "expected packfile after 'ready'"）
-    return generatePackfileResponse(backend, effectiveParams, wantedRefs, ackSection);
+    return generatePackfileResponse(backend, effectiveParams, wantedRefs, shallowPlan, ackSection);
   }
 
   // 未 ready：仅返回 acknowledgments 节（客户端将继续多轮协商）

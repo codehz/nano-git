@@ -66,8 +66,6 @@ describe("parseV2FetchResponse()", () => {
       pkt("acknowledgments\n"),
       pkt("ACK 95d09f2b10159347eece71399a7e2e907ea3df4f\n"),
       pkt("ACK aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d\n"),
-      pkt("ready\n"),
-      encodeDelimiterPkt(),
       encodeFlushPkt(),
     ]);
 
@@ -75,7 +73,38 @@ describe("parseV2FetchResponse()", () => {
     expect(result.acknowledgments?.acks).toHaveLength(2);
     expect(result.acknowledgments?.acks[0]).toBe("95d09f2b10159347eece71399a7e2e907ea3df4f");
     expect(result.acknowledgments?.acks[1]).toBe("aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d");
-    expect(result.acknowledgments?.ready).toBe(true);
+    expect(result.acknowledgments?.ready).not.toBe(true);
+  });
+
+  test("ready 缺少 packfile 节时应抛错", () => {
+    const buf = Buffer.concat([
+      pkt("acknowledgments\n"),
+      pkt("ACK 95d09f2b10159347eece71399a7e2e907ea3df4f\n"),
+      pkt("ready\n"),
+      encodeDelimiterPkt(),
+      encodeFlushPkt(),
+    ]);
+
+    expect(() => parseV2FetchResponse(buf, false, false)).toThrow(
+      /Received 'ready' without packfile section/,
+    );
+  });
+
+  test("无 ready 时若继续返回其他节应抛错", () => {
+    const buf = Buffer.concat([
+      pkt("acknowledgments\n"),
+      pkt("NAK\n"),
+      encodeDelimiterPkt(),
+      pkt("packfile\n"),
+      encodePktLine(
+        Buffer.concat([Buffer.from([0x01]), Buffer.from("PACK\u0000\u0000\u0000\u0002...")]),
+      ),
+      encodeFlushPkt(),
+    ]);
+
+    expect(() => parseV2FetchResponse(buf, false, false)).toThrow(
+      /Received extra sections without 'ready'/,
+    );
   });
 
   test("packfile 数据提取", () => {
@@ -99,12 +128,12 @@ describe("parseV2FetchResponse()", () => {
     expect(result.packfile!.toString()).toContain("PACK");
   });
 
-  test("空 packfile 节返回 undefined", () => {
+  test("空 packfile 节应抛错", () => {
     const buf = Buffer.concat([pkt("packfile\n"), encodeFlushPkt()]);
 
-    const result = parseV2FetchResponse(buf, true, false);
-    // 节头后无数据帧，packfileFrames 为空 → packfile 应为 undefined
-    expect(result.packfile).toBeUndefined();
+    expect(() => parseV2FetchResponse(buf, true, false)).toThrow(
+      /Missing packfile payload in packfile section/,
+    );
   });
 
   test("无节头的空响应", () => {
@@ -121,6 +150,7 @@ describe("parseV2FetchResponse()", () => {
     const buf = Buffer.concat([
       channelized("acknowledgments\n"),
       channelized("ACK 95d09f2b10159347eece71399a7e2e907ea3df4f\n"),
+      channelized("ready\n"),
       encodeDelimiterPkt(),
       channelized("packfile\n"),
       encodePktLine(
@@ -186,6 +216,24 @@ describe("v2 fetch 协商请求", () => {
 
     expect(calls).toHaveLength(1);
     expect(result.packfile).toBeDefined();
+  });
+
+  test("ready 缺少 packfile 时直接报错而不是补发 done", async () => {
+    const calls: string[][] = [];
+    const common = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const response = Buffer.concat([
+      pkt("acknowledgments\n"),
+      pkt(`ACK ${common}\n`),
+      pkt("ready\n"),
+      encodeDelimiterPkt(),
+      encodeFlushPkt(),
+    ]);
+    const transport = createMockTransport([response], calls);
+
+    expect(
+      negotiateV2Fetch(transport, ["1111111111111111111111111111111111111111"], [common]),
+    ).rejects.toThrow(/Received 'ready' without packfile section/);
+    expect(calls).toHaveLength(1);
   });
 
   test("ACK 过的 common 会在下一轮带 done replay", async () => {

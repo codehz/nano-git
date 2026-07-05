@@ -22,6 +22,7 @@ import type {
   ImportDiagnostic,
   ImportPlan,
   ImportPlanInspection,
+  ImportPrepareOptions,
   ImportView,
   NamedImportView,
   PlannedRemoteRef,
@@ -77,6 +78,7 @@ function compileImportPlanState(
   backend: RepositoryBackend,
   advertisement: Readonly<RefAdvertisement>,
   v2Transport: V2GitServiceTransport | undefined,
+  fetchFeatures: readonly string[] | undefined,
   actions: readonly ImportMaterializationIntent[],
 ): CompiledImportPlanState {
   const resolvedMappings: ResolvedMapping[] = [];
@@ -301,6 +303,7 @@ function compileImportPlanState(
     backend,
     advertisement,
     v2Transport,
+    fetchFeatures,
     wantsExplicitTags,
     resolvedMappings,
     headRequests,
@@ -315,10 +318,20 @@ export function createImportPlan(
   backend: RepositoryBackend,
   advertisement: Readonly<RefAdvertisement>,
   v2Transport: V2GitServiceTransport | undefined,
+  fetchFeatures: readonly string[] | undefined,
   actions: readonly ImportMaterializationIntent[],
-  prepare: (compiled: CompiledImportPlanState) => Promise<PreparedImportPlanState>,
+  prepare: (
+    compiled: CompiledImportPlanState,
+    options?: ImportPrepareOptions,
+  ) => Promise<PreparedImportPlanState>,
 ): ImportPlan {
-  const compiled = compileImportPlanState(backend, advertisement, v2Transport, actions);
+  const compiled = compileImportPlanState(
+    backend,
+    advertisement,
+    v2Transport,
+    fetchFeatures,
+    actions,
+  );
   const inspection = freezeInspectionResult({
     selectedRefs: compiled.selectedRefs,
     diagnostics: compiled.diagnostics,
@@ -330,8 +343,8 @@ export function createImportPlan(
       return inspection;
     },
 
-    async prepare() {
-      return createPreparedImportPlan(backend, await prepare(compiled));
+    async prepare(options?: ImportPrepareOptions) {
+      return createPreparedImportPlan(backend, await prepare(compiled, options));
     },
   };
 }
