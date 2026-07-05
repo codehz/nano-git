@@ -323,6 +323,334 @@ describe("Import Session", () => {
     expect(git(["tag", "-l"], cliDir)).toBe("v1.0.0");
   });
 
+  test("非 shallow 已有仓库后续 repo.fetch() 会像 git fetch 一样自动物化新增可达 tag", async () => {
+    git(["checkout", "main"], workDir);
+    createFile(workDir, "first-tagged.txt", "first-tagged\n");
+    git(["add", "first-tagged.txt"], workDir);
+    git(["commit", "-m", "First tagged commit"], workDir);
+    git(["tag", "-a", "v1.0.0", "-m", "v1.0.0"], workDir);
+    git(["push", repoDir, "main"], workDir);
+    git(["push", repoDir, "refs/tags/v1.0.0"], workDir);
+
+    const repo = initRepository(localDir);
+    const cliDir = join(tempDir, "cli-followup-default-tags");
+
+    await repo.fetch(server.url);
+    await gitWithTimeout(["-c", "protocol.version=2", "clone", server.url, cliDir], tempDir, 15000);
+
+    createFile(workDir, "second-tagged.txt", "second-tagged\n");
+    git(["add", "second-tagged.txt"], workDir);
+    git(["commit", "-m", "Second tagged commit"], workDir);
+    const secondTaggedCommitHash = sha1(git(["rev-parse", "HEAD"], workDir));
+    git(["tag", "-a", "v2.0.0", "-m", "v2.0.0"], workDir);
+    const secondTagHash = sha1(git(["rev-parse", "refs/tags/v2.0.0"], workDir));
+    git(["push", repoDir, "main"], workDir);
+    git(["push", repoDir, "refs/tags/v2.0.0"], workDir);
+
+    server.clearRequests();
+    await repo.fetch(server.url);
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    await gitWithTimeout(["-c", "protocol.version=2", "fetch", "origin"], cliDir, 15000);
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoBatches).toEqual(cliBatches);
+    expect(repo.readBranch("main")).toBe(secondTaggedCommitHash);
+    expect(repo.refs.read("refs/tags/v2.0.0")).toBe(secondTagHash);
+    expect(repo.refs.list("refs/tags/")).toEqual(["refs/tags/v1.0.0", "refs/tags/v2.0.0"]);
+    expect(git(["tag", "-l"], cliDir).split("\n").filter(Boolean).sort()).toEqual([
+      "v1.0.0",
+      "v2.0.0",
+    ]);
+  });
+
+  test("默认 repo.fetch() 对已可达旧提交上的新增 annotated tag 会像 git fetch 一样单独抓取 tag 对象", async () => {
+    const repo = initRepository(localDir);
+    const cliDir = join(tempDir, "cli-default-annotated-old-tag");
+
+    await repo.fetch(server.url);
+    await gitWithTimeout(["-c", "protocol.version=2", "clone", server.url, cliDir], tempDir, 15000);
+
+    const firstCommitHash = sha1(git(["rev-parse", "HEAD"], workDir));
+    git(["tag", "-a", "v1.0.0", "-m", "v1.0.0", firstCommitHash], workDir);
+    const tagHash = sha1(git(["rev-parse", "refs/tags/v1.0.0"], workDir));
+    git(["push", repoDir, "refs/tags/v1.0.0"], workDir);
+
+    server.clearRequests();
+    await repo.fetch(server.url);
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    await gitWithTimeout(["-c", "protocol.version=2", "fetch", "origin"], cliDir, 15000);
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoBatches).toEqual(cliBatches);
+    expect(nanoBatches).toEqual([
+      [
+        "command=fetch",
+        "object-format=sha1",
+        "thin-pack",
+        "no-progress",
+        "include-tag",
+        "ofs-delta",
+        `want ${tagHash}`,
+        `have ${firstCommitHash}`,
+      ],
+    ]);
+    expect(repo.refs.read("refs/tags/v1.0.0")).toBe(tagHash);
+    expect(git(["tag", "-l"], cliDir)).toBe("v1.0.0");
+  });
+
+  test("默认 repo.fetch() 对已可达旧提交上的新增 lightweight tag 会像 git fetch 一样只更新 refs 不抓对象", async () => {
+    const repo = initRepository(localDir);
+    const cliDir = join(tempDir, "cli-default-lightweight-old-tag");
+
+    await repo.fetch(server.url);
+    await gitWithTimeout(["-c", "protocol.version=2", "clone", server.url, cliDir], tempDir, 15000);
+
+    const firstCommitHash = sha1(git(["rev-parse", "HEAD"], workDir));
+    git(["tag", "v1.0.0", firstCommitHash], workDir);
+    git(["push", repoDir, "refs/tags/v1.0.0"], workDir);
+
+    server.clearRequests();
+    await repo.fetch(server.url);
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    await gitWithTimeout(["-c", "protocol.version=2", "fetch", "origin"], cliDir, 15000);
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoBatches).toEqual(cliBatches);
+    expect(nanoBatches).toEqual([]);
+    expect(repo.refs.read("refs/tags/v1.0.0")).toBe(firstCommitHash);
+    expect(git(["tag", "-l"], cliDir)).toBe("v1.0.0");
+  });
+
+  test("默认 repo.fetch() 对新分支 tip 上新增 lightweight tag 会像 git fetch 一样重复 want 对应提交", async () => {
+    const repo = initRepository(localDir);
+    const cliDir = join(tempDir, "cli-default-lightweight-tip-tag");
+
+    await repo.fetch(server.url);
+    await gitWithTimeout(["-c", "protocol.version=2", "clone", server.url, cliDir], tempDir, 15000);
+
+    git(["checkout", "main"], workDir);
+    createFile(workDir, "tip-tagged.txt", "tip-tagged\n");
+    git(["add", "tip-tagged.txt"], workDir);
+    git(["commit", "-m", "Tip tagged commit"], workDir);
+    const taggedCommitHash = sha1(git(["rev-parse", "HEAD"], workDir));
+    git(["tag", "v1.0.0"], workDir);
+    git(["push", repoDir, "main"], workDir);
+    git(["push", repoDir, "refs/tags/v1.0.0"], workDir);
+
+    server.clearRequests();
+    await repo.fetch(server.url);
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    await gitWithTimeout(["-c", "protocol.version=2", "fetch", "origin"], cliDir, 15000);
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoBatches).toEqual(cliBatches);
+    expect(nanoBatches).toEqual([
+      [
+        "command=fetch",
+        "object-format=sha1",
+        "thin-pack",
+        "no-progress",
+        "include-tag",
+        "ofs-delta",
+        `want ${taggedCommitHash}`,
+        `want ${taggedCommitHash}`,
+        `have ${mainCommitHash}`,
+      ],
+    ]);
+    expect(repo.refs.read("refs/tags/v1.0.0")).toBe(taggedCommitHash);
+    expect(git(["tag", "-l"], cliDir)).toBe("v1.0.0");
+  });
+
+  test("repo.fetch({ refPatterns: [heads, tags] }) 会像显式 fetch --tags 一样抓取分支与 tags", async () => {
+    git(["checkout", "main"], workDir);
+    createFile(workDir, "second.txt", "second\n");
+    git(["add", "second.txt"], workDir);
+    git(["commit", "-m", "Second commit"], workDir);
+    const secondCommitHash = sha1(git(["rev-parse", "HEAD"], workDir));
+    git(["tag", "-a", "v1.0.0", "-m", "v1.0.0"], workDir);
+    const tagHash = sha1(git(["rev-parse", "refs/tags/v1.0.0"], workDir));
+    git(["push", repoDir, "main"], workDir);
+    git(["push", repoDir, "refs/tags/v1.0.0"], workDir);
+
+    const repo = initRepository(localDir);
+    const cliDir = join(tempDir, "cli-refpatterns-tags");
+
+    server.clearRequests();
+    await repo.fetch(server.url, { refPatterns: ["refs/heads/*", "refs/tags/*"] });
+    const nanoInitialBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    await gitWithTimeout(["-c", "protocol.version=2", "clone", server.url, cliDir], tempDir, 15000);
+
+    createFile(workDir, "third.txt", "third\n");
+    git(["add", "third.txt"], workDir);
+    git(["commit", "-m", "Third commit"], workDir);
+    const thirdCommitHash = sha1(git(["rev-parse", "HEAD"], workDir));
+    git(["tag", "-a", "v2.0.0", "-m", "v2.0.0"], workDir);
+    const secondTagHash = sha1(git(["rev-parse", "refs/tags/v2.0.0"], workDir));
+    git(["push", repoDir, "main"], workDir);
+    git(["push", repoDir, "refs/tags/v2.0.0"], workDir);
+
+    server.clearRequests();
+    await repo.fetch(server.url, { refPatterns: ["refs/heads/*", "refs/tags/*"] });
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    await gitWithTimeout(["-c", "protocol.version=2", "fetch", "--tags", "origin"], cliDir, 15000);
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoInitialBatches).toEqual([
+      [
+        "command=fetch",
+        "object-format=sha1",
+        "thin-pack",
+        "no-progress",
+        "ofs-delta",
+        `want ${secondCommitHash}`,
+        `want ${tagHash}`,
+        "done",
+      ],
+    ]);
+    expect(nanoBatches).toEqual(cliBatches);
+    expect(repo.readBranch("main")).toBe(thirdCommitHash);
+    expect(repo.refs.read("refs/tags/v2.0.0")).toBe(secondTagHash);
+    expect(git(["tag", "-l"], cliDir).split("\n").filter(Boolean).sort()).toEqual([
+      "v1.0.0",
+      "v2.0.0",
+    ]);
+  });
+
+  test("repo.fetch({ refSpecs: [heads, tags] }) 会像 git fetch <refspec> 一样拒绝覆盖已有 lightweight tag", async () => {
+    git(["checkout", "main"], workDir);
+    createFile(workDir, "tag-base.txt", "tag-base\n");
+    git(["add", "tag-base.txt"], workDir);
+    git(["commit", "-m", "Tag base"], workDir);
+    const taggedCommitHash = sha1(git(["rev-parse", "HEAD"], workDir));
+    git(["tag", "v1.0.0"], workDir);
+    git(["push", repoDir, "main"], workDir);
+    git(["push", repoDir, "refs/tags/v1.0.0"], workDir);
+
+    const repo = initRepository(localDir);
+    const cliDir = join(tempDir, "cli-refspecs-tags.git");
+    const refSpecs = ["refs/heads/*:refs/heads/*", "refs/tags/*:refs/tags/*"];
+
+    await repo.fetch(server.url, { refSpecs });
+    await gitWithTimeout(
+      ["-c", "protocol.version=2", "clone", "--bare", server.url, cliDir],
+      tempDir,
+      15000,
+    );
+
+    createFile(workDir, "tag-moved.txt", "tag-moved\n");
+    git(["add", "tag-moved.txt"], workDir);
+    git(["commit", "-m", "Tag moved"], workDir);
+    const movedTagCommitHash = sha1(git(["rev-parse", "HEAD"], workDir));
+    git(["tag", "-f", "v1.0.0"], workDir);
+    git(["push", repoDir, "main"], workDir);
+    git(["push", repoDir, "+refs/tags/v1.0.0"], workDir);
+
+    server.clearRequests();
+    const nanoPromise = repo.fetch(server.url, { refSpecs });
+    const nanoSettled = nanoPromise.then(
+      () => undefined,
+      () => undefined,
+    );
+    expect(nanoPromise).rejects.toBeInstanceOf(Error);
+    await nanoSettled;
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    const cliPromise = gitWithTimeout(
+      [
+        "-c",
+        "protocol.version=2",
+        "fetch",
+        "origin",
+        "refs/heads/*:refs/heads/*",
+        "refs/tags/*:refs/tags/*",
+      ],
+      cliDir,
+      15000,
+    );
+    const cliSettled = cliPromise.then(
+      () => undefined,
+      () => undefined,
+    );
+    expect(cliPromise).rejects.toBeInstanceOf(Error);
+    await cliSettled;
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoBatches).toEqual(cliBatches);
+    expect(nanoBatches).toHaveLength(1);
+    expect(nanoBatches[0]).toContain("include-tag");
+    expect(nanoBatches[0]).toContain(`want ${movedTagCommitHash}`);
+    expect(nanoBatches[0]).toContain(`have ${mainCommitHash}`);
+    expect(nanoBatches[0]).toContain(`have ${taggedCommitHash}`);
+    expect(repo.readBranch("main")).toBe(movedTagCommitHash);
+    expect(repo.refs.read("refs/tags/v1.0.0")).toBe(taggedCommitHash);
+    expect(git(["--git-dir", cliDir, "rev-parse", "refs/heads/main"], tempDir)).toBe(
+      movedTagCommitHash,
+    );
+    expect(git(["--git-dir", cliDir, "rev-parse", "refs/tags/v1.0.0"], tempDir)).toBe(
+      taggedCommitHash,
+    );
+  });
+
+  test("本地 shallow 仓库后续 repo.fetch() 会像 git fetch 一样自动物化新增可达 tag", async () => {
+    git(["checkout", "main"], workDir);
+    createFile(workDir, "initial-tagged.txt", "initial-tagged\n");
+    git(["add", "initial-tagged.txt"], workDir);
+    git(["commit", "-m", "Initial tagged commit"], workDir);
+    git(["tag", "-a", "v1.0.0", "-m", "v1.0.0"], workDir);
+    git(["push", repoDir, "main"], workDir);
+    git(["push", repoDir, "refs/tags/v1.0.0"], workDir);
+
+    const repo = initRepository(localDir);
+    const cliDir = join(tempDir, "cli-shallow-followup-default-tags");
+
+    await repo.fetch(server.url, { depth: 1 });
+    await gitWithTimeout(
+      ["-c", "protocol.version=2", "clone", "--depth=1", server.url, cliDir],
+      tempDir,
+      15000,
+    );
+
+    createFile(workDir, "followup-tagged.txt", "followup-tagged\n");
+    git(["add", "followup-tagged.txt"], workDir);
+    git(["commit", "-m", "Followup tagged commit"], workDir);
+    const followupTaggedCommitHash = sha1(git(["rev-parse", "HEAD"], workDir));
+    git(["tag", "-a", "v2.0.0", "-m", "v2.0.0"], workDir);
+    const followupTagHash = sha1(git(["rev-parse", "refs/tags/v2.0.0"], workDir));
+    git(["push", repoDir, "main"], workDir);
+    git(["push", repoDir, "refs/tags/v2.0.0"], workDir);
+
+    server.clearRequests();
+    await repo.fetch(server.url);
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    await gitWithTimeout(["-c", "protocol.version=2", "fetch", "origin"], cliDir, 15000);
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoBatches).toEqual(cliBatches);
+    expect(repo.readBranch("main")).toBe(followupTaggedCommitHash);
+    expect(sortHashes(repo.shallow.read())).toEqual(sortHashes(readShallowFile(cliDir)));
+    expect(repo.refs.read("refs/tags/v1.0.0")).not.toBeNull();
+    expect(repo.refs.read("refs/tags/v2.0.0")).toBe(followupTagHash);
+    expect(repo.refs.list("refs/tags/")).toEqual(["refs/tags/v1.0.0", "refs/tags/v2.0.0"]);
+    expect(git(["tag", "-l"], cliDir).split("\n").filter(Boolean).sort()).toEqual([
+      "v1.0.0",
+      "v2.0.0",
+    ]);
+  });
+
   test("source shallow + lightweight boundary tag 下 repo.fetch({ shallowExclude }) 请求序列与 git CLI 一致", async () => {
     await server.stop();
     const history = await createTaggedShallowSourceRepository(tempDir, {

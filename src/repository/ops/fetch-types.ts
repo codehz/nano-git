@@ -95,7 +95,8 @@ export interface RepositoryFetchOperations {
    *
    * 等价于 `git fetch <url>`。
    * 默认行为：拉取所有远端分支（fast-forward）并设置 HEAD。
-   * 可达 tag 对象仍会通过协议层自动跟随，但不会默认创建本地 tag refs。
+   * 对非 shallow 的默认 fetch，会像 `git fetch` 一样自动物化可达 tag refs；
+   * 显式 shallow 请求或 `noTags` 时则不会默认创建本地 tag refs。
    *
    * @param url - 远端仓库 URL
    * @param options - 可选参数

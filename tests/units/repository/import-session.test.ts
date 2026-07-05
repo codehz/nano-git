@@ -2148,6 +2148,70 @@ describe("apply 错误处理", () => {
     expect(fetchCall).not.toContain("include-tag");
   });
 
+  test("显式 tag 请求即使当前没有匹配到任何 tag，也不会回退到 include-tag", async () => {
+    const backend = createMemoryRepositoryBackend();
+    const treeHash = writeObject(backend.objects, { type: "tree", entries: [] });
+    const localCommitHash = writeObject(backend.objects, {
+      type: "commit",
+      tree: treeHash,
+      parents: [],
+      author: { name: "Test", email: "test@test", timestamp: 1, timezone: "+0000" },
+      committer: { name: "Test", email: "test@test", timestamp: 1, timezone: "+0000" },
+      message: "local commit\n",
+    });
+    const remoteCommit = {
+      type: "commit" as const,
+      tree: treeHash,
+      parents: [localCommitHash],
+      author: { name: "Test", email: "test@test", timestamp: 2, timezone: "+0000" },
+      committer: { name: "Test", email: "test@test", timestamp: 2, timezone: "+0000" },
+      message: "remote commit\n",
+    };
+    const remoteCommitRaw = encodeObject(remoteCommit);
+    const remoteCommitHash = remoteCommitRaw.hash;
+
+    backend.refs.write("refs/heads/main", localCommitHash);
+    backend.refs.write("HEAD", "ref: refs/heads/main");
+
+    const writer = createPackWriter();
+    writer.addRaw(remoteCommitRaw);
+    const packfileResponse = Buffer.concat([
+      encodePktLine("packfile\n"),
+      encodePktLine(Buffer.concat([Buffer.from([0x01]), writer.build()])),
+      encodeFlushPkt(),
+    ]);
+
+    const calls: string[][] = [];
+    const mockV2Transport: V2GitServiceTransport = {
+      advertise: async () => ({ capabilities: {}, commands: [] }),
+      command: async (_command, args) => {
+        calls.push([...(args ?? [])]);
+        return packfileResponse;
+      },
+    };
+
+    const adv: RefAdvertisement = {
+      capabilities: {},
+      refs: [
+        { hash: remoteCommitHash, name: "HEAD", symrefTarget: "refs/heads/main" },
+        { hash: remoteCommitHash, name: "refs/heads/main" },
+      ],
+      defaultBranch: "refs/heads/main",
+    };
+    const session = createImportSession(MOCK_SOURCE, backend, adv, mockV2Transport);
+
+    const preview = await previewDraft(
+      session.plan().materialize(session.select("refs/heads/*")).toNamespace("refs/heads/*"),
+      { requestedExplicitTags: true },
+    );
+
+    expect(preview.canApply).toBe(true);
+    const fetchCall = calls.find((args) => args.includes(`want ${remoteCommitHash}`));
+    expect(fetchCall).toBeDefined();
+    expect(fetchCall).toContain(`have ${localCommitHash}`);
+    expect(fetchCall).not.toContain("include-tag");
+  });
+
   test("noTags 会关闭 include-tag 自动跟随", async () => {
     const backend = createMemoryRepositoryBackend();
     const treeHash = writeObject(backend.objects, { type: "tree", entries: [] });

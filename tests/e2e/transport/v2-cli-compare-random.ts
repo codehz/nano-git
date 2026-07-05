@@ -19,8 +19,19 @@ interface RandomCliComparisonResult {
   readonly nanoBatches: string[][];
   readonly cliBatches: string[][];
   readonly branches: readonly string[];
+  readonly nanoError?: string;
+  readonly cliError?: string;
+  readonly nanoBeforeHeadEntries: readonly string[];
+  readonly cliBeforeHeadEntries: readonly string[];
+  readonly nanoBeforeHeadTimes: readonly string[];
+  readonly nanoBeforeAllEntries: readonly string[];
+  readonly cliBeforeAllEntries: readonly string[];
+  readonly nanoHeadEntries: readonly string[];
+  readonly cliHeadEntries: readonly string[];
   readonly nanoTags: readonly string[];
   readonly cliTags: readonly string[];
+  readonly nanoTagEntries: readonly string[];
+  readonly cliTagEntries: readonly string[];
 }
 
 interface RandomCliComparisonOptions {
@@ -29,7 +40,11 @@ interface RandomCliComparisonOptions {
   readonly includeTagAliases?: boolean;
   readonly includeOrphans?: boolean;
   readonly includeRefAliases?: boolean;
+  readonly negotiationStress?: boolean;
   readonly noTags?: boolean;
+  readonly defaultFetch?: boolean;
+  readonly explicitTagPatterns?: boolean;
+  readonly explicitTagRefSpecs?: boolean;
 }
 
 interface RandomCliBranchState {
@@ -67,6 +82,24 @@ async function cloneNanoHeads(url: string, localDir: string) {
 async function cloneNanoWithNoTags(url: string, localDir: string) {
   const repo = initRepository(localDir);
   await repo.fetch(url, { noTags: true });
+  return repo;
+}
+
+async function cloneNanoWithDefaultFetch(url: string, localDir: string) {
+  const repo = initRepository(localDir);
+  await repo.fetch(url);
+  return repo;
+}
+
+async function cloneNanoWithExplicitTagPatterns(url: string, localDir: string) {
+  const repo = initRepository(localDir);
+  await repo.fetch(url, { refPatterns: ["refs/heads/*", "refs/tags/*"] });
+  return repo;
+}
+
+async function cloneNanoWithExplicitTagRefSpecs(url: string, localDir: string) {
+  const repo = initRepository(localDir);
+  await repo.fetch(url, { refSpecs: ["refs/heads/*:refs/heads/*", "refs/tags/*:refs/tags/*"] });
   return repo;
 }
 
@@ -109,12 +142,39 @@ async function fetchNanoWithNoTags(repo: ReturnType<typeof initRepository>, url:
   return repo.fetch(url, { noTags: true });
 }
 
+async function fetchNanoWithDefaultFetch(repo: ReturnType<typeof initRepository>, url: string) {
+  return repo.fetch(url);
+}
+
+async function fetchNanoWithExplicitTagPatterns(
+  repo: ReturnType<typeof initRepository>,
+  url: string,
+) {
+  return repo.fetch(url, { refPatterns: ["refs/heads/*", "refs/tags/*"] });
+}
+
+async function fetchNanoWithExplicitTagRefSpecs(
+  repo: ReturnType<typeof initRepository>,
+  url: string,
+) {
+  return repo.fetch(url, { refSpecs: ["refs/heads/*:refs/heads/*", "refs/tags/*:refs/tags/*"] });
+}
+
 async function cloneGitCli(
   url: string,
   localDir: string,
   tempDir: string,
   options: RandomCliComparisonOptions = {},
 ) {
+  if (options.explicitTagRefSpecs) {
+    await gitWithTimeout(
+      ["-c", "protocol.version=2", "clone", "--bare", url, localDir],
+      tempDir,
+      15000,
+    );
+    return;
+  }
+
   const cloneArgs = ["-c", "protocol.version=2", "clone"];
   if (options.noTags) {
     cloneArgs.push("--no-tags");
@@ -129,6 +189,24 @@ async function cloneGitCli(
 }
 
 async function fetchGitCli(localDir: string, options: RandomCliComparisonOptions = {}) {
+  if (options.explicitTagRefSpecs) {
+    await gitWithTimeout(
+      [
+        "-c",
+        "protocol.version=2",
+        "-c",
+        "fetch.negotiationAlgorithm=consecutive",
+        "fetch",
+        "origin",
+        "refs/heads/*:refs/heads/*",
+        "refs/tags/*:refs/tags/*",
+      ],
+      localDir,
+      15000,
+    );
+    return;
+  }
+
   const args = [
     "-c",
     "protocol.version=2",
@@ -139,7 +217,15 @@ async function fetchGitCli(localDir: string, options: RandomCliComparisonOptions
   if (options.noTags) {
     args.push("--no-tags");
   }
-  if (options.includeTags && !options.noTags) {
+  if (
+    options.includeTags &&
+    !options.noTags &&
+    options.defaultFetch !== true &&
+    options.explicitTagPatterns !== true
+  ) {
+    args.push("--tags");
+  }
+  if (options.explicitTagPatterns) {
     args.push("--tags");
   }
   args.push("origin");
@@ -211,6 +297,32 @@ function createBranchAlias(workDir: string, source: string, alias: string) {
   git(["push", "-u", "origin", alias], workDir);
 }
 
+function advanceBranch(
+  workDir: string,
+  remote: string,
+  branch: string,
+  count: number,
+  serial: number,
+) {
+  for (let index = 0; index < count; index++) {
+    commitFile(workDir, branch, serial + index);
+  }
+  git(["push", remote, branch], workDir);
+}
+
+function createHistoricalBranch(
+  workDir: string,
+  remote: string,
+  baseRevision: string,
+  branch: string,
+  serial: number,
+) {
+  git(["checkout", baseRevision], workDir);
+  git(["checkout", "-b", branch], workDir);
+  commitFile(workDir, branch, serial);
+  git(["push", "-u", remote, branch], workDir);
+}
+
 function parseSeedArguments(args: readonly string[]): {
   readonly seeds: number[];
   readonly options: RandomCliComparisonOptions;
@@ -222,7 +334,11 @@ function parseSeedArguments(args: readonly string[]): {
     includeTagAliases?: boolean;
     includeOrphans?: boolean;
     includeRefAliases?: boolean;
+    negotiationStress?: boolean;
     noTags?: boolean;
+    defaultFetch?: boolean;
+    explicitTagPatterns?: boolean;
+    explicitTagRefSpecs?: boolean;
   } = {};
 
   for (const arg of args) {
@@ -248,8 +364,24 @@ function parseSeedArguments(args: readonly string[]): {
       options.includeRefAliases = true;
       continue;
     }
+    if (arg === "--negotiation-stress") {
+      options.negotiationStress = true;
+      continue;
+    }
     if (arg === "--no-tags") {
       options.noTags = true;
+      continue;
+    }
+    if (arg === "--default-fetch") {
+      options.defaultFetch = true;
+      continue;
+    }
+    if (arg === "--explicit-tag-patterns") {
+      options.explicitTagPatterns = true;
+      continue;
+    }
+    if (arg === "--explicit-tag-refspecs") {
+      options.explicitTagRefSpecs = true;
       continue;
     }
     seedArgs.push(arg);
@@ -320,13 +452,41 @@ export async function runRandomV2CliComparisonSeed(
     git(["push", serverRepoDir, "main"], workDir);
     git(["remote", "add", "origin", serverRepoDir], workDir);
 
+    if (options.negotiationStress) {
+      const mainlineBoost = 12 + Math.floor(rand() * 8);
+      advanceBranch(workDir, serverRepoDir, "main", mainlineBoost, serial);
+      serial += mainlineBoost;
+
+      const oldOffset = Math.max(8, Math.floor(mainlineBoost * 0.7));
+      const recentOffset = Math.max(3, Math.floor(mainlineBoost * 0.3));
+
+      createHistoricalBranch(workDir, serverRepoDir, `main~${oldOffset}`, "stress-old", serial++);
+      branches.push({ name: "stress-old", family: "main" });
+
+      createHistoricalBranch(
+        workDir,
+        serverRepoDir,
+        `main~${recentOffset}`,
+        "stress-recent",
+        serial++,
+      );
+      branches.push({ name: "stress-recent", family: "main" });
+
+      if (options.includeRefAliases) {
+        createBranchAlias(workDir, "stress-recent", "stress-alias");
+        branches.push({ name: "stress-alias", family: "main" });
+      }
+    }
+
     const mergeableBranches = () => branches;
     const allBranchNames = () => branches.map((branch) => branch.name);
     const mergeableBranchNames = () => mergeableBranches().map((branch) => branch.name);
     const findBranch = (branchName: string) =>
       branches.find((branch) => branch.name === branchName)!;
 
-    const preOps = 12 + Math.floor(rand() * 10);
+    const preOps = options.negotiationStress
+      ? 18 + Math.floor(rand() * 10)
+      : 12 + Math.floor(rand() * 10);
     for (let index = 0; index < preOps; index++) {
       const opRoll = rand();
       if (
@@ -340,8 +500,14 @@ export async function runRandomV2CliComparisonSeed(
         continue;
       }
 
-      if (branches.length < 5 && opRoll < 0.28) {
-        const base = pickRandom(rand, allBranchNames());
+      if (branches.length < (options.negotiationStress ? 7 : 5) && opRoll < 0.28) {
+        const baseCandidates = options.negotiationStress
+          ? branches.filter((branch) => branch.family === "main").map((branch) => branch.name)
+          : allBranchNames();
+        const base = pickRandom(
+          rand,
+          baseCandidates.length > 0 ? baseCandidates : allBranchNames(),
+        );
         const branch = `topic-${index}`;
         git(["checkout", base], workDir);
         git(["checkout", "-b", branch], workDir);
@@ -351,7 +517,11 @@ export async function runRandomV2CliComparisonSeed(
         continue;
       }
 
-      if (options.includeRefAliases && branches.length < 6 && opRoll < 0.34) {
+      if (
+        options.includeRefAliases &&
+        branches.length < (options.negotiationStress ? 8 : 6) &&
+        opRoll < 0.34
+      ) {
         const base = pickRandom(rand, allBranchNames());
         const branch = `alias-${index}`;
         createBranchAlias(workDir, base, branch);
@@ -366,8 +536,11 @@ export async function runRandomV2CliComparisonSeed(
         continue;
       }
 
-      if (mergeableBranches().length > 1 && opRoll < 0.5) {
-        const target = rand() < 0.6 ? "main" : pickRandom(rand, mergeableBranchNames());
+      if (mergeableBranches().length > 1 && opRoll < (options.negotiationStress ? 0.58 : 0.5)) {
+        const target =
+          rand() < (options.negotiationStress ? 0.72 : 0.6)
+            ? "main"
+            : pickRandom(rand, mergeableBranchNames());
         const targetFamily = findBranch(target).family;
         const sourceCandidates = mergeableBranches()
           .filter((branch) => branch.name !== target && branch.family === targetFamily)
@@ -393,13 +566,52 @@ export async function runRandomV2CliComparisonSeed(
     const url = server.url;
     const nanoRepo = options.noTags
       ? await cloneNanoWithNoTags(url, join(tempDir, "nano"))
-      : options.includeTags
-        ? await cloneNanoHeadsAndTags(url, join(tempDir, "nano"))
-        : await cloneNanoHeads(url, join(tempDir, "nano"));
+      : options.defaultFetch
+        ? await cloneNanoWithDefaultFetch(url, join(tempDir, "nano"))
+        : options.explicitTagPatterns
+          ? await cloneNanoWithExplicitTagPatterns(url, join(tempDir, "nano"))
+          : options.explicitTagRefSpecs
+            ? await cloneNanoWithExplicitTagRefSpecs(url, join(tempDir, "nano"))
+            : options.includeTags
+              ? await cloneNanoHeadsAndTags(url, join(tempDir, "nano"))
+              : await cloneNanoHeads(url, join(tempDir, "nano"));
     const cliDir = join(tempDir, "cli");
     await cloneGitCli(url, cliDir, tempDir, options);
+    const nanoGitDir = join(tempDir, "nano");
+    const cliGitDir = options.explicitTagRefSpecs ? cliDir : join(cliDir, ".git");
+    const nanoBeforeHeadEntries = git(
+      ["--git-dir", nanoGitDir, "for-each-ref", "--format=%(objectname) %(refname)", "refs/heads"],
+      tempDir,
+    )
+      .split("\n")
+      .filter((line) => line.length > 0);
+    const nanoBeforeAllEntries = git(
+      ["--git-dir", nanoGitDir, "for-each-ref", "--format=%(objectname) %(refname)"],
+      tempDir,
+    )
+      .split("\n")
+      .filter((line) => line.length > 0);
+    const cliBeforeHeadEntries = git(
+      ["--git-dir", cliGitDir, "for-each-ref", "--format=%(objectname) %(refname)", "refs/heads"],
+      tempDir,
+    )
+      .split("\n")
+      .filter((line) => line.length > 0);
+    const cliBeforeAllEntries = git(
+      ["--git-dir", cliGitDir, "for-each-ref", "--format=%(objectname) %(refname)"],
+      tempDir,
+    )
+      .split("\n")
+      .filter((line) => line.length > 0);
+    const nanoBeforeHeadTimes = nanoBeforeHeadEntries.map((line) => {
+      const hash = line.split(" ")[0]!;
+      const timestamp = git(["--git-dir", nanoGitDir, "show", "-s", "--format=%ct", hash], tempDir);
+      return `${timestamp} ${line}`;
+    });
 
-    const postOps = 4 + Math.floor(rand() * 5);
+    const postOps = options.negotiationStress
+      ? 6 + Math.floor(rand() * 6)
+      : 4 + Math.floor(rand() * 5);
     for (let index = 0; index < postOps; index++) {
       const opRoll = rand();
       if (
@@ -420,8 +632,11 @@ export async function runRandomV2CliComparisonSeed(
         continue;
       }
 
-      if (mergeableBranches().length > 1 && opRoll < 0.4) {
-        const target = rand() < 0.55 ? "main" : pickRandom(rand, mergeableBranchNames());
+      if (mergeableBranches().length > 1 && opRoll < (options.negotiationStress ? 0.5 : 0.4)) {
+        const target =
+          rand() < (options.negotiationStress ? 0.68 : 0.55)
+            ? "main"
+            : pickRandom(rand, mergeableBranchNames());
         const targetFamily = findBranch(target).family;
         const sourceCandidates = mergeableBranches()
           .filter((branch) => branch.name !== target && branch.family === targetFamily)
@@ -438,8 +653,14 @@ export async function runRandomV2CliComparisonSeed(
         continue;
       }
 
-      if (branches.length < 6 && opRoll < 0.52) {
-        const base = pickRandom(rand, allBranchNames());
+      if (branches.length < (options.negotiationStress ? 8 : 6) && opRoll < 0.52) {
+        const baseCandidates = options.negotiationStress
+          ? branches.filter((branch) => branch.family === "main").map((branch) => branch.name)
+          : allBranchNames();
+        const base = pickRandom(
+          rand,
+          baseCandidates.length > 0 ? baseCandidates : allBranchNames(),
+        );
         const branch = `late-${index}`;
         git(["checkout", base], workDir);
         git(["checkout", "-b", branch], workDir);
@@ -462,41 +683,129 @@ export async function runRandomV2CliComparisonSeed(
       git(["push", serverRepoDir, branch], workDir);
     }
 
+    if (options.negotiationStress) {
+      const tailMainBoost = 5 + Math.floor(rand() * 4);
+      advanceBranch(workDir, serverRepoDir, "main", tailMainBoost, serial);
+      serial += tailMainBoost;
+
+      if (allBranchNames().includes("stress-old")) {
+        const oldBoost = 2 + Math.floor(rand() * 3);
+        advanceBranch(workDir, serverRepoDir, "stress-old", oldBoost, serial);
+        serial += oldBoost;
+      }
+
+      if (allBranchNames().includes("stress-recent")) {
+        const recentBoost = 2 + Math.floor(rand() * 2);
+        advanceBranch(workDir, serverRepoDir, "stress-recent", recentBoost, serial);
+        serial += recentBoost;
+        git(["checkout", "stress-recent"], workDir);
+        git(["merge", "--no-ff", "main", "-m", `merge-main-into-stress-recent-${serial}`], workDir);
+        git(["push", serverRepoDir, "stress-recent"], workDir);
+        serial++;
+      }
+
+      if (!allBranchNames().includes("stress-late")) {
+        createHistoricalBranch(workDir, serverRepoDir, "main~6", "stress-late", serial++);
+        branches.push({ name: "stress-late", family: "main" });
+      }
+
+      if (
+        options.includeOrphans &&
+        branches.filter((branch) => branch.family.startsWith("orphan:")).length < 2
+      ) {
+        createOrphanBranch(workDir, "stress-orphan", serial++);
+        branches.push({ name: "stress-orphan", family: "orphan:stress-orphan" });
+      }
+    }
+
     server.clearRequests();
-    const nanoResult = options.noTags
-      ? await fetchNanoWithNoTags(nanoRepo, url)
-      : options.includeTags
-        ? await fetchNanoHeadsAndTags(nanoRepo, url)
-        : await fetchNanoHeads(nanoRepo, url);
-    if ("canApply" in nanoResult && !nanoResult.canApply) {
-      throw new Error(`Random CLI comparison seed ${seed} produced non-applicable preview`);
+    let nanoError: string | undefined;
+    try {
+      const nanoResult = options.noTags
+        ? await fetchNanoWithNoTags(nanoRepo, url)
+        : options.defaultFetch
+          ? await fetchNanoWithDefaultFetch(nanoRepo, url)
+          : options.explicitTagPatterns
+            ? await fetchNanoWithExplicitTagPatterns(nanoRepo, url)
+            : options.explicitTagRefSpecs
+              ? await fetchNanoWithExplicitTagRefSpecs(nanoRepo, url)
+              : options.includeTags
+                ? await fetchNanoHeadsAndTags(nanoRepo, url)
+                : await fetchNanoHeads(nanoRepo, url);
+      if ("canApply" in nanoResult && !nanoResult.canApply) {
+        throw new Error(`Random CLI comparison seed ${seed} produced non-applicable preview`);
+      }
+    } catch (err: unknown) {
+      nanoError = err instanceof Error ? err.message : String(err);
     }
     const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
 
     server.clearRequests();
-    await fetchGitCli(cliDir, options);
+    let cliError: string | undefined;
+    try {
+      await fetchGitCli(cliDir, options);
+    } catch (err: unknown) {
+      cliError = err instanceof Error ? err.message : String(err);
+    }
     const cliBatches = getNormalizedFetchCommandBatches(server.requests);
-    const nanoTags = git(
-      ["--git-dir", join(tempDir, "nano"), "for-each-ref", "--format=%(refname)", "refs/tags"],
+    const nanoHeadEntries = git(
+      ["--git-dir", nanoGitDir, "for-each-ref", "--format=%(objectname) %(refname)", "refs/heads"],
       tempDir,
     )
       .split("\n")
       .filter((line) => line.length > 0);
-    const cliTags = git(["for-each-ref", "--format=%(refname)", "refs/tags"], cliDir)
+    const cliHeadEntries = git(
+      ["--git-dir", cliGitDir, "for-each-ref", "--format=%(objectname) %(refname)", "refs/heads"],
+      tempDir,
+    )
       .split("\n")
       .filter((line) => line.length > 0);
+    const nanoTagEntries = git(
+      ["--git-dir", nanoGitDir, "for-each-ref", "--format=%(objecttype) %(refname)", "refs/tags"],
+      tempDir,
+    )
+      .split("\n")
+      .filter((line) => line.length > 0);
+    const cliTagEntries = git(
+      ["--git-dir", cliGitDir, "for-each-ref", "--format=%(objecttype) %(refname)", "refs/tags"],
+      tempDir,
+    )
+      .split("\n")
+      .filter((line) => line.length > 0);
+    const nanoTags = nanoTagEntries.map((line) => line.replace(/^[^ ]+ /, ""));
+    const cliTags = cliTagEntries.map((line) => line.replace(/^[^ ]+ /, ""));
     const matched =
       JSON.stringify(nanoBatches) === JSON.stringify(cliBatches) &&
-      (options.noTags !== true || JSON.stringify(nanoTags) === JSON.stringify(cliTags));
+      (nanoError === undefined) === (cliError === undefined) &&
+      (options.noTags === true ||
+      options.defaultFetch === true ||
+      options.explicitTagPatterns === true ||
+      options.explicitTagRefSpecs === true
+        ? JSON.stringify(nanoTagEntries) === JSON.stringify(cliTagEntries)
+        : true);
+    const matchedWithHeads = options.explicitTagRefSpecs
+      ? matched && JSON.stringify(nanoHeadEntries) === JSON.stringify(cliHeadEntries)
+      : matched;
 
     return {
       seed,
-      matched,
+      matched: matchedWithHeads,
       nanoBatches,
       cliBatches,
       branches: allBranchNames(),
+      nanoError,
+      cliError,
+      nanoBeforeHeadEntries,
+      cliBeforeHeadEntries,
+      nanoBeforeHeadTimes,
+      nanoBeforeAllEntries,
+      cliBeforeAllEntries,
+      nanoHeadEntries,
+      cliHeadEntries,
       nanoTags,
       cliTags,
+      nanoTagEntries,
+      cliTagEntries,
     };
   } finally {
     await server?.stop();
@@ -537,8 +846,19 @@ export async function runRandomV2CliComparisonSeeds(
               branches: result.branches,
               nanoBatches: result.nanoBatches,
               cliBatches: result.cliBatches,
+              nanoError: result.nanoError,
+              cliError: result.cliError,
+              nanoBeforeHeadEntries: result.nanoBeforeHeadEntries,
+              cliBeforeHeadEntries: result.cliBeforeHeadEntries,
+              nanoBeforeHeadTimes: result.nanoBeforeHeadTimes,
+              nanoBeforeAllEntries: result.nanoBeforeAllEntries,
+              cliBeforeAllEntries: result.cliBeforeAllEntries,
+              nanoHeadEntries: result.nanoHeadEntries,
+              cliHeadEntries: result.cliHeadEntries,
               nanoTags: result.nanoTags,
               cliTags: result.cliTags,
+              nanoTagEntries: result.nanoTagEntries,
+              cliTagEntries: result.cliTagEntries,
             },
             null,
             2,

@@ -91,6 +91,10 @@ export interface FetchHaveSelector {
   releaseAncestors(): void;
 }
 
+interface FetchHaveSelectorOptions {
+  readonly replayKnownCommonInFirstRound?: boolean;
+}
+
 function compareNodes(a: CommitNegotiationNode, b: CommitNegotiationNode): number {
   if (a.timestamp !== b.timestamp) {
     return b.timestamp - a.timestamp;
@@ -287,6 +291,21 @@ function pushKnownCommon(state: CommitNegotiationState, oid: SHA1): void {
   markCommon(state, commitOid, true);
 }
 
+function markKnownCommonForReplay(state: CommitNegotiationState, oid: SHA1): void {
+  const commitOid = normalizeNegotiationCommitOid(state.source, oid);
+  if (!commitOid) {
+    return;
+  }
+
+  const node = getCommitNode(state, commitOid);
+  if (!node) {
+    return;
+  }
+
+  node.flags |= FLAG_COMMON_REF | FLAG_SEEN | FLAG_SENT;
+  markCommon(state, commitOid, true);
+}
+
 /**
  * 创建默认 fetch 协商 have 选择器
  *
@@ -311,6 +330,7 @@ export function createFetchHaveSelector(
   candidates: readonly string[],
   source?: ObjectSource,
   knownCommonCandidates?: readonly string[],
+  options: FetchHaveSelectorOptions = {},
 ): FetchHaveSelector {
   const normalized = candidates.map((oid) => sha1(oid));
   if (!source) {
@@ -327,7 +347,11 @@ export function createFetchHaveSelector(
 
   if (knownCommonCandidates) {
     for (const oid of knownCommonCandidates) {
-      pushKnownCommon(state, sha1(oid));
+      if (options.replayKnownCommonInFirstRound === true) {
+        markKnownCommonForReplay(state, sha1(oid));
+      } else {
+        pushKnownCommon(state, sha1(oid));
+      }
     }
   }
 

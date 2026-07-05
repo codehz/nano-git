@@ -1,4 +1,5 @@
 import { PreconditionCheckError } from "../../errors.ts";
+import { tryReadObject } from "../../objects/raw.ts";
 import { resolveRefHash } from "../../refs/resolve.ts";
 import { v2FetchObjects } from "../../transport/client/upload-pack/fetch.ts";
 import {
@@ -32,7 +33,10 @@ import type {
 /** `git fetch --unshallow` 在协议层使用的无限深度常量 */
 const INFINITE_DEPTH = 0x7fffffff;
 
-function collectNegotiationLocalHaveTips(compiled: CompiledImportPlanState): SHA1[] {
+function collectNegotiationLocalHaveTips(
+  compiled: CompiledImportPlanState,
+  options?: ImportPrepareOptions,
+): SHA1[] {
   const refNames = compiled.backend.refs.listAll();
   const headValue = compiled.backend.refs.read("HEAD");
   const headTarget =
@@ -40,7 +44,7 @@ function collectNegotiationLocalHaveTips(compiled: CompiledImportPlanState): SHA
       ? headValue.slice("ref: ".length)
       : undefined;
   const orderedRefNames =
-    headTarget && refNames.includes(headTarget)
+    options?.prioritizeHeadHaveTip !== false && headTarget && refNames.includes(headTarget)
       ? [headTarget, ...refNames.filter((refName) => refName !== headTarget)]
       : refNames;
   const localHaveTips: SHA1[] = [];
@@ -143,6 +147,30 @@ function isTagMapping(mapping: ResolvedMapping): boolean {
   return mapping.localRef.startsWith("refs/tags/");
 }
 
+function isAnnotatedTagMapping(mapping: ResolvedMapping): boolean {
+  return isTagMapping(mapping) && mapping.remoteRef.peeled !== undefined;
+}
+
+function shouldFollowLightweightTagsImplicitly(options?: ImportPrepareOptions): boolean {
+  return options?.skipExplicitLightweightTagsByImplicitFollow === true;
+}
+
+function shouldSkipExplicitFetchForLightweightTag(
+  mapping: ResolvedMapping,
+  branchFetchTargetHashes: ReadonlySet<SHA1>,
+  options?: ImportPrepareOptions,
+): boolean {
+  if (
+    !shouldFollowLightweightTagsImplicitly(options) ||
+    !isTagMapping(mapping) ||
+    isAnnotatedTagMapping(mapping)
+  ) {
+    return false;
+  }
+
+  return !branchFetchTargetHashes.has(mapping.remoteRef.hash);
+}
+
 function shouldFetchExistingMappingTarget(
   compiled: CompiledImportPlanState,
   mapping: ResolvedMapping,
@@ -164,11 +192,18 @@ function shouldIncludeTag(
     return false;
   }
 
-  if (fetchMappings.some((mapping) => isTagMapping(mapping))) {
+  if (
+    options?.keepIncludeTagWithExplicitTags !== true &&
+    fetchMappings.some((mapping) => isTagMapping(mapping))
+  ) {
     return false;
   }
 
-  if (compiled.wantsExplicitTags && !hasShallowFetchRequest(options)) {
+  if (
+    options?.keepIncludeTagWithExplicitTags !== true &&
+    (compiled.wantsExplicitTags || options?.requestedExplicitTags === true) &&
+    !hasShallowFetchRequest(options)
+  ) {
     return false;
   }
 
@@ -186,6 +221,7 @@ function createNegotiationFetchOptions(
   readonly deepenRelative?: boolean;
   readonly deepenSince?: number;
   readonly deepenNot?: string[];
+  readonly replayKnownCommonInFirstRound?: boolean;
 } {
   const shallow = resolveLocalShallowBoundaries(compiled)?.map((hash) => hash);
   const useUnshallow = options?.unshallow === true;
@@ -197,6 +233,7 @@ function createNegotiationFetchOptions(
     deepenRelative: options?.deepen !== undefined,
     deepenSince: options?.shallowSince,
     deepenNot: options?.shallowExclude ? [...options.shallowExclude] : undefined,
+    replayKnownCommonInFirstRound: options?.replayKnownCommonInFirstRound,
   };
 }
 
@@ -204,6 +241,10 @@ function shouldUseKnownCommonAdvertisementRef(
   refName: string,
   options?: ImportPrepareOptions,
 ): boolean {
+  if (refName === "HEAD" && options?.includeAdvertisementHeadInKnownCommon === false) {
+    return false;
+  }
+
   if (options?.noTags === true && refName.startsWith("refs/tags/")) {
     return false;
   }
@@ -221,9 +262,8 @@ function collectKnownCommonRefs(
   }
 
   const reachable = collectReachable(compiled.backend.objects, [...localHaveTips], "skip");
-  const knownCommonRefs: SHA1[] = [];
-  const knownCommonSeen = new Set<SHA1>();
-
+  const advertisedReachable: SHA1[] = [];
+  const advertisedReachableSet = new Set<SHA1>();
   for (const ref of compiled.advertisement.refs) {
     if (!shouldUseKnownCommonAdvertisementRef(ref.name, options)) {
       continue;
@@ -233,13 +273,56 @@ function collectKnownCommonRefs(
     if (
       !compiled.backend.objects.exists(peeled) ||
       !reachable.has(peeled) ||
-      knownCommonSeen.has(peeled)
+      advertisedReachableSet.has(peeled)
     ) {
       continue;
     }
 
-    knownCommonSeen.add(peeled);
-    knownCommonRefs.push(peeled);
+    advertisedReachableSet.add(peeled);
+    advertisedReachable.push(peeled);
+  }
+
+  if (options?.preferLocalHaveOrderForKnownCommon !== true) {
+    return advertisedReachable;
+  }
+
+  const localCandidateSet = new Set(
+    localHaveTips.filter((hash) => advertisedReachableSet.has(hash)),
+  );
+  const localCandidates = [...localCandidateSet].map((hash, index) => {
+    const commit = tryReadObject(compiled.backend.objects, hash);
+    const timestamp = commit?.type === "commit" ? commit.committer.timestamp : 0;
+    return { hash, timestamp, index };
+  });
+  localCandidates.sort((left, right) =>
+    left.timestamp !== right.timestamp
+      ? right.timestamp - left.timestamp
+      : left.index - right.index,
+  );
+
+  const knownCommonRefs: SHA1[] = [];
+  const knownCommonSeen = new Set<SHA1>();
+  for (const candidate of localCandidates) {
+    if (
+      knownCommonRefs.some((selected) =>
+        isAncestor(compiled.backend.objects, candidate.hash, selected),
+      )
+    ) {
+      continue;
+    }
+    knownCommonSeen.add(candidate.hash);
+    knownCommonRefs.push(candidate.hash);
+  }
+
+  for (const hash of advertisedReachable) {
+    if (knownCommonSeen.has(hash)) {
+      continue;
+    }
+    if (knownCommonRefs.some((selected) => isAncestor(compiled.backend.objects, hash, selected))) {
+      continue;
+    }
+    knownCommonSeen.add(hash);
+    knownCommonRefs.push(hash);
   }
 
   return knownCommonRefs;
@@ -294,11 +377,13 @@ async function fetchPreviewObjects(
     return { objectCount: 0 };
   }
 
-  const localHaveTips = collectNegotiationLocalHaveTips(compiled);
+  const localHaveTips = collectNegotiationLocalHaveTips(compiled, options);
   const knownCommonRefs =
-    resolveLocalShallowBoundaries(compiled) === undefined
-      ? collectKnownCommonRefs(compiled, localHaveTips, options)
-      : [];
+    options?.disableKnownCommonRefHints === true
+      ? []
+      : resolveLocalShallowBoundaries(compiled) === undefined
+        ? collectKnownCommonRefs(compiled, localHaveTips, options)
+        : [];
 
   if (compiled.v2Transport) {
     const v2Wants = wantSequence.map((hash) => hash);
@@ -325,6 +410,8 @@ function finalizePreparedState(
   prefetchedObjects: number,
   shallowUpdate: ShallowUpdate | undefined,
   localPreconditions: readonly LocalPrecondition[],
+  branchFetchTargetHashes: ReadonlySet<SHA1>,
+  options?: ImportPrepareOptions,
 ): PreparedImportPlanState {
   const diagnostics = [...compiled.diagnostics];
   const refOperations: PlannedRefOperation[] = [];
@@ -344,6 +431,17 @@ function finalizePreparedState(
     const refExists = existingValue !== null;
 
     if (!compiled.backend.objects.exists(mapping.remoteRef.hash)) {
+      if (shouldSkipExplicitFetchForLightweightTag(mapping, branchFetchTargetHashes, options)) {
+        diagnostics.push({
+          level: "info",
+          message:
+            `${describeView(mapping.viewLabel)}："${mapping.localRef}" 对应对象未在默认 fetch 中随分支历史带回，` +
+            "跳过 tag 物化。",
+          refName: mapping.localRef,
+        });
+        continue;
+      }
+
       diagnostics.push({
         level: "error",
         message:
@@ -553,12 +651,31 @@ export async function prepareImportPlan(
 
   const localPreconditions = captureLocalPreconditions(compiled);
   const shouldFetchExistingTargets = hasShallowFetchRequest(options);
+  const branchFetchTargetHashes = new Set<SHA1>();
+  for (const mapping of compiled.resolvedMappings) {
+    if (compiled.conflictedTargets.has(mapping.localRef) || isTagMapping(mapping)) {
+      continue;
+    }
+
+    if (!compiled.backend.objects.exists(mapping.remoteRef.hash)) {
+      branchFetchTargetHashes.add(mapping.remoteRef.hash);
+      continue;
+    }
+
+    if (shouldFetchExistingTargets && shouldFetchExistingMappingTarget(compiled, mapping)) {
+      branchFetchTargetHashes.add(mapping.remoteRef.hash);
+    }
+  }
+
   const fetchMappings = compiled.resolvedMappings.filter((mapping) => {
     if (compiled.conflictedTargets.has(mapping.localRef)) {
       return false;
     }
 
     if (!compiled.backend.objects.exists(mapping.remoteRef.hash)) {
+      if (shouldSkipExplicitFetchForLightweightTag(mapping, branchFetchTargetHashes, options)) {
+        return false;
+      }
       return true;
     }
 
@@ -612,5 +729,7 @@ export async function prepareImportPlan(
     prefetchedObjects,
     shallowUpdate,
     localPreconditions,
+    branchFetchTargetHashes,
+    options,
   );
 }

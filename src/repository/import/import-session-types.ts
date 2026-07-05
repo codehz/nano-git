@@ -235,6 +235,75 @@ export interface ImportPrepareOptions {
   readonly noTags?: boolean;
 
   /**
+   * 即使本轮计划已显式物化 tag refs，也保留协议层 `include-tag`
+   *
+   * 主要供 repository.fetch() 的默认 full fetch 使用，
+   * 也供自定义 tag refspec 的 fetch 维持官方 git 的请求形态。
+   */
+  readonly keepIncludeTagWithExplicitTags?: boolean;
+
+  /**
+   * 上层是否显式请求了 tag refs
+   *
+   * 即使当前计划里没有匹配到任何 tag 映射，也不要回退为
+   * 协议层 `include-tag` 的隐式跟随模式。
+   * 主要供 repository.fetch() 的显式 tag pattern / refspec 空匹配场景
+   * 对齐官方 `git fetch --tags`。
+   */
+  readonly requestedExplicitTags?: boolean;
+
+  /**
+   * 将显式 lightweight tag 视为“由分支历史隐式带回”并跳过单独抓取
+   *
+   * 主要供 repository.fetch() 的默认 full fetch 使用，
+   * 使其 tag 协商与官方 `git fetch` 的默认 follow-tags 行为一致。
+   * 自定义 refspec/tag pattern 不应开启该行为。
+   */
+  readonly skipExplicitLightweightTagsByImplicitFollow?: boolean;
+
+  /**
+   * 协商 have 候选是否优先将 HEAD 指向分支排在首位
+   *
+   * 默认行为与高层 `repo.fetch()` 的分支跟随语义保持一致。
+   * 自定义 refspec fetch 在官方 git 中更接近普通 ref 枚举顺序，
+   * 因此可显式关闭。
+   */
+  readonly prioritizeHeadHaveTip?: boolean;
+
+  /**
+   * known-common 提示是否优先复用本地 have tip 的顺序
+   *
+   * 自定义 refspec fetch 的官方 git 行为更接近本地 ref 枚举顺序，
+   * 可通过该开关调整同时间戳提交的协商 tie-break。
+   */
+  readonly preferLocalHaveOrderForKnownCommon?: boolean;
+
+  /**
+   * 协商首轮是否直接回放 known-common have
+   *
+   * 主要供自定义 refspec fetch 对齐官方 git 在该路径下的
+   * 首轮 have 排布方式。
+   */
+  readonly replayKnownCommonInFirstRound?: boolean;
+
+  /**
+   * 是否禁用 advertisement 派生的 known-common ref 提示
+   *
+   * 主要供自定义 refspec fetch 调整协商路径，
+   * 让 have 选择完全回到本地 tip selector。
+   */
+  readonly disableKnownCommonRefHints?: boolean;
+
+  /**
+   * advertisement 的 HEAD 是否参与 known-common ref 提示
+   *
+   * 默认 fetch 更接近官方 git clone/fetch 的分支跟随路径，
+   * 通常保留 HEAD 参与；显式 refspec fetch 可关闭，
+   * 以避免 HEAD 抢占同时间戳提交的首轮 have 顺序。
+   */
+  readonly includeAdvertisementHeadInKnownCommon?: boolean;
+
+  /**
    * 目标绝对深度（对标 `git fetch --depth=<n>`）
    *
    * 含义是“从远端 tip 起保留 n 层历史”。
@@ -283,6 +352,8 @@ export interface PreparedImportPlan {
   readonly preview: ImportPreparedPreview;
 
   apply(): Promise<ImportApplyResult>;
+
+  applyPartial(): Promise<ImportApplyResult>;
 }
 
 /**

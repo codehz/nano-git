@@ -11,6 +11,7 @@ describe("Import Session - source-shallow 随机 git CLI 对照", () => {
     await runRandomImportSessionSourceShallowSeeds([11, 29, 47], {
       initialMode: "full",
       followupOperation: "deepen",
+      strictInitialState: true,
     });
   });
 
@@ -19,6 +20,7 @@ describe("Import Session - source-shallow 随机 git CLI 对照", () => {
       boundaryTagMode: "lightweight",
       followupOperation: "shallowExcludeTag",
       initialMode: "full",
+      strictInitialState: true,
     });
   });
 
@@ -27,6 +29,7 @@ describe("Import Session - source-shallow 随机 git CLI 对照", () => {
       boundaryTagMode: "annotated",
       followupOperation: "shallowExcludeTag",
       initialMode: "full",
+      strictInitialState: true,
     });
   });
 
@@ -34,12 +37,32 @@ describe("Import Session - source-shallow 随机 git CLI 对照", () => {
     await runRandomImportSessionSourceShallowSeeds([41, 53, 67], {
       followupOperation: "deepen",
       initialMode: "depth1",
+      strictInitialState: true,
+    });
+  });
+
+  test("depth=1 clone 后 shallow-exclude 边界 lightweight tag 的行为与 git CLI 一致", async () => {
+    await runRandomImportSessionSourceShallowSeeds([5, 17, 29], {
+      boundaryTagMode: "lightweight",
+      followupOperation: "shallowExcludeTag",
+      initialMode: "depth1",
+      strictInitialState: true,
+    });
+  });
+
+  test("depth=1 clone 后 shallow-exclude 边界 annotated tag 的行为与 git CLI 一致", async () => {
+    await runRandomImportSessionSourceShallowSeeds([13, 23, 37], {
+      boundaryTagMode: "annotated",
+      followupOperation: "shallowExcludeTag",
+      initialMode: "depth1",
+      strictInitialState: true,
     });
   });
 
   test("source-shallow 下 shallow-since 拒绝语义与 git CLI 一致", async () => {
     await runRandomImportSessionSourceShallowSeeds([71, 83, 97], {
       followupOperation: "shallowSinceReject",
+      strictInitialState: true,
     });
   });
 });

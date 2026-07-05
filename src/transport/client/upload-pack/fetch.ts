@@ -109,6 +109,7 @@ interface NegotiationFetchOptions {
   readonly deepenRelative?: boolean;
   readonly deepenSince?: number;
   readonly deepenNot?: string[];
+  readonly replayKnownCommonInFirstRound?: boolean;
 }
 
 interface GitOidSetState {
@@ -832,14 +833,19 @@ export async function negotiateV2Fetch(
     );
   }
 
-  const selector = createFetchHaveSelector(haveCandidates, localObjects, knownCommonRefs);
+  const selector = createFetchHaveSelector(haveCandidates, localObjects, knownCommonRefs, {
+    replayKnownCommonInFirstRound: options.replayKnownCommonInFirstRound,
+  });
   const commonSet = createGitOidSetState();
   let havesToSend = INITIAL_FLUSH;
   let inVain = 0;
   let seenAck = false;
 
   while (true) {
-    const roundHaves = iterateGitOidSet(commonSet);
+    const roundHaves =
+      options.replayKnownCommonInFirstRound === true && commonSet.size === 0 && inVain === 0
+        ? (knownCommonRefs?.map((oid) => sha1(oid)) ?? [])
+        : iterateGitOidSet(commonSet);
     let havesAdded = 0;
 
     // 官方 Git 的 v2 add_haves() 只把 known common replay 直接写入请求，
