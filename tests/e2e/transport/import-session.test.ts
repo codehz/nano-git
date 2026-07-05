@@ -66,6 +66,14 @@ function sortUniqueHashes(hashes: readonly string[]): string[] {
   return [...new Set(hashes)].sort();
 }
 
+function getHaveLines(batch: readonly string[]): string[] {
+  return batch.filter((line) => line.startsWith("have "));
+}
+
+function getNonHaveLines(batch: readonly string[]): string[] {
+  return batch.filter((line) => !line.startsWith("have "));
+}
+
 async function createTaggedShallowSourceRepository(
   rootDir: string,
   options: {
@@ -3122,6 +3130,82 @@ describe("Import Session", () => {
     );
   });
 
+  test("merge-history source shallow + lightweight boundary tag 下完整 clone 后 repo.fetch({ deepen: 1 }) 会像 git CLI 一样保持 tag 与双 shallow 边界", async () => {
+    await server.stop();
+    const history = await createTaggedMergeShallowSourceRepository(tempDir, {
+      repoName: "merge-lightweight-shallow-source-full-deepen.git",
+      upstreamName: "merge-lightweight-upstream-full-deepen.git",
+      workName: "merge-lightweight-upstream-work-full-deepen",
+      tagName: "tag-boundary-light",
+      tagTarget: "topic-boundary",
+    });
+    server = startGitHttpBackendServer(
+      tempDir,
+      "/merge-lightweight-shallow-source-full-deepen.git",
+    );
+
+    const cliDir = join(tempDir, "cli-merge-lightweight-source-full-deepen");
+    const repo = initRepository(join(tempDir, "nano-merge-lightweight-source-full-deepen"));
+
+    await gitWithTimeout(["-c", "protocol.version=2", "clone", server.url, cliDir], tempDir, 15000);
+    await repo.fetch(server.url);
+
+    expect(repo.refs.read("refs/tags/tag-boundary-light")).toBe(history.tagHash);
+    expect(git(["rev-parse", "refs/tags/tag-boundary-light"], cliDir)).toBe(history.tagHash);
+    expect(sortUniqueHashes(repo.shallow.read())).toEqual(
+      sortUniqueHashes(readShallowFile(cliDir)),
+    );
+    expect(sortHashes(repo.shallow.read())).toEqual(
+      sortHashes([history.topicBoundaryCommit, history.mainBoundaryCommit]),
+    );
+
+    server.clearRequests();
+    const nanoResult = await repo.fetch(server.url, { deepen: 1 });
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    await gitWithTimeout(
+      ["-c", "protocol.version=2", "fetch", "--deepen=1", "origin"],
+      cliDir,
+      15000,
+    );
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoResult.objectCount).toBe(0);
+    expect(nanoBatches).toEqual(cliBatches);
+    expect(nanoBatches).toHaveLength(1);
+    const firstBatch = nanoBatches[0] ?? [];
+    expect(getNonHaveLines(firstBatch)).toEqual([
+      "command=fetch",
+      "object-format=sha1",
+      "thin-pack",
+      "no-progress",
+      "include-tag",
+      "ofs-delta",
+      `shallow ${history.topicBoundaryCommit}`,
+      `shallow ${history.mainBoundaryCommit}`,
+      "deepen 1",
+      "deepen-relative",
+      `want ${history.tipCommit}`,
+    ]);
+    expect(sortHashes(getHaveLines(firstBatch))).toEqual(
+      sortHashes([
+        `have ${history.tipCommit}`,
+        `have ${history.mergeCommit}`,
+        `have ${history.mainBoundaryCommit}`,
+        `have ${history.topicBoundaryCommit}`,
+      ]),
+    );
+    expect(repo.refs.read("refs/tags/tag-boundary-light")).toBe(history.tagHash);
+    expect(git(["rev-parse", "refs/tags/tag-boundary-light"], cliDir)).toBe(history.tagHash);
+    expect(sortUniqueHashes(repo.shallow.read())).toEqual(
+      sortUniqueHashes(readShallowFile(cliDir)),
+    );
+    expect(sortHashes(repo.shallow.read())).toEqual(
+      sortHashes([history.topicBoundaryCommit, history.mainBoundaryCommit]),
+    );
+  });
+
   test("merge-history source shallow 下完整 clone 后 repo.fetch({ unshallow: true }) 会像 git CLI 一样发送 deepen 2147483647 且保持双浅边界", async () => {
     await server.stop();
     const history = await createMergeShallowSourceRepository(tempDir, {
@@ -3447,6 +3531,76 @@ describe("Import Session", () => {
         "ofs-delta",
         `shallow ${history.tipCommit}`,
         "deepen-not tag-boundary-light",
+        `want ${history.tipCommit}`,
+        `have ${history.tipCommit}`,
+      ],
+    ]);
+    expect(repo.refs.list("refs/tags/")).toEqual([]);
+    expect(git(["tag", "-l"], cliDir)).toBe("");
+    expect(sortUniqueHashes(repo.shallow.read())).toEqual(
+      sortUniqueHashes(readShallowFile(cliDir)),
+    );
+    expect(repo.shallow.read()).toHaveLength(1);
+    expect(repo.shallow.read()).not.toEqual([history.tipCommit]);
+  });
+
+  test("merge-history source shallow + lightweight boundary tag 下 depth=1 初始 fetch 后 deepen 会像 git CLI 一样推进单一 shallow 边界且不物化 tag", async () => {
+    await server.stop();
+    const history = await createTaggedMergeShallowSourceRepository(tempDir, {
+      repoName: "merge-lightweight-shallow-source-depth1-deepen.git",
+      upstreamName: "merge-lightweight-upstream-depth1-deepen.git",
+      workName: "merge-lightweight-upstream-work-depth1-deepen",
+      tagName: "tag-boundary-light",
+      tagTarget: "topic-boundary",
+    });
+    server = startGitHttpBackendServer(
+      tempDir,
+      "/merge-lightweight-shallow-source-depth1-deepen.git",
+    );
+
+    const cliDir = join(tempDir, "cli-merge-lightweight-source-depth1-deepen");
+    const repo = initRepository(join(tempDir, "nano-merge-lightweight-source-depth1-deepen"));
+
+    await gitWithTimeout(
+      ["-c", "protocol.version=2", "clone", "--depth=1", server.url, cliDir],
+      tempDir,
+      15000,
+    );
+    await repo.fetch(server.url, { depth: 1 });
+
+    expect(repo.refs.list("refs/tags/")).toEqual([]);
+    expect(git(["tag", "-l"], cliDir)).toBe("");
+    expect(repo.readBranch("main") === history.tipCommit).toBe(true);
+    expect(sortUniqueHashes(repo.shallow.read())).toEqual(
+      sortUniqueHashes(readShallowFile(cliDir)),
+    );
+    expect(sortHashes(repo.shallow.read())).toEqual(sortHashes([history.tipCommit]));
+
+    server.clearRequests();
+    const nanoResult = await repo.fetch(server.url, { deepen: 1 });
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    await gitWithTimeout(
+      ["-c", "protocol.version=2", "fetch", "--deepen=1", "origin"],
+      cliDir,
+      15000,
+    );
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoResult.objectCount).toBeGreaterThanOrEqual(0);
+    expect(nanoBatches).toEqual(cliBatches);
+    expect(nanoBatches).toEqual([
+      [
+        "command=fetch",
+        "object-format=sha1",
+        "thin-pack",
+        "no-progress",
+        "include-tag",
+        "ofs-delta",
+        `shallow ${history.tipCommit}`,
+        "deepen 1",
+        "deepen-relative",
         `want ${history.tipCommit}`,
         `have ${history.tipCommit}`,
       ],
