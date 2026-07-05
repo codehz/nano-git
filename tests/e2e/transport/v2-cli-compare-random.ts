@@ -43,6 +43,10 @@ interface RandomCliComparisonOptions {
   readonly negotiationStress?: boolean;
   readonly noTags?: boolean;
   readonly defaultFetch?: boolean;
+  readonly explicitHeadPatterns?: boolean;
+  readonly explicitHeadRefSpecs?: boolean;
+  readonly explicitTagOnlyPatterns?: boolean;
+  readonly explicitTagOnlyRefSpecs?: boolean;
   readonly explicitTagPatterns?: boolean;
   readonly explicitTagRefSpecs?: boolean;
 }
@@ -51,6 +55,16 @@ interface RandomCliBranchState {
   readonly name: string;
   readonly family: string;
 }
+
+const EXPLICIT_HEAD_PATTERNS = ["refs/heads/*"] as const;
+const EXPLICIT_HEAD_REFSPECS = ["refs/heads/*:refs/heads/*"] as const;
+const EXPLICIT_TAG_ONLY_PATTERNS = ["refs/tags/*"] as const;
+const EXPLICIT_TAG_ONLY_REFSPECS = ["refs/tags/*:refs/tags/*"] as const;
+const EXPLICIT_HEAD_TAG_PATTERNS = ["refs/heads/*", "refs/tags/*"] as const;
+const EXPLICIT_HEAD_TAG_REFSPECS = [
+  "refs/heads/*:refs/heads/*",
+  "refs/tags/*:refs/tags/*",
+] as const;
 
 function createSeededRandom(seed: number): () => number {
   let state = seed >>> 0;
@@ -91,16 +105,54 @@ async function cloneNanoWithDefaultFetch(url: string, localDir: string) {
   return repo;
 }
 
-async function cloneNanoWithExplicitTagPatterns(url: string, localDir: string) {
+async function cloneNanoWithExplicitPatterns(
+  url: string,
+  localDir: string,
+  refPatterns: readonly string[],
+  noTags = false,
+) {
   const repo = initRepository(localDir);
-  await repo.fetch(url, { refPatterns: ["refs/heads/*", "refs/tags/*"] });
+  await repo.fetch(url, { refPatterns: [...refPatterns], noTags: noTags || undefined });
   return repo;
 }
 
-async function cloneNanoWithExplicitTagRefSpecs(url: string, localDir: string) {
+async function cloneNanoWithExplicitRefSpecs(
+  url: string,
+  localDir: string,
+  refSpecs: readonly string[],
+  noTags = false,
+) {
   const repo = initRepository(localDir);
-  await repo.fetch(url, { refSpecs: ["refs/heads/*:refs/heads/*", "refs/tags/*:refs/tags/*"] });
+  await repo.fetch(url, { refSpecs: [...refSpecs], noTags: noTags || undefined });
   return repo;
+}
+
+async function cloneNanoWithExplicitHeadPatterns(url: string, localDir: string) {
+  return cloneNanoWithExplicitPatterns(url, localDir, EXPLICIT_HEAD_PATTERNS);
+}
+
+async function cloneNanoWithExplicitHeadRefSpecs(url: string, localDir: string) {
+  return cloneNanoWithExplicitRefSpecs(url, localDir, EXPLICIT_HEAD_REFSPECS);
+}
+
+async function cloneNanoWithExplicitTagOnlyPatterns(url: string, localDir: string, noTags = false) {
+  return cloneNanoWithExplicitPatterns(url, localDir, EXPLICIT_TAG_ONLY_PATTERNS, noTags);
+}
+
+async function cloneNanoWithExplicitTagOnlyRefSpecs(url: string, localDir: string, noTags = false) {
+  return cloneNanoWithExplicitRefSpecs(url, localDir, EXPLICIT_TAG_ONLY_REFSPECS, noTags);
+}
+
+async function cloneNanoWithExplicitTagPatterns(url: string, localDir: string) {
+  return cloneNanoWithExplicitPatterns(url, localDir, EXPLICIT_HEAD_TAG_PATTERNS);
+}
+
+async function cloneNanoWithExplicitTagPatternsAndNoTags(url: string, localDir: string) {
+  return cloneNanoWithExplicitPatterns(url, localDir, EXPLICIT_HEAD_TAG_PATTERNS, true);
+}
+
+async function cloneNanoWithExplicitTagRefSpecs(url: string, localDir: string, noTags = false) {
+  return cloneNanoWithExplicitRefSpecs(url, localDir, EXPLICIT_HEAD_TAG_REFSPECS, noTags);
 }
 
 async function cloneNanoHeadsAndTags(url: string, localDir: string) {
@@ -146,18 +198,189 @@ async function fetchNanoWithDefaultFetch(repo: ReturnType<typeof initRepository>
   return repo.fetch(url);
 }
 
+async function fetchNanoWithExplicitPatterns(
+  repo: ReturnType<typeof initRepository>,
+  url: string,
+  refPatterns: readonly string[],
+  noTags = false,
+) {
+  return repo.fetch(url, { refPatterns: [...refPatterns], noTags: noTags || undefined });
+}
+
+async function fetchNanoWithExplicitRefSpecs(
+  repo: ReturnType<typeof initRepository>,
+  url: string,
+  refSpecs: readonly string[],
+  noTags = false,
+) {
+  return repo.fetch(url, { refSpecs: [...refSpecs], noTags: noTags || undefined });
+}
+
+async function fetchNanoWithExplicitHeadPatterns(
+  repo: ReturnType<typeof initRepository>,
+  url: string,
+) {
+  return fetchNanoWithExplicitPatterns(repo, url, EXPLICIT_HEAD_PATTERNS);
+}
+
+async function fetchNanoWithExplicitHeadRefSpecs(
+  repo: ReturnType<typeof initRepository>,
+  url: string,
+) {
+  return fetchNanoWithExplicitRefSpecs(repo, url, EXPLICIT_HEAD_REFSPECS);
+}
+
+async function fetchNanoWithExplicitTagOnlyPatterns(
+  repo: ReturnType<typeof initRepository>,
+  url: string,
+  noTags = false,
+) {
+  return fetchNanoWithExplicitPatterns(repo, url, EXPLICIT_TAG_ONLY_PATTERNS, noTags);
+}
+
+async function fetchNanoWithExplicitTagOnlyRefSpecs(
+  repo: ReturnType<typeof initRepository>,
+  url: string,
+  noTags = false,
+) {
+  return fetchNanoWithExplicitRefSpecs(repo, url, EXPLICIT_TAG_ONLY_REFSPECS, noTags);
+}
+
 async function fetchNanoWithExplicitTagPatterns(
   repo: ReturnType<typeof initRepository>,
   url: string,
 ) {
-  return repo.fetch(url, { refPatterns: ["refs/heads/*", "refs/tags/*"] });
+  return fetchNanoWithExplicitPatterns(repo, url, EXPLICIT_HEAD_TAG_PATTERNS);
+}
+
+async function fetchNanoWithExplicitTagPatternsAndNoTags(
+  repo: ReturnType<typeof initRepository>,
+  url: string,
+) {
+  return fetchNanoWithExplicitPatterns(repo, url, EXPLICIT_HEAD_TAG_PATTERNS, true);
 }
 
 async function fetchNanoWithExplicitTagRefSpecs(
   repo: ReturnType<typeof initRepository>,
   url: string,
 ) {
-  return repo.fetch(url, { refSpecs: ["refs/heads/*:refs/heads/*", "refs/tags/*:refs/tags/*"] });
+  return fetchNanoWithExplicitRefSpecs(repo, url, EXPLICIT_HEAD_TAG_REFSPECS);
+}
+
+function getCliExplicitFetchRefSpecs(
+  options: RandomCliComparisonOptions,
+): readonly string[] | undefined {
+  if (options.explicitHeadPatterns || options.explicitHeadRefSpecs) {
+    return EXPLICIT_HEAD_REFSPECS;
+  }
+
+  if (options.explicitTagOnlyPatterns || options.explicitTagOnlyRefSpecs) {
+    return EXPLICIT_TAG_ONLY_REFSPECS;
+  }
+
+  if (options.explicitTagPatterns || options.explicitTagRefSpecs) {
+    return EXPLICIT_HEAD_TAG_REFSPECS;
+  }
+
+  return undefined;
+}
+
+function usesBareCliRepo(options: RandomCliComparisonOptions): boolean {
+  return getCliExplicitFetchRefSpecs(options) !== undefined;
+}
+
+async function cloneNanoForOptions(
+  url: string,
+  localDir: string,
+  options: RandomCliComparisonOptions,
+) {
+  if (options.explicitHeadPatterns) {
+    return cloneNanoWithExplicitHeadPatterns(url, localDir);
+  }
+
+  if (options.explicitHeadRefSpecs) {
+    return cloneNanoWithExplicitHeadRefSpecs(url, localDir);
+  }
+
+  if (options.explicitTagOnlyPatterns) {
+    return cloneNanoWithExplicitTagOnlyPatterns(url, localDir, options.noTags);
+  }
+
+  if (options.explicitTagOnlyRefSpecs) {
+    return cloneNanoWithExplicitTagOnlyRefSpecs(url, localDir, options.noTags);
+  }
+
+  if (options.explicitTagPatterns) {
+    return options.noTags
+      ? cloneNanoWithExplicitTagPatternsAndNoTags(url, localDir)
+      : cloneNanoWithExplicitTagPatterns(url, localDir);
+  }
+
+  if (options.explicitTagRefSpecs) {
+    return cloneNanoWithExplicitTagRefSpecs(url, localDir, options.noTags);
+  }
+
+  if (options.noTags) {
+    return cloneNanoWithNoTags(url, localDir);
+  }
+
+  if (options.defaultFetch) {
+    return cloneNanoWithDefaultFetch(url, localDir);
+  }
+
+  if (options.includeTags) {
+    return cloneNanoHeadsAndTags(url, localDir);
+  }
+
+  return cloneNanoHeads(url, localDir);
+}
+
+async function fetchNanoForOptions(
+  repo: ReturnType<typeof initRepository>,
+  url: string,
+  options: RandomCliComparisonOptions,
+) {
+  if (options.explicitHeadPatterns) {
+    return fetchNanoWithExplicitHeadPatterns(repo, url);
+  }
+
+  if (options.explicitHeadRefSpecs) {
+    return fetchNanoWithExplicitHeadRefSpecs(repo, url);
+  }
+
+  if (options.explicitTagOnlyPatterns) {
+    return fetchNanoWithExplicitTagOnlyPatterns(repo, url, options.noTags);
+  }
+
+  if (options.explicitTagOnlyRefSpecs) {
+    return fetchNanoWithExplicitTagOnlyRefSpecs(repo, url, options.noTags);
+  }
+
+  if (options.explicitTagPatterns) {
+    return options.noTags
+      ? fetchNanoWithExplicitTagPatternsAndNoTags(repo, url)
+      : fetchNanoWithExplicitTagPatterns(repo, url);
+  }
+
+  if (options.explicitTagRefSpecs) {
+    return options.noTags
+      ? fetchNanoWithExplicitRefSpecs(repo, url, EXPLICIT_HEAD_TAG_REFSPECS, true)
+      : fetchNanoWithExplicitTagRefSpecs(repo, url);
+  }
+
+  if (options.noTags) {
+    return fetchNanoWithNoTags(repo, url);
+  }
+
+  if (options.defaultFetch) {
+    return fetchNanoWithDefaultFetch(repo, url);
+  }
+
+  if (options.includeTags) {
+    return fetchNanoHeadsAndTags(repo, url);
+  }
+
+  return fetchNanoHeads(repo, url);
 }
 
 async function cloneGitCli(
@@ -166,12 +389,16 @@ async function cloneGitCli(
   tempDir: string,
   options: RandomCliComparisonOptions = {},
 ) {
-  if (options.explicitTagRefSpecs) {
-    await gitWithTimeout(
-      ["-c", "protocol.version=2", "clone", "--bare", url, localDir],
-      tempDir,
-      15000,
-    );
+  const explicitRefSpecs = getCliExplicitFetchRefSpecs(options);
+  if (explicitRefSpecs) {
+    await gitWithTimeout(["init", "--bare", localDir], tempDir, 15000);
+    await gitWithTimeout(["--git-dir", localDir, "remote", "add", "origin", url], tempDir, 15000);
+    const fetchArgs = ["--git-dir", localDir, "-c", "protocol.version=2", "fetch"];
+    if (options.noTags) {
+      fetchArgs.push("--no-tags");
+    }
+    fetchArgs.push("origin", ...explicitRefSpecs);
+    await gitWithTimeout(fetchArgs, tempDir, 15000);
     return;
   }
 
@@ -189,18 +416,21 @@ async function cloneGitCli(
 }
 
 async function fetchGitCli(localDir: string, options: RandomCliComparisonOptions = {}) {
-  if (options.explicitTagRefSpecs) {
+  const explicitRefSpecs = getCliExplicitFetchRefSpecs(options);
+  if (explicitRefSpecs) {
+    const fetchArgs = [
+      "-c",
+      "protocol.version=2",
+      "-c",
+      "fetch.negotiationAlgorithm=consecutive",
+      "fetch",
+    ];
+    if (options.noTags) {
+      fetchArgs.push("--no-tags");
+    }
+    fetchArgs.push("origin", ...explicitRefSpecs);
     await gitWithTimeout(
-      [
-        "-c",
-        "protocol.version=2",
-        "-c",
-        "fetch.negotiationAlgorithm=consecutive",
-        "fetch",
-        "origin",
-        "refs/heads/*:refs/heads/*",
-        "refs/tags/*:refs/tags/*",
-      ],
+      usesBareCliRepo(options) ? ["--git-dir", localDir, ...fetchArgs] : fetchArgs,
       localDir,
       15000,
     );
@@ -221,11 +451,10 @@ async function fetchGitCli(localDir: string, options: RandomCliComparisonOptions
     options.includeTags &&
     !options.noTags &&
     options.defaultFetch !== true &&
+    options.explicitTagOnlyPatterns !== true &&
+    options.explicitTagOnlyRefSpecs !== true &&
     options.explicitTagPatterns !== true
   ) {
-    args.push("--tags");
-  }
-  if (options.explicitTagPatterns) {
     args.push("--tags");
   }
   args.push("origin");
@@ -337,6 +566,10 @@ function parseSeedArguments(args: readonly string[]): {
     negotiationStress?: boolean;
     noTags?: boolean;
     defaultFetch?: boolean;
+    explicitHeadPatterns?: boolean;
+    explicitHeadRefSpecs?: boolean;
+    explicitTagOnlyPatterns?: boolean;
+    explicitTagOnlyRefSpecs?: boolean;
     explicitTagPatterns?: boolean;
     explicitTagRefSpecs?: boolean;
   } = {};
@@ -374,6 +607,22 @@ function parseSeedArguments(args: readonly string[]): {
     }
     if (arg === "--default-fetch") {
       options.defaultFetch = true;
+      continue;
+    }
+    if (arg === "--explicit-head-patterns") {
+      options.explicitHeadPatterns = true;
+      continue;
+    }
+    if (arg === "--explicit-head-refspecs") {
+      options.explicitHeadRefSpecs = true;
+      continue;
+    }
+    if (arg === "--explicit-tag-only-patterns") {
+      options.explicitTagOnlyPatterns = true;
+      continue;
+    }
+    if (arg === "--explicit-tag-only-refspecs") {
+      options.explicitTagOnlyRefSpecs = true;
       continue;
     }
     if (arg === "--explicit-tag-patterns") {
@@ -564,21 +813,11 @@ export async function runRandomV2CliComparisonSeed(
 
     server = startGitHttpBackendServer(tempDir, "/server.git");
     const url = server.url;
-    const nanoRepo = options.noTags
-      ? await cloneNanoWithNoTags(url, join(tempDir, "nano"))
-      : options.defaultFetch
-        ? await cloneNanoWithDefaultFetch(url, join(tempDir, "nano"))
-        : options.explicitTagPatterns
-          ? await cloneNanoWithExplicitTagPatterns(url, join(tempDir, "nano"))
-          : options.explicitTagRefSpecs
-            ? await cloneNanoWithExplicitTagRefSpecs(url, join(tempDir, "nano"))
-            : options.includeTags
-              ? await cloneNanoHeadsAndTags(url, join(tempDir, "nano"))
-              : await cloneNanoHeads(url, join(tempDir, "nano"));
+    const nanoRepo = await cloneNanoForOptions(url, join(tempDir, "nano"), options);
     const cliDir = join(tempDir, "cli");
     await cloneGitCli(url, cliDir, tempDir, options);
     const nanoGitDir = join(tempDir, "nano");
-    const cliGitDir = options.explicitTagRefSpecs ? cliDir : join(cliDir, ".git");
+    const cliGitDir = usesBareCliRepo(options) ? cliDir : join(cliDir, ".git");
     const nanoBeforeHeadEntries = git(
       ["--git-dir", nanoGitDir, "for-each-ref", "--format=%(objectname) %(refname)", "refs/heads"],
       tempDir,
@@ -721,17 +960,7 @@ export async function runRandomV2CliComparisonSeed(
     server.clearRequests();
     let nanoError: string | undefined;
     try {
-      const nanoResult = options.noTags
-        ? await fetchNanoWithNoTags(nanoRepo, url)
-        : options.defaultFetch
-          ? await fetchNanoWithDefaultFetch(nanoRepo, url)
-          : options.explicitTagPatterns
-            ? await fetchNanoWithExplicitTagPatterns(nanoRepo, url)
-            : options.explicitTagRefSpecs
-              ? await fetchNanoWithExplicitTagRefSpecs(nanoRepo, url)
-              : options.includeTags
-                ? await fetchNanoHeadsAndTags(nanoRepo, url)
-                : await fetchNanoHeads(nanoRepo, url);
+      const nanoResult = await fetchNanoForOptions(nanoRepo, url, options);
       if ("canApply" in nanoResult && !nanoResult.canApply) {
         throw new Error(`Random CLI comparison seed ${seed} produced non-applicable preview`);
       }
@@ -779,11 +1008,15 @@ export async function runRandomV2CliComparisonSeed(
       (nanoError === undefined) === (cliError === undefined) &&
       (options.noTags === true ||
       options.defaultFetch === true ||
+      options.explicitHeadPatterns === true ||
+      options.explicitHeadRefSpecs === true ||
+      options.explicitTagOnlyPatterns === true ||
+      options.explicitTagOnlyRefSpecs === true ||
       options.explicitTagPatterns === true ||
       options.explicitTagRefSpecs === true
         ? JSON.stringify(nanoTagEntries) === JSON.stringify(cliTagEntries)
         : true);
-    const matchedWithHeads = options.explicitTagRefSpecs
+    const matchedWithHeads = usesBareCliRepo(options)
       ? matched && JSON.stringify(nanoHeadEntries) === JSON.stringify(cliHeadEntries)
       : matched;
 

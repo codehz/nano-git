@@ -42,7 +42,7 @@ export async function runFetchToUrl(
   const session = await ops.openImportSession(source);
 
   if (options?.refSpecs) {
-    return applyCustomRefSpecs(session, options);
+    return applyCustomRefSpecs(backend, session, options);
   }
 
   return applyDefaultMapping(backend, session, options, shouldMaterializeDefaultTags(options));
@@ -70,6 +70,19 @@ function patternMaySelectTagRefs(pattern: string): boolean {
 
 function refPatternsRequestExplicitTags(patterns?: readonly string[]): boolean {
   return patterns?.some((pattern) => patternMaySelectTagRefs(pattern)) ?? false;
+}
+
+function isCanonicalHeadsAndTagsRefPatterns(patterns?: readonly string[]): boolean {
+  if (patterns === undefined) {
+    return false;
+  }
+
+  const uniquePatterns = new Set(patterns);
+  return (
+    uniquePatterns.size === 2 &&
+    uniquePatterns.has("refs/heads/*") &&
+    uniquePatterns.has("refs/tags/*")
+  );
 }
 
 function refSpecsRequestExplicitTags(refSpecs?: readonly string[]): boolean {
@@ -161,7 +174,9 @@ function createImportPrepareOptions(
  * 默认行为贴近官方 Git：
  * - 分支会物化到本地 `refs/heads/*`
  * - 默认 full fetch 会像 `git fetch` 一样把远端可达 tag 物化到本地
- * - 显式 shallow 请求下，tag 仅通过协议层 `include-tag` 自动跟随可达对象，不默认创建本地 `refs/tags/*`
+ * - 显式 branch-only 的 `refPatterns/refSpecs` 也会像 `git fetch <refspec>` 一样自动跟随可达 tag
+ * - 默认 `repo.fetch()` 的显式 shallow 请求下，tag 仅通过协议层 `include-tag` 自动跟随可达对象，
+ *   不默认创建本地 `refs/tags/*`
  * - 若调用方通过 `refPatterns` 显式请求 tag，则按请求物化到本地 `refs/tags/*`
  */
 async function applyDefaultMapping(
@@ -174,9 +189,56 @@ async function applyDefaultMapping(
     ? session.selectRefs(options.refPatterns)
     : session.allRefs();
   const branches = selectedRefs.where((ref) => ref.name.startsWith("refs/heads/"));
+  const selectedTags = selectedRefs.where((ref) => ref.name.startsWith("refs/tags/"));
   const requestedExplicitTags = refPatternsRequestExplicitTags(options?.refPatterns);
 
-  if (!materializeDefaultTags || options?.refPatterns !== undefined) {
+  if (
+    isCanonicalHeadsAndTagsRefPatterns(options?.refPatterns) &&
+    !hasShallowFetchRequest(options)
+  ) {
+    return applyCustomRefSpecs(backend, session, {
+      ...options,
+      refSpecs: ["refs/heads/*:refs/heads/*", "refs/tags/*:refs/tags/*"],
+    });
+  }
+
+  if (options?.refPatterns !== undefined && requestedExplicitTags && options?.noTags === true) {
+    return applyDefaultRefProjection(
+      session,
+      selectedRefs,
+      branches,
+      options,
+      true,
+      false,
+      true,
+      false,
+      branches.refs.length === 0,
+      branches.refs.length === 0,
+      branches.refs.length === 0,
+      false,
+      false,
+    );
+  }
+
+  if (options?.refPatterns !== undefined && requestedExplicitTags && branches.refs.length === 0) {
+    return applyDefaultRefProjection(
+      session,
+      selectedRefs,
+      branches,
+      options,
+      true,
+      options?.noTags !== true && selectedTags.refs.length > 0,
+      true,
+      false,
+      options?.noTags !== true,
+      true,
+      false,
+      false,
+      false,
+    );
+  }
+
+  if (!materializeDefaultTags) {
     return applyDefaultRefProjection(
       session,
       selectedRefs,
@@ -186,6 +248,7 @@ async function applyDefaultMapping(
       false,
       requestedExplicitTags,
       false,
+      false,
       true,
       false,
       false,
@@ -193,7 +256,28 @@ async function applyDefaultMapping(
     );
   }
 
-  const tagRefs = selectedRefs.where((ref) => ref.name.startsWith("refs/tags/"));
+  if (options?.refPatterns !== undefined && requestedExplicitTags) {
+    return applyDefaultRefProjection(
+      session,
+      selectedRefs,
+      branches,
+      options,
+      true,
+      !hasShallowFetchRequest(options),
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+    );
+  }
+
+  const tagRefs =
+    options?.refPatterns !== undefined
+      ? session.select("refs/tags/*")
+      : selectedRefs.where((ref) => ref.name.startsWith("refs/tags/"));
   const branchProjectionHashes = new Set(branches.refs.map((ref) => ref.hash));
   const initialDefaultTags = collectInitialDefaultTags(
     backend,
@@ -216,10 +300,11 @@ async function applyDefaultMapping(
           false,
           initialDefaultTags.length > 0,
           false,
-          true,
+          options?.refPatterns !== undefined ? false : true,
           false,
           false,
           false,
+          options?.refPatterns !== undefined ? false : true,
         ),
       )
   ).apply();
@@ -235,7 +320,18 @@ async function applyDefaultMapping(
     await tagPlan
       .build()
       .prepare(
-        createImportPrepareOptions(options, true, false, true, false, true, false, false, false),
+        createImportPrepareOptions(
+          options,
+          true,
+          false,
+          true,
+          false,
+          options?.refPatterns !== undefined ? false : true,
+          false,
+          false,
+          false,
+          options?.refPatterns !== undefined ? false : true,
+        ),
       )
   ).apply();
 
@@ -251,6 +347,7 @@ async function applyDefaultRefProjection(
   keepIncludeTagWithExplicitTags = false,
   requestedExplicitTags = false,
   skipExplicitLightweightTagsByImplicitFollow = false,
+  refetchExistingTagTargetsInShallow = false,
   prioritizeHeadHaveTip = true,
   preferLocalHaveOrderForKnownCommon = false,
   replayKnownCommonInFirstRound = false,
@@ -263,7 +360,7 @@ async function applyDefaultRefProjection(
     keepIncludeTagWithExplicitTags,
     requestedExplicitTags,
     skipExplicitLightweightTagsByImplicitFollow,
-    false,
+    refetchExistingTagTargetsInShallow,
     prioritizeHeadHaveTip,
     preferLocalHaveOrderForKnownCommon,
     replayKnownCommonInFirstRound,
@@ -292,23 +389,13 @@ async function applyDefaultRefProjection(
  * 自定义 refSpec 映射
  */
 async function applyCustomRefSpecs(
+  backend: RepositoryBackend,
   session: ImportSession,
   options: RepositoryFetchOptions,
 ): Promise<RepositoryFetchResult> {
-  const plan = session.plan();
   const explicitTagRefSpecs = refSpecsRequestExplicitTags(options.refSpecs);
-  const prepareOptions = createImportPrepareOptions(
-    options,
-    explicitTagRefSpecs,
-    false,
-    false,
-    explicitTagRefSpecs,
-    false,
-    false,
-    false,
-    false,
-    false,
-  );
+  const plan = session.plan();
+  const selectedRemoteRefs: RemoteRef[] = [];
 
   for (const specStr of options.refSpecs ?? []) {
     const spec = parseRefSpec(specStr);
@@ -320,6 +407,7 @@ async function applyCustomRefSpecs(
 
     const view = session.select(srcPattern);
     if (view.refs.length > 0) {
+      selectedRemoteRefs.push(...view.refs);
       const policy = isForce
         ? { mode: "replace" as const }
         : shouldUseCreateOnlyForRefSpecTarget(dstPattern)
@@ -330,10 +418,56 @@ async function applyCustomRefSpecs(
     }
   }
 
+  const shouldFollowImplicitTags = options.noTags !== true && !explicitTagRefSpecs;
+  const explicitTagOnlyRefSpecs =
+    explicitTagRefSpecs &&
+    selectedRemoteRefs.length > 0 &&
+    selectedRemoteRefs.every((ref) => ref.name.startsWith("refs/tags/"));
+  const tagRefs = shouldFollowImplicitTags ? session.select("refs/tags/*") : undefined;
+  const fetchedTargetHashes = new Set(selectedRemoteRefs.map((ref) => ref.hash));
+  const initialDefaultTags =
+    shouldFollowImplicitTags && tagRefs
+      ? collectInitialDefaultTags(backend, tagRefs.refs, fetchedTargetHashes)
+      : [];
+  if (tagRefs) {
+    materializeTags(plan, tagRefs, initialDefaultTags);
+  }
+
+  const prepareOptions = createImportPrepareOptions(
+    options,
+    explicitTagRefSpecs || initialDefaultTags.length > 0,
+    explicitTagRefSpecs,
+    initialDefaultTags.length > 0,
+    explicitTagRefSpecs,
+    false,
+    false,
+    false,
+    false,
+    false,
+  );
   const prepared = await plan.build().prepare(prepareOptions);
   if (prepared.preview.canApply) {
     const result = await prepared.apply();
-    return convertToFetchResult(result);
+    if (!shouldFollowImplicitTags || !tagRefs) {
+      return convertToFetchResult(result);
+    }
+
+    const backfillTags = collectBackfillDefaultTags(backend, tagRefs.refs);
+    if (backfillTags.length === 0) {
+      return convertToFetchResult(result);
+    }
+
+    const tagPlan = session.plan();
+    materializeTags(tagPlan, tagRefs, backfillTags);
+    const tagResult = await (
+      await tagPlan
+        .build()
+        .prepare(
+          createImportPrepareOptions(options, true, false, true, false, true, false, false, false),
+        )
+    ).apply();
+
+    return mergeFetchResults(convertToFetchResult(result), convertToFetchResult(tagResult));
   }
 
   if (canApplyCustomRefSpecsPartially(prepared.preview)) {

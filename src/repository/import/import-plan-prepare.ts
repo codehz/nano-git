@@ -38,7 +38,7 @@ function collectNegotiationLocalHaveTips(
   compiled: CompiledImportPlanState,
   options?: ImportPrepareOptions,
 ): SHA1[] {
-  const refNames = compiled.backend.refs.listAll();
+  const refNames = compiled.backend.refs.listAll().filter((refName) => refName !== "HEAD");
   const headValue = compiled.backend.refs.read("HEAD");
   const headTarget =
     headValue !== null && headValue.startsWith("ref: ")
@@ -264,7 +264,11 @@ function shouldUseKnownCommonAdvertisementRef(
     return false;
   }
 
-  if (options?.noTags === true && refName.startsWith("refs/tags/")) {
+  if (
+    options?.noTags === true &&
+    options?.requestedExplicitTags !== true &&
+    refName.startsWith("refs/tags/")
+  ) {
     return false;
   }
 
@@ -305,8 +309,19 @@ function collectKnownCommonRefs(
     return advertisedReachable;
   }
 
+  const normalizedLocalHaveTips: SHA1[] = [];
+  const normalizedLocalHaveTipSet = new Set<SHA1>();
+  for (const hash of localHaveTips) {
+    const peeled = peelTagChain(compiled.backend.objects, hash);
+    if (!compiled.backend.objects.exists(peeled) || normalizedLocalHaveTipSet.has(peeled)) {
+      continue;
+    }
+    normalizedLocalHaveTipSet.add(peeled);
+    normalizedLocalHaveTips.push(peeled);
+  }
+
   const localCandidateSet = new Set(
-    localHaveTips.filter((hash) => advertisedReachableSet.has(hash)),
+    normalizedLocalHaveTips.filter((hash) => advertisedReachableSet.has(hash)),
   );
   const localCandidates = [...localCandidateSet].map((hash, index) => {
     const commit = tryReadObject(compiled.backend.objects, hash);

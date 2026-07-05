@@ -14,14 +14,16 @@ export interface RepositoryFetchOptions {
   /**
    * RefSpec 列表，格式如 "refs/heads/main:refs/heads/main"
    * 传入后完全取代默认映射。
-   * 默认映射只物化远端 branches；如需导入 tags，请显式传入对应 refspec。
+   * 若 refspec 只抓 branch，高层行为仍会像 `git fetch <refspec>` 一样
+   * 自动跟随可达 tags；若 refspec 显式包含 tag，则按请求物化本地 tag refs。
    */
   readonly refSpecs?: string[];
 
   /**
    * 仅 fetch 匹配指定 glob 模式的远端 refs（如 "refs/heads/feature/*"），
    * 不 fetch 全部。不可与 refSpecs 同时使用。
-   * 若模式显式包含 `refs/tags/*`，则会像显式 refspec 一样导入本地 tags。
+   * 若模式只抓 branch，高层行为仍会像 `git fetch <branch-pattern>` 一样
+   * 自动跟随可达 tags；若模式显式包含 `refs/tags/*`，则按请求物化本地 tags。
    */
   readonly refPatterns?: string[];
 
@@ -97,6 +99,8 @@ export interface RepositoryFetchOperations {
    * 默认行为：拉取所有远端分支（fast-forward）并设置 HEAD。
    * 对非 shallow 的默认 fetch，会像 `git fetch` 一样自动物化可达 tag refs；
    * 显式 shallow 请求或 `noTags` 时则不会默认创建本地 tag refs。
+   * 显式 branch-only 的 `refPatterns` / `refSpecs` 也会像官方 git 一样
+   * 自动跟随并物化可达 tag refs。
    *
    * @param url - 远端仓库 URL
    * @param options - 可选参数

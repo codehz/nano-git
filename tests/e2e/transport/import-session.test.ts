@@ -602,7 +602,7 @@ describe("Import Session", () => {
     expect(git(["tag", "-l"], cliDir)).toBe("v1.0.0");
   });
 
-  test("repo.fetch({ refPatterns: [heads, tags] }) 会像显式 fetch --tags 一样抓取分支与 tags", async () => {
+  test("repo.fetch({ refPatterns: [heads, tags] }) 会像显式 heads+tags refspec 一样抓取分支与 tags", async () => {
     git(["checkout", "main"], workDir);
     createFile(workDir, "second.txt", "second\n");
     git(["add", "second.txt"], workDir);
@@ -620,7 +620,22 @@ describe("Import Session", () => {
     await repo.fetch(server.url, { refPatterns: ["refs/heads/*", "refs/tags/*"] });
     const nanoInitialBatches = getNormalizedFetchCommandBatches(server.requests);
 
-    await gitWithTimeout(["-c", "protocol.version=2", "clone", server.url, cliDir], tempDir, 15000);
+    git(["init", "--bare", cliDir], tempDir);
+    git(["--git-dir", cliDir, "remote", "add", "origin", server.url], tempDir);
+    await gitWithTimeout(
+      [
+        "--git-dir",
+        cliDir,
+        "-c",
+        "protocol.version=2",
+        "fetch",
+        "origin",
+        "refs/heads/*:refs/heads/*",
+        "refs/tags/*:refs/tags/*",
+      ],
+      tempDir,
+      15000,
+    );
 
     createFile(workDir, "third.txt", "third\n");
     git(["add", "third.txt"], workDir);
@@ -636,7 +651,20 @@ describe("Import Session", () => {
     const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
 
     server.clearRequests();
-    await gitWithTimeout(["-c", "protocol.version=2", "fetch", "--tags", "origin"], cliDir, 15000);
+    await gitWithTimeout(
+      [
+        "--git-dir",
+        cliDir,
+        "-c",
+        "protocol.version=2",
+        "fetch",
+        "origin",
+        "refs/heads/*:refs/heads/*",
+        "refs/tags/*:refs/tags/*",
+      ],
+      tempDir,
+      15000,
+    );
     const cliBatches = getNormalizedFetchCommandBatches(server.requests);
 
     expect(nanoInitialBatches).toEqual([
@@ -645,6 +673,7 @@ describe("Import Session", () => {
         "object-format=sha1",
         "thin-pack",
         "no-progress",
+        "include-tag",
         "ofs-delta",
         `want ${secondCommitHash}`,
         `want ${tagHash}`,
@@ -654,10 +683,9 @@ describe("Import Session", () => {
     expect(nanoBatches).toEqual(cliBatches);
     expect(repo.readBranch("main")).toBe(thirdCommitHash);
     expect(repo.refs.read("refs/tags/v2.0.0")).toBe(secondTagHash);
-    expect(git(["tag", "-l"], cliDir).split("\n").filter(Boolean).sort()).toEqual([
-      "v1.0.0",
-      "v2.0.0",
-    ]);
+    expect(
+      git(["--git-dir", cliDir, "tag", "-l"], tempDir).split("\n").filter(Boolean).sort(),
+    ).toEqual(["v1.0.0", "v2.0.0"]);
   });
 
   test("repo.fetch({ refSpecs: [heads, tags] }) 会像 git fetch <refspec> 一样拒绝覆盖已有 lightweight tag", async () => {
@@ -734,6 +762,654 @@ describe("Import Session", () => {
     expect(git(["--git-dir", cliDir, "rev-parse", "refs/tags/v1.0.0"], tempDir)).toBe(
       taggedCommitHash,
     );
+  });
+
+  test("bare 仓库上 noTags + tag-only refPatterns 仍会像显式 tag refspec 一样抓取 tags", async () => {
+    git(["checkout", "main"], workDir);
+    createFile(workDir, "second.txt", "second\n");
+    git(["add", "second.txt"], workDir);
+    git(["commit", "-m", "Second commit"], workDir);
+    git(["tag", "-a", "v2", "-m", "v2"], workDir);
+    const tagHash = sha1(git(["rev-parse", "refs/tags/v2"], workDir));
+    git(["push", repoDir, "main"], workDir);
+    git(["push", repoDir, "refs/tags/v2"], workDir);
+
+    const bareCliDir = join(tempDir, "cli-no-tags-tag-only-refpatterns.git");
+    const nanoDir = join(tempDir, "nano-no-tags-tag-only-refpatterns.git");
+    const repo = initRepository(nanoDir);
+    const refPatterns = ["refs/tags/*"];
+    const cliArgs = ["fetch", "--no-tags", "origin", "refs/tags/*:refs/tags/*"];
+
+    git(["init", "--bare", bareCliDir], tempDir);
+    git(["--git-dir", bareCliDir, "remote", "add", "origin", server.url], tempDir);
+
+    server.clearRequests();
+    const nanoResult = await repo.fetch(server.url, { noTags: true, refPatterns });
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    await gitWithTimeout(
+      ["--git-dir", bareCliDir, "-c", "protocol.version=2", ...cliArgs],
+      tempDir,
+      15000,
+    );
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoResult.objectCount).toBeGreaterThanOrEqual(0);
+    expect(nanoBatches).toEqual(cliBatches);
+    expect(nanoBatches[0]).not.toContain("include-tag");
+    expect(repo.refs.read("refs/tags/v2")).toBe(tagHash);
+    expect(git(["--git-dir", bareCliDir, "rev-parse", "refs/tags/v2"], tempDir)).toBe(tagHash);
+  });
+
+  test("bare 仓库上 noTags + heads+tags refPatterns 仍会像显式 refspec 一样抓取 branches 与 tags", async () => {
+    git(["checkout", "main"], workDir);
+    createFile(workDir, "second.txt", "second\n");
+    git(["add", "second.txt"], workDir);
+    git(["commit", "-m", "Second commit"], workDir);
+    const secondCommitHash = sha1(git(["rev-parse", "HEAD"], workDir));
+    git(["tag", "-a", "v2", "-m", "v2"], workDir);
+    const tagHash = sha1(git(["rev-parse", "refs/tags/v2"], workDir));
+    git(["push", repoDir, "main"], workDir);
+    git(["push", repoDir, "refs/tags/v2"], workDir);
+
+    const bareCliDir = join(tempDir, "cli-no-tags-heads-tags-refpatterns.git");
+    const nanoDir = join(tempDir, "nano-no-tags-heads-tags-refpatterns.git");
+    const repo = initRepository(nanoDir);
+    const refPatterns = ["refs/heads/*", "refs/tags/*"];
+    const cliArgs = [
+      "fetch",
+      "--no-tags",
+      "origin",
+      "refs/heads/*:refs/heads/*",
+      "refs/tags/*:refs/tags/*",
+    ];
+
+    git(["init", "--bare", bareCliDir], tempDir);
+    git(["--git-dir", bareCliDir, "remote", "add", "origin", server.url], tempDir);
+
+    server.clearRequests();
+    const nanoResult = await repo.fetch(server.url, { noTags: true, refPatterns });
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    await gitWithTimeout(
+      ["--git-dir", bareCliDir, "-c", "protocol.version=2", ...cliArgs],
+      tempDir,
+      15000,
+    );
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoResult.objectCount).toBeGreaterThanOrEqual(0);
+    expect(nanoBatches).toEqual(cliBatches);
+    expect(nanoBatches[0]).not.toContain("include-tag");
+    expect(repo.readBranch("main")).toBe(secondCommitHash);
+    expect(repo.refs.read("refs/tags/v2")).toBe(tagHash);
+    expect(git(["--git-dir", bareCliDir, "rev-parse", "refs/heads/main"], tempDir)).toBe(
+      secondCommitHash,
+    );
+    expect(git(["--git-dir", bareCliDir, "rev-parse", "refs/tags/v2"], tempDir)).toBe(tagHash);
+  });
+
+  test("bare 仓库上 tag-only refPatterns 的 shallow follow-up 会像 git CLI 一样继续显式 want tag 并保持状态一致", async () => {
+    git(["checkout", "main"], workDir);
+    createFile(workDir, "second.txt", "second\n");
+    git(["add", "second.txt"], workDir);
+    git(["commit", "-m", "Second commit"], workDir);
+    git(["tag", "-a", "v2", "-m", "v2"], workDir);
+    const tagHash = sha1(git(["rev-parse", "refs/tags/v2"], workDir));
+    git(["push", repoDir, "main"], workDir);
+    git(["push", repoDir, "refs/tags/v2"], workDir);
+
+    const bareCliDir = join(tempDir, "cli-tag-only-refpatterns-shallow.git");
+    const nanoDir = join(tempDir, "nano-tag-only-refpatterns-shallow.git");
+    const repo = initRepository(nanoDir);
+    const refPatterns = ["refs/tags/*"];
+    const cliArgs = ["fetch", "origin", "refs/tags/*:refs/tags/*"];
+
+    git(["init", "--bare", bareCliDir], tempDir);
+    git(["--git-dir", bareCliDir, "remote", "add", "origin", server.url], tempDir);
+    await repo.fetch(server.url, { refPatterns });
+    await gitWithTimeout(
+      ["--git-dir", bareCliDir, "-c", "protocol.version=2", ...cliArgs],
+      tempDir,
+      15000,
+    );
+
+    server.clearRequests();
+    const nanoDepthResult = await repo.fetch(server.url, { refPatterns, depth: 1 });
+    const nanoDepthBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    await gitWithTimeout(
+      [
+        "--git-dir",
+        bareCliDir,
+        "-c",
+        "protocol.version=2",
+        "fetch",
+        "--depth=1",
+        "origin",
+        "refs/tags/*:refs/tags/*",
+      ],
+      tempDir,
+      15000,
+    );
+    const cliDepthBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoDepthResult.objectCount).toBeGreaterThanOrEqual(0);
+    expect(nanoDepthBatches).toEqual(cliDepthBatches);
+    expect(repo.refs.read("refs/tags/v2")).toBe(tagHash);
+    expect(sortHashes(repo.shallow.read())).toEqual(sortHashes(readBareShallowFile(bareCliDir)));
+
+    server.clearRequests();
+    const nanoSinceResult = await Promise.allSettled([
+      repo.fetch(server.url, { refPatterns, shallowSince: 1700000001 }),
+    ]);
+    const nanoSinceBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    const cliSinceResult = await Promise.allSettled([
+      gitWithTimeout(
+        [
+          "--git-dir",
+          bareCliDir,
+          "-c",
+          "protocol.version=2",
+          "fetch",
+          "--shallow-since=@1700000001",
+          "origin",
+          "refs/tags/*:refs/tags/*",
+        ],
+        tempDir,
+        15000,
+      ),
+    ]);
+    const cliSinceBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoSinceResult[0]?.status).toBe(cliSinceResult[0]?.status);
+    expect(nanoSinceBatches).toEqual(cliSinceBatches);
+    expect(repo.refs.read("refs/tags/v2")).toBe(tagHash);
+    expect(sortHashes(repo.shallow.read())).toEqual(sortHashes(readBareShallowFile(bareCliDir)));
+  });
+
+  test("bare 仓库上 tag-only refSpecs 的 shallow follow-up 会像 git CLI 一样继续显式 want tag 并保持状态一致", async () => {
+    git(["checkout", "main"], workDir);
+    createFile(workDir, "second.txt", "second\n");
+    git(["add", "second.txt"], workDir);
+    git(["commit", "-m", "Second commit"], workDir);
+    git(["tag", "-a", "v2", "-m", "v2"], workDir);
+    const tagHash = sha1(git(["rev-parse", "refs/tags/v2"], workDir));
+    git(["push", repoDir, "main"], workDir);
+    git(["push", repoDir, "refs/tags/v2"], workDir);
+
+    const bareCliDir = join(tempDir, "cli-tag-only-refspecs-shallow.git");
+    const nanoDir = join(tempDir, "nano-tag-only-refspecs-shallow.git");
+    const repo = initRepository(nanoDir);
+    const refSpecs = ["refs/tags/*:refs/tags/*"];
+
+    git(["init", "--bare", bareCliDir], tempDir);
+    git(["--git-dir", bareCliDir, "remote", "add", "origin", server.url], tempDir);
+    await repo.fetch(server.url, { refSpecs });
+    await gitWithTimeout(
+      ["--git-dir", bareCliDir, "-c", "protocol.version=2", "fetch", "origin", ...refSpecs],
+      tempDir,
+      15000,
+    );
+
+    server.clearRequests();
+    const nanoDepthResult = await repo.fetch(server.url, { refSpecs, depth: 1 });
+    const nanoDepthBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    await gitWithTimeout(
+      [
+        "--git-dir",
+        bareCliDir,
+        "-c",
+        "protocol.version=2",
+        "fetch",
+        "--depth=1",
+        "origin",
+        ...refSpecs,
+      ],
+      tempDir,
+      15000,
+    );
+    const cliDepthBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoDepthResult.objectCount).toBeGreaterThanOrEqual(0);
+    expect(nanoDepthBatches).toEqual(cliDepthBatches);
+    expect(repo.refs.read("refs/tags/v2")).toBe(tagHash);
+    expect(sortHashes(repo.shallow.read())).toEqual(sortHashes(readBareShallowFile(bareCliDir)));
+
+    server.clearRequests();
+    const nanoSinceResult = await Promise.allSettled([
+      repo.fetch(server.url, { refSpecs, shallowSince: 1700000001 }),
+    ]);
+    const nanoSinceBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    const cliSinceResult = await Promise.allSettled([
+      gitWithTimeout(
+        [
+          "--git-dir",
+          bareCliDir,
+          "-c",
+          "protocol.version=2",
+          "fetch",
+          "--shallow-since=@1700000001",
+          "origin",
+          ...refSpecs,
+        ],
+        tempDir,
+        15000,
+      ),
+    ]);
+    const cliSinceBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoSinceResult[0]?.status).toBe(cliSinceResult[0]?.status);
+    expect(nanoSinceBatches).toEqual(cliSinceBatches);
+    expect(repo.refs.read("refs/tags/v2")).toBe(tagHash);
+    expect(sortHashes(repo.shallow.read())).toEqual(sortHashes(readBareShallowFile(bareCliDir)));
+  });
+
+  test("bare 仓库上 branch-only refSpecs 的 depth fetch 会像 git CLI 一样自动物化可达 tag", async () => {
+    git(["checkout", "main"], workDir);
+    createFile(workDir, "second.txt", "second\n");
+    git(["add", "second.txt"], workDir);
+    git(["commit", "-m", "Second commit"], workDir);
+    const secondCommitHash = sha1(git(["rev-parse", "HEAD"], workDir));
+    git(["tag", "-a", "v2", "-m", "v2"], workDir);
+    const tagHash = sha1(git(["rev-parse", "refs/tags/v2"], workDir));
+    git(["push", repoDir, "main"], workDir);
+    git(["push", repoDir, "refs/tags/v2"], workDir);
+
+    const bareCliDir = join(tempDir, "cli-branch-only-refspec-depth.git");
+    const nanoDir = join(tempDir, "nano-branch-only-refspec-depth.git");
+    const repo = initRepository(nanoDir);
+    const refSpecs = ["refs/heads/*:refs/heads/*"];
+
+    git(["init", "--bare", bareCliDir], tempDir);
+    git(["--git-dir", bareCliDir, "remote", "add", "origin", server.url], tempDir);
+
+    server.clearRequests();
+    const nanoResult = await repo.fetch(server.url, { refSpecs, depth: 1 });
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    await gitWithTimeout(
+      [
+        "--git-dir",
+        bareCliDir,
+        "-c",
+        "protocol.version=2",
+        "fetch",
+        "--depth=1",
+        "origin",
+        ...refSpecs,
+      ],
+      tempDir,
+      15000,
+    );
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoResult.objectCount).toBeGreaterThanOrEqual(0);
+    expect(nanoBatches).toEqual(cliBatches);
+    expect(repo.readBranch("main")).toBe(secondCommitHash);
+    expect(repo.refs.read("refs/tags/v2")).toBe(tagHash);
+    expect(sortHashes(repo.shallow.read())).toEqual(sortHashes(readBareShallowFile(bareCliDir)));
+    expect(git(["--git-dir", bareCliDir, "rev-parse", "refs/tags/v2"], tempDir)).toBe(tagHash);
+  });
+
+  test("bare 仓库上 branch-only refPatterns 的 depth fetch 会像 git CLI 一样自动物化可达 tag", async () => {
+    git(["checkout", "main"], workDir);
+    createFile(workDir, "second.txt", "second\n");
+    git(["add", "second.txt"], workDir);
+    git(["commit", "-m", "Second commit"], workDir);
+    const secondCommitHash = sha1(git(["rev-parse", "HEAD"], workDir));
+    git(["tag", "-a", "v2", "-m", "v2"], workDir);
+    const tagHash = sha1(git(["rev-parse", "refs/tags/v2"], workDir));
+    git(["push", repoDir, "main"], workDir);
+    git(["push", repoDir, "refs/tags/v2"], workDir);
+
+    const bareCliDir = join(tempDir, "cli-branch-only-refpatterns-depth.git");
+    const nanoDir = join(tempDir, "nano-branch-only-refpatterns-depth.git");
+    const repo = initRepository(nanoDir);
+    const refPatterns = ["refs/heads/*"];
+
+    git(["init", "--bare", bareCliDir], tempDir);
+    git(["--git-dir", bareCliDir, "remote", "add", "origin", server.url], tempDir);
+
+    server.clearRequests();
+    const nanoResult = await repo.fetch(server.url, { refPatterns, depth: 1 });
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    await gitWithTimeout(
+      [
+        "--git-dir",
+        bareCliDir,
+        "-c",
+        "protocol.version=2",
+        "fetch",
+        "--depth=1",
+        "origin",
+        "refs/heads/*:refs/heads/*",
+      ],
+      tempDir,
+      15000,
+    );
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoResult.objectCount).toBeGreaterThanOrEqual(0);
+    expect(nanoBatches).toEqual(cliBatches);
+    expect(repo.readBranch("main")).toBe(secondCommitHash);
+    expect(repo.refs.read("refs/tags/v2")).toBe(tagHash);
+    expect(sortHashes(repo.shallow.read())).toEqual(sortHashes(readBareShallowFile(bareCliDir)));
+    expect(git(["--git-dir", bareCliDir, "rev-parse", "refs/tags/v2"], tempDir)).toBe(tagHash);
+  });
+
+  test("bare 仓库上 exact branch refPattern 的 depth fetch 会像 git CLI 一样自动物化可达 tag", async () => {
+    git(["checkout", "main"], workDir);
+    createFile(workDir, "second.txt", "second\n");
+    git(["add", "second.txt"], workDir);
+    git(["commit", "-m", "Second commit"], workDir);
+    const secondCommitHash = sha1(git(["rev-parse", "HEAD"], workDir));
+    git(["tag", "-a", "v2", "-m", "v2"], workDir);
+    const tagHash = sha1(git(["rev-parse", "refs/tags/v2"], workDir));
+    git(["push", repoDir, "main"], workDir);
+    git(["push", repoDir, "refs/tags/v2"], workDir);
+
+    const bareCliDir = join(tempDir, "cli-exact-branch-refpattern-depth.git");
+    const nanoDir = join(tempDir, "nano-exact-branch-refpattern-depth.git");
+    const repo = initRepository(nanoDir);
+    const refPatterns = ["refs/heads/main"];
+
+    git(["init", "--bare", bareCliDir], tempDir);
+    git(["--git-dir", bareCliDir, "remote", "add", "origin", server.url], tempDir);
+
+    server.clearRequests();
+    const nanoResult = await repo.fetch(server.url, { refPatterns, depth: 1 });
+    const nanoBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    await gitWithTimeout(
+      [
+        "--git-dir",
+        bareCliDir,
+        "-c",
+        "protocol.version=2",
+        "fetch",
+        "--depth=1",
+        "origin",
+        "refs/heads/main:refs/heads/main",
+      ],
+      tempDir,
+      15000,
+    );
+    const cliBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoResult.objectCount).toBeGreaterThanOrEqual(0);
+    expect(nanoBatches).toEqual(cliBatches);
+    expect(repo.readBranch("main")).toBe(secondCommitHash);
+    expect(repo.refs.read("refs/tags/v2")).toBe(tagHash);
+    expect(sortHashes(repo.shallow.read())).toEqual(sortHashes(readBareShallowFile(bareCliDir)));
+    expect(git(["--git-dir", bareCliDir, "rev-parse", "refs/tags/v2"], tempDir)).toBe(tagHash);
+  });
+
+  test("bare 仓库上 branch-only refSpecs 的 shallow follow-up 会像 git CLI 一样保持请求序列与 tag/shallow 状态一致", async () => {
+    git(["checkout", "main"], workDir);
+    createFile(workDir, "second.txt", "second\n");
+    git(["add", "second.txt"], workDir);
+    git(["commit", "-m", "Second commit"], workDir);
+    git(["tag", "-a", "v2", "-m", "v2"], workDir);
+    const tagHash = sha1(git(["rev-parse", "refs/tags/v2"], workDir));
+    git(["push", repoDir, "main"], workDir);
+    git(["push", repoDir, "refs/tags/v2"], workDir);
+
+    const bareCliDir = join(tempDir, "cli-branch-only-refspec-shallow.git");
+    const nanoDir = join(tempDir, "nano-branch-only-refspec-shallow.git");
+    const repo = initRepository(nanoDir);
+    const refSpecs = ["refs/heads/*:refs/heads/*"];
+
+    git(["init", "--bare", bareCliDir], tempDir);
+    git(["--git-dir", bareCliDir, "remote", "add", "origin", server.url], tempDir);
+    await repo.fetch(server.url, { refSpecs });
+    await gitWithTimeout(
+      ["--git-dir", bareCliDir, "-c", "protocol.version=2", "fetch", "origin", ...refSpecs],
+      tempDir,
+      15000,
+    );
+
+    server.clearRequests();
+    const nanoDepthResult = await repo.fetch(server.url, { refSpecs, depth: 1 });
+    const nanoDepthBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    await gitWithTimeout(
+      [
+        "--git-dir",
+        bareCliDir,
+        "-c",
+        "protocol.version=2",
+        "fetch",
+        "--depth=1",
+        "origin",
+        ...refSpecs,
+      ],
+      tempDir,
+      15000,
+    );
+    const cliDepthBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoDepthResult.objectCount).toBeGreaterThanOrEqual(0);
+    expect(nanoDepthBatches).toEqual(cliDepthBatches);
+    expect(repo.refs.read("refs/tags/v2")).toBe(tagHash);
+    expect(sortHashes(repo.shallow.read())).toEqual(sortHashes(readBareShallowFile(bareCliDir)));
+
+    server.clearRequests();
+    const nanoSinceResult = await Promise.allSettled([
+      repo.fetch(server.url, { refSpecs, shallowSince: 1700000001 }),
+    ]);
+    const nanoSinceBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    const cliSinceResult = await Promise.allSettled([
+      gitWithTimeout(
+        [
+          "--git-dir",
+          bareCliDir,
+          "-c",
+          "protocol.version=2",
+          "fetch",
+          "--shallow-since=@1700000001",
+          "origin",
+          ...refSpecs,
+        ],
+        tempDir,
+        15000,
+      ),
+    ]);
+    const cliSinceBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoSinceResult[0]?.status).toBe(cliSinceResult[0]?.status);
+    expect(nanoSinceBatches).toEqual(cliSinceBatches);
+    expect(repo.refs.read("refs/tags/v2")).toBe(tagHash);
+    expect(sortHashes(repo.shallow.read())).toEqual(sortHashes(readBareShallowFile(bareCliDir)));
+  });
+
+  test("bare 仓库上 branch-only refPatterns 的 shallow follow-up 会像 git CLI 一样保持请求序列与 tag/shallow 状态一致", async () => {
+    git(["checkout", "main"], workDir);
+    createFile(workDir, "second.txt", "second\n");
+    git(["add", "second.txt"], workDir);
+    git(["commit", "-m", "Second commit"], workDir);
+    git(["tag", "-a", "v2", "-m", "v2"], workDir);
+    const tagHash = sha1(git(["rev-parse", "refs/tags/v2"], workDir));
+    git(["push", repoDir, "main"], workDir);
+    git(["push", repoDir, "refs/tags/v2"], workDir);
+
+    const bareCliDir = join(tempDir, "cli-branch-only-refpatterns-shallow.git");
+    const nanoDir = join(tempDir, "nano-branch-only-refpatterns-shallow.git");
+    const repo = initRepository(nanoDir);
+    const refPatterns = ["refs/heads/*"];
+
+    git(["init", "--bare", bareCliDir], tempDir);
+    git(["--git-dir", bareCliDir, "remote", "add", "origin", server.url], tempDir);
+    await repo.fetch(server.url, { refPatterns });
+    await gitWithTimeout(
+      [
+        "--git-dir",
+        bareCliDir,
+        "-c",
+        "protocol.version=2",
+        "fetch",
+        "origin",
+        "refs/heads/*:refs/heads/*",
+      ],
+      tempDir,
+      15000,
+    );
+
+    server.clearRequests();
+    const nanoDepthResult = await repo.fetch(server.url, { refPatterns, depth: 1 });
+    const nanoDepthBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    await gitWithTimeout(
+      [
+        "--git-dir",
+        bareCliDir,
+        "-c",
+        "protocol.version=2",
+        "fetch",
+        "--depth=1",
+        "origin",
+        "refs/heads/*:refs/heads/*",
+      ],
+      tempDir,
+      15000,
+    );
+    const cliDepthBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoDepthResult.objectCount).toBeGreaterThanOrEqual(0);
+    expect(nanoDepthBatches).toEqual(cliDepthBatches);
+    expect(repo.refs.read("refs/tags/v2")).toBe(tagHash);
+    expect(sortHashes(repo.shallow.read())).toEqual(sortHashes(readBareShallowFile(bareCliDir)));
+
+    server.clearRequests();
+    const nanoSinceResult = await Promise.allSettled([
+      repo.fetch(server.url, { refPatterns, shallowSince: 1700000001 }),
+    ]);
+    const nanoSinceBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    const cliSinceResult = await Promise.allSettled([
+      gitWithTimeout(
+        [
+          "--git-dir",
+          bareCliDir,
+          "-c",
+          "protocol.version=2",
+          "fetch",
+          "--shallow-since=@1700000001",
+          "origin",
+          "refs/heads/*:refs/heads/*",
+        ],
+        tempDir,
+        15000,
+      ),
+    ]);
+    const cliSinceBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoSinceResult[0]?.status).toBe(cliSinceResult[0]?.status);
+    expect(nanoSinceBatches).toEqual(cliSinceBatches);
+    expect(repo.refs.read("refs/tags/v2")).toBe(tagHash);
+    expect(sortHashes(repo.shallow.read())).toEqual(sortHashes(readBareShallowFile(bareCliDir)));
+  });
+
+  test("bare 仓库上 custom namespace refSpec 的 shallow follow-up 会像 git CLI 一样保持请求序列与 tag/shallow 状态一致", async () => {
+    git(["checkout", "main"], workDir);
+    createFile(workDir, "second.txt", "second\n");
+    git(["add", "second.txt"], workDir);
+    git(["commit", "-m", "Second commit"], workDir);
+    const secondCommitHash = sha1(git(["rev-parse", "HEAD"], workDir));
+    git(["tag", "-a", "v2", "-m", "v2"], workDir);
+    const tagHash = sha1(git(["rev-parse", "refs/tags/v2"], workDir));
+    git(["push", repoDir, "main"], workDir);
+    git(["push", repoDir, "refs/tags/v2"], workDir);
+
+    const bareCliDir = join(tempDir, "cli-custom-namespace-refspec-shallow.git");
+    const nanoDir = join(tempDir, "nano-custom-namespace-refspec-shallow.git");
+    const repo = initRepository(nanoDir);
+    const refSpecs = ["refs/heads/main:refs/remotes/origin/main"];
+
+    git(["init", "--bare", bareCliDir], tempDir);
+    git(["--git-dir", bareCliDir, "remote", "add", "origin", server.url], tempDir);
+    await repo.fetch(server.url, { refSpecs });
+    await gitWithTimeout(
+      ["--git-dir", bareCliDir, "-c", "protocol.version=2", "fetch", "origin", ...refSpecs],
+      tempDir,
+      15000,
+    );
+
+    server.clearRequests();
+    const nanoDepthResult = await repo.fetch(server.url, { refSpecs, depth: 1 });
+    const nanoDepthBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    await gitWithTimeout(
+      [
+        "--git-dir",
+        bareCliDir,
+        "-c",
+        "protocol.version=2",
+        "fetch",
+        "--depth=1",
+        "origin",
+        ...refSpecs,
+      ],
+      tempDir,
+      15000,
+    );
+    const cliDepthBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoDepthResult.objectCount).toBeGreaterThanOrEqual(0);
+    expect(nanoDepthBatches).toEqual(cliDepthBatches);
+    expect(repo.refs.read("refs/remotes/origin/main")).toBe(secondCommitHash);
+    expect(repo.refs.read("refs/tags/v2")).toBe(tagHash);
+    expect(sortHashes(repo.shallow.read())).toEqual(sortHashes(readBareShallowFile(bareCliDir)));
+
+    server.clearRequests();
+    const nanoSinceResult = await Promise.allSettled([
+      repo.fetch(server.url, { refSpecs, shallowSince: 1700000001 }),
+    ]);
+    const nanoSinceBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    const cliSinceResult = await Promise.allSettled([
+      gitWithTimeout(
+        [
+          "--git-dir",
+          bareCliDir,
+          "-c",
+          "protocol.version=2",
+          "fetch",
+          "--shallow-since=@1700000001",
+          "origin",
+          ...refSpecs,
+        ],
+        tempDir,
+        15000,
+      ),
+    ]);
+    const cliSinceBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoSinceResult[0]?.status).toBe(cliSinceResult[0]?.status);
+    expect(nanoSinceBatches).toEqual(cliSinceBatches);
+    expect(repo.refs.read("refs/remotes/origin/main")).toBe(secondCommitHash);
+    expect(repo.refs.read("refs/tags/v2")).toBe(tagHash);
+    expect(sortHashes(repo.shallow.read())).toEqual(sortHashes(readBareShallowFile(bareCliDir)));
   });
 
   test("bare 仓库上 refSpecs 的 shallow follow-up 会像 git CLI 一样显式 want tag 且不跨本地 shallow 边界发送 have", async () => {

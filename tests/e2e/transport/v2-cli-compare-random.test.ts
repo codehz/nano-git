@@ -143,6 +143,28 @@ describe("v2 协议 - 随机 git CLI 对照", () => {
     });
   });
 
+  test("repo.fetch({ refPatterns: [heads] }) 在 mixed tags、ref alias 与 orphan 分支场景下的请求序列与 tag 状态与 git CLI 一致", async () => {
+    await runRandomV2CliComparisonSeeds([1462, 2217, 3801], {
+      explicitHeadPatterns: true,
+      includeTagAliases: true,
+      includeLightweightTags: true,
+      includeOrphans: true,
+      includeRefAliases: true,
+      includeTags: true,
+    });
+  });
+
+  test("repo.fetch({ refSpecs: [heads] }) 在 mixed tags、ref alias 与 orphan 分支场景下的请求序列与 refs/tag 状态与 git CLI 一致", async () => {
+    await runRandomV2CliComparisonSeeds([1462, 2217, 3801], {
+      explicitHeadRefSpecs: true,
+      includeTagAliases: true,
+      includeLightweightTags: true,
+      includeOrphans: true,
+      includeRefAliases: true,
+      includeTags: true,
+    });
+  });
+
   test("repo.fetch({ refPatterns: [heads, tags] }) 在 mixed tags、ref alias 与 orphan 分支场景下的请求序列与 tag 状态与 git CLI 一致", async () => {
     await runRandomV2CliComparisonSeeds([1462, 2217, 3801, 4281], {
       explicitTagPatterns: true,
@@ -162,6 +184,52 @@ describe("v2 协议 - 随机 git CLI 对照", () => {
       includeOrphans: true,
       includeRefAliases: true,
       includeTags: true,
+    });
+  });
+
+  test("repo.fetch({ refPatterns: [tags] }) 在 mixed tags、ref alias 与 orphan 分支场景下的请求序列与 refs/tag 状态与 git CLI 一致", async () => {
+    await runRandomV2CliComparisonSeeds([1462, 2217, 3801, 4281], {
+      explicitTagOnlyPatterns: true,
+      includeTagAliases: true,
+      includeLightweightTags: true,
+      includeOrphans: true,
+      includeRefAliases: true,
+      includeTags: true,
+    });
+  });
+
+  test("repo.fetch({ refSpecs: [tags] }) 在 mixed tags、ref alias 与 orphan 分支场景下的请求序列与 refs 状态与 git CLI 一致", async () => {
+    await runRandomV2CliComparisonSeeds([1462, 2217, 3801], {
+      explicitTagOnlyRefSpecs: true,
+      includeTagAliases: true,
+      includeLightweightTags: true,
+      includeOrphans: true,
+      includeRefAliases: true,
+      includeTags: true,
+    });
+  });
+
+  test("repo.fetch({ noTags: true, refPatterns: [tags] }) 在 mixed tags、ref alias 与 orphan 分支场景下的请求序列与 refs/tag 状态与 git CLI 一致", async () => {
+    await runRandomV2CliComparisonSeeds([1462, 2217, 3801, 4281], {
+      explicitTagOnlyPatterns: true,
+      includeTagAliases: true,
+      includeLightweightTags: true,
+      includeOrphans: true,
+      includeRefAliases: true,
+      includeTags: true,
+      noTags: true,
+    });
+  });
+
+  test("repo.fetch({ noTags: true, refPatterns: [heads, tags] }) 在 mixed tags、ref alias 与 orphan 分支场景下的请求序列与 refs/tag 状态与 git CLI 一致", async () => {
+    await runRandomV2CliComparisonSeeds([1462, 2217, 3801, 4281], {
+      explicitTagPatterns: true,
+      includeTagAliases: true,
+      includeLightweightTags: true,
+      includeOrphans: true,
+      includeRefAliases: true,
+      includeTags: true,
+      noTags: true,
     });
   });
 
@@ -196,6 +264,30 @@ describe("v2 协议 - 随机 git CLI 对照", () => {
     });
   });
 
+  test("协商压力模式下显式 heads-only refPatterns 的请求序列与 tag 状态与 git CLI 一致", async () => {
+    await runRandomV2CliComparisonSeeds([4921, 4941, 4981], {
+      explicitHeadPatterns: true,
+      includeTagAliases: true,
+      includeLightweightTags: true,
+      includeOrphans: true,
+      includeRefAliases: true,
+      includeTags: true,
+      negotiationStress: true,
+    });
+  });
+
+  test("协商压力模式下显式 heads-only refspec 的请求序列与 refs/tag 状态与 git CLI 一致", async () => {
+    await runRandomV2CliComparisonSeeds([4409, 4481, 4547], {
+      explicitHeadRefSpecs: true,
+      includeTagAliases: true,
+      includeLightweightTags: true,
+      includeOrphans: true,
+      includeRefAliases: true,
+      includeTags: true,
+      negotiationStress: true,
+    });
+  });
+
   test("协商压力模式下显式 heads+tags refPatterns 的请求序列与 tag 状态与 git CLI 一致", async () => {
     await runRandomV2CliComparisonSeeds([4921, 4941, 4981], {
       explicitTagPatterns: true,
@@ -204,6 +296,32 @@ describe("v2 协议 - 随机 git CLI 对照", () => {
       includeOrphans: true,
       includeRefAliases: true,
       includeTags: true,
+      negotiationStress: true,
+    });
+  });
+
+  test("协商压力模式下 noTags + 显式 tag-only refPatterns 的请求序列与 refs/tag 状态与 git CLI 一致", async () => {
+    await runRandomV2CliComparisonSeeds([4921, 4941, 4981], {
+      explicitTagOnlyPatterns: true,
+      includeTagAliases: true,
+      includeLightweightTags: true,
+      includeOrphans: true,
+      includeRefAliases: true,
+      includeTags: true,
+      noTags: true,
+      negotiationStress: true,
+    });
+  });
+
+  test("协商压力模式下 noTags + 显式 heads+tags refPatterns 的请求序列与 refs/tag 状态与 git CLI 一致", async () => {
+    await runRandomV2CliComparisonSeeds([4921, 4941, 4981], {
+      explicitTagPatterns: true,
+      includeTagAliases: true,
+      includeLightweightTags: true,
+      includeOrphans: true,
+      includeRefAliases: true,
+      includeTags: true,
+      noTags: true,
       negotiationStress: true,
     });
   });
