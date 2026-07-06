@@ -172,4 +172,101 @@ describe("Import Session - 完整仓库 follow-up shallow 随机 git CLI 对照"
       strictInitialState: true,
     });
   });
+
+  test("显式 heads+tags refPatterns 的 depth=1 follow-up 行为与 bare git CLI 一致", async () => {
+    await runRandomImportSessionCompleteFollowupSeeds([877, 881, 883], {
+      fetchMode: "headTagPatterns",
+      followupOperation: "depth1",
+      strictInitialState: true,
+    });
+  });
+
+  test("显式 heads+tags refSpecs 的 depth=1 follow-up 行为与 bare git CLI 一致", async () => {
+    await runRandomImportSessionCompleteFollowupSeeds([887, 907, 919], {
+      fetchMode: "headTagRefSpecs",
+      followupOperation: "depth1",
+      strictInitialState: true,
+    });
+  });
+
+  test("noTags + 显式 branch-only refPatterns 的 depth=1 follow-up 行为与 bare git CLI 一致", async () => {
+    await runRandomImportSessionCompleteFollowupSeeds([739, 751, 761], {
+      fetchMode: "branchOnlyPatterns",
+      followupOperation: "depth1",
+      noTags: true,
+      strictInitialState: true,
+    });
+  });
+
+  test("noTags + 显式 branch-only refSpecs 的 shallow-since reject 行为与 bare git CLI 一致", async () => {
+    await runRandomImportSessionCompleteFollowupSeeds([769, 773, 787], {
+      fetchMode: "branchOnlyRefSpecs",
+      followupOperation: "shallowSinceReject",
+      noTags: true,
+      strictInitialState: true,
+    });
+  });
+
+  test("noTags + 显式 exact-branch refPattern 的 depth=1 follow-up 行为与 bare git CLI 一致", async () => {
+    await runRandomImportSessionCompleteFollowupSeeds([797, 809, 821], {
+      fetchMode: "exactBranchPattern",
+      followupOperation: "depth1",
+      noTags: true,
+      strictInitialState: true,
+    });
+  });
+
+  test("noTags + 显式 custom namespace refSpec 的 shallow-since reject 行为与 bare git CLI 一致", async () => {
+    await runRandomImportSessionCompleteFollowupSeeds([823, 827, 839], {
+      fetchMode: "customNamespaceRefSpec",
+      followupOperation: "shallowSinceReject",
+      noTags: true,
+      strictInitialState: true,
+    });
+  });
+
+  test("noTags + 显式 tag-only refPatterns 的 depth=1 follow-up 行为与 bare git CLI 一致", async () => {
+    await runRandomImportSessionCompleteFollowupSeeds([613, 631, 643], {
+      fetchMode: "tagOnlyPatterns",
+      followupOperation: "depth1",
+      noTags: true,
+      strictInitialState: true,
+    });
+  });
+
+  test("noTags + 显式 tag-only refSpecs 的 shallow-since reject 行为与 bare git CLI 一致", async () => {
+    await runRandomImportSessionCompleteFollowupSeeds([647, 659, 673], {
+      fetchMode: "tagOnlyRefSpecs",
+      followupOperation: "shallowSinceReject",
+      noTags: true,
+      strictInitialState: true,
+    });
+  });
+
+  test("noTags + 显式 heads+tags refPatterns 的 depth=1 follow-up 行为与 bare git CLI 一致", async () => {
+    await runRandomImportSessionCompleteFollowupSeeds([541, 557, 571], {
+      fetchMode: "headTagPatterns",
+      followupOperation: "depth1",
+      noTags: true,
+      strictInitialState: true,
+    });
+  });
+
+  test("noTags + 显式 heads+tags refSpecs 的 shallow-since reject 行为与 bare git CLI 一致", async () => {
+    await runRandomImportSessionCompleteFollowupSeeds([719, 727, 733], {
+      fetchMode: "headTagRefSpecs",
+      followupOperation: "shallowSinceReject",
+      noTags: true,
+      strictInitialState: true,
+    });
+  });
+
+  test("noTags + 显式 heads+tags refSpecs 的 depth=1 follow-up 行为与 bare git CLI 一致", async () => {
+    await runRandomImportSessionCompleteFollowupSeeds([853, 859, 863], {
+      fetchMode: "headTagRefSpecs",
+      followupOperation: "depth1",
+      noTags: true,
+      strictInitialState: true,
+    });
+  });
 });

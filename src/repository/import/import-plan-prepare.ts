@@ -208,7 +208,11 @@ function shouldFetchExistingMappingTarget(
       return true;
     }
 
-    return options?.refetchExistingTagTargetsInShallow === true;
+    if (options?.refetchExistingTagTargetsInShallow !== true) {
+      return false;
+    }
+
+    return true;
   }
 
   return currentHash === null || currentHash !== mapping.remoteRef.hash;

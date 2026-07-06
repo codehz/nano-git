@@ -1256,23 +1256,12 @@ describe("Import Session", () => {
     const repo = initRepository(nanoDir);
     const refPatterns = ["refs/heads/*", "refs/tags/*"];
 
-    git(["init", "--bare", bareCliDir], tempDir);
-    git(["--git-dir", bareCliDir, "remote", "add", "origin", server.url], tempDir);
-    await repo.fetch(server.url, { refPatterns });
     await gitWithTimeout(
-      [
-        "--git-dir",
-        bareCliDir,
-        "-c",
-        "protocol.version=2",
-        "fetch",
-        "origin",
-        "refs/heads/*:refs/heads/*",
-        "refs/tags/*:refs/tags/*",
-      ],
+      ["-c", "protocol.version=2", "clone", "--bare", server.url, bareCliDir],
       tempDir,
       15000,
     );
+    await repo.fetch(server.url, { refPatterns });
 
     git(["checkout", "main"], workDir);
     createFile(workDir, "e.txt", "E\n");
@@ -2582,12 +2571,23 @@ describe("Import Session", () => {
     const repo = initRepository(nanoDir);
     const refPatterns = ["refs/heads/*", "refs/tags/*"];
 
+    git(["init", "--bare", bareCliDir], tempDir);
+    git(["--git-dir", bareCliDir, "remote", "add", "origin", server.url], tempDir);
+    await repo.fetch(server.url, { refPatterns });
     await gitWithTimeout(
-      ["-c", "protocol.version=2", "clone", "--bare", server.url, bareCliDir],
+      [
+        "--git-dir",
+        bareCliDir,
+        "-c",
+        "protocol.version=2",
+        "fetch",
+        "origin",
+        "refs/heads/*:refs/heads/*",
+        "refs/tags/*:refs/tags/*",
+      ],
       tempDir,
       15000,
     );
-    await repo.fetch(server.url, { refPatterns });
 
     server.clearRequests();
     const nanoDepthResult = await repo.fetch(server.url, { refPatterns, depth: 1 });
@@ -2644,6 +2644,239 @@ describe("Import Session", () => {
 
     expect(nanoSinceResult[0]?.status).toBe(cliSinceResult[0]?.status);
     expect(nanoSinceBatches).toEqual(cliSinceBatches);
+    expect(sortHashes(repo.shallow.read())).toEqual(sortHashes(readBareShallowFile(bareCliDir)));
+  });
+
+  test("bare 仓库上 heads+tags refPatterns 的 depth=1 follow-up 会像 git CLI 一样继续显式 want 旧 annotated tag", async () => {
+    git(["checkout", "main"], workDir);
+    createFile(workDir, "old-tag-base.txt", "old-tag-base\n");
+    git(["add", "old-tag-base.txt"], workDir);
+    git(["commit", "-m", "Old tag base"], workDir);
+    const oldTaggedCommitHash = sha1(git(["rev-parse", "HEAD"], workDir));
+    git(["tag", "-a", "v-old", oldTaggedCommitHash, "-m", "v-old"], workDir);
+    const oldTagHash = sha1(git(["rev-parse", "refs/tags/v-old"], workDir));
+    createFile(workDir, "tip-after-old-tag.txt", "tip-after-old-tag\n");
+    git(["add", "tip-after-old-tag.txt"], workDir);
+    git(["commit", "-m", "Tip after old tag"], workDir);
+    const tipCommitHash = sha1(git(["rev-parse", "HEAD"], workDir));
+    git(["push", repoDir, "main"], workDir);
+    git(["push", repoDir, "refs/tags/v-old"], workDir);
+
+    const bareCliDir = join(tempDir, "cli-refpatterns-shallow-annotated-old-tag.git");
+    const nanoDir = join(tempDir, "nano-refpatterns-shallow-annotated-old-tag.git");
+    const repo = initRepository(nanoDir);
+    const refPatterns = ["refs/heads/*", "refs/tags/*"];
+
+    git(["init", "--bare", bareCliDir], tempDir);
+    git(["--git-dir", bareCliDir, "remote", "add", "origin", server.url], tempDir);
+    await repo.fetch(server.url, { refPatterns });
+    await gitWithTimeout(
+      [
+        "--git-dir",
+        bareCliDir,
+        "-c",
+        "protocol.version=2",
+        "fetch",
+        "origin",
+        "refs/heads/*:refs/heads/*",
+        "refs/tags/*:refs/tags/*",
+      ],
+      tempDir,
+      15000,
+    );
+
+    server.clearRequests();
+    const nanoDepthResult = await repo.fetch(server.url, { refPatterns, depth: 1 });
+    const nanoDepthBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    const cliDepthResult = await Promise.allSettled([
+      gitWithTimeout(
+        [
+          "--git-dir",
+          bareCliDir,
+          "-c",
+          "protocol.version=2",
+          "fetch",
+          "--depth=1",
+          "--tags",
+          "origin",
+        ],
+        tempDir,
+        15000,
+      ),
+    ]);
+    const cliDepthBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoDepthResult.objectCount).toBeGreaterThanOrEqual(0);
+    expect(cliDepthResult[0]?.status).toBe("fulfilled");
+    expect(nanoDepthBatches).toEqual(cliDepthBatches);
+    expect(nanoDepthBatches).toHaveLength(1);
+    const firstBatch = nanoDepthBatches[0] ?? [];
+    expect(getNonHaveLines(firstBatch)).toEqual([
+      "command=fetch",
+      "object-format=sha1",
+      "thin-pack",
+      "no-progress",
+      "ofs-delta",
+      "deepen 1",
+      `want ${tipCommitHash}`,
+      `want ${oldTagHash}`,
+    ]);
+    expect(getHaveLines(firstBatch)).toContain(`have ${tipCommitHash}`);
+    expect(getHaveLines(firstBatch)).toContain(`have ${oldTaggedCommitHash}`);
+    expect(firstBatch).not.toContain("include-tag");
+    expect(sortHashes(repo.shallow.read())).toEqual(sortHashes(readBareShallowFile(bareCliDir)));
+  });
+
+  test("bare 仓库上 heads+tags refPatterns 的 depth=1 follow-up 会像 git CLI 一样继续显式 want 旧 lightweight tag", async () => {
+    git(["checkout", "main"], workDir);
+    createFile(workDir, "before-old-lightweight-tag-base.txt", "before-old-lightweight-tag-base\n");
+    git(["add", "before-old-lightweight-tag-base.txt"], workDir);
+    git(["commit", "-m", "Before old lightweight tag base"], workDir);
+    createFile(workDir, "old-lightweight-tag-base.txt", "old-lightweight-tag-base\n");
+    git(["add", "old-lightweight-tag-base.txt"], workDir);
+    git(["commit", "-m", "Old lightweight tag base"], workDir);
+    const oldTaggedCommitHash = sha1(git(["rev-parse", "HEAD"], workDir));
+    git(["tag", "v-old-lightweight", oldTaggedCommitHash], workDir);
+    createFile(workDir, "tip-after-old-lightweight-tag.txt", "tip-after-old-lightweight-tag\n");
+    git(["add", "tip-after-old-lightweight-tag.txt"], workDir);
+    git(["commit", "-m", "Tip after old lightweight tag"], workDir);
+    const tipCommitHash = sha1(git(["rev-parse", "HEAD"], workDir));
+    git(["push", repoDir, "main"], workDir);
+    git(["push", repoDir, "refs/tags/v-old-lightweight"], workDir);
+
+    const bareCliDir = join(tempDir, "cli-refpatterns-shallow-lightweight-old-tag.git");
+    const nanoDir = join(tempDir, "nano-refpatterns-shallow-lightweight-old-tag.git");
+    const repo = initRepository(nanoDir);
+    const refPatterns = ["refs/heads/*", "refs/tags/*"];
+
+    git(["init", "--bare", bareCliDir], tempDir);
+    git(["--git-dir", bareCliDir, "remote", "add", "origin", server.url], tempDir);
+    await repo.fetch(server.url, { refPatterns });
+    await gitWithTimeout(
+      [
+        "--git-dir",
+        bareCliDir,
+        "-c",
+        "protocol.version=2",
+        "fetch",
+        "origin",
+        "refs/heads/*:refs/heads/*",
+        "refs/tags/*:refs/tags/*",
+      ],
+      tempDir,
+      15000,
+    );
+
+    server.clearRequests();
+    const nanoDepthResult = await repo.fetch(server.url, { refPatterns, depth: 1 });
+    const nanoDepthBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    const cliDepthResult = await Promise.allSettled([
+      gitWithTimeout(
+        [
+          "--git-dir",
+          bareCliDir,
+          "-c",
+          "protocol.version=2",
+          "fetch",
+          "--depth=1",
+          "--tags",
+          "origin",
+        ],
+        tempDir,
+        15000,
+      ),
+    ]);
+    const cliDepthBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoDepthResult.objectCount).toBeGreaterThanOrEqual(0);
+    expect(cliDepthResult[0]?.status).toBe("fulfilled");
+    expect(nanoDepthBatches).toEqual(cliDepthBatches);
+    expect(nanoDepthBatches).toHaveLength(1);
+    const firstBatch = nanoDepthBatches[0] ?? [];
+    expect(getNonHaveLines(firstBatch)).toEqual([
+      "command=fetch",
+      "object-format=sha1",
+      "thin-pack",
+      "no-progress",
+      "ofs-delta",
+      "deepen 1",
+      `want ${tipCommitHash}`,
+      `want ${oldTaggedCommitHash}`,
+    ]);
+    expect(getHaveLines(firstBatch)).toContain(`have ${tipCommitHash}`);
+    expect(getHaveLines(firstBatch)).toContain(`have ${oldTaggedCommitHash}`);
+    expect(firstBatch).not.toContain("include-tag");
+    expect(sortHashes(repo.shallow.read())).toEqual(sortHashes(readBareShallowFile(bareCliDir)));
+  });
+
+  test("bare 仓库上 noTags + heads+tags refPatterns 的 depth=1 follow-up 会像 git CLI 一样显式 want tag 且保持 shallow 状态一致", async () => {
+    git(["checkout", "main"], workDir);
+    createFile(workDir, "second-no-tags.txt", "second-no-tags\n");
+    git(["add", "second-no-tags.txt"], workDir);
+    git(["commit", "-m", "Second no-tags commit"], workDir);
+    git(["tag", "-a", "v2-no-tags", "-m", "v2-no-tags"], workDir);
+    const taggedCommitHash = sha1(git(["rev-parse", "HEAD"], workDir));
+    const tagHash = sha1(git(["rev-parse", "refs/tags/v2-no-tags"], workDir));
+    git(["push", repoDir, "main"], workDir);
+    git(["push", repoDir, "refs/tags/v2-no-tags"], workDir);
+
+    const bareCliDir = join(tempDir, "cli-refpatterns-shallow-no-tags.git");
+    const nanoDir = join(tempDir, "nano-refpatterns-shallow-no-tags.git");
+    const repo = initRepository(nanoDir);
+    const refPatterns = ["refs/heads/*", "refs/tags/*"];
+
+    await gitWithTimeout(
+      ["-c", "protocol.version=2", "clone", "--bare", server.url, bareCliDir],
+      tempDir,
+      15000,
+    );
+    await repo.fetch(server.url, { noTags: true, refPatterns });
+
+    server.clearRequests();
+    const nanoDepthResult = await repo.fetch(server.url, { noTags: true, refPatterns, depth: 1 });
+    const nanoDepthBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    server.clearRequests();
+    const cliDepthResult = await Promise.allSettled([
+      gitWithTimeout(
+        [
+          "--git-dir",
+          bareCliDir,
+          "-c",
+          "protocol.version=2",
+          "fetch",
+          "--depth=1",
+          "--no-tags",
+          "origin",
+          "refs/heads/*:refs/heads/*",
+          "refs/tags/*:refs/tags/*",
+        ],
+        tempDir,
+        15000,
+      ),
+    ]);
+    const cliDepthBatches = getNormalizedFetchCommandBatches(server.requests);
+
+    expect(nanoDepthResult.objectCount).toBeGreaterThanOrEqual(0);
+    expect(cliDepthResult[0]?.status).toBe("fulfilled");
+    expect(nanoDepthBatches).toEqual(cliDepthBatches);
+    expect(nanoDepthBatches).toHaveLength(1);
+    const firstBatch = nanoDepthBatches[0] ?? [];
+    expect(getNonHaveLines(firstBatch)).toEqual([
+      "command=fetch",
+      "object-format=sha1",
+      "thin-pack",
+      "no-progress",
+      "ofs-delta",
+      "deepen 1",
+      `want ${taggedCommitHash}`,
+      `want ${tagHash}`,
+    ]);
+    expect(firstBatch).not.toContain("include-tag");
     expect(sortHashes(repo.shallow.read())).toEqual(sortHashes(readBareShallowFile(bareCliDir)));
   });
 

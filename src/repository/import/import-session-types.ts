@@ -266,8 +266,10 @@ export interface ImportPrepareOptions {
    *
    * 主要供 repository.fetch({ refSpecs }) 的显式 tag refspec 路径使用，
    * 以对齐官方 `git fetch <tag-refspec> --depth/...` 的发包形态。
-   * `repo.fetch({ refPatterns: ["refs/heads/*", "refs/tags/*"] })`
-   * 则更接近 `git fetch --tags`，不应开启该行为。
+   * 普通 `repo.fetch({ refPatterns: ["refs/heads/*", "refs/tags/*"] })`
+   * 更接近 `git fetch --tags`，通常不应开启；
+   * 仅在显式 tag 指向分支显式抓取范围之外的旧对象时，
+   * 高层可按官方 git 的实际行为有条件开启。
    */
   readonly refetchExistingTagTargetsInShallow?: boolean;
 

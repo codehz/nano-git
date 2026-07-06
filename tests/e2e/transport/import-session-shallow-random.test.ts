@@ -225,6 +225,137 @@ describe("Import Session - source-shallow 随机 git CLI 对照", () => {
     });
   });
 
+  test("merge-history source-shallow 下显式 branch-only refPatterns 的初始 full fetch 拒绝行为与 bare git CLI 一致", async () => {
+    await runRandomImportSessionSourceShallowSeeds([719, 743, 761], {
+      historyShape: "merge",
+      fetchMode: "branchOnlyPatterns",
+      followupOperation: "depth1",
+      initialMode: "full",
+      strictInitialState: true,
+    });
+  });
+
+  test("merge-history source-shallow 下显式 branch-only refSpecs 的 deepen follow-up 行为与 bare git CLI 一致", async () => {
+    await runRandomImportSessionSourceShallowSeeds([991, 997, 1009], {
+      historyShape: "merge",
+      fetchMode: "branchOnlyRefSpecs",
+      followupOperation: "deepen",
+      initialMode: "depth1",
+      strictInitialState: true,
+    });
+  });
+
+  test("merge-history source-shallow 下显式 tag-only refPatterns 的 shallow-since reject 行为与 bare git CLI 一致", async () => {
+    await runRandomImportSessionSourceShallowSeeds([821, 839, 853], {
+      boundaryTagMode: "annotated",
+      historyShape: "merge",
+      fetchMode: "tagOnlyPatterns",
+      followupOperation: "shallowSinceReject",
+      initialMode: "full",
+      strictInitialState: true,
+    });
+  });
+
+  test("merge-history source-shallow 下显式 tag-only refSpecs 的 boundary tag shallow-exclude 行为与 bare git CLI 一致", async () => {
+    await runRandomImportSessionSourceShallowSeeds([859, 877, 881], {
+      boundaryTagMode: "annotated",
+      historyShape: "merge",
+      fetchMode: "tagOnlyRefSpecs",
+      followupOperation: "shallowExcludeTag",
+      initialMode: "depth1",
+      strictInitialState: true,
+    });
+  });
+
+  test("merge-history source-shallow 下显式 exact-branch refPattern 的初始 full fetch 拒绝行为与 bare git CLI 一致", async () => {
+    await runRandomImportSessionSourceShallowSeeds([773, 797, 809], {
+      historyShape: "merge",
+      fetchMode: "exactBranchPattern",
+      followupOperation: "depth1",
+      initialMode: "full",
+      strictInitialState: true,
+    });
+  });
+
+  test("merge-history source-shallow 下显式 custom namespace refSpec 的初始 full fetch 语义与 bare git CLI 一致", async () => {
+    await runRandomImportSessionSourceShallowSeeds([1039, 1051, 1061], {
+      historyShape: "merge",
+      fetchMode: "customNamespaceRefSpec",
+      followupOperation: "depth1",
+      initialMode: "full",
+      strictInitialState: true,
+    });
+  });
+
+  test("merge-history source-shallow 下显式 custom namespace refSpec 的 unshallow 行为与 bare git CLI 一致", async () => {
+    await runRandomImportSessionSourceShallowSeeds([1063, 1069, 1087], {
+      historyShape: "merge",
+      fetchMode: "customNamespaceRefSpec",
+      followupOperation: "unshallow",
+      initialMode: "full",
+      strictInitialState: true,
+    });
+  });
+
+  test("merge-history source-shallow 下 noTags + 显式 heads+tags refPatterns 的初始 full fetch 拒绝语义与 bare git CLI 一致", async () => {
+    await runRandomImportSessionSourceShallowSeeds([887, 907, 919], {
+      boundaryTagMode: "annotated",
+      historyShape: "merge",
+      fetchMode: "headTagPatterns",
+      followupOperation: "depth1",
+      initialMode: "full",
+      noTags: true,
+      strictInitialState: true,
+    });
+  });
+
+  test("merge-history source-shallow 下 noTags + 显式 tag-only refPatterns 的初始 full fetch 语义与 bare git CLI 一致", async () => {
+    await runRandomImportSessionSourceShallowSeeds([1091, 1097, 1103], {
+      boundaryTagMode: "annotated",
+      historyShape: "merge",
+      fetchMode: "tagOnlyPatterns",
+      followupOperation: "depth1",
+      initialMode: "full",
+      noTags: true,
+      strictInitialState: true,
+    });
+  });
+
+  test("merge-history source-shallow 下 noTags + 显式 tag-only refSpecs 的初始 full fetch 语义与 bare git CLI 一致", async () => {
+    await runRandomImportSessionSourceShallowSeeds([929, 941, 953], {
+      boundaryTagMode: "annotated",
+      historyShape: "merge",
+      fetchMode: "tagOnlyRefSpecs",
+      followupOperation: "depth1",
+      initialMode: "full",
+      noTags: true,
+      strictInitialState: true,
+    });
+  });
+
+  test("merge-history source-shallow 下 noTags + 显式 heads+tags refSpecs 的初始 full fetch 拒绝语义与 bare git CLI 一致", async () => {
+    await runRandomImportSessionSourceShallowSeeds([1013, 1021, 1031], {
+      boundaryTagMode: "annotated",
+      historyShape: "merge",
+      fetchMode: "headTagRefSpecs",
+      followupOperation: "depth1",
+      initialMode: "full",
+      noTags: true,
+      strictInitialState: true,
+    });
+  });
+
+  test("merge-history source-shallow 下 noTags + 显式 custom namespace refSpec 的初始 full fetch 语义与 bare git CLI 一致", async () => {
+    await runRandomImportSessionSourceShallowSeeds([967, 971, 983], {
+      historyShape: "merge",
+      fetchMode: "customNamespaceRefSpec",
+      followupOperation: "depth1",
+      initialMode: "full",
+      noTags: true,
+      strictInitialState: true,
+    });
+  });
+
   test("source-shallow 下显式 branch-only refPatterns 的初始 full fetch 拒绝行为与 bare git CLI 一致", async () => {
     await runRandomImportSessionSourceShallowSeeds([281, 307, 331], {
       fetchMode: "branchOnlyPatterns",
