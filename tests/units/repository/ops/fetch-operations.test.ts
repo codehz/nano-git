@@ -23,7 +23,7 @@ describe("createFetchRepositoryOperations()", () => {
     expect(promise).rejects.toThrow();
   });
 
-  test("fetch() 在远端未广告 HEAD 时仍会跟随默认分支更新本地 HEAD", async () => {
+  test("fetch() 在远端未广告 HEAD 时不应更新本地 HEAD", async () => {
     const backend = createMemoryRepositoryBackend();
     const treeHash = writeObject(backend.objects, {
       type: "tree",
@@ -41,23 +41,38 @@ describe("createFetchRepositoryOperations()", () => {
     const ops = createFetchRepositoryOperations(backend);
     const originalFetch = globalThis.fetch;
 
-    globalThis.fetch = (async (_input, init) => {
+    globalThis.fetch = (async (input, init) => {
+      const hasBody = init?.body !== undefined && init?.body !== null;
+      if (!hasBody) {
+        return new Response(encodeV2CapabilityAdvertisement(), { status: 200 });
+      }
+
       const body = Buffer.from(await new Response(init?.body).arrayBuffer());
       const requestLines = parsePktLines(body)
         .filter((line) => line.type === "data")
         .map((line) => line.payload.toString("utf-8").trimEnd());
 
-      expect(requestLines[0]).toBe("command=ls-refs");
-      expect(requestLines).toContain("symrefs");
-      expect(requestLines).toContain("peel");
-      expect(requestLines).toContain("ref-prefix HEAD");
-      expect(requestLines).toContain("ref-prefix refs/heads/");
-      expect(requestLines).toContain("ref-prefix refs/tags/");
+      const command = requestLines[0];
+      if (command === "command=ls-refs") {
+        expect(requestLines).toContain("symrefs");
+        expect(requestLines).toContain("peel");
+        expect(requestLines).toContain("ref-prefix HEAD");
+        expect(requestLines).toContain("ref-prefix refs/heads/");
+        expect(requestLines).toContain("ref-prefix refs/tags/");
 
-      return new Response(
-        Buffer.concat([encodePktLine(`${commitHash} refs/heads/master\n`), encodeFlushPkt()]),
-        { status: 200 },
-      );
+        return new Response(
+          Buffer.concat([encodePktLine(`${commitHash} refs/heads/master\n`), encodeFlushPkt()]),
+          { status: 200 },
+        );
+      }
+
+      if (command === "command=fetch") {
+        return new Response(encodeFetchNegotiationDone(), { status: 200 });
+      }
+
+      const requestUrl =
+        typeof input === "string" ? input : input instanceof URL ? input.href : "unknown";
+      throw new Error(`unexpected v2 command in mock fetch: ${String(command)} (${requestUrl})`);
     }) as typeof fetch;
 
     try {
@@ -70,9 +85,27 @@ describe("createFetchRepositoryOperations()", () => {
         success: true,
         forced: false,
       });
-      expect(backend.refs.read("HEAD")).toBe("ref: refs/heads/master");
+      // 内存仓库初始 HEAD 指向 main；无远端 HEAD symref 时不应被改成 master
+      expect(backend.refs.read("HEAD")).toBe("ref: refs/heads/main");
     } finally {
       globalThis.fetch = originalFetch;
     }
   });
 });
+
+function encodeV2CapabilityAdvertisement(): Buffer {
+  return Buffer.concat([
+    encodePktLine("version 2\n"),
+    encodePktLine("ls-refs\n"),
+    encodePktLine("fetch=shallow sideband-all\n"),
+    encodeFlushPkt(),
+  ]);
+}
+
+function encodeFetchNegotiationDone(): Buffer {
+  return Buffer.concat([
+    encodePktLine("acknowledgments\n"),
+    encodePktLine("NAK\n"),
+    encodeFlushPkt(),
+  ]);
+}

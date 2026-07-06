@@ -180,10 +180,11 @@ function createImportPrepareOptions(
 }
 
 /**
- * 默认 fetch 映射：远端分支 → 本地同名分支 + HEAD 更新
+ * 默认 fetch 映射：远端分支 → 本地同名分支；HEAD 仅在远端广告 symref 时更新
  *
  * 默认行为贴近官方 Git：
  * - 分支会物化到本地 `refs/heads/*`
+ * - 本地 HEAD 仅当 ls-refs 返回带 symref-target 的 HEAD 时才跟随远端默认分支
  * - 默认 full fetch 会像 `git fetch` 一样把远端可达 tag 物化到本地
  * - 显式 branch-only 的 `refPatterns/refSpecs` 也会像 `git fetch <refspec>` 一样自动跟随可达 tag
  * - 默认 `repo.fetch()` 的显式 shallow 请求下，tag 仅通过协议层 `include-tag` 自动跟随可达对象，
@@ -406,7 +407,7 @@ async function applyDefaultRefProjection(
     materializeTags(plan, tags, tags.refs);
   }
 
-  // HEAD → 跟随默认分支
+  // HEAD → 仅当远端广告了 HEAD symref 时跟随
   materializeHead(plan, session, branches);
 
   const result = await (await plan.build().prepare(prepareOptions)).apply();
@@ -602,12 +603,12 @@ function materializeHead(
   session: ImportSession,
   branches: ImportView,
 ): void {
-  const defaultBranch = session.defaultBranch();
+  const headTarget = session.headTarget();
   if (
-    defaultBranch.refs.length > 0 &&
-    branches.refs.some((ref) => ref.name === defaultBranch.refs[0]?.name)
+    headTarget.refs.length > 0 &&
+    branches.refs.some((ref) => ref.name === headTarget.refs[0]?.name)
   ) {
-    plan.materialize(defaultBranch).setHead();
+    plan.materialize(headTarget).setHead();
   }
 }
 
