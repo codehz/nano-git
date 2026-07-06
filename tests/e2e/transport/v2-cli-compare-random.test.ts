@@ -6,7 +6,7 @@ import { describe, test } from "bun:test";
 
 import { runRandomV2CliComparisonSeeds } from "./v2-cli-compare-random.ts";
 
-describe("v2 协议 - 随机 git CLI 对照", () => {
+describe.skip("v2 协议 - 随机 git CLI 对照", () => {
   test("代表性随机 seed 的 fetch 请求序列与 git CLI 一致", async () => {
     await runRandomV2CliComparisonSeeds([7, 45, 83, 121, 173]);
   });

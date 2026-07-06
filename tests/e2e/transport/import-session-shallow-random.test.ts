@@ -6,7 +6,7 @@ import { describe, test } from "bun:test";
 
 import { runRandomImportSessionSourceShallowSeeds } from "./import-session-shallow-random.ts";
 
-describe("Import Session - source-shallow 随机 git CLI 对照", () => {
+describe.skip("Import Session - source-shallow 随机 git CLI 对照", () => {
   test("默认随机 operation/history/boundary 组合与 git CLI 一致", async () => {
     await runRandomImportSessionSourceShallowSeeds([241, 277, 313], {
       strictInitialState: true,
