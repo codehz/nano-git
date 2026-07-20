@@ -51,6 +51,11 @@
       "perry": "./src/log/index.ts",
       "default": "./dist/log/index.mjs"
     },
+    "./merge": {
+      "types": "./dist/merge/index.d.mts",
+      "perry": "./src/merge/index.ts",
+      "default": "./dist/merge/index.mjs"
+    },
     "./objects": {
       "types": "./dist/objects/index.d.mts",
       "perry": "./src/objects/index.ts",

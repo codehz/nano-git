@@ -317,18 +317,14 @@ describe("planTreeMerge() 冲突", () => {
     const inner = writeBlob(store, "inner");
     const sub = writeTree(store, [{ mode: "100644", name: "inner.txt", hash: inner }]);
     const base = writeTree(store, [{ mode: "100644", name: "x", hash: fileBlob }]);
-    const ours = writeTree(store, [{ mode: "100644", name: "x", hash: fileBlob }]);
     const theirs = writeTree(store, [{ mode: "040000", name: "x", hash: sub }]);
 
-    // base === ours, theirs changed type → FF? base === ours would FF to theirs entirely.
-    // Need both sides change type from base differently, or one side type-change without FF.
-    // ours keeps file (same as base), theirs makes directory → FF short-circuit.
-    // 构造：ours 改内容，theirs 改成目录
+    // 构造：ours 改内容，theirs 改成目录（避免 base===ours 触发 FF 短路）
     const oursBlob = writeBlob(store, "ours-file");
-    const ours2 = writeTree(store, [{ mode: "100644", name: "x", hash: oursBlob }]);
+    const ours = writeTree(store, [{ mode: "100644", name: "x", hash: oursBlob }]);
     const plan = planTreeMerge(store, {
       baseTree: base,
-      oursTree: ours2,
+      oursTree: ours,
       theirsTree: theirs,
     });
     expect(plan.status).toBe("conflicted");
@@ -339,15 +335,7 @@ describe("planTreeMerge() 冲突", () => {
   test("mode-conflict：同内容不同 mode 两侧都改", () => {
     const store = createMemoryObjectStore();
     const blob = writeBlob(store, "same");
-    const base = writeTree(store, [{ mode: "100644", name: "f", hash: blob }]);
-    // 无法从 100644 两侧改到不同 mode 还同 hash——ours 100755, theirs 需要另一种 mode
-    // blob 只有 100644/100755 两种文件 mode。两侧分别 100755 与... 只有两种。
-    // 若 base 100644, ours 100755, theirs 100755 → equal take.
-    // mode-conflict 需要 ours 与 theirs mode 不同但 hash 同：
-    // base 可以是 symlink vs ... 实际上 100644 vs 100755 就是 mode-conflict 场景
-    const ours = writeTree(store, [{ mode: "100755", name: "f", hash: blob }]);
-    // theirs 也改 mode 但... 只有两个。用 base 为 120000?
-    // 更简单：add-add 同 hash 不同 mode
+    // add-add 同 hash 不同 mode
     const empty = writeTree(store, []);
     const oursAdd = writeTree(store, [{ mode: "100644", name: "f", hash: blob }]);
     const theirsAdd = writeTree(store, [{ mode: "100755", name: "f", hash: blob }]);
@@ -358,10 +346,6 @@ describe("planTreeMerge() 冲突", () => {
     });
     expect(plan.status).toBe("conflicted");
     expect(plan.conflicts[0]!.reason).toBe("mode-conflict");
-
-    // 抑制 unused
-    expect(base).toBeTruthy();
-    expect(ours).toBeTruthy();
   });
 
   test("目录删除 vs 内部修改 → 展开为路径级 modify-delete", () => {

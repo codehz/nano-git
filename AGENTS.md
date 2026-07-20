@@ -13,6 +13,7 @@ nano-git 是使用 TypeScript 实现的 Git 核心功能的项目，专注于**�
 - **仓库层**拆分 `nano-git/repository/memory`（仅纯 TS）和 `nano-git/repository/file`（拉入 `node:fs`）
 - **传输层**各核心模块可独立导入（`nano-git/transport/pkt-line`、`nano-git/transport/refspec` 等）
 - **Virtual Worktree** 按 core / memory / file / sqlite 分到 `nano-git/worktree/*`（实现位于 `src/worktree/`）
+- **Merge** 通过 `nano-git/merge` 导出（merge-base、路径级三方 tree 合并、交互会话；实现位于 `src/merge/`）
 - **纯类型入口**集中在 `nano-git/types/*`，编译期完全擦除
 - **无旧版兼容**：仓库未发布过正式版本，所有入口均按当前设计直接使用
 

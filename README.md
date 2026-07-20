@@ -19,6 +19,7 @@
 - ✅ **类型安全** — 完整的 TypeScript 类型定义
 - ✅ **Reference Transaction** — 批量 ref 更新的原子性保障，支持 Hooks 回调与自动回滚
 - ✅ **Virtual Worktree** — 基于 `baseTree` 的虚拟工作树（读写、diff、`writeTree`），支持内存 / 目录 / SQLite 持久化（`nano-git/worktree/*`）
+- ✅ **基础 Merge** — merge-base 查找、路径级三方 tree 合并、交互式 plan → resolve → finalize（`nano-git/merge`）
 
 ## 安装
 
@@ -392,6 +393,57 @@ const sqliteWt = db.openWorktree(repo.objects, "main");
 
 完整示例见 `examples/worktree-persistence.ts`；diff 基准见 `bun run bench:worktree-diff`。
 
+### 三方合并（merge-base + plan/resolve/finalize）
+
+```typescript
+import { createMemoryRepository } from "nano-git/repository/memory";
+import { planCommitMerge, createMergeSession } from "nano-git/merge";
+
+const repo = createMemoryRepository();
+const author = {
+  name: "You",
+  email: "you@example.com",
+  timestamp: Math.floor(Date.now() / 1000),
+  timezone: "+0800",
+};
+
+// base → ours / theirs 分叉
+const baseTree = repo.createTree([
+  { mode: "100644", name: "a.txt", hash: repo.writeBlob(Buffer.from("a0")) },
+  { mode: "100644", name: "b.txt", hash: repo.writeBlob(Buffer.from("b0")) },
+]);
+const base = repo.createCommit(baseTree, [], "base", author);
+const ours = repo.createCommit(
+  repo.createTree([
+    { mode: "100644", name: "a.txt", hash: repo.writeBlob(Buffer.from("a1")) },
+    { mode: "100644", name: "b.txt", hash: repo.writeBlob(Buffer.from("b0")) },
+  ]),
+  [base],
+  "ours",
+  author,
+);
+const theirs = repo.createCommit(
+  repo.createTree([
+    { mode: "100644", name: "a.txt", hash: repo.writeBlob(Buffer.from("a0")) },
+    { mode: "100644", name: "b.txt", hash: repo.writeBlob(Buffer.from("b1")) },
+  ]),
+  [base],
+  "theirs",
+  author,
+);
+
+const plan = planCommitMerge(repo.objects, { ours, theirs });
+const session = createMergeSession(repo.objects, plan);
+for (const conflict of session.listConflicts()) {
+  session.resolve(conflict.path, { take: "ours" }); // 或 theirs / base / custom
+}
+const { tree } = session.finalize();
+
+// merge 模块不写 commit；由调用方创建双 parent merge commit
+const mergeCommit = repo.createCommit(tree, [ours, theirs], "Merge branch", author);
+console.log(mergeCommit);
+```
+
 ## 运行演示
 
 ```bash
@@ -419,6 +471,7 @@ bun run bench:worktree-diff
 纯远端查询能力通过 `nano-git/remote/http` 导入。
 基于 `native-sqlite` 的存储后端通过 `nano-git/odb/sqlite`、`nano-git/refs/sqlite`、`nano-git/backend/sqlite`、`nano-git/repository/sqlite` 等子路径导入。`native-sqlite` 本身是 `bun:sqlite` 兼容层，因此这些入口延续的是 `bun:sqlite` 风格的数据库接口约定。
 Virtual Worktree 通过 `nano-git/worktree/core`、`nano-git/worktree/memory`、`nano-git/worktree/file`、`nano-git/worktree/sqlite` 导入（后两者为持久化后端）。
+基础 merge（merge-base / 三方 tree 合并 / 交互会话）通过 `nano-git/merge` 导入。
 tree-shaking 主要依赖模块本身的无副作用结构，而不是把所有 API 都拆成叶子级子路径。完整入口表见 `package.json` 的 `exports` 与 `src/index.ts` 的 JSDoc。
 
 ## Git 对象模型
@@ -499,6 +552,7 @@ bun test
 
 - [x] **Smart HTTP 服务端（upload-pack）** — 类 git-http-backend、框架无关的 HTTP handler，支持 ls-refs 和 fetch 命令，协议实现与编排器解耦
 - [x] **Smart HTTP 服务端（v1 receive-pack）** — 服务端 push 支持，基于 v1 协议，含 ref 广告、packfile 解包、ref 校验与 report-status
+- [x] **基础 Merge** — merge-base、路径级三方 tree 合并、plan → resolve → finalize 交互会话（无 rename / 无行级合并）
 
 ### 规划中（聚焦裸仓库/服务端场景）
 
@@ -508,7 +562,7 @@ bun test
 
 - ~~暂存区（index）操作~~ — 如 `git add`、`git status`
 - ~~工作目录管理~~ — 如 `git checkout`、`git restore`
-- ~~文件级别的差异计算（diff）~~ — 如 `git diff`
+- ~~文件级别的差异计算（diff）~~ — 如 `git diff`（内容行级）；tree 级 diff / merge 已支持
 - ~~多格式哈希支持~~ — SHA-256 兼容准备（当前仅 SHA-1）
 
 ## 参考资料
