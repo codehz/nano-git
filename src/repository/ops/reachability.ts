@@ -12,7 +12,21 @@ import type { ObjectSource } from "../../odb/types.ts";
 import type { SHA1 } from "../../types/index.ts";
 import type { RefStore } from "../../types/refs.ts";
 
-function listRootRefs(refs: RefStore): string[] {
+/**
+ * 列出默认维护/重写 tip 引用集合
+ *
+ * 包含 HEAD、所有分支与所有标签（与 listReachableObjects / rewriteHistory 默认范围一致）。
+ *
+ * @param refs - 引用存储
+ * @returns 排序后的完整引用路径列表
+ *
+ * @example
+ * ```ts
+ * const roots = listRootRefs(refs);
+ * // => ["HEAD", "refs/heads/main", "refs/tags/v1.0", ...]
+ * ```
+ */
+export function listRootRefs(refs: RefStore): string[] {
   const rootRefs = new Set<string>([HEAD_REF]);
 
   for (const ref of refs.list(HEADS_PREFIX)) {

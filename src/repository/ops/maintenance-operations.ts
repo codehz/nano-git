@@ -12,6 +12,7 @@
 
 import { RepositoryError } from "../../errors.ts";
 import { listReachableObjects } from "./reachability.ts";
+import { rewriteHistory as rewriteHistoryImpl } from "./rewrite-history.ts";
 
 import type {
   RepositoryGCOptions,
@@ -23,6 +24,7 @@ import type { PackBuildResult } from "../../pack/builder/pack-builder.ts";
 import type { SHA1 } from "../../types/index.ts";
 import type { RefStore } from "../../types/refs.ts";
 import type { RepositoryMaintenanceOperations } from "./maintenance-types.ts";
+import type { RewriteHistoryOptions, RewriteHistoryResult } from "./rewrite-types.ts";
 
 /**
  * 创建仓库维护相关操作
@@ -31,6 +33,7 @@ import type { RepositoryMaintenanceOperations } from "./maintenance-types.ts";
  * ```ts
  * const ops = createMaintenanceRepositoryOperations(objects, refs, packs);
  * const reachable = ops.listReachableObjects();
+ * const fixed = ops.rewriteHistory();
  * ```
  */
 export function createMaintenanceRepositoryOperations(
@@ -38,6 +41,32 @@ export function createMaintenanceRepositoryOperations(
   refs: RefStore,
   packs: RepositoryPackSupport | null,
 ): RepositoryMaintenanceOperations {
+  function gc(options?: RepositoryGCOptions): PackBuildResult | undefined {
+    const reachable = listReachableObjects(objects, refs);
+    const reachableSet = new Set(reachable);
+
+    // 1. 有 pack 支持时，repack 可达对象（自动替换旧 pack）
+    let result: PackBuildResult | undefined;
+    if (packs) {
+      result = packs.repack(objects, {
+        hashes: reachable,
+        replaceExistingPacks: options?.replaceExistingPacks,
+      });
+      packs.source.refresh();
+    }
+
+    // 2. 删除不可达对象（如果后端支持）
+    if (options?.pruneLoose ?? true) {
+      for (const hash of objects.list()) {
+        if (!reachableSet.has(hash)) {
+          objects.delete?.(hash);
+        }
+      }
+    }
+
+    return result;
+  }
+
   return {
     writePack(hashes?: SHA1[]) {
       if (!packs) {
@@ -72,29 +101,13 @@ export function createMaintenanceRepositoryOperations(
       return listReachableObjects(objects, refs);
     },
 
-    gc(options?: RepositoryGCOptions): PackBuildResult | undefined {
-      const reachable = listReachableObjects(objects, refs);
-      const reachableSet = new Set(reachable);
+    gc,
 
-      // 1. 有 pack 支持时，repack 可达对象（自动替换旧 pack）
-      let result: PackBuildResult | undefined;
-      if (packs) {
-        result = packs.repack(objects, {
-          hashes: reachable,
-          replaceExistingPacks: options?.replaceExistingPacks,
-        });
-        packs.source.refresh();
+    rewriteHistory(options?: RewriteHistoryOptions): RewriteHistoryResult {
+      const result = rewriteHistoryImpl(objects, refs, options);
+      if (!result.dryRun && options?.pruneUnreachable) {
+        gc();
       }
-
-      // 2. 删除不可达对象（如果后端支持）
-      if (options?.pruneLoose ?? true) {
-        for (const hash of objects.list()) {
-          if (!reachableSet.has(hash)) {
-            objects.delete?.(hash);
-          }
-        }
-      }
-
       return result;
     },
   };

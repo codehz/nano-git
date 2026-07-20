@@ -5,6 +5,9 @@
 import type { RepositoryGCOptions, RepositoryRepackOptions } from "../../backend/types.ts";
 import type { PackBuildResult } from "../../pack/builder/pack-builder.ts";
 import type { SHA1 } from "../../types/index.ts";
+import type { RewriteHistoryOptions, RewriteHistoryResult } from "./rewrite-types.ts";
+
+export type { RewriteHistoryOptions, RewriteHistoryResult } from "./rewrite-types.ts";
 
 /**
  * 仓库维护相关操作
@@ -43,4 +46,22 @@ export interface RepositoryMaintenanceOperations {
    * @returns 有 pack 支持时返回新 pack 的构建结果，否则返回 undefined
    */
   gc(options?: RepositoryGCOptions): PackBuildResult | undefined;
+
+  /**
+   * 重写历史以修复 unsorted tree（treeNotSorted）
+   *
+   * 从 HEAD / 分支 / 标签出发，规范化 tree 条目排序，并重写受影响的
+   * commit / annotated tag / ref tip。默认保留旧对象；可选 pruneUnreachable
+   * 复用 gc 清理不可达对象。带 gpgsig/mergetag 的对象会剥离签名并报告。
+   *
+   * @example
+   * ```ts
+   * using repo = createSqliteRepository(".drafts/test.db");
+   * const result = repo.rewriteHistory();
+   * console.log(result.rewrittenTrees, result.updatedRefs);
+   * // tip 哈希已变，push 远端通常需要 force
+   * await repo.push(url, { token, force: true, refSpecs: ["+refs/heads/main:refs/heads/main"] });
+   * ```
+   */
+  rewriteHistory(options?: RewriteHistoryOptions): RewriteHistoryResult;
 }
