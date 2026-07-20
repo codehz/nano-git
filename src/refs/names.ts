@@ -2,6 +2,7 @@
  * Refs 名称校验与名称转换工具
  */
 
+import { RepositoryError } from "../errors.ts";
 import { HEAD_REF, HEADS_PREFIX, TAGS_PREFIX } from "../types/refs.ts";
 
 /**
@@ -17,7 +18,7 @@ import { HEAD_REF, HEADS_PREFIX, TAGS_PREFIX } from "../types/refs.ts";
  */
 export function validateRefPrefix(prefix: string): void {
   if (!prefix.startsWith("refs/") || !prefix.endsWith("/")) {
-    throw new Error(`Invalid ref prefix: ${prefix}`);
+    throw new RepositoryError(`Invalid ref prefix: ${prefix}`);
   }
 
   validateRefName(`${prefix}placeholder`);
@@ -40,7 +41,7 @@ export function validateRefName(ref: string): void {
   }
 
   if (!ref.startsWith("refs/")) {
-    throw new Error(`Invalid ref name: ${ref}`);
+    throw new RepositoryError(`Invalid ref name: ${ref}`);
   }
 
   if (
@@ -51,7 +52,7 @@ export function validateRefName(ref: string): void {
     ref.endsWith("/") ||
     ref.endsWith(".")
   ) {
-    throw new Error(`Invalid ref name: ${ref}`);
+    throw new RepositoryError(`Invalid ref name: ${ref}`);
   }
 
   for (const char of ref) {
@@ -67,18 +68,18 @@ export function validateRefName(ref: string): void {
       char === "*" ||
       char === "["
     ) {
-      throw new Error(`Invalid ref name: ${ref}`);
+      throw new RepositoryError(`Invalid ref name: ${ref}`);
     }
   }
 
   const parts = ref.split("/");
   if (parts.length < 3) {
-    throw new Error(`Invalid ref name: ${ref}`);
+    throw new RepositoryError(`Invalid ref name: ${ref}`);
   }
 
   for (const part of parts) {
     if (!part || part === "." || part === ".." || part.endsWith(".lock")) {
-      throw new Error(`Invalid ref name: ${ref}`);
+      throw new RepositoryError(`Invalid ref name: ${ref}`);
     }
   }
 }
@@ -117,7 +118,7 @@ export function tagNameToRef(name: string): string {
  */
 export function normalizeShortRefName(name: string, kind: "branch" | "tag"): string {
   if (!name) {
-    throw new Error(`${kind} name cannot be empty`);
+    throw new RepositoryError(`${kind} name cannot be empty`);
   }
 
   validateRefName(`refs/x/${name}`);

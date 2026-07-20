@@ -8,7 +8,7 @@
  * 本模块只操作已存在的表，不负责 DDL。
  */
 
-import { ObjectNotFoundError } from "../errors.ts";
+import { ObjectHashMismatchError, ObjectNotFoundError } from "../errors.ts";
 import { hashObject } from "../hash/index.ts";
 import { sha1 } from "../types/index.ts";
 
@@ -56,7 +56,7 @@ export function createSqliteObjectStore(conn: SqliteConnectionHandle): ObjectDat
     for (const raw of objects) {
       const expectedHash = hashObject(raw.type, raw.content);
       if (expectedHash !== raw.hash) {
-        throw new Error(`RawGitObject hash mismatch: expected ${expectedHash}, got ${raw.hash}`);
+        throw new ObjectHashMismatchError(expectedHash, raw.hash);
       }
       insertStmt.run(raw.hash, raw.type, raw.content);
     }
@@ -66,7 +66,7 @@ export function createSqliteObjectStore(conn: SqliteConnectionHandle): ObjectDat
     ingest(raw: RawGitObject): void {
       const expectedHash = hashObject(raw.type, raw.content);
       if (expectedHash !== raw.hash) {
-        throw new Error(`RawGitObject hash mismatch: expected ${expectedHash}, got ${raw.hash}`);
+        throw new ObjectHashMismatchError(expectedHash, raw.hash);
       }
       insertStmt.run(raw.hash, raw.type, raw.content);
     },
@@ -78,7 +78,7 @@ export function createSqliteObjectStore(conn: SqliteConnectionHandle): ObjectDat
     read(hash: SHA1): RawGitObject {
       const row = selectStmt.get(hash);
       if (!row) {
-        throw new ObjectNotFoundError(hash);
+        throw new ObjectNotFoundError(hash, { operation: "read", source: "sqlite" });
       }
       return {
         hash: sha1(row.hash),

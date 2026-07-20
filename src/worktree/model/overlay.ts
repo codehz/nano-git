@@ -4,6 +4,8 @@
  * 不依赖 Git ODB；origin 条目由调用方以 `OriginDirectoryChild` 提供。
  */
 
+import { VirtualWorktreeError } from "../../errors.ts";
+
 import type { NodeId } from "./ids.ts";
 
 // ==================== 类型 ====================
@@ -98,7 +100,7 @@ export function mergeDirectoryChildren(
     }
     const mode = addedEntryModes.get(name);
     if (mode === undefined) {
-      throw new Error(`Missing mode for added directory entry '${name}'`);
+      throw new VirtualWorktreeError(`Missing mode for added directory entry '${name}'`);
     }
     byName.set(name, { name, mode, nodeId });
   }

@@ -13,6 +13,7 @@
  * - 不存在的路径 delete/rename 会抛出异常
  */
 
+import { TreeError } from "../../errors.ts";
 import { writeObject, readObject } from "../../objects/raw.ts";
 
 import type { ObjectDatabase } from "../../odb/types.ts";
@@ -140,7 +141,7 @@ function processOpsSequentially(
       // 在当前 tree 中查找源条目
       const entry = findEntryByPath(objects, currentHash, op.from);
       if (entry === null) {
-        throw new Error(`Cannot rename '${op.from}': path does not exist`);
+        throw new TreeError(`Cannot rename '${op.from}': path does not exist`, { path: op.from });
       }
 
       // 转换为 upsert + delete 并执行
@@ -173,9 +174,8 @@ function findEntryByPath(objects: ObjectDatabase, treeHash: SHA1, path: string):
   for (let i = 0; i < segments.length; i++) {
     const obj = readObject(objects, currentHash);
     if (obj.type !== "tree") {
-      throw new Error(
-        `Expected tree at '${segments.slice(0, i).join("/") || "/"}', got '${obj.type}'`,
-      );
+      const atPath = segments.slice(0, i).join("/") || "/";
+      throw new TreeError(`Expected tree at '${atPath}', got '${obj.type}'`, { path: atPath });
     }
     const entry = obj.entries.find((e) => e.name === segments[i]!);
     if (!entry) return null;
@@ -185,9 +185,10 @@ function findEntryByPath(objects: ObjectDatabase, treeHash: SHA1, path: string):
     }
 
     if (entry.mode !== "040000") {
-      throw new Error(
-        `Cannot access '${segments.slice(0, i + 1).join("/")}': not a directory (mode: ${entry.mode})`,
-      );
+      const atPath = segments.slice(0, i + 1).join("/");
+      throw new TreeError(`Cannot access '${atPath}': not a directory (mode: ${entry.mode})`, {
+        path: atPath,
+      });
     }
     currentHash = entry.hash;
   }
@@ -204,21 +205,21 @@ function findEntryByPath(objects: ObjectDatabase, treeHash: SHA1, path: string):
  */
 function validatePath(path: string): void {
   if (path === "") {
-    throw new Error("Path must not be empty");
+    throw new TreeError("Path must not be empty", { path: "" });
   }
   if (path.startsWith("/")) {
-    throw new Error(`Path must not start with '/': ${path}`);
+    throw new TreeError(`Path must not start with '/': ${path}`, { path });
   }
   if (path.endsWith("/")) {
-    throw new Error(`Path must not end with '/': ${path}`);
+    throw new TreeError(`Path must not end with '/': ${path}`, { path });
   }
   if (path.includes("//")) {
-    throw new Error(`Path must not contain consecutive slashes: ${path}`);
+    throw new TreeError(`Path must not contain consecutive slashes: ${path}`, { path });
   }
   const segments = path.split("/");
   for (const segment of segments) {
     if (segment === "." || segment === "..") {
-      throw new Error(`Path must not contain '.' or '..': ${path}`);
+      throw new TreeError(`Path must not contain '.' or '..': ${path}`, { path });
     }
   }
 }
@@ -311,8 +312,10 @@ function applyPatchRecursive(
 
     // 验证：如果现有条目存在且不是目录，不能在其下递归操作
     if (existingEntry !== undefined && existingEntry.mode !== "040000") {
-      throw new Error(
-        `Cannot access '${prefix}${name}': existing entry is not a directory (mode: ${existingEntry.mode})`,
+      const atPath = `${prefix}${name}`;
+      throw new TreeError(
+        `Cannot access '${atPath}': existing entry is not a directory (mode: ${existingEntry.mode})`,
+        { path: atPath },
       );
     }
 
@@ -325,7 +328,9 @@ function applyPatchRecursive(
         );
       if (childOps.every((op) => op.op === "delete") && !hasUpsertInBatch) {
         const samplePath = `${prefix}${name}/${childOps[0]!.path}`;
-        throw new Error(`Cannot delete '${samplePath}': path does not exist`);
+        throw new TreeError(`Cannot delete '${samplePath}': path does not exist`, {
+          path: samplePath,
+        });
       }
     }
 
@@ -360,7 +365,9 @@ function applyPatchRecursive(
       const existsInBatch = upsertedPaths.has(fullPath);
 
       if (!existsInExisting && !existsInCreated && !existsInBatch) {
-        throw new Error(`Cannot delete '${prefix}${op.path}': path does not exist`);
+        throw new TreeError(`Cannot delete '${prefix}${op.path}': path does not exist`, {
+          path: fullPath,
+        });
       }
 
       deletedNames.add(op.path);
@@ -408,7 +415,9 @@ function readTreeEntries(objects: ObjectDatabase, treeHash: SHA1 | null): TreeEn
   }
   const obj = readObject(objects, treeHash);
   if (obj.type !== "tree") {
-    throw new Error(`Expected tree object, got '${obj.type}' for hash '${treeHash}'`);
+    throw new TreeError(`Expected tree object, got '${obj.type}' for hash '${treeHash}'`, {
+      hash: treeHash,
+    });
   }
   return obj.entries;
 }

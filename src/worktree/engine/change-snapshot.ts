@@ -5,6 +5,7 @@
  * 供 change-index 计算规范化变更记录。
  */
 
+import { VirtualWorktreeError } from "../../errors.ts";
 import { hashObject } from "../../hash/index.ts";
 import { serializeTree } from "../../objects/tree.ts";
 import { readRepoBlobContent, readRepoTree } from "../model/origin.ts";
@@ -137,7 +138,7 @@ function snapshotCurrentTree(
 ): SnapshotEntry[] {
   const root = state.getNode("root" as WorktreeNode["id"]);
   if (root === null) {
-    throw new Error("Virtual worktree is missing root node");
+    throw new VirtualWorktreeError("Virtual worktree is missing root node");
   }
   return snapshotCurrentNode(source, state, root, VIRTUAL_ROOT_PATH, cache);
 }
@@ -259,7 +260,9 @@ function currentNodeHash(
     return hashObject("blob", content);
   }
 
-  throw new Error(`Virtual worktree diff cannot resolve hash for path: ${path}`);
+  throw new VirtualWorktreeError(`Virtual worktree diff cannot resolve hash for path: ${path}`, {
+    path,
+  });
 }
 
 function computeChangeRecordForPathImpl(
@@ -290,7 +293,7 @@ function computeChangeRecordForPathImpl(
     return createNormalizedChangeRecord(path, baseEntry.object, currentEntry.object);
   }
 
-  throw new Error(`Unreachable change-record state at path: ${path}`);
+  throw new VirtualWorktreeError(`Unreachable change-record state at path: ${path}`, { path });
 }
 
 function snapshotCurrentEntryAtPath(
@@ -316,7 +319,9 @@ function snapshotCurrentLeafNode(
   cache?: VirtualDiffComputationCache,
 ): SnapshotEntry {
   if (leaf.node.state.kind === "directory") {
-    throw new Error(`snapshotCurrentLeafNode called on directory: ${leaf.path}`);
+    throw new VirtualWorktreeError(`snapshotCurrentLeafNode called on directory: ${leaf.path}`, {
+      path: leaf.path,
+    });
   }
   const hash = currentNodeHash(source, state, leaf.node, leaf.path, cache);
   const object = createDiffObject(leaf.node.state.mode, hash);

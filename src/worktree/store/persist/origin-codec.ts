@@ -2,6 +2,8 @@
  * Worktree 节点 origin 的持久化编解码
  */
 
+import { VirtualWorktreeError } from "../../../errors.ts";
+
 import type { SHA1 } from "../../../types/index.ts";
 import type { WorktreeNode } from "../../model/nodes.ts";
 
@@ -24,7 +26,7 @@ export function parseNodeOrigin(record: PersistedNodeOriginRecord): WorktreeNode
   }
   if (record.kind === "repo-tree") {
     if (record.hash.length === 0) {
-      throw new Error("Invalid worktree node: repo-tree origin is missing hash");
+      throw new VirtualWorktreeError("Invalid worktree node: repo-tree origin is missing hash");
     }
     return { kind: "repo-tree", hash: record.hash as SHA1 };
   }
@@ -49,17 +51,23 @@ export function parseNodeOriginFromSqliteColumns(
 
   if (originKind === "repo-tree") {
     if (originHash === null) {
-      throw new Error("Invalid SQLite worktree node: repo-tree origin is missing hash");
+      throw new VirtualWorktreeError(
+        "Invalid SQLite worktree node: repo-tree origin is missing hash",
+      );
     }
     return { kind: "repo-tree", hash: originHash as SHA1 };
   }
 
   if (originKind === "repo-blob") {
     if (originHash === null) {
-      throw new Error("Invalid SQLite worktree node: repo-blob origin is missing hash");
+      throw new VirtualWorktreeError(
+        "Invalid SQLite worktree node: repo-blob origin is missing hash",
+      );
     }
     if (originMode !== "100644" && originMode !== "100755" && originMode !== "120000") {
-      throw new Error(`Invalid SQLite worktree node origin mode: ${originMode ?? "null"}`);
+      throw new VirtualWorktreeError(
+        `Invalid SQLite worktree node origin mode: ${originMode ?? "null"}`,
+      );
     }
     return {
       kind: "repo-blob",
@@ -68,5 +76,5 @@ export function parseNodeOriginFromSqliteColumns(
     };
   }
 
-  throw new Error(`Invalid SQLite worktree node origin kind: ${originKind}`);
+  throw new VirtualWorktreeError(`Invalid SQLite worktree node origin kind: ${originKind}`);
 }

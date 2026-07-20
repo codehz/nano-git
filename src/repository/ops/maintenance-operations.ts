@@ -10,6 +10,7 @@
  * RepositoryPackSupport 只负责 packfile 层面的读写。
  */
 
+import { RepositoryError } from "../../errors.ts";
 import { listReachableObjects } from "./reachability.ts";
 
 import type {
@@ -40,14 +41,14 @@ export function createMaintenanceRepositoryOperations(
   return {
     writePack(hashes?: SHA1[]) {
       if (!packs) {
-        throw new Error("Backend does not support packfile writes");
+        throw new RepositoryError("Backend does not support packfile writes");
       }
       return packs.writeFromSource(objects, hashes ?? objects.list());
     },
 
     repack(options?: RepositoryRepackOptions) {
       if (!packs) {
-        throw new Error("Backend does not support repack");
+        throw new RepositoryError("Backend does not support repack");
       }
 
       const hashes = options?.hashes ? Array.from(options.hashes) : Array.from(objects.list());

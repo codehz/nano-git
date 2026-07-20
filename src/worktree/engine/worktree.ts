@@ -10,6 +10,7 @@ import {
   VirtualNotSymlinkError,
   VirtualPathAlreadyExistsError,
   VirtualPathNotFoundError,
+  VirtualWorktreeError,
 } from "../../errors.ts";
 import { createNodeId } from "../model/ids.ts";
 import { type WorktreeNode } from "../model/nodes.ts";
@@ -415,8 +416,9 @@ export function openVirtualWorktree(
             const toPath = to;
             const fromPath = from;
             if (toPath.startsWith(fromPath + "/") || toPath === fromPath) {
-              throw new Error(
+              throw new VirtualWorktreeError(
                 `Cannot move '${from}' to '${to}': destination is a subdirectory of source`,
+                { path: to, details: { from, to } },
               );
             }
           }

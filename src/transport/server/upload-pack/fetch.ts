@@ -218,7 +218,7 @@ function resolveExcludedReachable(
   for (const refName of deepenNot) {
     const hash = resolveDeepenNotTargetHash(backend, refName);
     if (hash === null) {
-      throw new Error(`fetch: deepen-not is not a ref: ${refName}`);
+      throw new UploadPackServiceError(`fetch: deepen-not is not a ref: ${refName}`);
     }
     excludeRoots.push(hash);
   }
@@ -372,7 +372,7 @@ function createShallowFetchPlan(
   if (excludedReachable) {
     for (const want of params.wants) {
       if (excludedReachable.has(want)) {
-        throw new Error(`fetch: want ${want} is excluded by deepen-not`);
+        throw new UploadPackServiceError(`fetch: want ${want} is excluded by deepen-not`);
       }
     }
   }
@@ -400,12 +400,14 @@ function createShallowFetchPlan(
       excludedReachable,
     );
     if (params.deepenSince !== undefined && depthLimitedState.selectedCommitCount === 0) {
-      throw new Error("fetch: no commits selected for shallow requests");
+      throw new UploadPackServiceError("fetch: no commits selected for shallow requests");
     }
     if (params.deepenSince !== undefined && sourceShallow) {
       for (const hash of sourceShallow) {
         if (depthLimitedState.visited.has(hash)) {
-          throw new Error("fetch: deepen-since cannot traverse source shallow boundary");
+          throw new UploadPackServiceError(
+            "fetch: deepen-since cannot traverse source shallow boundary",
+          );
         }
       }
     }

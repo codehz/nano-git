@@ -12,6 +12,7 @@
 
 import { join } from "node:path";
 
+import { ObjectHashMismatchError } from "../errors.ts";
 import { hashObject } from "../hash/index.ts";
 import {
   deleteLooseObject,
@@ -47,7 +48,7 @@ export function createFileObjectStore(gitDir: string): ObjectDatabase {
     ingest(raw: RawGitObject): void {
       const expectedHash = hashObject(raw.type, raw.content);
       if (expectedHash !== raw.hash) {
-        throw new Error(`RawGitObject hash mismatch: expected ${expectedHash}, got ${raw.hash}`);
+        throw new ObjectHashMismatchError(expectedHash, raw.hash);
       }
       if (hasLooseObject(objectsDir, raw.hash)) {
         return;

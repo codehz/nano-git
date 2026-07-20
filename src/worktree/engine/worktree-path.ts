@@ -14,6 +14,7 @@ import {
   VirtualNotFileError,
   VirtualPathAlreadyExistsError,
   VirtualPathNotFoundError,
+  VirtualWorktreeError,
 } from "../../errors.ts";
 import { originPathNodeId, VIRTUAL_ROOT_NODE_ID } from "../model/ids.ts";
 import { readRepoTree, treeEntryToNodeOrigin } from "../model/origin.ts";
@@ -121,7 +122,7 @@ export function joinChildPath(dirPath: string, name: string): string {
 export function getRootNode(state: VirtualWorktreeStateStore): WorktreeNode {
   const root = state.getNode(VIRTUAL_ROOT_NODE_ID);
   if (root === null) {
-    throw new Error("Virtual worktree is missing root node");
+    throw new VirtualWorktreeError("Virtual worktree is missing root node");
   }
   return root;
 }

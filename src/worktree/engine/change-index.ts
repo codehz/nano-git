@@ -5,6 +5,7 @@
  * 并将目录本身纳入 diff 视图。
  */
 
+import { VirtualWorktreeError } from "../../errors.ts";
 import {
   computeChangeRecordForPath,
   getBaseSnapshotView,
@@ -136,7 +137,9 @@ export function exportVirtualDiffFromChangeRecords(
         } satisfies DiffEntry;
       }
 
-      throw new Error(`Invalid normalized change record at path: ${record.path}`);
+      throw new VirtualWorktreeError(`Invalid normalized change record at path: ${record.path}`, {
+        path: record.path,
+      });
     })
     .sort((left, right) => left.path.localeCompare(right.path));
 }

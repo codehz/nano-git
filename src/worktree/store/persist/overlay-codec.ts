@@ -2,6 +2,8 @@
  * 目录 overlay 的持久化编解码（file manifest / SQLite 共用 JSON 形态）
  */
 
+import { VirtualWorktreeError } from "../../../errors.ts";
+
 import type { NodeId } from "../../model/ids.ts";
 import type { DirectoryOverlay } from "../../model/overlay.ts";
 
@@ -45,15 +47,16 @@ export function parseDirectoryOverlay(
           try {
             return JSON.parse(raw);
           } catch (error) {
-            throw new Error(
+            throw new VirtualWorktreeError(
               `Invalid worktree directory overlay JSON: ${error instanceof Error ? error.message : String(error)}`,
+              { cause: error },
             );
           }
         })()
       : raw;
 
   if (!isPersistedDirectoryOverlayPayload(parsed)) {
-    throw new Error("Invalid worktree directory overlay payload");
+    throw new VirtualWorktreeError("Invalid worktree directory overlay payload");
   }
 
   return {

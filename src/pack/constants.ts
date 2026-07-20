@@ -12,6 +12,8 @@
  * - 7: ref_delta（基于引用的 delta）
  */
 
+import { InvalidObjectError } from "../errors.ts";
+
 import type { ObjectType } from "../types/index.ts";
 
 // ============================================================================
@@ -96,7 +98,7 @@ export function numberToObjectType(n: number): ObjectType {
     case OBJ_TAG:
       return "tag";
     default:
-      throw new Error(`Unknown object type number: ${n}`);
+      throw new InvalidObjectError(`Unknown object type number: ${n}`);
   }
 }
 

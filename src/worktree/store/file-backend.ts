@@ -13,6 +13,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 
+import { VirtualWorktreeError } from "../../errors.ts";
 import { openVirtualWorktree } from "../engine/worktree.ts";
 import { createRootDirectoryNode, type WorktreeNode } from "../model/nodes.ts";
 import {
@@ -56,7 +57,9 @@ export function createFileVirtualWorktree(
   options: InitializeVirtualWorktreeOptions,
 ): void {
   if (hasFileVirtualWorktree(worktreeDir)) {
-    throw new Error(`Virtual worktree already exists: ${worktreeDir}`);
+    throw new VirtualWorktreeError(`Virtual worktree already exists: ${worktreeDir}`, {
+      worktreeKey: worktreeDir,
+    });
   }
   const store = createFileVirtualWorktreeStateStore(worktreeDir);
   store.reset(options.baseTree);
@@ -85,7 +88,9 @@ export function openFileVirtualWorktree(
   worktreeDir: string,
 ): VirtualWorktree {
   if (!hasFileVirtualWorktree(worktreeDir)) {
-    throw new Error(`Virtual worktree not found: ${worktreeDir}`);
+    throw new VirtualWorktreeError(`Virtual worktree not found: ${worktreeDir}`, {
+      worktreeKey: worktreeDir,
+    });
   }
   validateFileVirtualWorktreeIntegrity(worktreeDir);
   const store = createFileVirtualWorktreeStateStore(worktreeDir);
@@ -105,7 +110,9 @@ export function openFileVirtualWorktree(
  */
 export function deleteFileVirtualWorktree(worktreeDir: string): void {
   if (!hasFileVirtualWorktree(worktreeDir)) {
-    throw new Error(`Virtual worktree not found: ${worktreeDir}`);
+    throw new VirtualWorktreeError(`Virtual worktree not found: ${worktreeDir}`, {
+      worktreeKey: worktreeDir,
+    });
   }
   rmSync(worktreeDir, { recursive: true, force: true });
 }
@@ -235,12 +242,16 @@ export function validateFileVirtualWorktreeIntegrity(worktreeDir: string): void 
   const manifest = readManifest(getManifestPath(worktreeDir));
   const root = manifest.nodes.root;
   if (root === undefined) {
-    throw new Error(`Virtual worktree is corrupted: missing root node for ${worktreeDir}`);
+    throw new VirtualWorktreeError(
+      `Virtual worktree is corrupted: missing root node for ${worktreeDir}`,
+      { worktreeKey: worktreeDir },
+    );
   }
   const rootNode = restoreNode(root, getContentDir(worktreeDir));
   if (rootNode.state.kind !== "directory") {
-    throw new Error(
+    throw new VirtualWorktreeError(
       `Virtual worktree is corrupted: root node is not a directory for ${worktreeDir}`,
+      { worktreeKey: worktreeDir },
     );
   }
   for (const record of Object.values(manifest.nodes)) {
@@ -309,7 +320,9 @@ function writeManifestAtomic(path: string, manifest: FileSessionManifest): void 
 
 function readManifest(manifestPath: string): FileSessionManifest {
   if (!existsSync(manifestPath)) {
-    throw new Error(`Virtual worktree manifest not found: ${manifestPath}`);
+    throw new VirtualWorktreeError(`Virtual worktree manifest not found: ${manifestPath}`, {
+      path: manifestPath,
+    });
   }
   const manifest = readJson<FileSessionManifest>(manifestPath);
   validateManifest(manifest);
@@ -318,20 +331,20 @@ function readManifest(manifestPath: string): FileSessionManifest {
 
 function validateManifest(manifest: FileSessionManifest): void {
   if (typeof manifest.baseTree !== "string" || manifest.baseTree.length === 0) {
-    throw new Error("Invalid virtual worktree manifest baseTree");
+    throw new VirtualWorktreeError("Invalid virtual worktree manifest baseTree");
   }
   if (
     typeof manifest.nodes !== "object" ||
     manifest.nodes === null ||
     Array.isArray(manifest.nodes)
   ) {
-    throw new Error("Invalid virtual worktree manifest nodes");
+    throw new VirtualWorktreeError("Invalid virtual worktree manifest nodes");
   }
   if (!Array.isArray(manifest.changeRecords)) {
-    throw new Error("Invalid virtual worktree manifest changeRecords");
+    throw new VirtualWorktreeError("Invalid virtual worktree manifest changeRecords");
   }
   if (manifest.formatVersion !== FILE_WORKTREE_MANIFEST_VERSION) {
-    throw new Error(
+    throw new VirtualWorktreeError(
       `Unsupported virtual worktree file manifest version: expected ${FILE_WORKTREE_MANIFEST_VERSION}, got ${manifest.formatVersion}`,
     );
   }
@@ -373,7 +386,7 @@ function persistNode(contentDir: string, node: WorktreeNode): FileNodeRecord {
 
 function serializeDirectoryNode(node: WorktreeNode): FileNodeRecord {
   if (node.state.kind !== "directory") {
-    throw new Error("serializeDirectoryNode: node is not a directory");
+    throw new VirtualWorktreeError("serializeDirectoryNode: node is not a directory");
   }
   return {
     id: node.id,
@@ -415,11 +428,11 @@ function restoreNode(record: FileNodeRecord, contentDir: string): WorktreeNode {
   if (rawState.kind === "file") {
     const mode = rawState.mode;
     if (mode !== "100644" && mode !== "100755") {
-      throw new Error(`Invalid file worktree node state mode: ${String(mode)}`);
+      throw new VirtualWorktreeError(`Invalid file worktree node state mode: ${String(mode)}`);
     }
     const contentRef = rawState.contentRef;
     if (contentRef !== undefined && contentRef !== null && typeof contentRef !== "string") {
-      throw new Error("Invalid file worktree node content ref");
+      throw new VirtualWorktreeError("Invalid file worktree node content ref");
     }
     return {
       id: record.id as NodeId,
@@ -436,12 +449,14 @@ function restoreNode(record: FileNodeRecord, contentDir: string): WorktreeNode {
   }
 
   if (rawState.kind !== "symlink") {
-    throw new Error(`Invalid file worktree node state kind: ${String(rawState.kind)}`);
+    throw new VirtualWorktreeError(
+      `Invalid file worktree node state kind: ${String(rawState.kind)}`,
+    );
   }
 
   const targetRef = rawState.targetRef;
   if (targetRef !== undefined && targetRef !== null && typeof targetRef !== "string") {
-    throw new Error("Invalid file worktree node target ref");
+    throw new VirtualWorktreeError("Invalid file worktree node target ref");
   }
 
   return {
@@ -461,7 +476,9 @@ function restoreNode(record: FileNodeRecord, contentDir: string): WorktreeNode {
 function readPayload(contentDir: string, payloadRef: string): Buffer {
   const path = getContentPath(contentDir, payloadRef);
   if (!existsSync(path)) {
-    throw new Error(`Virtual worktree payload not found: ${payloadRef}`);
+    throw new VirtualWorktreeError(`Virtual worktree payload not found: ${payloadRef}`, {
+      path: payloadRef,
+    });
   }
   return readFileSync(path);
 }

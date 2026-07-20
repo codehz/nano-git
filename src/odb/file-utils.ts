@@ -16,7 +16,7 @@ import {
 import { join } from "node:path";
 import { deflateSync, inflateSync } from "node:zlib";
 
-import { InvalidObjectError } from "../errors.ts";
+import { InvalidObjectError, ObjectNotFoundError } from "../errors.ts";
 import { hashToPath } from "../hash/index.ts";
 import { serialize, deserialize } from "../objects/index.ts";
 import { sha1, assertObjectType } from "../types/index.ts";
@@ -97,7 +97,7 @@ export function writeLooseObject(objectsDir: string, hash: SHA1, obj: GitObject)
 export function readLooseObject(objectsDir: string, hash: SHA1): GitObject {
   const objectPath = getLooseObjectPath(objectsDir, hash);
   if (!existsSync(objectPath)) {
-    throw new Error(`Object not found: ${hash}`);
+    throw new ObjectNotFoundError(hash, { operation: "read", source: "loose" });
   }
 
   const compressed = readFileSync(objectPath);
@@ -186,7 +186,7 @@ export function writeRawLooseObject(objectsDir: string, raw: RawGitObject): void
 export function readRawLooseObject(objectsDir: string, hash: SHA1): RawGitObject {
   const objectPath = getLooseObjectPath(objectsDir, hash);
   if (!existsSync(objectPath)) {
-    throw new Error(`Object not found: ${hash}`);
+    throw new ObjectNotFoundError(hash, { operation: "read", source: "loose" });
   }
 
   const compressed = readFileSync(objectPath);

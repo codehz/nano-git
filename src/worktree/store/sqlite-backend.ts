@@ -3,6 +3,7 @@
  */
 
 import { acquireConnection } from "../../backend/sqlite-pool.ts";
+import { VirtualWorktreeError } from "../../errors.ts";
 import { openVirtualWorktree } from "../engine/worktree.ts";
 import {
   createSqliteVirtualWorktreeDbLayer,
@@ -163,7 +164,9 @@ export function openSqliteVirtualWorktreeDatabase(
 
     createWorktree(worktreeKey: string, createOptions: InitializeVirtualWorktreeOptions): void {
       if (layer.hasWorktree(worktreeKey)) {
-        throw new Error(`Virtual worktree already exists: ${worktreeKey}`);
+        throw new VirtualWorktreeError(`Virtual worktree already exists: ${worktreeKey}`, {
+          worktreeKey,
+        });
       }
       const store = layer.bindStateStore(worktreeKey);
       store.reset(createOptions.baseTree);
@@ -172,7 +175,9 @@ export function openSqliteVirtualWorktreeDatabase(
 
     deleteWorktree(worktreeKey: string): void {
       if (!layer.hasWorktree(worktreeKey)) {
-        throw new Error(`Virtual worktree not found: ${worktreeKey}`);
+        throw new VirtualWorktreeError(`Virtual worktree not found: ${worktreeKey}`, {
+          worktreeKey,
+        });
       }
       layer.deleteWorktree(worktreeKey);
     },
@@ -190,7 +195,9 @@ export function openSqliteVirtualWorktreeDatabase(
 
     openWorktree(source: ObjectDatabase, worktreeKey: string): VirtualWorktree {
       if (!layer.hasWorktree(worktreeKey)) {
-        throw new Error(`Virtual worktree not found: ${worktreeKey}`);
+        throw new VirtualWorktreeError(`Virtual worktree not found: ${worktreeKey}`, {
+          worktreeKey,
+        });
       }
       layer.validateWorktreeIntegrity(worktreeKey);
       return openVirtualWorktree(source, layer.bindStateStore(worktreeKey));

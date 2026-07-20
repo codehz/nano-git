@@ -12,6 +12,7 @@
  * writeTree() 成功后不清空 overlay，不推进 baseTree。
  */
 
+import { VirtualWorktreeError } from "../../errors.ts";
 import { writeObject } from "../../objects/raw.ts";
 import { originPathNodeId } from "../model/ids.ts";
 import { readRepoTree } from "../model/origin.ts";
@@ -60,7 +61,7 @@ export function writeTreeFromSession(
 ): SHA1 {
   const root = state.getNode("root" as NodeId);
   if (root === null || root.state.kind !== "directory") {
-    throw new Error("Virtual worktree: root node is missing or not a directory");
+    throw new VirtualWorktreeError("Virtual worktree: root node is missing or not a directory");
   }
 
   // 收集变更记录（叶子路径的净效应）
@@ -183,7 +184,9 @@ function isNodeOverlayDirty(node: WorktreeNode): boolean {
  */
 function compileDirectory(ctx: CompileContext, dirNode: WorktreeNode, dirPath: string): SHA1 {
   if (dirNode.state.kind !== "directory") {
-    throw new Error("compileDirectory called on non-directory node");
+    throw new VirtualWorktreeError("compileDirectory called on non-directory node", {
+      path: dirPath,
+    });
   }
 
   // 无任何变更且 origin 存在 → 直接复用

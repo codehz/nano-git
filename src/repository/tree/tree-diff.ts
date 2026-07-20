@@ -7,6 +7,7 @@
  * 当前语义只关注路径最终状态。
  */
 
+import { TreeError } from "../../errors.ts";
 import { readObject } from "../../objects/raw.ts";
 
 import type { DiffEntry, DiffObject, DiffObjectKind } from "../../diff.ts";
@@ -167,7 +168,9 @@ function walkTreeRecursive(
 ): void {
   const obj = readObject(objects, treeHash);
   if (obj.type !== "tree") {
-    throw new Error(`Expected tree object, got '${obj.type}' for hash '${treeHash}'`);
+    throw new TreeError(`Expected tree object, got '${obj.type}' for hash '${treeHash}'`, {
+      hash: treeHash,
+    });
   }
 
   for (const entry of obj.entries) {
@@ -205,14 +208,14 @@ function modeToTreeSnapshotKind(mode: string): DiffObjectKind {
   if (mode === "100644" || mode === "100755") {
     return "blob";
   }
-  throw new Error(`Unsupported tree entry mode for snapshot diff: ${mode}`);
+  throw new TreeError(`Unsupported tree entry mode for snapshot diff: ${mode}`);
 }
 
 function assertSnapshotMode(mode: string): DiffObject["mode"] {
   if (mode === "100644" || mode === "100755" || mode === "040000" || mode === "120000") {
     return mode;
   }
-  throw new Error(`Unsupported tree entry mode for snapshot diff: ${mode}`);
+  throw new TreeError(`Unsupported tree entry mode for snapshot diff: ${mode}`);
 }
 
 function isSameObject(previous: DiffObject, current: DiffObject): boolean {

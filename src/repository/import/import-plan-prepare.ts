@@ -1,4 +1,4 @@
-import { PreconditionCheckError } from "../../errors.ts";
+import { ImportError, PreconditionCheckError } from "../../errors.ts";
 import { tryReadObject } from "../../objects/raw.ts";
 import { resolveRefHash } from "../../refs/resolve.ts";
 import { v2FetchObjects } from "../../transport/client/upload-pack/fetch.ts";
@@ -138,29 +138,30 @@ function validateImportPrepareOptions(
   options?: ImportPrepareOptions,
 ): void {
   if (options?.depth !== undefined && options.depth < 1) {
-    throw new Error(`depth 必须是正整数，当前为 ${options.depth}。`);
+    throw new ImportError(`depth 必须是正整数，当前为 ${options.depth}。`, { phase: "prepare" });
   }
 
   if (options?.deepen !== undefined && options.deepen < 1) {
-    throw new Error(`deepen 必须是正整数，当前为 ${options.deepen}。`);
+    throw new ImportError(`deepen 必须是正整数，当前为 ${options.deepen}。`, { phase: "prepare" });
   }
 
   if (options?.shallowSince !== undefined && !Number.isSafeInteger(options.shallowSince)) {
-    throw new Error(
+    throw new ImportError(
       `shallowSince 必须是有限整数秒级 Unix 时间戳，当前为 ${String(options.shallowSince)}。`,
+      { phase: "prepare" },
     );
   }
 
   if (options?.depth !== undefined && options?.deepen !== undefined) {
-    throw new Error("depth 与 deepen 不能同时指定。");
+    throw new ImportError("depth 与 deepen 不能同时指定。", { phase: "prepare" });
   }
 
   if (options?.depth !== undefined && options?.unshallow) {
-    throw new Error("depth 与 unshallow 不能同时指定。");
+    throw new ImportError("depth 与 unshallow 不能同时指定。", { phase: "prepare" });
   }
 
   if (options?.unshallow && resolveLocalShallowBoundaries(compiled) === undefined) {
-    throw new Error("unshallow 仅适用于 shallow 仓库。");
+    throw new ImportError("unshallow 仅适用于 shallow 仓库。", { phase: "prepare" });
   }
 }
 

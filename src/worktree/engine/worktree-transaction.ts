@@ -8,6 +8,7 @@
  * - 递归节点图克隆（copy）
  */
 
+import { VirtualWorktreeError } from "../../errors.ts";
 import { createNodeId } from "../model/ids.ts";
 import { cloneWorktreeNodeForCopy, type WorktreeNode } from "../model/nodes.ts";
 import { readRepoBlobContent } from "../model/origin.ts";
@@ -56,7 +57,7 @@ export function updateParentOverlay(
 ): void {
   const parentNode = state.getNode(parentId);
   if (parentNode === null || parentNode.state.kind !== "directory") {
-    throw new Error("updateParentOverlay: parent is not a directory");
+    throw new VirtualWorktreeError("updateParentOverlay: parent is not a directory");
   }
   state.setNode({
     ...parentNode,

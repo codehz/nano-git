@@ -1,3 +1,4 @@
+import { ImportError, ObjectNotFoundError } from "../../errors.ts";
 import { isAncestor } from "../../transport/protocol/object-graph.ts";
 import { validateLocalPreconditions } from "./import-plan-preconditions.ts";
 
@@ -20,7 +21,7 @@ export function createPreparedImportPlan(
 
   async function runApply(allowPartial: boolean): Promise<ImportApplyResult> {
     if (consumed) {
-      throw new Error("Prepared import plan has already been consumed.");
+      throw new ImportError("Prepared import plan has already been consumed.", { phase: "apply" });
     }
     consumed = true;
 
@@ -37,9 +38,10 @@ export function createPreparedImportPlan(
         hasShallowUpdate;
 
       if (!allowPartial || !hasExecutableOperations) {
-        throw new Error(
+        throw new ImportError(
           `导入计划包含 ${preview.diagnostics.filter((d) => d.level === "error").length} 个错误，无法执行。` +
             (errorMessages ? ` 错误：${errorMessages}` : ""),
+          { phase: "apply" },
         );
       }
     }
@@ -69,25 +71,31 @@ export function createPreparedImportPlan(
       const refExists = currentValue !== null;
       const currentHash = currentLocalRefs.get(op.localRef) ?? null;
       if (!backend.objects.exists(op.newHash)) {
-        throw new Error(`导入计划校验失败：对象 "${op.newHash}" 在本地对象库中不存在。`);
+        throw new ObjectNotFoundError(op.newHash, {
+          operation: "read",
+          message: `导入计划校验失败：对象 "${op.newHash}" 在本地对象库中不存在。`,
+        });
       }
 
       if (op.policy.mode === "create-only" && refExists) {
-        throw new Error(
+        throw new ImportError(
           `导入计划校验失败：ref "${op.localRef}" 已存在，create-only 策略拒绝更新。`,
+          { phase: "apply" },
         );
       }
 
       if (op.policy.mode === "fast-forward" && refExists) {
         if (currentHash === null) {
-          throw new Error(
+          throw new ImportError(
             `导入计划校验失败：ref "${op.localRef}" 当前存在，但无法解析为可比较的提交哈希。`,
+            { phase: "apply" },
           );
         }
         if (!isAncestor(backend.objects, currentHash, op.newHash, localShallowSet)) {
-          throw new Error(
+          throw new ImportError(
             `导入计划校验失败：ref "${op.localRef}" 无法 fast-forward。` +
               `当前 ${currentHash}，目标 ${op.newHash}。`,
+            { phase: "apply" },
           );
         }
       }
@@ -109,8 +117,9 @@ export function createPreparedImportPlan(
 
       if (preparedState.headOperation) {
         if (!preparedState.headOperation.targetRef.startsWith("refs/heads/")) {
-          throw new Error(
+          throw new ImportError(
             `导入计划校验失败：setHead() 只能指向 refs/heads/*，当前为 "${preparedState.headOperation.targetRef}"。`,
+            { phase: "apply" },
           );
         }
 
@@ -120,8 +129,9 @@ export function createPreparedImportPlan(
           const resolvedTarget = detachedTarget ?? existingTarget;
 
           if (!resolvedTarget) {
-            throw new Error(
+            throw new ImportError(
               `无法将 HEAD detached 到 "${preparedState.headOperation.targetRef}"：目标 ref 不存在。`,
+              { phase: "apply" },
             );
           }
 

@@ -2,7 +2,7 @@
  * Refs 解析工具
  */
 
-import { CircularReferenceError } from "../errors.ts";
+import { CircularReferenceError, RepositoryError } from "../errors.ts";
 import { sha1 } from "../types/index.ts";
 import { HEAD_REF } from "../types/refs.ts";
 
@@ -82,7 +82,7 @@ export function resolveTargetHash(store: RefStore, hash: SHA1 | undefined): SHA1
 
   const headHash = resolveRefHash(store, HEAD_REF);
   if (!headHash) {
-    throw new Error("Cannot resolve HEAD to create ref");
+    throw new RepositoryError("Cannot resolve HEAD to create ref");
   }
 
   return headHash;

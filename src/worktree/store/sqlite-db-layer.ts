@@ -2,6 +2,7 @@
  * SQLite VirtualWorktree 数据库层：共享 prepared statements 与按 key 绑定的 state store
  */
 
+import { VirtualWorktreeError } from "../../errors.ts";
 import { sha1 } from "../../types/index.ts";
 import { createRootDirectoryNode, type WorktreeNode } from "../model/nodes.ts";
 import { parseChangeRecordFromSqlite } from "./persist/change-codec.ts";
@@ -224,10 +225,14 @@ export function createSqliteVirtualWorktreeDbLayer(
         return;
       }
       if (!existsWorktreeStmt.get(fromKey)) {
-        throw new Error(`Virtual worktree not found: ${fromKey}`);
+        throw new VirtualWorktreeError(`Virtual worktree not found: ${fromKey}`, {
+          worktreeKey: fromKey,
+        });
       }
       if (existsWorktreeStmt.get(toKey)) {
-        throw new Error(`Virtual worktree already exists: ${toKey}`);
+        throw new VirtualWorktreeError(`Virtual worktree already exists: ${toKey}`, {
+          worktreeKey: toKey,
+        });
       }
       const renameTx = conn.db.transaction(() => {
         renameChangesWorktreeKeyStmt.run(toKey, fromKey);
@@ -255,18 +260,24 @@ export function createSqliteVirtualWorktreeDbLayer(
     validateWorktreeIntegrity(worktreeKey: string): void {
       const worktreeRow = readBaseTreeStmt.get(worktreeKey);
       if (worktreeRow === null) {
-        throw new Error(`Virtual worktree not found: ${worktreeKey}`);
+        throw new VirtualWorktreeError(`Virtual worktree not found: ${worktreeKey}`, {
+          worktreeKey,
+        });
       }
       readBaseTreeValue(worktreeRow.base_tree);
 
       const rootRow = getNodeStmt.get(worktreeKey, "root");
       if (rootRow === null) {
-        throw new Error(`Virtual worktree is corrupted: missing root node for ${worktreeKey}`);
+        throw new VirtualWorktreeError(
+          `Virtual worktree is corrupted: missing root node for ${worktreeKey}`,
+          { worktreeKey },
+        );
       }
       const rootNode = readNode(rootRow);
       if (rootNode.state.kind !== "directory") {
-        throw new Error(
+        throw new VirtualWorktreeError(
           `Virtual worktree is corrupted: root node is not a directory for ${worktreeKey}`,
+          { worktreeKey },
         );
       }
 
@@ -286,7 +297,9 @@ export function createSqliteVirtualWorktreeDbLayer(
         readBaseTree(): SHA1 {
           const row = readBaseTreeStmt.get(worktreeKey);
           if (row === null) {
-            throw new Error(`Virtual worktree not found: ${worktreeKey}`);
+            throw new VirtualWorktreeError(`Virtual worktree not found: ${worktreeKey}`, {
+              worktreeKey,
+            });
           }
           return readBaseTreeValue(row.base_tree);
         },
@@ -353,7 +366,7 @@ export function ensureWorktreeSqliteSchema(db: Database): void {
     currentVersion !== LEGACY_SCHEMA_VERSION &&
     currentVersion !== WORKTREE_SQLITE_SCHEMA_VERSION
   ) {
-    throw new Error(
+    throw new VirtualWorktreeError(
       `Unsupported virtual worktree SQLite schema version: expected ${WORKTREE_SQLITE_SCHEMA_VERSION}, got ${currentVersion}`,
     );
   }
@@ -404,12 +417,12 @@ export function ensureWorktreeSqliteSchema(db: Database): void {
 
 export function readBaseTreeValue(raw: unknown): SHA1 {
   if (typeof raw !== "string") {
-    throw new Error("Invalid SQLite worktree base_tree");
+    throw new VirtualWorktreeError("Invalid SQLite worktree base_tree");
   }
   try {
     return sha1(raw);
-  } catch {
-    throw new Error("Invalid SQLite worktree base_tree");
+  } catch (error) {
+    throw new VirtualWorktreeError("Invalid SQLite worktree base_tree", { cause: error });
   }
 }
 
@@ -478,7 +491,7 @@ function readNode(row: NodeRow): WorktreeNode {
 
   if (row.state_kind === "directory") {
     if (row.state_mode !== null || row.content !== null || row.target !== null) {
-      throw new Error("Invalid SQLite worktree directory node payload columns");
+      throw new VirtualWorktreeError("Invalid SQLite worktree directory node payload columns");
     }
     const overlay = parseDirectoryOverlay(row.directory_overlay);
     return {
@@ -490,10 +503,12 @@ function readNode(row: NodeRow): WorktreeNode {
 
   if (row.state_kind === "file") {
     if (row.state_mode !== "100644" && row.state_mode !== "100755") {
-      throw new Error(`Invalid SQLite worktree node state mode: ${row.state_mode ?? "null"}`);
+      throw new VirtualWorktreeError(
+        `Invalid SQLite worktree node state mode: ${row.state_mode ?? "null"}`,
+      );
     }
     if (row.target !== null || row.directory_overlay !== null) {
-      throw new Error("Invalid SQLite worktree file node payload columns");
+      throw new VirtualWorktreeError("Invalid SQLite worktree file node payload columns");
     }
     return {
       id: row.node_id as NodeId,
@@ -507,13 +522,15 @@ function readNode(row: NodeRow): WorktreeNode {
   }
 
   if (row.state_kind !== "symlink") {
-    throw new Error(`Invalid SQLite worktree node state kind: ${row.state_kind}`);
+    throw new VirtualWorktreeError(`Invalid SQLite worktree node state kind: ${row.state_kind}`);
   }
   if (row.state_mode !== "120000") {
-    throw new Error(`Invalid SQLite worktree node state mode: ${row.state_mode ?? "null"}`);
+    throw new VirtualWorktreeError(
+      `Invalid SQLite worktree node state mode: ${row.state_mode ?? "null"}`,
+    );
   }
   if (row.content !== null || row.directory_overlay !== null) {
-    throw new Error("Invalid SQLite worktree symlink node payload columns");
+    throw new VirtualWorktreeError("Invalid SQLite worktree symlink node payload columns");
   }
 
   return {
@@ -536,7 +553,7 @@ function readBlobColumn(raw: unknown, column: "content" | "target"): Buffer | un
       raw !== null && raw !== undefined && typeof raw === "object"
         ? (raw as object).constructor?.name
         : "N/A";
-    throw new Error(
+    throw new VirtualWorktreeError(
       `Invalid SQLite worktree ${column} column type: expected Uint8Array, got ${typeof raw} (constructor=${ctorName}, value=${JSON.stringify(raw)})`,
     );
   }

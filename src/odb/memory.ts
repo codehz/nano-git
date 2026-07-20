@@ -7,6 +7,7 @@
  * ODB 的真实边界是 RawGitObject，不是 GitObject。
  */
 
+import { ObjectHashMismatchError, ObjectNotFoundError } from "../errors.ts";
 import { hashObject } from "../hash/index.ts";
 
 import type { RawGitObject, SHA1 } from "../types/index.ts";
@@ -38,7 +39,7 @@ export function createMemoryObjectStore(): MemoryObjectDatabase {
     ingest(raw: RawGitObject): void {
       const expectedHash = hashObject(raw.type, raw.content);
       if (expectedHash !== raw.hash) {
-        throw new Error(`RawGitObject hash mismatch: expected ${expectedHash}, got ${raw.hash}`);
+        throw new ObjectHashMismatchError(expectedHash, raw.hash);
       }
       if (!store.has(raw.hash)) {
         store.set(raw.hash, raw);
@@ -54,7 +55,7 @@ export function createMemoryObjectStore(): MemoryObjectDatabase {
     read(hash: SHA1): RawGitObject {
       const obj = store.get(hash);
       if (!obj) {
-        throw new Error(`Object not found: ${hash}`);
+        throw new ObjectNotFoundError(hash, { operation: "read", source: "memory" });
       }
       return obj;
     },

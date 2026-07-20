@@ -5,6 +5,8 @@
  * 根目录在 worktree API 中用 `""` 表示（`readdir()` 无参或传 `""`）。
  */
 
+import { VirtualWorktreeError } from "../../errors.ts";
+
 // ==================== 常量 ====================
 
 /** 根目录路径（readdir 等 API 使用） */
@@ -32,7 +34,7 @@ export function normalizeDirectoryPath(path: string | undefined): string {
  */
 export function assertValidVirtualPath(path: string): void {
   if (path === "") {
-    throw new Error("Path must not be empty");
+    throw new VirtualWorktreeError("Path must not be empty", { path });
   }
   validateVirtualPathSegments(path);
 }
@@ -42,20 +44,20 @@ export function assertValidVirtualPath(path: string): void {
  */
 export function validateVirtualPathSegments(path: string): void {
   if (path.startsWith("/")) {
-    throw new Error(`Path must not start with '/': ${path}`);
+    throw new VirtualWorktreeError(`Path must not start with '/': ${path}`, { path });
   }
   if (path.endsWith("/")) {
-    throw new Error(`Path must not end with '/': ${path}`);
+    throw new VirtualWorktreeError(`Path must not end with '/': ${path}`, { path });
   }
   if (path.includes("//")) {
-    throw new Error(`Path must not contain consecutive slashes: ${path}`);
+    throw new VirtualWorktreeError(`Path must not contain consecutive slashes: ${path}`, { path });
   }
   for (const segment of path.split("/")) {
     if (segment === "." || segment === "..") {
-      throw new Error(`Path must not contain '.' or '..': ${path}`);
+      throw new VirtualWorktreeError(`Path must not contain '.' or '..': ${path}`, { path });
     }
     if (segment === "") {
-      throw new Error(`Path must not contain empty segments: ${path}`);
+      throw new VirtualWorktreeError(`Path must not contain empty segments: ${path}`, { path });
     }
   }
 }
@@ -99,7 +101,7 @@ export function baseName(path: string): string {
  */
 export function joinPath(parent: string | null, name: string): string {
   if (name === "" || name.includes("/")) {
-    throw new Error(`Invalid entry name: ${name}`);
+    throw new VirtualWorktreeError(`Invalid entry name: ${name}`);
   }
   if (parent === null) {
     return name;

@@ -13,6 +13,7 @@
  */
 
 import { encodePktLine, encodeFlushPkt } from "../../protocol/pkt-line.ts";
+import { PushError } from "./push-error.ts";
 
 import type { SHA1 } from "../../../types/index.ts";
 
@@ -64,7 +65,7 @@ export function buildReceivePackRequest(
   capabilities: string[],
 ): Buffer {
   if (commands.length === 0) {
-    throw new Error("At least one command is required");
+    throw new PushError("At least one command is required");
   }
 
   const chunks: Buffer[] = [];

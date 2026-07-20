@@ -16,6 +16,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { PackIndexError } from "../../errors.ts";
 import { loadPackPairs } from "../store/pack-store-loader.ts";
 import { loadIncrementalMidxChain } from "./midx-chain.ts";
 import { createMidxReader } from "./midx-reader.ts";
@@ -102,7 +103,7 @@ export function writeMultiPackIndex(
   options?: WriteMultiPackIndexOptions,
 ): Buffer {
   if (packs.length === 0) {
-    throw new Error("writeMultiPackIndex requires at least one pack");
+    throw new PackIndexError("writeMultiPackIndex requires at least one pack");
   }
 
   const version: 1 | 2 = options?.version ?? 2;
@@ -207,7 +208,7 @@ export function writeMultiPackIndexFile(
 ): Buffer {
   const { pairs } = loadPackPairs(packDir);
   if (pairs.length === 0) {
-    throw new Error(`No pack pairs found in ${packDir}`);
+    throw new PackIndexError(`No pack pairs found in ${packDir}`, { path: packDir });
   }
 
   const sources: MidxPackSource[] = pairs.map((pair) => ({
@@ -235,7 +236,7 @@ export function writeIncrementalMultiPackIndexFile(
 ): { data: Buffer; checksumHex: string } {
   const { pairs } = loadPackPairs(packDir);
   if (pairs.length === 0) {
-    throw new Error(`No pack pairs found in ${packDir}`);
+    throw new PackIndexError(`No pack pairs found in ${packDir}`, { path: packDir });
   }
 
   const baseMidx = resolveBaseMidxForIncrementalWrite(packDir);
@@ -264,7 +265,7 @@ export function writeIncrementalMultiPackIndexFile(
   }
 
   if (newSources.length === 0) {
-    throw new Error("No new packs to add to incremental MIDX");
+    throw new PackIndexError("No new packs to add to incremental MIDX", { path: packDir });
   }
 
   const layerOptions: WriteMultiPackIndexOptions = {

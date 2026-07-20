@@ -4,6 +4,7 @@
  * 将 repo.fetch(url) 委托给 ImportSession 完成实际工作。
  */
 
+import { ImportError } from "../../errors.ts";
 import { parseRefSpec } from "../../transport/protocol/refspec.ts";
 import { globToRegex } from "../import/import-glob.ts";
 import { createRepoImportOperations } from "../import/import-session.ts";
@@ -524,12 +525,13 @@ function canApplyCustomRefSpecsPartially(preview: ImportPreparedPreview): boolea
   );
 }
 
-function createPreparedPreviewError(preview: ImportPreparedPreview): Error {
+function createPreparedPreviewError(preview: ImportPreparedPreview): ImportError {
   const errors = preview.diagnostics.filter((diagnostic) => diagnostic.level === "error");
   const errorMessages = errors.map((diagnostic) => diagnostic.message).join("; ");
-  return new Error(
+  return new ImportError(
     `导入计划包含 ${errors.length} 个错误，无法执行。` +
       (errorMessages ? ` 错误：${errorMessages}` : ""),
+    { phase: "prepare" },
   );
 }
 

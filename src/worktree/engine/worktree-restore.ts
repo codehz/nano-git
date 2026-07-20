@@ -2,7 +2,11 @@
  * 从 baseTree 恢复 worktree 路径
  */
 
-import { VirtualPathNotFoundError } from "../../errors.ts";
+import {
+  VirtualNotDirectoryError,
+  VirtualPathNotFoundError,
+  VirtualWorktreeError,
+} from "../../errors.ts";
 import { originPathNodeId } from "../model/ids.ts";
 import { readRepoTree } from "../model/origin.ts";
 import { overlayBindEntry, overlayTombstoneEntry } from "../model/overlay.ts";
@@ -69,7 +73,9 @@ export function restorePathFromBase(
     if (resolvedBeforeRestore.found) {
       const node = resolvedBeforeRestore.node;
       if (node === null) {
-        throw new Error(`Cannot restore '${path}': resolved node is missing`);
+        throw new VirtualWorktreeError(`Cannot restore '${path}': resolved node is missing`, {
+          path,
+        });
       }
       if (node.state.kind === "directory") {
         return;
@@ -79,8 +85,15 @@ export function restorePathFromBase(
 
   const parent = parentPath(path);
   const parentNode = parent === null ? getRootNode(state) : resolvePath(source, state, parent).node;
-  if (parentNode === null || parentNode.state.kind !== "directory") {
-    throw new Error(`Cannot restore '${path}': parent directory is unavailable`);
+  if (parentNode === null) {
+    throw new VirtualPathNotFoundError(parent ?? path, {
+      message: `Cannot restore '${path}': parent directory is unavailable`,
+    });
+  }
+  if (parentNode.state.kind !== "directory") {
+    throw new VirtualNotDirectoryError(parent ?? path, {
+      message: `Cannot restore '${path}': parent directory is unavailable`,
+    });
   }
 
   if (
@@ -190,27 +203,40 @@ function ensureBaseDirectoryChain(
     const name = segments[index]!;
     const nextPath = joinPath(currentPath === VIRTUAL_ROOT_PATH ? null : currentPath, name);
     const baseEntry = findBaseEntry(source, state, nextPath);
-    if (baseEntry === null || baseEntry.mode !== "040000") {
-      throw new Error(
-        `Cannot restore '${path}': base parent directory is missing at '${nextPath}'`,
-      );
+    if (baseEntry === null) {
+      throw new VirtualPathNotFoundError(nextPath, {
+        message: `Cannot restore '${path}': base parent directory is missing at '${nextPath}'`,
+      });
+    }
+    if (baseEntry.mode !== "040000") {
+      throw new VirtualNotDirectoryError(nextPath, {
+        message: `Cannot restore '${path}': base parent directory is missing at '${nextPath}'`,
+      });
     }
 
     const currentNode =
       currentPath === VIRTUAL_ROOT_PATH
         ? getRootNode(state)
         : resolvePath(source, state, currentPath).node;
-    if (currentNode === null || currentNode.state.kind !== "directory") {
-      throw new Error(
-        `Cannot restore '${path}': parent directory is not available at '${currentPath}'`,
-      );
+    if (currentNode === null) {
+      throw new VirtualPathNotFoundError(currentPath || path, {
+        message: `Cannot restore '${path}': parent directory is not available at '${currentPath}'`,
+      });
+    }
+    if (currentNode.state.kind !== "directory") {
+      throw new VirtualNotDirectoryError(currentPath || path, {
+        message: `Cannot restore '${path}': parent directory is not available at '${currentPath}'`,
+      });
     }
 
     const existing = getDirectoryChildrenView(source, state, currentNode, currentPath).get(name);
     if (existing !== undefined) {
       const existingNode = state.getNode(existing.nodeId);
       if (existingNode === null) {
-        throw new Error(`Cannot restore '${path}': child node is missing at '${nextPath}'`);
+        throw new VirtualWorktreeError(
+          `Cannot restore '${path}': child node is missing at '${nextPath}'`,
+          { path: nextPath },
+        );
       }
       if (existingNode.state.kind !== "directory") {
         state.setNode(createRestoredNodeFromBaseEntry(nextPath, baseEntry));
