@@ -9,6 +9,7 @@
 
 import { GitError } from "../../../errors.ts";
 import { parseRefAdvertisement, RefAdvertisementError } from "../../protocol/ref-advertisement.ts";
+import { buildGitHttpAuthHeader } from "../http-auth.ts";
 
 import type { GitErrorOptions } from "../../../errors.ts";
 import type { RefAdvertisement, GitServiceTransport } from "../../protocol/types.ts";
@@ -73,8 +74,9 @@ function applyAuthHeaders(
   const result: Record<string, string> = {
     ...auth?.headers,
   };
+  // Git Smart HTTP（尤其 GitHub）要求 Basic 认证，Bearer 会被 401 拒绝
   if (auth?.token) {
-    result["Authorization"] = `Bearer ${auth.token}`;
+    result["Authorization"] = buildGitHttpAuthHeader(auth.token);
   }
   return { ...base, ...result };
 }

@@ -13,6 +13,7 @@
 
 import { GitError } from "../../../errors.ts";
 import { encodeDelimiterPkt, encodeFlushPkt, encodePktLine } from "../../protocol/pkt-line.ts";
+import { buildGitHttpAuthHeader } from "../http-auth.ts";
 import { parseV2CapabilityAdvertisement } from "./capability-advertisement.ts";
 
 import type { GitErrorOptions } from "../../../errors.ts";
@@ -100,8 +101,9 @@ export function createV2HttpTransport(
     ...options?.headers,
   };
 
+  // Git Smart HTTP（尤其 GitHub）要求 Basic 认证，Bearer 会被 401 拒绝
   if (options?.token) {
-    baseHeaders.Authorization = `Bearer ${options.token}`;
+    baseHeaders.Authorization = buildGitHttpAuthHeader(options.token);
   }
 
   async function advertiseOnce(): Promise<V2CapabilityAdvertisement> {

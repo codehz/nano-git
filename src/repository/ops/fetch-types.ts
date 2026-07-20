@@ -27,7 +27,10 @@ export interface RepositoryFetchOptions {
    */
   readonly refPatterns?: string[];
 
-  /** 认证 token（用于 bearer 或 basic auth） */
+  /**
+   * 认证 token，透传给 transport。
+   * Git Smart HTTP 使用 Basic 认证（`x-access-token:<token>`），非 Bearer。
+   */
   readonly token?: string;
 
   /** 自定义请求头 */
