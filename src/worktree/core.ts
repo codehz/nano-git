@@ -20,6 +20,7 @@ export {
   VirtualNotFileError,
   VirtualNotSymlinkError,
   VirtualOriginUnavailableError,
+  VirtualWorktreeError,
 } from "../errors.ts";
 
 // ==================== 节点类型辅助 ====================

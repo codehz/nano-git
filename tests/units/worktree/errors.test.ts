@@ -34,7 +34,7 @@ describe("VirtualPathNotFoundError", () => {
   });
 
   test("支持自定义消息", () => {
-    const err = new VirtualPathNotFoundError("/x", "自定义");
+    const err = new VirtualPathNotFoundError("/x", { message: "自定义" });
     expect(err.message).toBe("自定义");
   });
 

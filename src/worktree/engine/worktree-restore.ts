@@ -56,10 +56,9 @@ export function restorePathFromBase(
       );
       return;
     }
-    throw new VirtualPathNotFoundError(
-      path,
-      `Cannot restore '${path}': path does not exist in baseTree`,
-    );
+    throw new VirtualPathNotFoundError(path, {
+      message: `Cannot restore '${path}': path does not exist in baseTree`,
+    });
   }
 
   const recursive = options?.recursive === true;

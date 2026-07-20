@@ -44,11 +44,12 @@ function throwIfMissingObject(
   const shouldThrow = missing === "throw" || missing === "skip-commit-parents";
 
   if (shouldThrow) {
-    throw new ObjectNotFoundError(
-      hash,
-      `Object ${hash} is missing from the local store. ` +
+    throw new ObjectNotFoundError(hash, {
+      operation: "graph-walk",
+      message:
+        `Object ${hash} is missing from the local store. ` +
         `The local repository may be incomplete or corrupted.`,
-    );
+    });
   }
 }
 
