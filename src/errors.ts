@@ -149,6 +149,32 @@ export interface TreeErrorOptions extends GitErrorOptions {
 }
 
 /**
+ * MergeError 构造选项
+ */
+export interface MergeErrorOptions extends GitErrorOptions {
+  /** 相关路径 */
+  readonly path?: string;
+  /** 相关对象哈希 */
+  readonly hash?: string;
+}
+
+/**
+ * MergeBaseError 构造选项
+ */
+export interface MergeBaseErrorOptions extends MergeErrorOptions {
+  /** 找到的多个 merge base */
+  readonly bases?: readonly string[];
+}
+
+/**
+ * UnresolvedConflictsError 构造选项
+ */
+export interface UnresolvedConflictsErrorOptions extends MergeErrorOptions {
+  /** 尚未决议的冲突路径 */
+  readonly paths?: readonly string[];
+}
+
+/**
  * Virtual 路径类错误共用选项
  */
 export interface VirtualPathErrorOptions extends GitErrorOptions {
@@ -367,6 +393,72 @@ export class TreeError extends RepositoryError {
     this.name = "TreeError";
     this.path = options?.path;
     this.hash = options?.hash;
+  }
+}
+
+/**
+ * 合并操作错误
+ *
+ * merge-base / 三方合并 / 交互会话相关失败。
+ *
+ * @example
+ * ```ts
+ * throw new MergeError("Expected commit object", { hash });
+ * ```
+ */
+export class MergeError extends RepositoryError {
+  /** 相关路径 */
+  readonly path?: string;
+  /** 相关对象哈希 */
+  readonly hash?: string;
+
+  constructor(message: string, options?: MergeErrorOptions) {
+    super(message, options);
+    this.name = "MergeError";
+    this.path = options?.path;
+    this.hash = options?.hash;
+  }
+}
+
+/**
+ * merge-base 计算错误
+ *
+ * 多 base、非 commit 输入等 merge-base 阶段失败。
+ *
+ * @example
+ * ```ts
+ * throw new MergeBaseError("Multiple merge bases found", { bases });
+ * ```
+ */
+export class MergeBaseError extends MergeError {
+  /** 找到的多个 merge base */
+  readonly bases?: readonly string[];
+
+  constructor(message: string, options?: MergeBaseErrorOptions) {
+    super(message, options);
+    this.name = "MergeBaseError";
+    this.bases = options?.bases;
+  }
+}
+
+/**
+ * 未决议冲突错误
+ *
+ * 交互式 merge 在仍有未 resolve 的冲突时调用 finalize 抛出。
+ *
+ * @example
+ * ```ts
+ * throw new UnresolvedConflictsError("Unresolved conflicts remain", { paths: ["a.txt"] });
+ * ```
+ */
+export class UnresolvedConflictsError extends MergeError {
+  /** 尚未决议的冲突路径 */
+  readonly paths: readonly string[];
+
+  constructor(message: string, options?: UnresolvedConflictsErrorOptions) {
+    super(message, options);
+    this.name = "UnresolvedConflictsError";
+    this.paths = options?.paths ?? [];
   }
 }
 
