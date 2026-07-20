@@ -15,6 +15,7 @@
 
 import { TreeError } from "../../errors.ts";
 import { writeObject, readObject } from "../../objects/raw.ts";
+import { compareTreeEntries } from "../../objects/tree.ts";
 
 import type { ObjectDatabase } from "../../odb/types.ts";
 import type { GitTree, SHA1, TreeEntry } from "../../types/index.ts";
@@ -391,8 +392,8 @@ function applyPatchRecursive(
     finalEntries.push(entry);
   }
 
-  // 按名称排序（Git tree 约定）
-  finalEntries.sort((a, b) => a.name.localeCompare(b.name));
+  // 按 Git tree 规范排序（目录按 name/、字节序；serializeTree 仍会再排一次兜底）
+  finalEntries.sort(compareTreeEntries);
 
   // ---- Step 4: 写入新 tree ----
   const newTree: GitTree = { type: "tree", entries: finalEntries };

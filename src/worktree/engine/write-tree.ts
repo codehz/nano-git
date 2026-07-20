@@ -14,6 +14,7 @@
 
 import { VirtualWorktreeError } from "../../errors.ts";
 import { writeObject } from "../../objects/raw.ts";
+import { compareTreeEntries } from "../../objects/tree.ts";
 import { originPathNodeId } from "../model/ids.ts";
 import { readRepoTree } from "../model/origin.ts";
 import { VIRTUAL_ROOT_PATH } from "../model/path.ts";
@@ -263,8 +264,8 @@ function compileDirectory(ctx: CompileContext, dirNode: WorktreeNode, dirPath: s
     if (compiled !== null) treeEntries.push(compiled);
   }
 
-  // 排序（Git tree 要求按名称字典序）
-  treeEntries.sort((a, b) => a.name.localeCompare(b.name));
+  // 按 Git tree 规范排序（目录按 name/、字节序；serializeTree 仍会再排一次兜底）
+  treeEntries.sort(compareTreeEntries);
 
   return writeObject(ctx.writeSource, { type: "tree", entries: treeEntries });
 }

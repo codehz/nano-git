@@ -6,7 +6,16 @@
 
 // 重新导出各子模块
 export { serializeBlob, deserializeBlob } from "./blob.ts";
-export { serializeTree, deserializeTree } from "./tree.ts";
+export {
+  serializeTree,
+  deserializeTree,
+  compareTreeEntries,
+  sortTreeEntries,
+  treeEntrySortKey,
+  isTreeEntryMode,
+  toCanonicalMode,
+  toOnDiskMode,
+} from "./tree.ts";
 export { serializeCommit, deserializeCommit } from "./commit.ts";
 export { serializeTag, deserializeTag } from "./tag.ts";
 export { formatAuthor, parseAuthor } from "./author.ts";

@@ -6,6 +6,7 @@ import { readFileSync, readdirSync, lstatSync, readlinkSync } from "node:fs";
 import { join } from "node:path";
 
 import { writeObject } from "../../objects/raw.ts";
+import { compareTreeEntries } from "../../objects/tree.ts";
 
 import type { ObjectDatabase } from "../../odb/types.ts";
 import type { GitBlob, GitTree, TreeEntry, SHA1 } from "../../types/index.ts";
@@ -28,7 +29,7 @@ import type { GitBlob, GitTree, TreeEntry, SHA1 } from "../../types/index.ts";
  */
 export function writeTreeRecursive(store: ObjectDatabase, dirPath: string): SHA1 {
   const entries: TreeEntry[] = [];
-  const items = readdirSync(dirPath).sort();
+  const items = readdirSync(dirPath);
 
   for (const name of items) {
     if (name === ".git") {
@@ -70,6 +71,8 @@ export function writeTreeRecursive(store: ObjectDatabase, dirPath: string): SHA1
     }
   }
 
+  // 按 Git tree 规范排序（目录按 name/、字节序；serializeTree 仍会再排一次兜底）
+  entries.sort(compareTreeEntries);
   const tree: GitTree = { type: "tree", entries };
   return writeObject(store, tree);
 }

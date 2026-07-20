@@ -78,13 +78,86 @@ export function canonicalizeEntry(entry: TreeEntry): TreeEntry {
 }
 
 // ============================================================================
+// Tree 条目排序（Git 规范）
+// ============================================================================
+
+/**
+ * 判断 mode 是否表示目录 tree 条目
+ *
+ * 同时接受规范形式 `"040000"` 与磁盘形式 `"40000"`。
+ */
+export function isTreeEntryMode(mode: string): boolean {
+  return mode === DIR_MODE_CANONICAL || mode === DIR_MODE_ON_DISK;
+}
+
+/**
+ * 计算 Git tree 条目的排序键
+ *
+ * Git 要求目录条目按 `name + "/"` 参与比较（memcmp / C locale 字节序），
+ * 否则会出现 `treeNotSorted`，被 `git index-pack --strict` 与 GitHub push 拒绝。
+ *
+ * @example
+ * ```ts
+ * treeEntrySortKey({ mode: "040000", name: "foo" }) // => "foo/"
+ * treeEntrySortKey({ mode: "100644", name: "foo.txt" }) // => "foo.txt"
+ * ```
+ */
+export function treeEntrySortKey(entry: Pick<TreeEntry, "mode" | "name">): string {
+  return isTreeEntryMode(entry.mode) ? `${entry.name}/` : entry.name;
+}
+
+/**
+ * 按 Git tree 规范比较两个条目
+ *
+ * - 目录视为 `name/` 再比较
+ * - 使用原始字节序（等同于 C 字符串比较），**不能**用 `localeCompare`
+ *
+ * @example
+ * ```ts
+ * // foo.txt 在 foo/ 之前（'.' < '/'）
+ * compareTreeEntries(
+ *   { mode: "100644", name: "foo.txt" },
+ *   { mode: "040000", name: "foo" },
+ * ); // => -1
+ * ```
+ */
+export function compareTreeEntries(
+  a: Pick<TreeEntry, "mode" | "name">,
+  b: Pick<TreeEntry, "mode" | "name">,
+): number {
+  const left = treeEntrySortKey(a);
+  const right = treeEntrySortKey(b);
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
+/**
+ * 返回按 Git tree 规范排序后的条目副本
+ *
+ * @example
+ * ```ts
+ * const sorted = sortTreeEntries([
+ *   { mode: "100644", name: "outline.json", hash },
+ *   { mode: "040000", name: "bodies", hash: dirHash },
+ * ]);
+ * // => bodies, outline.json
+ * ```
+ */
+export function sortTreeEntries(entries: readonly TreeEntry[]): TreeEntry[] {
+  return entries.slice().sort(compareTreeEntries);
+}
+
+// ============================================================================
 // 序列化 / 反序列化
 // ============================================================================
 
 /**
  * 序列化 Tree 对象
  *
- * 写入时自动将规范 mode 转换为磁盘格式（如 "040000" → "40000"）。
+ * 写入时自动：
+ * 1. 按 Git 规范排序条目（目录按 `name/`、字节序比较）
+ * 2. 将规范 mode 转换为磁盘格式（如 "040000" → "40000"）
  *
  * @example
  * ```ts
@@ -98,7 +171,8 @@ export function canonicalizeEntry(entry: TreeEntry): TreeEntry {
 export function serializeTree(tree: GitTree): Buffer {
   const buffers: Buffer[] = [];
 
-  for (const entry of tree.entries) {
+  // 始终按 Git 规范排序，避免 createTree/patchTree 调用方漏排序导致 treeNotSorted
+  for (const entry of sortTreeEntries(tree.entries)) {
     // 将规范 mode 转为磁盘格式（如 "040000" → "40000"）
     const mode = toOnDiskMode(entry.mode);
     // "<mode> <name>\0"
