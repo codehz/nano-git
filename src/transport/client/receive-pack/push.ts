@@ -145,7 +145,7 @@ export async function push(
     refUpdates = decoded.refUpdates;
   } catch (err: unknown) {
     if (err instanceof ReceivePackResultError) {
-      throw new PushError(`Remote server rejected the push: ${err.message}`);
+      throw new PushError(`Remote server rejected the push: ${err.message}`, { cause: err });
     }
     throw err;
   }

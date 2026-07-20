@@ -10,6 +10,7 @@
 import { GitError } from "../../../errors.ts";
 import { parseRefAdvertisement, RefAdvertisementError } from "../../protocol/ref-advertisement.ts";
 
+import type { GitErrorOptions } from "../../../errors.ts";
 import type { RefAdvertisement, GitServiceTransport } from "../../protocol/types.ts";
 
 // ============================================================================
@@ -17,19 +18,35 @@ import type { RefAdvertisement, GitServiceTransport } from "../../protocol/types
 // ============================================================================
 
 /**
+ * Smart HTTP 传输错误选项
+ */
+export interface SmartHttpErrorOptions extends GitErrorOptions {
+  readonly statusCode?: number;
+  readonly url?: string;
+}
+
+/**
  * Smart HTTP 传输错误
  *
  * 当 HTTP 层面的传输出错时抛出（网络错误、非预期状态码等）。
+ *
+ * @example
+ * ```ts
+ * throw new SmartHttpError("request failed", { statusCode: 503, url, cause: err });
+ * ```
  */
 export class SmartHttpError extends GitError {
-  constructor(
-    message: string,
-    public readonly statusCode?: number,
-  ) {
+  readonly statusCode?: number;
+  readonly url?: string;
+
+  constructor(message: string, options?: SmartHttpErrorOptions) {
     super(
-      `Smart HTTP error: ${message}${statusCode !== undefined ? ` (status ${statusCode})` : ""}`,
+      `Smart HTTP error: ${message}${options?.statusCode !== undefined ? ` (status ${options.statusCode})` : ""}`,
+      options,
     );
     this.name = "SmartHttpError";
+    this.statusCode = options?.statusCode;
+    this.url = options?.url;
   }
 }
 
@@ -66,9 +83,10 @@ async function readResponseBody(response: Response, context: string): Promise<Bu
   try {
     return Buffer.from(await response.arrayBuffer());
   } catch (err: unknown) {
-    throw new SmartHttpError(
-      `Failed to read response body (${context}): ${err instanceof Error ? err.message : String(err)}`,
-    );
+    throw new SmartHttpError(`Failed to read response body (${context})`, {
+      cause: err,
+      url: context,
+    });
   }
 }
 
@@ -76,6 +94,7 @@ function assertContentType(actual: string, expected: string, context: string): v
   if (!actual.includes(expected)) {
     throw new SmartHttpError(
       `Unexpected content type: ${actual} (expected ${expected}) (${context})`,
+      { url: context },
     );
   }
 }
@@ -115,13 +134,17 @@ export function createReceivePackHttpClient(
       try {
         response = await fetch(url, { headers: applyAuthHeaders({}, auth) });
       } catch (err: unknown) {
-        throw new SmartHttpError(
-          `Failed to fetch ref advertisement from ${url}: ${err instanceof Error ? err.message : String(err)}`,
-        );
+        throw new SmartHttpError(`Failed to fetch ref advertisement from ${url}`, {
+          cause: err,
+          url,
+        });
       }
 
       if (!response.ok) {
-        throw new SmartHttpError(`Failed to fetch ref advertisement from ${url}`, response.status);
+        throw new SmartHttpError(`Failed to fetch ref advertisement from ${url}`, {
+          statusCode: response.status,
+          url,
+        });
       }
 
       const contentType = response.headers.get("content-type") ?? "";
@@ -135,9 +158,7 @@ export function createReceivePackHttpClient(
         if (err instanceof RefAdvertisementError) {
           throw err;
         }
-        throw new SmartHttpError(
-          `Failed to parse ref advertisement: ${err instanceof Error ? err.message : String(err)}`,
-        );
+        throw new SmartHttpError("Failed to parse ref advertisement", { cause: err, url });
       }
     },
 
@@ -152,13 +173,14 @@ export function createReceivePackHttpClient(
           body,
         });
       } catch (err: unknown) {
-        throw new SmartHttpError(
-          `Failed to POST RPC request to ${url}: ${err instanceof Error ? err.message : String(err)}`,
-        );
+        throw new SmartHttpError(`Failed to POST RPC request to ${url}`, { cause: err, url });
       }
 
       if (!response.ok) {
-        throw new SmartHttpError(`RPC request to ${url} failed`, response.status);
+        throw new SmartHttpError(`RPC request to ${url} failed`, {
+          statusCode: response.status,
+          url,
+        });
       }
 
       const contentType = response.headers.get("content-type") ?? "";

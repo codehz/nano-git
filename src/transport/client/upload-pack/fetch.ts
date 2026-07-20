@@ -49,6 +49,7 @@ import {
 } from "../../protocol/pkt-line.ts";
 import { createFetchHaveSelector } from "./fetch-negotiator.ts";
 
+import type { GitErrorOptions } from "../../../errors.ts";
 import type { ObjectDatabase } from "../../../odb/types.ts";
 import type { ObjectSource } from "../../../types/odb.ts";
 import type { ShallowUpdate } from "../../../types/shallow.ts";
@@ -62,8 +63,8 @@ import type { V2GitServiceTransport, V2FetchResponse } from "./types.ts";
  * v2 fetch 命令错误
  */
 export class V2FetchError extends GitError {
-  constructor(message: string) {
-    super(`v2 fetch error: ${message}`);
+  constructor(message: string, options?: GitErrorOptions) {
+    super(`v2 fetch error: ${message}`, options);
     this.name = "V2FetchError";
   }
 }

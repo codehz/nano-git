@@ -15,6 +15,7 @@ import { GitError } from "../../errors.ts";
 import { tryReadObject } from "../../objects/raw.ts";
 import { isAncestor } from "./object-graph.ts";
 
+import type { GitErrorOptions } from "../../errors.ts";
 import type { ObjectDatabase } from "../../odb/types.ts";
 import type { SHA1 } from "../../types/index.ts";
 import type { RefStore } from "../../types/refs.ts";
@@ -40,8 +41,8 @@ export interface RefUpdatePlanItem {
  * Ref 更新错误
  */
 export class RefUpdateError extends GitError {
-  constructor(message: string) {
-    super(`Ref update error: ${message}`);
+  constructor(message: string, options?: GitErrorOptions) {
+    super(`Ref update error: ${message}`, options);
     this.name = "RefUpdateError";
   }
 }

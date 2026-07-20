@@ -5,6 +5,7 @@
 import { GitError } from "../../../errors.ts";
 import { sha1 } from "../../../types/index.ts";
 
+import type { GitErrorOptions } from "../../../errors.ts";
 import type { SHA1 } from "../../../types/index.ts";
 
 // ============================================================================
@@ -37,8 +38,8 @@ export const CAPABILITIES_REF = "capabilities^{}";
  * 当请求解析、处理或响应生成过程中遇到可预见的错误时抛出。
  */
 export class ReceivePackServiceError extends GitError {
-  constructor(message: string) {
-    super(`receive-pack: ${message}`);
+  constructor(message: string, options?: GitErrorOptions) {
+    super(`receive-pack: ${message}`, options);
     this.name = "ReceivePackServiceError";
   }
 }

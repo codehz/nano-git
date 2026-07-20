@@ -14,6 +14,7 @@
 
 import { GitError } from "../../errors.ts";
 
+import type { GitErrorOptions } from "../../errors.ts";
 import type { RefMappingRule } from "./types.ts";
 
 // ============================================================================
@@ -24,8 +25,8 @@ import type { RefMappingRule } from "./types.ts";
  * RefSpec 解析错误
  */
 export class RefSpecError extends GitError {
-  constructor(message: string) {
-    super(`Refspec error: ${message}`);
+  constructor(message: string, options?: GitErrorOptions) {
+    super(`Refspec error: ${message}`, options);
     this.name = "RefSpecError";
   }
 }

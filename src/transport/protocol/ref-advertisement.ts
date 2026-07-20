@@ -18,6 +18,7 @@
 import { sha1, type SHA1 } from "../../types/index.ts";
 import { parsePktLines, PktLineError } from "./pkt-line.ts";
 
+import type { GitErrorOptions } from "../../errors.ts";
 import type { RemoteRef, RefAdvertisement } from "./types.ts";
 
 /** 服务端能力声明键值对 */
@@ -33,8 +34,8 @@ type Capabilities = Record<string, string | true>;
  * 当 ref advertisement 数据格式不符合 Git 协议规范时抛出。
  */
 export class RefAdvertisementError extends PktLineError {
-  constructor(message: string) {
-    super(`ref-advertisement: ${message}`);
+  constructor(message: string, options?: GitErrorOptions) {
+    super(`ref-advertisement: ${message}`, options);
     this.name = "RefAdvertisementError";
   }
 }

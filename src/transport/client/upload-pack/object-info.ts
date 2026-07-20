@@ -28,6 +28,7 @@
 import { GitError } from "../../../errors.ts";
 import { parsePktLines } from "../../protocol/pkt-line.ts";
 
+import type { GitErrorOptions } from "../../../errors.ts";
 import type { V2GitServiceTransport } from "./types.ts";
 
 // ============================================================================
@@ -38,8 +39,8 @@ import type { V2GitServiceTransport } from "./types.ts";
  * object-info 命令错误
  */
 export class ObjectInfoError extends GitError {
-  constructor(message: string) {
-    super(`object-info error: ${message}`);
+  constructor(message: string, options?: GitErrorOptions) {
+    super(`object-info error: ${message}`, options);
     this.name = "ObjectInfoError";
   }
 }

@@ -18,6 +18,7 @@
 import { GitError } from "../../../errors.ts";
 import { parsePktLines } from "../../protocol/pkt-line.ts";
 
+import type { GitErrorOptions } from "../../../errors.ts";
 import type { PushRefUpdate } from "../../protocol/types.ts";
 
 // ============================================================================
@@ -30,8 +31,8 @@ import type { PushRefUpdate } from "../../protocol/types.ts";
  * 当 report-status 数据格式不符合 Git 协议规范时抛出。
  */
 export class ReceivePackResultError extends GitError {
-  constructor(message: string) {
-    super(`receive-pack result error: ${message}`);
+  constructor(message: string, options?: GitErrorOptions) {
+    super(`receive-pack result error: ${message}`, options);
     this.name = "ReceivePackResultError";
   }
 }

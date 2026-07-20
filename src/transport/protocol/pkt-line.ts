@@ -21,6 +21,8 @@
 
 import { GitError } from "../../errors.ts";
 
+import type { GitErrorOptions } from "../../errors.ts";
+
 // ============================================================================
 // 类型
 // ============================================================================
@@ -57,8 +59,8 @@ export type PktLine = PktLineData | PktLineFlush | PktLineDelimiter | PktLineRes
  * 当 pkt-line 数据格式不符合 Git 协议规范时抛出。
  */
 export class PktLineError extends GitError {
-  constructor(message: string) {
-    super(`pkt-line error: ${message}`);
+  constructor(message: string, options?: GitErrorOptions) {
+    super(`pkt-line error: ${message}`, options);
     this.name = "PktLineError";
   }
 }

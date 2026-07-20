@@ -162,9 +162,7 @@ export function handleReceivePackRequest(
     parsed = parseReceivePackRequest(body);
   } catch (err) {
     if (err instanceof ReceivePackServiceError) throw err;
-    throw new ReceivePackServiceError(
-      `Failed to parse receive-pack request: ${err instanceof Error ? err.message : String(err)}`,
-    );
+    throw new ReceivePackServiceError("Failed to parse receive-pack request", { cause: err });
   }
 
   const { capabilities, commands, packfile } = parsed;

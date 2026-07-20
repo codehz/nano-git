@@ -20,6 +20,7 @@
 import { GitError } from "../../../errors.ts";
 import { parsePktLines } from "../../protocol/pkt-line.ts";
 
+import type { GitErrorOptions } from "../../../errors.ts";
 import type { V2CapabilityAdvertisement, V2CommandEntry } from "./types.ts";
 
 // ============================================================================
@@ -30,8 +31,8 @@ import type { V2CapabilityAdvertisement, V2CommandEntry } from "./types.ts";
  * v2 能力广告解析错误
  */
 export class V2CapabilityError extends GitError {
-  constructor(message: string) {
-    super(`v2 capability error: ${message}`);
+  constructor(message: string, options?: GitErrorOptions) {
+    super(`v2 capability error: ${message}`, options);
     this.name = "V2CapabilityError";
   }
 }

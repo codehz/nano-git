@@ -15,6 +15,8 @@
 import { GitError } from "../../errors.ts";
 import { parsePktLines, splitPktLinesFromBuffer } from "./pkt-line.ts";
 
+import type { GitErrorOptions } from "../../errors.ts";
+
 // ============================================================================
 // 常量
 // ============================================================================
@@ -34,8 +36,8 @@ const CHANNEL_FATAL = 0x03;
  * 当 side-band 数据格式不符合 Git 协议规范时抛出。
  */
 export class SideBandError extends GitError {
-  constructor(message: string) {
-    super(`side-band error: ${message}`);
+  constructor(message: string, options?: GitErrorOptions) {
+    super(`side-band error: ${message}`, options);
     this.name = "SideBandError";
   }
 }

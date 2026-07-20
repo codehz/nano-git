@@ -72,7 +72,7 @@ export function computeObjectsToSend(
   try {
     reachableLocal = collectReachable(store, localRoots, "skip-commit-parents", pushBoundaries);
   } catch (err: unknown) {
-    throw new PushError(err instanceof Error ? err.message : String(err));
+    throw new PushError(err instanceof Error ? err.message : String(err), { cause: err });
   }
 
   // 收集远程已有 refs 的可达对象（用于排除已存在的对象）

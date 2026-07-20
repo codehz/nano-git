@@ -29,6 +29,7 @@ import { GitError } from "../../../errors.ts";
 import { sha1 } from "../../../types/index.ts";
 import { parsePktLines } from "../../protocol/pkt-line.ts";
 
+import type { GitErrorOptions } from "../../../errors.ts";
 import type { V2GitServiceTransport } from "./types.ts";
 import type { LsRefsEntry } from "./types.ts";
 export type { LsRefsEntry };
@@ -43,8 +44,8 @@ import type { RefAdvertisement } from "../../protocol/types.ts";
  * ls-refs 命令错误
  */
 export class LsRefsError extends GitError {
-  constructor(message: string) {
-    super(`ls-refs error: ${message}`);
+  constructor(message: string, options?: GitErrorOptions) {
+    super(`ls-refs error: ${message}`, options);
     this.name = "LsRefsError";
   }
 }

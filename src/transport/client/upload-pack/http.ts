@@ -11,9 +11,11 @@
  * @see https://git-scm.com/docs/protocol-v2#_initial_client_request
  */
 
+import { GitError } from "../../../errors.ts";
 import { encodeDelimiterPkt, encodeFlushPkt, encodePktLine } from "../../protocol/pkt-line.ts";
 import { parseV2CapabilityAdvertisement } from "./capability-advertisement.ts";
 
+import type { GitErrorOptions } from "../../../errors.ts";
 import type { V2CapabilityAdvertisement, V2GitServiceTransport } from "./types.ts";
 
 // ============================================================================
@@ -21,12 +23,30 @@ import type { V2CapabilityAdvertisement, V2GitServiceTransport } from "./types.t
 // ============================================================================
 
 /**
- * v2 HTTP 传输错误
+ * v2 HTTP 传输错误选项
  */
-export class V2SmartHttpError extends Error {
-  constructor(message: string) {
-    super(`v2 smart-http error: ${message}`);
+export interface V2SmartHttpErrorOptions extends GitErrorOptions {
+  readonly statusCode?: number;
+  readonly url?: string;
+}
+
+/**
+ * v2 HTTP 传输错误
+ *
+ * @example
+ * ```ts
+ * throw new V2SmartHttpError("advertise failed", { statusCode: 503, url });
+ * ```
+ */
+export class V2SmartHttpError extends GitError {
+  readonly statusCode?: number;
+  readonly url?: string;
+
+  constructor(message: string, options?: V2SmartHttpErrorOptions) {
+    super(`v2 smart-http error: ${message}`, options);
     this.name = "V2SmartHttpError";
+    this.statusCode = options?.statusCode;
+    this.url = options?.url;
   }
 }
 
@@ -90,12 +110,24 @@ export function createV2HttpTransport(
     }
 
     advertisePromise ??= (async () => {
-      const response = await fetch(`${baseUrl}${ADVERTISE_PATH}?service=git-upload-pack`, {
-        headers: baseHeaders,
-      });
+      const advertiseUrl = `${baseUrl}${ADVERTISE_PATH}?service=git-upload-pack`;
+      let response: Response;
+      try {
+        response = await fetch(advertiseUrl, {
+          headers: baseHeaders,
+        });
+      } catch (err: unknown) {
+        throw new V2SmartHttpError(`advertise failed: network error`, {
+          cause: err,
+          url: advertiseUrl,
+        });
+      }
 
       if (!response.ok) {
-        throw new V2SmartHttpError(`advertise failed: ${response.status} ${response.statusText}`);
+        throw new V2SmartHttpError(`advertise failed: ${response.status} ${response.statusText}`, {
+          statusCode: response.status,
+          url: advertiseUrl,
+        });
       }
 
       const data = Buffer.from(await response.arrayBuffer());
@@ -169,15 +201,25 @@ export function createV2HttpTransport(
 
       const requestBody = Buffer.concat(lines);
 
-      const response = await fetch(`${baseUrl}${COMMAND_PATH}`, {
-        method: "POST",
-        headers: baseHeaders,
-        body: requestBody,
-      });
+      const commandUrl = `${baseUrl}${COMMAND_PATH}`;
+      let response: Response;
+      try {
+        response = await fetch(commandUrl, {
+          method: "POST",
+          headers: baseHeaders,
+          body: requestBody,
+        });
+      } catch (err: unknown) {
+        throw new V2SmartHttpError(`command "${command}" failed: network error`, {
+          cause: err,
+          url: commandUrl,
+        });
+      }
 
       if (!response.ok) {
         throw new V2SmartHttpError(
           `command "${command}" failed: ${response.status} ${response.statusText}`,
+          { statusCode: response.status, url: commandUrl },
         );
       }
 

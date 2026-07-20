@@ -2,6 +2,10 @@
  * upload-pack 服务端类型定义与常量
  */
 
+import { GitError } from "../../../errors.ts";
+
+import type { GitErrorOptions } from "../../../errors.ts";
+
 // ============================================================================
 // 常量
 // ============================================================================
@@ -28,10 +32,15 @@ export const MAX_PKT_PAYLOAD = 65520;
  * upload-pack 服务错误
  *
  * 当服务端处理请求时遇到可预见的错误情况抛出。
+ *
+ * @example
+ * ```ts
+ * throw new UploadPackServiceError("no commits selected", { cause: err });
+ * ```
  */
-export class UploadPackServiceError extends Error {
-  constructor(message: string) {
-    super(`upload-pack: ${message}`);
+export class UploadPackServiceError extends GitError {
+  constructor(message: string, options?: GitErrorOptions) {
+    super(`upload-pack: ${message}`, options);
     this.name = "UploadPackServiceError";
   }
 }

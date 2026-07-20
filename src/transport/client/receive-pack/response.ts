@@ -8,14 +8,15 @@ import { GitError } from "../../../errors.ts";
 import { parsePktLines } from "../../protocol/pkt-line.ts";
 import { parseReceivePackResult } from "./result.ts";
 
+import type { GitErrorOptions } from "../../../errors.ts";
 import type { PushRefUpdate } from "../../protocol/types.ts";
 
 /**
  * receive-pack 响应解码错误
  */
 export class ReceivePackResponseError extends GitError {
-  constructor(message: string) {
-    super(`receive-pack response: ${message}`);
+  constructor(message: string, options?: GitErrorOptions) {
+    super(`receive-pack response: ${message}`, options);
     this.name = "ReceivePackResponseError";
   }
 }
