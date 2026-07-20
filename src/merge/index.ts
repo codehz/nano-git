@@ -20,6 +20,7 @@
  */
 
 export { findMergeBase, findMergeBases } from "./merge-base.ts";
+export { planTreeMerge, EMPTY_TREE_HASH } from "./three-way.ts";
 export type {
   FindMergeBaseOptions,
   MergeBaseMultipleStrategy,
