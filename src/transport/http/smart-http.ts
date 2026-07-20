@@ -20,7 +20,7 @@
  */
 
 import { createReceivePackService } from "../server/receive-pack/index.ts";
-import { createUploadPackService, UploadPackServiceError } from "../server/upload-pack/index.ts";
+import { createUploadPackService } from "../server/upload-pack/index.ts";
 
 import type { RepositoryBackend } from "../../backend/types.ts";
 import type { SmartHttpHandler } from "./types.ts";
@@ -135,9 +135,8 @@ async function handleUploadPack(
   try {
     response = uploadPackService.handleRequest(body);
   } catch (err) {
-    if (err instanceof UploadPackServiceError) {
-      return errorResponse(400, err.message);
-    }
+    // 与 git-http-backend 对齐：upload-pack 处理失败返回 500
+    // （含 UploadPackServiceError 等业务拒绝，如 shallow 约束失败）
     return errorResponse(500, err instanceof Error ? err.message : String(err));
   }
 

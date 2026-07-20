@@ -20,10 +20,14 @@ import type { BlobObjectMode, NodeOrigin } from "./nodes.ts";
 export function readRepoTree(source: ObjectSource, hash: SHA1, path: string): GitTree {
   const obj = tryReadObject(source, hash);
   if (obj === undefined) {
-    throw new VirtualOriginUnavailableError(path, `Origin tree object missing: ${hash}`);
+    throw new VirtualOriginUnavailableError(path, {
+      message: `Origin tree object missing: ${hash}`,
+    });
   }
   if (obj.type !== "tree") {
-    throw new VirtualOriginUnavailableError(path, `Expected tree at origin, got ${obj.type}`);
+    throw new VirtualOriginUnavailableError(path, {
+      message: `Expected tree at origin, got ${obj.type}`,
+    });
   }
   return obj;
 }
@@ -34,10 +38,14 @@ export function readRepoTree(source: ObjectSource, hash: SHA1, path: string): Gi
 export function readRepoBlobContent(source: ObjectSource, hash: SHA1, path: string): Buffer {
   const obj = tryReadObject(source, hash);
   if (obj === undefined) {
-    throw new VirtualOriginUnavailableError(path, `Origin blob object missing: ${hash}`);
+    throw new VirtualOriginUnavailableError(path, {
+      message: `Origin blob object missing: ${hash}`,
+    });
   }
   if (obj.type !== "blob") {
-    throw new VirtualOriginUnavailableError(path, `Expected blob at origin, got ${obj.type}`);
+    throw new VirtualOriginUnavailableError(path, {
+      message: `Expected blob at origin, got ${obj.type}`,
+    });
   }
   return obj.content;
 }
