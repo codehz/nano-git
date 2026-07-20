@@ -131,7 +131,8 @@ describe("walkTree()", () => {
       paths.push(entry.path);
     });
 
-    expect(paths).toEqual(["a.txt", "dir", "dir/inner.txt", "b.txt"]);
+    // serializeTree 会按 Git 规范排序（a.txt < b.txt < dir/），再深度优先遍历
+    expect(paths).toEqual(["a.txt", "b.txt", "dir", "dir/inner.txt"]);
   });
 });
 
