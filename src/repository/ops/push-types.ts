@@ -6,6 +6,7 @@
  * 哈希字段使用 SHA1 branded type 保证类型安全。
  */
 
+import type { HttpAuth } from "../../remote/types.ts";
 import type { SHA1 } from "../../types/index.ts";
 
 /**
@@ -13,7 +14,7 @@ import type { SHA1 } from "../../types/index.ts";
  *
  * 纯 push 行为参数，不包含传输层细节。
  *
- * 认证：支持 token/headers 透传到 transport。
+ * 认证：支持 auth/headers 透传到 transport。
  * 边界：pushShallowBoundaries 是 repository 层语义（不是 transport 泄漏），优先级高于 backend.shallow。
  */
 export interface RepositoryPushOptions {
@@ -27,10 +28,10 @@ export interface RepositoryPushOptions {
   readonly force?: boolean;
 
   /**
-   * 认证 token，由 repository 层透传给 transport。
-   * Git Smart HTTP 使用 Basic 认证（`x-access-token:<token>`），非 Bearer。
+   * HTTP Basic 认证凭据，由 repository 层透传给 transport。
+   * 若同时提供 headers.Authorization，auth 优先生效。
    */
-  readonly token?: string;
+  readonly auth?: HttpAuth;
 
   /** 自定义请求头，由 repository 层透传 */
   readonly headers?: Record<string, string>;

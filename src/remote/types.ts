@@ -6,6 +6,20 @@
  */
 
 /**
+ * HTTP Basic 认证凭据
+ *
+ * Git Smart HTTP 使用标准 Basic 认证（`username:password`）。
+ * 对 GitHub PAT，调用方自行填写，例如
+ * `{ username: "x-access-token", password: "ghp_..." }`。
+ */
+export interface HttpAuth {
+  /** 用户名 */
+  readonly username: string;
+  /** 密码或访问令牌 */
+  readonly password: string;
+}
+
+/**
  * 远端 Git 数据来源
  */
 export interface RemoteSource {
@@ -13,10 +27,10 @@ export interface RemoteSource {
   readonly url: string;
 
   /**
-   * 认证 token，透传给 transport。
-   * Git Smart HTTP 使用 Basic 认证（`x-access-token:<token>`），非 Bearer。
+   * HTTP Basic 认证凭据，透传给 transport。
+   * 若同时提供 headers.Authorization，auth 优先生效。
    */
-  readonly token?: string;
+  readonly auth?: HttpAuth;
 
   /** 自定义请求头 */
   readonly headers?: Record<string, string>;

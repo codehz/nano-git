@@ -38,7 +38,7 @@ async function runPushWithUrl(
     transportFactory ??
     ((url: string) =>
       createReceivePackHttpClient(url, {
-        token: options?.token,
+        auth: options?.auth,
         headers: options?.headers,
       }));
   const transport = createTransport(pushUrl, options);

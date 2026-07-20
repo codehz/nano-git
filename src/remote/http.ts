@@ -66,12 +66,12 @@ export interface HttpRemote {
 export function createHttpRemote(source: RemoteSource): HttpRemote {
   const frozenSource = Object.freeze({
     url: source.url,
-    token: source.token,
+    auth: source.auth ? Object.freeze({ ...source.auth }) : undefined,
     headers: source.headers ? Object.freeze({ ...source.headers }) : undefined,
   }) as Readonly<RemoteSource>;
 
   const transport = createV2HttpTransport(frozenSource.url, {
-    token: frozenSource.token,
+    auth: frozenSource.auth,
     headers: frozenSource.headers,
   });
 

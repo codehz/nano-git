@@ -46,7 +46,7 @@ function createImportSession(
 ): ImportSession {
   const frozenSource = Object.freeze({
     url: source.url,
-    token: source.token,
+    auth: source.auth ? Object.freeze({ ...source.auth }) : undefined,
     headers: source.headers ? Object.freeze({ ...source.headers }) : undefined,
   }) as Readonly<RemoteSource>;
 
@@ -153,7 +153,7 @@ export function createRepoImportOperations(
       const v2Transport =
         testV2Transport ??
         createV2HttpTransport(source.url, {
-          token: source.token,
+          auth: source.auth,
           headers: source.headers,
         });
       const capabilityAdvertisement = await v2Transport.advertise();

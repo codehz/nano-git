@@ -5,6 +5,7 @@
  * fetch 语义对标 `git fetch <url>`，是 ImportSession 的善意封装。
  */
 
+import type { HttpAuth } from "../../remote/types.ts";
 import type { SHA1 } from "../../types/index.ts";
 
 /**
@@ -28,10 +29,10 @@ export interface RepositoryFetchOptions {
   readonly refPatterns?: string[];
 
   /**
-   * 认证 token，透传给 transport。
-   * Git Smart HTTP 使用 Basic 认证（`x-access-token:<token>`），非 Bearer。
+   * HTTP Basic 认证凭据，透传给 transport。
+   * 若同时提供 headers.Authorization，auth 优先生效。
    */
-  readonly token?: string;
+  readonly auth?: HttpAuth;
 
   /** 自定义请求头 */
   readonly headers?: Record<string, string>;

@@ -37,7 +37,7 @@ export async function runFetchToUrl(
   const ops = createRepoImportOperations(backend);
   const source: RemoteSource = {
     url,
-    token: options?.token,
+    auth: options?.auth,
     headers: options?.headers,
   };
   const session = await ops.openImportSession(source);

@@ -60,7 +60,7 @@ export interface RepositoryMaintenanceOperations {
    * const result = repo.rewriteHistory();
    * console.log(result.rewrittenTrees, result.updatedRefs);
    * // tip 哈希已变，push 远端通常需要 force
-   * await repo.push(url, { token, force: true, refSpecs: ["+refs/heads/main:refs/heads/main"] });
+   * await repo.push(url, { auth, force: true, refSpecs: ["+refs/heads/main:refs/heads/main"] });
    * ```
    */
   rewriteHistory(options?: RewriteHistoryOptions): RewriteHistoryResult;

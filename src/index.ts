@@ -68,7 +68,7 @@ export type {
   RepositoryRepackOptions,
   PackRepackOptions,
 } from "./backend/types.ts";
-export type { RemoteSource } from "./remote/types.ts";
+export type { HttpAuth, RemoteSource } from "./remote/types.ts";
 export type { Repository, FileRepository } from "./repository/types.ts";
 export type { DiffEntry, DiffChanges, DiffObject, DiffObjectKind, DiffObjectMode } from "./diff.ts";
 export type { TreeSnapshotEntry } from "./repository/tree/tree-diff.ts";

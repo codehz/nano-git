@@ -2675,7 +2675,7 @@ describe("apply 错误处理", () => {
 });
 
 describe("openImportSession source 透传", () => {
-  test("source.token 会并入 session source 快照", async () => {
+  test("source.auth 会并入 session source 快照", async () => {
     const backend = createMemoryRepositoryBackend();
     const mockV2Transport: V2GitServiceTransport = {
       advertise: async () => ({ capabilities: {}, commands: [] }),
@@ -2684,10 +2684,13 @@ describe("openImportSession source 透传", () => {
     const repo = createRepoImportOperations(backend, mockV2Transport);
     const session = await repo.openImportSession({
       url: "https://example.com/private.git",
-      token: "secret-token",
+      auth: { username: "x-access-token", password: "secret-token" },
     });
 
-    expect(session.source.token).toBe("secret-token");
+    expect(session.source.auth).toEqual({
+      username: "x-access-token",
+      password: "secret-token",
+    });
   });
 
   test("openImportSession 会在 ls-refs 请求中带 unborn", async () => {

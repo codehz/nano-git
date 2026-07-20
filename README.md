@@ -277,7 +277,7 @@ console.log(`Updated ${result.updatedRefs.size} refs`);
 ```typescript
 const session = await repo.openImportSession({
   url: "https://github.com/org/private-repo",
-  token: "ghp_xxxxxxxxxxxx",
+  auth: { username: "x-access-token", password: "ghp_xxxxxxxxxxxx" },
 });
 
 const session2 = await repo.openImportSession({
@@ -318,7 +318,7 @@ console.log(adv.refs);
 
 // 带认证的底层传输控制
 const authedClient = createUploadPackHttpClient("https://github.com/user/repo", {
-  token: "ghp_xxxxxxxx",
+  auth: { username: "x-access-token", password: "ghp_xxxxxxxx" },
 });
 
 const body = buildUploadPackRequest(

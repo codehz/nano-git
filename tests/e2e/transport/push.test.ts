@@ -942,7 +942,7 @@ describe("push() 端到端", () => {
     expect(serverRef).toBe(commitHash);
   });
 
-  test("repo.push() 可透传 token/headers", async () => {
+  test("repo.push() 可透传 auth/headers", async () => {
     const repo = createMemoryRepository();
     const author = { ...FIXED_AUTHOR };
 
@@ -951,10 +951,10 @@ describe("push() 端到端", () => {
     const commitHash = repo.createCommit(treeHash, [], "auth options test", author);
     repo.updateRef("refs/heads/auth-test", commitHash);
 
-    // 透传 token/headers 应被接收（服务器不强制认证时仍成功）
+    // 透传 auth/headers 应被接收（服务器不强制认证时仍成功）
     const result = await repo.push(serverUrl, {
       refSpecs: ["refs/heads/auth-test:refs/heads/auth-test"],
-      token: "fake-token",
+      auth: { username: "x-access-token", password: "fake-token" },
       headers: { "X-Custom": "yes" },
     });
 

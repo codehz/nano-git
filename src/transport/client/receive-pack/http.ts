@@ -12,6 +12,7 @@ import { parseRefAdvertisement, RefAdvertisementError } from "../../protocol/ref
 import { buildGitHttpAuthHeader } from "../http-auth.ts";
 
 import type { GitErrorOptions } from "../../../errors.ts";
+import type { HttpAuth } from "../../../remote/types.ts";
 import type { RefAdvertisement, GitServiceTransport } from "../../protocol/types.ts";
 
 // ============================================================================
@@ -59,7 +60,9 @@ export class SmartHttpError extends GitError {
  * Smart HTTP 认证配置
  */
 export interface SmartHttpAuth {
-  readonly token?: string;
+  /** HTTP Basic 认证凭据 */
+  readonly auth?: HttpAuth;
+  /** 自定义请求头 */
   readonly headers?: Record<string, string>;
 }
 
@@ -69,14 +72,14 @@ export interface SmartHttpAuth {
 
 function applyAuthHeaders(
   base: Record<string, string>,
-  auth?: SmartHttpAuth,
+  options?: SmartHttpAuth,
 ): Record<string, string> {
   const result: Record<string, string> = {
-    ...auth?.headers,
+    ...options?.headers,
   };
-  // Git Smart HTTP（尤其 GitHub）要求 Basic 认证，Bearer 会被 401 拒绝
-  if (auth?.token) {
-    result["Authorization"] = buildGitHttpAuthHeader(auth.token);
+  // Git Smart HTTP 使用标准 Basic 认证；若与 headers.Authorization 并存，auth 优先
+  if (options?.auth) {
+    result["Authorization"] = buildGitHttpAuthHeader(options.auth.username, options.auth.password);
   }
   return { ...base, ...result };
 }

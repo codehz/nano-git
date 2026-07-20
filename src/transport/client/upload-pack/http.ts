@@ -17,6 +17,7 @@ import { buildGitHttpAuthHeader } from "../http-auth.ts";
 import { parseV2CapabilityAdvertisement } from "./capability-advertisement.ts";
 
 import type { GitErrorOptions } from "../../../errors.ts";
+import type { HttpAuth } from "../../../remote/types.ts";
 import type { V2CapabilityAdvertisement, V2GitServiceTransport } from "./types.ts";
 
 // ============================================================================
@@ -87,7 +88,7 @@ const CLIENT_OBJECT_FORMAT = "sha1";
  */
 export function createV2HttpTransport(
   url: string,
-  options?: { token?: string; headers?: Record<string, string> },
+  options?: { auth?: HttpAuth; headers?: Record<string, string> },
 ): V2GitServiceTransport {
   const baseUrl = url.replace(/\/$/, "");
   let cachedAdvertisement: V2CapabilityAdvertisement | undefined;
@@ -101,9 +102,12 @@ export function createV2HttpTransport(
     ...options?.headers,
   };
 
-  // Git Smart HTTP（尤其 GitHub）要求 Basic 认证，Bearer 会被 401 拒绝
-  if (options?.token) {
-    baseHeaders.Authorization = buildGitHttpAuthHeader(options.token);
+  // Git Smart HTTP 使用标准 Basic 认证；若与 headers.Authorization 并存，auth 优先
+  if (options?.auth) {
+    baseHeaders.Authorization = buildGitHttpAuthHeader(
+      options.auth.username,
+      options.auth.password,
+    );
   }
 
   async function advertiseOnce(): Promise<V2CapabilityAdvertisement> {
