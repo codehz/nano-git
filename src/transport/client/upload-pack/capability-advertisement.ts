@@ -3,7 +3,7 @@
  *
  * 解析 Git Wire 协议 v2 的 capability advertisement 响应。
  *
- * v2 能力广告格式：
+ * 规范 v2 能力广告格式：
  * ```
  * 000eversion 2\n
  * ls-refs\n
@@ -14,7 +14,20 @@
  * 0000
  * ```
  *
+ * Smart HTTP 下部分服务端（尤其是未协商到 v2 时的 v0 回落，或非规范实现）
+ * 可能在前面附加 service 包装：
+ * ```
+ * 001e# service=git-upload-pack\n
+ * 0000
+ * 000eversion 2\n
+ * ...
+ * 0000
+ * ```
+ * 解析器会可选剥离 `# service=git-upload-pack` + flush，再要求 `version 2`。
+ * 若剥离后不是 v2 能力广告，抛出明确的「未协商到 protocol v2」错误（不实现 v0 fetch）。
+ *
  * @see https://git-scm.com/docs/protocol-v2#_capability_advertisement
+ * @see https://git-scm.com/docs/http-protocol#_smart_server_response
  */
 
 import { GitError } from "../../../errors.ts";
@@ -38,6 +51,19 @@ export class V2CapabilityError extends GitError {
 }
 
 // ============================================================================
+// 常量
+// ============================================================================
+
+/** Smart HTTP 服务头前缀 */
+const SERVICE_HEADER_PREFIX = "# service=";
+
+/** upload-pack 能力广告期望的 service 名 */
+const EXPECTED_SERVICE = "git-upload-pack";
+
+/** v2 能力列表中已知的命令名 */
+const KNOWN_COMMANDS = ["ls-refs", "fetch", "object-info"] as const;
+
+// ============================================================================
 // 解析函数
 // ============================================================================
 
@@ -46,7 +72,7 @@ export class V2CapabilityError extends GitError {
  *
  * @param data - 服务端返回的原始响应数据
  * @returns 结构化的能力广告
- * @throws {V2CapabilityError} 当格式不符合 v2 规范时
+ * @throws {V2CapabilityError} 当格式不符合 v2 规范，或服务端未协商到 protocol v2 时
  *
  * @example
  * ```ts
@@ -62,24 +88,53 @@ export function parseV2CapabilityAdvertisement(data: Buffer): V2CapabilityAdvert
     throw new V2CapabilityError("Empty capability advertisement");
   }
 
-  const firstLine = lines[0];
-  if (!firstLine || firstLine.type !== "data") {
+  let idx = 0;
+  let sawServiceHeader = false;
+
+  // 1. 可选跳过 Smart HTTP service 包装（# service=git-upload-pack + flush）
+  //    对齐 parseRefAdvertisement / 官方 remote-curl check_smart_http
+  const firstPkt = lines[idx];
+  if (firstPkt && firstPkt.type === "data") {
+    const firstPayload = firstPkt.payload.toString("utf-8");
+    if (firstPayload.startsWith(SERVICE_HEADER_PREFIX)) {
+      const headerService = firstPayload.slice(SERVICE_HEADER_PREFIX.length).trim();
+      if (headerService !== EXPECTED_SERVICE) {
+        throw new V2CapabilityError(
+          `Expected service "${EXPECTED_SERVICE}" but got "${headerService}"`,
+        );
+      }
+      idx++;
+      sawServiceHeader = true;
+
+      if (idx >= lines.length || lines[idx]?.type !== "flush") {
+        throw new V2CapabilityError(
+          `Expected flush-pkt after service header "# service=${EXPECTED_SERVICE}"`,
+        );
+      }
+      idx++;
+    }
+  }
+
+  // 2. 要求 version 2
+  const versionLine = lines[idx];
+  if (!versionLine || versionLine.type !== "data") {
     throw new V2CapabilityError(
-      `Expected data line as first line, got ${firstLine?.type ?? "undefined"}`,
+      `Expected data line as version line, got ${versionLine?.type ?? "undefined"}`,
     );
   }
 
-  const versionStr = firstLine.payload.toString("utf-8").trim();
+  const versionStr = versionLine.payload.toString("utf-8").trim();
   if (versionStr !== "version 2") {
-    throw new V2CapabilityError(`Expected "version 2", got "${versionStr}"`);
+    throw new V2CapabilityError(formatNonV2Error(versionStr, sawServiceHeader));
   }
+  idx++;
 
   const capabilities: Record<string, string | true> = {};
   const commands: V2CommandEntry[] = [];
 
-  // 解析后续行（跳过第一行 version 2）
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i];
+  // 3. 解析后续能力 / 命令行
+  for (; idx < lines.length; idx++) {
+    const line = lines[idx];
     if (!line || line.type !== "data") {
       // flush / delimiter / response-end 正常结束
       break;
@@ -89,8 +144,7 @@ export function parseV2CapabilityAdvertisement(data: Buffer): V2CapabilityAdvert
     if (text.length === 0) continue;
 
     // 检查是否为命令行（ls-refs, fetch, object-info 等）
-    const knownCommands = ["ls-refs", "fetch", "object-info"];
-    const isCommand = knownCommands.some((cmd) => text.startsWith(cmd));
+    const isCommand = KNOWN_COMMANDS.some((cmd) => text === cmd || text.startsWith(`${cmd}=`));
 
     if (isCommand) {
       const eqIndex = text.indexOf("=");
@@ -125,6 +179,29 @@ export function parseV2CapabilityAdvertisement(data: Buffer): V2CapabilityAdvert
   const agent = typeof capabilities.agent === "string" ? capabilities.agent : undefined;
 
   return { capabilities, commands, agent };
+}
+
+/**
+ * 构造「未得到 version 2」时的错误消息
+ *
+ * 若已剥离 Smart HTTP service 头，更可能是服务端回落到 v0；
+ * 引导检查 `Git-Protocol: version=2`，避免只报首行原文。
+ */
+function formatNonV2Error(versionStr: string, sawServiceHeader: boolean): string {
+  const preview = versionStr.length > 80 ? `${versionStr.slice(0, 80)}...` : versionStr;
+
+  if (sawServiceHeader) {
+    return (
+      `Server did not negotiate protocol v2 after Smart HTTP service header ` +
+      `(got "${preview}"). Ensure the request includes "Git-Protocol: version=2"; ` +
+      `v0/v1 fetch is not supported`
+    );
+  }
+
+  return (
+    `Expected "version 2", got "${preview}". ` +
+    `Ensure the request includes "Git-Protocol: version=2"; v0/v1 fetch is not supported`
+  );
 }
 
 /**

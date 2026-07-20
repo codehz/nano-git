@@ -93,6 +93,7 @@ describe("parseV2CapabilityAdvertisement()", () => {
   test("非 version 2 首行抛出异常", () => {
     const buf = Buffer.concat([pkt("version 1\n"), encodeFlushPkt()]);
     expect(() => parseV2CapabilityAdvertisement(buf)).toThrow(V2CapabilityError);
+    expect(() => parseV2CapabilityAdvertisement(buf)).toThrow(/Git-Protocol: version=2/);
   });
 
   test("无数据 pkt-line 被跳过", () => {
@@ -100,6 +101,63 @@ describe("parseV2CapabilityAdvertisement()", () => {
 
     const adv = parseV2CapabilityAdvertisement(buf);
     expect(hasCommand(adv, "ls-refs")).toBe(true);
+  });
+
+  test("剥离 Smart HTTP service 包装后解析 version 2", () => {
+    const buf = Buffer.concat([
+      pkt("# service=git-upload-pack\n"),
+      encodeFlushPkt(),
+      pkt("version 2\n"),
+      pkt("ls-refs\n"),
+      pkt("fetch=shallow ref-in-want\n"),
+      pkt("agent=git/2.39\n"),
+      encodeFlushPkt(),
+    ]);
+
+    const adv = parseV2CapabilityAdvertisement(buf);
+    expect(adv.agent).toBe("git/2.39");
+    expect(hasCommand(adv, "ls-refs")).toBe(true);
+    expect(getCommandFeatures(adv, "fetch")).toEqual(["shallow", "ref-in-want"]);
+  });
+
+  test("service 包装后为 v0 ref 广告时给出清晰错误", () => {
+    const buf = Buffer.concat([
+      pkt("# service=git-upload-pack\n"),
+      encodeFlushPkt(),
+      // v0 风格首行（含 NUL + capabilities）
+      pkt("95d09f2b10159347eece71399a7e2e907ea3df4f HEAD\0multi_ack thin-pack side-band-64k\n"),
+      encodeFlushPkt(),
+    ]);
+
+    expect(() => parseV2CapabilityAdvertisement(buf)).toThrow(V2CapabilityError);
+    expect(() => parseV2CapabilityAdvertisement(buf)).toThrow(/protocol v2/);
+    expect(() => parseV2CapabilityAdvertisement(buf)).toThrow(/Git-Protocol: version=2/);
+    // 不应只把 service 行当作 got 内容（service 已被消费）
+    expect(() => parseV2CapabilityAdvertisement(buf)).not.toThrow(/got "# service=/);
+  });
+
+  test("错误的 service 名抛出异常", () => {
+    const buf = Buffer.concat([
+      pkt("# service=git-receive-pack\n"),
+      encodeFlushPkt(),
+      pkt("version 2\n"),
+      encodeFlushPkt(),
+    ]);
+
+    expect(() => parseV2CapabilityAdvertisement(buf)).toThrow(V2CapabilityError);
+    expect(() => parseV2CapabilityAdvertisement(buf)).toThrow(/git-upload-pack/);
+    expect(() => parseV2CapabilityAdvertisement(buf)).toThrow(/git-receive-pack/);
+  });
+
+  test("service 头后缺少 flush 抛出异常", () => {
+    const buf = Buffer.concat([
+      pkt("# service=git-upload-pack\n"),
+      pkt("version 2\n"),
+      encodeFlushPkt(),
+    ]);
+
+    expect(() => parseV2CapabilityAdvertisement(buf)).toThrow(V2CapabilityError);
+    expect(() => parseV2CapabilityAdvertisement(buf)).toThrow(/flush-pkt/);
   });
 });
 

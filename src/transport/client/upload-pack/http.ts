@@ -68,6 +68,87 @@ const CLIENT_AGENT = "nano-git/0.1";
 /** nano-git 当前仅支持 SHA-1 对象格式 */
 const CLIENT_OBJECT_FORMAT = "sha1";
 
+/** info/refs 广告期望的 Content-Type 片段 */
+const ADVERTISE_CONTENT_TYPE = "application/x-git-upload-pack-advertisement";
+
+/** command 请求 Content-Type */
+const COMMAND_CONTENT_TYPE = "application/x-git-upload-pack-request";
+
+/** command 响应 Accept */
+const COMMAND_ACCEPT = "application/x-git-upload-pack-result";
+
+// ============================================================================
+// 请求头构建
+// ============================================================================
+
+/**
+ * 构建公共 HTTP 头
+ *
+ * 顺序：User-Agent → 用户 headers → auth Authorization → 强制 Git-Protocol。
+ * `Git-Protocol: version=2` 始终写在最后，避免被 options.headers 覆盖导致 v0 回落。
+ */
+function buildCommonHeaders(options?: {
+  auth?: HttpAuth;
+  headers?: Record<string, string>;
+}): Record<string, string> {
+  const headers: Record<string, string> = {
+    "User-Agent": "nano-git/0.1",
+    ...options?.headers,
+  };
+
+  // Git Smart HTTP 使用标准 Basic 认证；若与 headers.Authorization 并存，auth 优先
+  if (options?.auth) {
+    headers.Authorization = buildGitHttpAuthHeader(options.auth.username, options.auth.password);
+  }
+
+  // 强制 v2 协商头（必须在用户 headers 之后）
+  headers["Git-Protocol"] = "version=2";
+  return headers;
+}
+
+/**
+ * advertise（GET info/refs）专用头：不带 Content-Type，Accept 为 advertisement
+ */
+function buildAdvertiseHeaders(options?: {
+  auth?: HttpAuth;
+  headers?: Record<string, string>;
+}): Record<string, string> {
+  const headers: Record<string, string> = {
+    ...buildCommonHeaders(options),
+    Accept: ADVERTISE_CONTENT_TYPE,
+  };
+  // GET info/refs 不应携带 Content-Type（即使用户 headers 里写了也剔除）
+  delete headers["Content-Type"];
+  delete headers["content-type"];
+  return headers;
+}
+
+/**
+ * command（POST git-upload-pack）专用头
+ */
+function buildCommandHeaders(options?: {
+  auth?: HttpAuth;
+  headers?: Record<string, string>;
+}): Record<string, string> {
+  return {
+    ...buildCommonHeaders(options),
+    "Content-Type": COMMAND_CONTENT_TYPE,
+    Accept: COMMAND_ACCEPT,
+  };
+}
+
+/**
+ * 校验响应 Content-Type 是否包含期望片段
+ */
+function assertContentType(actual: string, expected: string, context: string): void {
+  if (!actual.includes(expected)) {
+    throw new V2SmartHttpError(
+      `Unexpected content type: ${actual || "(missing)"} (expected ${expected}) (${context})`,
+      { url: context },
+    );
+  }
+}
+
 // ============================================================================
 // 工厂函数
 // ============================================================================
@@ -94,22 +175,6 @@ export function createV2HttpTransport(
   let cachedAdvertisement: V2CapabilityAdvertisement | undefined;
   let advertisePromise: Promise<V2CapabilityAdvertisement> | undefined;
 
-  const baseHeaders: Record<string, string> = {
-    "User-Agent": "nano-git/0.1",
-    "Content-Type": "application/x-git-upload-pack-request",
-    Accept: "application/x-git-upload-pack-result",
-    "Git-Protocol": "version=2",
-    ...options?.headers,
-  };
-
-  // Git Smart HTTP 使用标准 Basic 认证；若与 headers.Authorization 并存，auth 优先
-  if (options?.auth) {
-    baseHeaders.Authorization = buildGitHttpAuthHeader(
-      options.auth.username,
-      options.auth.password,
-    );
-  }
-
   async function advertiseOnce(): Promise<V2CapabilityAdvertisement> {
     if (cachedAdvertisement) {
       return cachedAdvertisement;
@@ -120,7 +185,7 @@ export function createV2HttpTransport(
       let response: Response;
       try {
         response = await fetch(advertiseUrl, {
-          headers: baseHeaders,
+          headers: buildAdvertiseHeaders(options),
         });
       } catch (err: unknown) {
         throw new V2SmartHttpError(`advertise failed: network error`, {
@@ -135,6 +200,9 @@ export function createV2HttpTransport(
           url: advertiseUrl,
         });
       }
+
+      const contentType = response.headers.get("content-type") ?? "";
+      assertContentType(contentType, ADVERTISE_CONTENT_TYPE, advertiseUrl);
 
       const data = Buffer.from(await response.arrayBuffer());
       cachedAdvertisement = parseV2CapabilityAdvertisement(data);
@@ -212,7 +280,7 @@ export function createV2HttpTransport(
       try {
         response = await fetch(commandUrl, {
           method: "POST",
-          headers: baseHeaders,
+          headers: buildCommandHeaders(options),
           body: requestBody,
         });
       } catch (err: unknown) {

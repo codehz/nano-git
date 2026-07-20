@@ -44,7 +44,12 @@ describe("createFetchRepositoryOperations()", () => {
     globalThis.fetch = (async (input, init) => {
       const hasBody = init?.body !== undefined && init?.body !== null;
       if (!hasBody) {
-        return new Response(encodeV2CapabilityAdvertisement(), { status: 200 });
+        return new Response(encodeV2CapabilityAdvertisement(), {
+          status: 200,
+          headers: {
+            "Content-Type": "application/x-git-upload-pack-advertisement",
+          },
+        });
       }
 
       const body = Buffer.from(await new Response(init?.body).arrayBuffer());
@@ -62,12 +67,18 @@ describe("createFetchRepositoryOperations()", () => {
 
         return new Response(
           Buffer.concat([encodePktLine(`${commitHash} refs/heads/master\n`), encodeFlushPkt()]),
-          { status: 200 },
+          {
+            status: 200,
+            headers: { "Content-Type": "application/x-git-upload-pack-result" },
+          },
         );
       }
 
       if (command === "command=fetch") {
-        return new Response(encodeFetchNegotiationDone(), { status: 200 });
+        return new Response(encodeFetchNegotiationDone(), {
+          status: 200,
+          headers: { "Content-Type": "application/x-git-upload-pack-result" },
+        });
       }
 
       const requestUrl =
