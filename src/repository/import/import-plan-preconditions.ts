@@ -47,6 +47,7 @@ export function validateLocalPreconditions(
       if (!sameEntries) {
         throw new PreconditionCheckError(
           `前置条件校验失败：命名空间 "${pattern}" 在 prepare() 生成的预览后已变化。`,
+          { namespacePattern: pattern },
         );
       }
       continue;
@@ -58,6 +59,11 @@ export function validateLocalPreconditions(
         throw new PreconditionCheckError(
           `前置条件校验失败：ref "${pc.refName}" 在 prepare() 生成的预览后已变化。` +
             `期望 ${pc.expectedValue ?? "(不存在)"}，实际 ${currentValue ?? "(不存在)"}。`,
+          {
+            refName: pc.refName,
+            expected: pc.expectedValue,
+            actual: currentValue,
+          },
         );
       }
       continue;
@@ -68,6 +74,11 @@ export function validateLocalPreconditions(
       throw new PreconditionCheckError(
         `前置条件校验失败：ref "${pc.refName}" 在 prepare() 生成的预览后已变化。` +
           `期望 ${pc.expectedHash ?? "(不存在)"}，实际 ${currentHash ?? "(不存在)"}。`,
+        {
+          refName: pc.refName,
+          expected: pc.expectedHash ?? null,
+          actual: currentHash,
+        },
       );
     }
   }

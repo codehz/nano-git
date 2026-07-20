@@ -84,7 +84,7 @@ export function readCompressedData(
       !("buffer" in inflated) ||
       !("engine" in inflated)
     ) {
-      throw new InvalidPackError("Unexpected inflate result shape");
+      throw new InvalidPackError("Unexpected inflate result shape", { offset });
     }
 
     const result = inflated as {
@@ -93,11 +93,17 @@ export function readCompressedData(
     };
     const consumed = result.engine?.bytesWritten;
     if (typeof consumed !== "number" || consumed <= 0) {
-      throw new InvalidPackError("Failed to determine compressed stream length");
+      throw new InvalidPackError("Failed to determine compressed stream length", { offset });
     }
 
     return [Buffer.from(result.buffer), consumed];
   } catch (err) {
-    throw new InvalidPackError(`Failed to decompress data at offset ${offset}: ${String(err)}`);
+    if (err instanceof InvalidPackError) {
+      throw err;
+    }
+    throw new InvalidPackError(`Failed to decompress data at offset ${offset}`, {
+      cause: err,
+      offset,
+    });
   }
 }

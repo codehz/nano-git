@@ -42,6 +42,13 @@ export function applyDelta(base: Buffer, delta: Buffer): Buffer {
       if (copy.offset + copy.size > base.length) {
         throw new DeltaError(
           `Copy out of bounds: offset=${copy.offset}, size=${copy.size}, base.length=${base.length}`,
+          {
+            baseLength: base.length,
+            copyOffset: copy.offset,
+            copySize: copy.size,
+            destSize,
+            destOffset,
+          },
         );
       }
 
@@ -52,7 +59,10 @@ export function applyDelta(base: Buffer, delta: Buffer): Buffer {
 
     if (cmd > 0) {
       if (offset + cmd > delta.length) {
-        throw new DeltaError("Insert out of bounds");
+        throw new DeltaError("Insert out of bounds", {
+          destSize,
+          destOffset,
+        });
       }
 
       delta.copy(result, destOffset, offset, offset + cmd);
@@ -61,11 +71,18 @@ export function applyDelta(base: Buffer, delta: Buffer): Buffer {
       continue;
     }
 
-    throw new DeltaError("Unexpected delta command: 0");
+    throw new DeltaError("Unexpected delta command: 0", {
+      destSize,
+      destOffset,
+    });
   }
 
   if (destOffset !== destSize) {
-    throw new DeltaError(`Delta size mismatch: expected ${destSize}, got ${destOffset}`);
+    throw new DeltaError(`Delta size mismatch: expected ${destSize}, got ${destOffset}`, {
+      destSize,
+      destOffset,
+      baseLength: base.length,
+    });
   }
 
   return result;

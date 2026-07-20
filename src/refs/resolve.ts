@@ -23,7 +23,7 @@ export function resolveRefHash(
   seen = new Set<string>(),
 ): SHA1 | null {
   if (seen.has(ref)) {
-    throw new CircularReferenceError(ref);
+    throw new CircularReferenceError(ref, { chain: [...seen, ref] });
   }
 
   seen.add(ref);
@@ -53,7 +53,7 @@ export function resolveSymbolicRef(
   seen = new Set<string>(),
 ): string | null {
   if (seen.has(ref)) {
-    throw new CircularReferenceError(ref);
+    throw new CircularReferenceError(ref, { chain: [...seen, ref] });
   }
 
   seen.add(ref);

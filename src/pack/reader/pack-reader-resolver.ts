@@ -2,7 +2,7 @@
  * Packfile 对象解析辅助函数
  */
 
-import { InvalidPackError } from "../../errors.ts";
+import { InvalidPackError, ObjectNotFoundError } from "../../errors.ts";
 import { hashObject } from "../../hash/index.ts";
 import { numberToObjectType } from "../constants.ts";
 import { applyDelta } from "../delta/delta.ts";
@@ -76,7 +76,9 @@ export function resolveOfsDeltaPackObject(
   const baseOffset = objOffset - negOffset;
   const baseObj = objectsByOffset.get(baseOffset);
   if (!baseObj) {
-    throw new InvalidPackError(`Base object not found at offset ${baseOffset}`);
+    throw new InvalidPackError(`Base object not found at offset ${baseOffset}`, {
+      offset: baseOffset,
+    });
   }
 
   const resolvedData = applyDelta(baseObj.data, deltaData);
@@ -121,7 +123,11 @@ export function resolveRefDeltaPackObject(
 
   const baseObj = objectsByHash.get(baseHash) ?? readExternalBaseObject(externalBases, baseHash);
   if (!baseObj) {
-    throw new InvalidPackError(`Base object not found: ${baseHash}`);
+    throw new ObjectNotFoundError(baseHash, {
+      operation: "delta-base",
+      source: externalBases ? "composite" : "pack",
+      message: `Base object not found: ${baseHash}`,
+    });
   }
 
   const resolvedData = applyDelta(baseObj.data, deltaData);

@@ -110,7 +110,9 @@ export class PackReader {
     if (this.parsedCount >= this._objectCount || this.parseOffset >= endOffset) {
       this.fullyParsed = true;
       if (this.parsedCount < this._objectCount) {
-        throw new InvalidPackError(`Unexpected end of packfile at object ${this.parsedCount}`);
+        throw new InvalidPackError(`Unexpected end of packfile at object ${this.parsedCount}`, {
+          offset: this.parseOffset,
+        });
       }
       return;
     }

@@ -6,7 +6,7 @@ import { describe, test, expect } from "bun:test";
 import { createHash } from "node:crypto";
 import { deflateSync } from "node:zlib";
 
-import { InvalidPackError } from "@/errors.ts";
+import { InvalidPackError, ObjectNotFoundError } from "@/errors.ts";
 import { hashObject } from "@/hash/index.ts";
 import { encodeObject, decodeObject } from "@/objects/raw.ts";
 import { PACK_HEADER_SIZE, PACK_SIGNATURE, PACK_VERSION } from "@/pack/constants.ts";
@@ -325,7 +325,7 @@ describe("Packfile 读写", () => {
     );
   });
 
-  test("ref_delta base 不存在时抛出 InvalidPackError", () => {
+  test("ref_delta base 不存在时抛出 ObjectNotFoundError", () => {
     const deltaData = Buffer.from([0x00]);
     const objectCount = 1;
     const header = Buffer.alloc(12);
@@ -344,7 +344,7 @@ describe("Packfile 读写", () => {
 
     const reader = createPackReader(packData);
     expect(() => reader.getByHash(sha1("0000000000000000000000000000000000000000"))).toThrow(
-      InvalidPackError,
+      ObjectNotFoundError,
     );
   });
 
