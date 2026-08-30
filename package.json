@@ -223,7 +223,7 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "native-sqlite": "^0.1.0"
+    "native-sqlite": "^0.2.1"
   },
   "devDependencies": {
     "@types/bun": "^1.4.0",
@@ -235,7 +235,7 @@
     "tsdown": "^0.22.14"
   },
   "peerDependencies": {
-    "typescript": "^7"
+    "typescript": "^7.0.2"
   },
   "lint-staged": {
     "*": [
