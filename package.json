@@ -226,16 +226,16 @@
     "native-sqlite": "^0.1.0"
   },
   "devDependencies": {
-    "@types/bun": "latest",
+    "@types/bun": "^1.4.0",
     "husky": "^9.1.7",
-    "lint-staged": "^17.0.7",
-    "oxfmt": "^0.55.0",
-    "oxlint": "^1.70.0",
-    "oxlint-tsgolint": "^0.23.0",
-    "tsdown": "^0.22.3"
+    "lint-staged": "^17.4.1",
+    "oxfmt": "^0.65.0",
+    "oxlint": "^1.80.0",
+    "oxlint-tsgolint": "^7.0.2001",
+    "tsdown": "^0.22.14"
   },
   "peerDependencies": {
-    "typescript": "^6"
+    "typescript": "^7"
   },
   "lint-staged": {
     "*": [

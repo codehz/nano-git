@@ -113,7 +113,7 @@ function swapQueue(queue: CommitNegotiationNode[], left: number, right: number):
 function queuePut(queue: CommitNegotiationNode[], node: CommitNegotiationNode): void {
   queue.push(node);
 
-  for (let index = queue.length - 1; index > 0; ) {
+  for (let index = queue.length - 1; index > 0;) {
     const parent = Math.floor((index - 1) / 2);
     if (compareNodes(queue[parent]!, queue[index]!) <= 0) {
       break;
@@ -136,7 +136,7 @@ function queueGet(queue: CommitNegotiationNode[]): CommitNegotiationNode | undef
 
   queue[0] = tail;
 
-  for (let index = 0; index * 2 + 1 < queue.length; ) {
+  for (let index = 0; index * 2 + 1 < queue.length;) {
     let child = index * 2 + 1;
     if (child + 1 < queue.length && compareNodes(queue[child]!, queue[child + 1]!) >= 0) {
       child++;

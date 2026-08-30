@@ -352,14 +352,7 @@ describe("collectReachable 与 shallow boundaries", () => {
   test("传入 shallowBoundaries 时，集合外的缺失 parent 在 throw 模式仍报错", () => {
     // bHash 不在 shallowBoundaries 中，在 throw 模式应报错
     expect(() => {
-      collectReachable(
-        store,
-        [cHash],
-        "throw",
-        new Set([
-          /* bHash not included */
-        ]),
-      );
+      collectReachable(store, [cHash], "throw", new Set([/* bHash not included */]));
     }).toThrow(/missing from the local store/i);
   });
 
