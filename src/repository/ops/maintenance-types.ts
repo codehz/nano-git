@@ -56,7 +56,12 @@ export interface RepositoryMaintenanceOperations {
    *
    * @example
    * ```ts
-   * using repo = createSqliteRepository(".drafts/test.db");
+   * import { Database } from "bun:sqlite";
+   * import { createSqliteRepository } from "nano-git/repository/sqlite";
+   * import type { SqliteDatabase } from "nano-git/types/sqlite";
+   *
+   * const db = new Database(".drafts/test.db") as unknown as SqliteDatabase;
+   * const repo = createSqliteRepository(db);
    * const result = repo.rewriteHistory();
    * console.log(result.rewrittenTrees, result.updatedRefs);
    * // tip 哈希已变，push 远端通常需要 force

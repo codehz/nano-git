@@ -191,6 +191,11 @@
       "perry": "./src/transport/upload-pack.ts",
       "default": "./dist/transport/upload-pack.mjs"
     },
+    "./types/sqlite": {
+      "types": "./dist/types/sqlite.d.mts",
+      "perry": "./src/types/sqlite.ts",
+      "default": "./dist/types/sqlite.mjs"
+    },
     "./worktree/core": {
       "types": "./dist/worktree/core.d.mts",
       "perry": "./src/worktree/core.ts",
@@ -221,9 +226,6 @@
     "test": "bun test",
     "prepublishOnly": "bun run build",
     "prepare": "husky"
-  },
-  "dependencies": {
-    "native-sqlite": "^0.2.1"
   },
   "devDependencies": {
     "@types/bun": "^1.4.0",

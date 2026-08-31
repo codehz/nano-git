@@ -3,24 +3,24 @@
  */
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 
-import { acquireConnection } from "@/backend/sqlite-pool.ts";
+import { openTestSqlite } from "../../helpers/sqlite.ts";
 import { createSqliteRefStore } from "@/refs/sqlite.ts";
 
-import type { SqliteConnectionHandle } from "@/backend/sqlite-pool.ts";
 import type { RefStore } from "@/types/refs.ts";
+import type { SqliteDatabase } from "@/types/sqlite.ts";
 
 describe("createSqliteRefStore()", () => {
-  let conn: SqliteConnectionHandle;
+  let db: SqliteDatabase & Disposable;
   let store: RefStore;
 
   beforeEach(() => {
-    conn = acquireConnection(":memory:");
-    conn.db.run("CREATE TABLE IF NOT EXISTS refs (name TEXT PRIMARY KEY, target TEXT NOT NULL)");
-    store = createSqliteRefStore(conn);
+    db = openTestSqlite();
+    db.run("CREATE TABLE IF NOT EXISTS refs (name TEXT PRIMARY KEY, target TEXT NOT NULL)");
+    store = createSqliteRefStore(db);
   });
 
   afterEach(() => {
-    conn.release();
+    db[Symbol.dispose]();
   });
 
   test("SQLite list() 使用字符串范围查询仍只返回指定前缀", () => {

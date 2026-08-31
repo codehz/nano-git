@@ -12,8 +12,8 @@ import { ObjectHashMismatchError, ObjectNotFoundError } from "../errors.ts";
 import { hashObject } from "../hash/index.ts";
 import { sha1 } from "../types/index.ts";
 
-import type { SqliteConnectionHandle } from "../backend/sqlite-pool.ts";
 import type { RawGitObject, SHA1, ObjectType } from "../types/index.ts";
+import type { SqliteDatabase } from "../types/sqlite.ts";
 import type { ObjectDatabase } from "./types.ts";
 
 // 数据库查询结果行类型
@@ -26,33 +26,34 @@ interface ObjectRow {
 /**
  * 创建基于 SQLite 的对象数据库
  *
- * @param conn - SQLite 连接池句柄（含 statement 缓存）
+ * @param db - 已打开的 SQLite 数据库（需已有 objects 表）
  * @returns 符合 ObjectDatabase 接口的存储后端
  *
  * @example
  * ```ts
- * import { acquireConnection } from "nano-git/backend/sqlite";
- * using conn = acquireConnection("/tmp/repo.sqlite");
- * const store = createSqliteObjectStore(conn);
+ * import { Database } from "bun:sqlite";
+ * import { createSqliteObjectStore } from "nano-git/odb/sqlite";
+ * import type { SqliteDatabase } from "nano-git/types/sqlite";
  *
+ * const db = new Database(":memory:") as unknown as SqliteDatabase;
+ * db.run(
+ *   "CREATE TABLE objects (hash TEXT PRIMARY KEY, type TEXT NOT NULL, content BLOB NOT NULL)",
+ * );
+ * const store = createSqliteObjectStore(db);
  * store.ingest(raw);
- * const obj = store.read(hash);
  * ```
  */
-export function createSqliteObjectStore(conn: SqliteConnectionHandle): ObjectDatabase {
-  // 预编译 SQL 语句（通过 conn.prepare 缓存复用）
-  const selectStmt = conn.prepare<ObjectRow>(
-    "SELECT hash, type, content FROM objects WHERE hash = ?",
-  );
-  const existsStmt = conn.prepare<{ "1": number }>("SELECT 1 FROM objects WHERE hash = ?");
-  const insertStmt = conn.prepare<void>(
+export function createSqliteObjectStore(db: SqliteDatabase): ObjectDatabase {
+  const selectStmt = db.query<ObjectRow>("SELECT hash, type, content FROM objects WHERE hash = ?");
+  const existsStmt = db.query<{ "1": number }>("SELECT 1 FROM objects WHERE hash = ?");
+  const insertStmt = db.query(
     "INSERT OR IGNORE INTO objects (hash, type, content) VALUES (?, ?, ?)",
   );
-  const deleteStmt = conn.prepare<void>("DELETE FROM objects WHERE hash = ?");
-  const listStmt = conn.prepare<Pick<ObjectRow, "hash">>("SELECT hash FROM objects ORDER BY hash");
+  const deleteStmt = db.query("DELETE FROM objects WHERE hash = ?");
+  const listStmt = db.query<Pick<ObjectRow, "hash">>("SELECT hash FROM objects ORDER BY hash");
 
   /** 批量插入的事务包装 */
-  const ingestManyTx = conn.db.transaction((objects: Iterable<RawGitObject>) => {
+  const ingestManyTx = db.transaction((objects: Iterable<RawGitObject>) => {
     for (const raw of objects) {
       const expectedHash = hashObject(raw.type, raw.content);
       if (expectedHash !== raw.hash) {

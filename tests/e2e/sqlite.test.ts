@@ -7,15 +7,18 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { join } from "node:path";
 
+import { openTestSqlite } from "../helpers/sqlite.ts";
 import { createTempDir, cleanupDir, gitWithTimeout, FIXED_AUTHOR } from "./helpers.ts";
 import { createDefaultBackend, startNanoGitServer } from "./transport/nano-git-server.ts";
-import { createSqliteRepositoryBackend, type SqliteRepositoryBackend } from "@/backend/sqlite.ts";
+import { createSqliteRepositoryBackend } from "@/backend/sqlite.ts";
 import { createRepository } from "@/repository/create.ts";
 import { createSqliteRepository } from "@/repository/sqlite.ts";
 
 import type { NanoGitServer } from "./transport/nano-git-server.ts";
+import type { RepositoryBackend } from "@/backend/types.ts";
 import type { Repository } from "@/repository/types.ts";
 import type { GitAuthor, SHA1 } from "@/types/index.ts";
+import type { SqliteDatabase } from "@/types/sqlite.ts";
 
 const GIT_TIMEOUT_MS = 15000;
 const GIT_V2_ARGS = ["-c", "protocol.version=2"];
@@ -61,7 +64,8 @@ describe("SQLite 仓库持久化", () => {
     let danglingBlobHash: SHA1;
 
     {
-      using repo = createSqliteRepository(dbPath);
+      using sqlite = openTestSqlite(dbPath);
+      const repo = createSqliteRepository(sqlite);
 
       commitHash = appendCommit(repo, "SQLite persistent commit");
       repo.updateRef("refs/heads/main", commitHash);
@@ -76,7 +80,8 @@ describe("SQLite 仓库持久化", () => {
     }
 
     {
-      using repo = createSqliteRepository(dbPath);
+      using sqlite = openTestSqlite(dbPath);
+      const repo = createSqliteRepository(sqlite);
 
       expect(repo.readRef("HEAD")).toBe(commitHash!);
       expect(repo.readBranch("main")).toBe(commitHash!);
@@ -109,7 +114,8 @@ describe("SQLite 仓库持久化", () => {
 describe("SQLite 后端作为 Smart HTTP 服务端", () => {
   let tempDir: string;
   let server: NanoGitServer | undefined;
-  let backend: SqliteRepositoryBackend | undefined;
+  let sqlite: (SqliteDatabase & Disposable) | undefined;
+  let backend: RepositoryBackend | undefined;
 
   beforeEach(() => {
     tempDir = createTempDir("e2e-sqlite-server");
@@ -117,12 +123,13 @@ describe("SQLite 后端作为 Smart HTTP 服务端", () => {
 
   afterEach(() => {
     server?.stop();
-    backend?.[Symbol.dispose]();
+    sqlite?.[Symbol.dispose]();
     cleanupDir(tempDir);
   });
 
   test("git clone / fetch 能完整读取 SQLite 服务端仓库", async () => {
-    backend = createSqliteRepositoryBackend(join(tempDir, "server.sqlite"));
+    sqlite = openTestSqlite(join(tempDir, "server.sqlite"));
+    backend = createSqliteRepositoryBackend(sqlite);
     const repo = createRepository(backend);
 
     const firstCommit = appendCommit(repo, "SQLite server initial");
@@ -217,7 +224,8 @@ describe("SQLite 仓库作为 HTTP 客户端", () => {
     const dbPath = join(tempDir, "client.sqlite");
 
     {
-      using repo = createSqliteRepository(dbPath);
+      using sqlite = openTestSqlite(dbPath);
+      const repo = createSqliteRepository(sqlite);
 
       const result = await repo.fetch(server.url, {
         refPatterns: ["refs/heads/*", "refs/tags/*"],
@@ -230,7 +238,8 @@ describe("SQLite 仓库作为 HTTP 客户端", () => {
     }
 
     {
-      using repo = createSqliteRepository(dbPath);
+      using sqlite = openTestSqlite(dbPath);
+      const repo = createSqliteRepository(sqlite);
 
       expect(repo.readRef("HEAD")).toBe(firstCommit);
       expect(repo.readBranch("feature/api")).toBe(firstCommit);

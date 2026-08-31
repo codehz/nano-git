@@ -9,22 +9,28 @@ import { existsSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createSqliteRepositoryBackend, type SqliteRepositoryBackend } from "@/backend/sqlite.ts";
+import { openTestSqlite } from "../../helpers/sqlite.ts";
+import { createSqliteRepositoryBackend } from "@/backend/sqlite.ts";
 import { createRepository } from "@/repository/create.ts";
 import { sha1 } from "@/types/index.ts";
 import { HEAD_REF } from "@/types/refs.ts";
 
+import type { RepositoryBackend } from "@/backend/types.ts";
+import type { SqliteDatabase } from "@/types/sqlite.ts";
+
 describe("createSqliteRepositoryBackend()", () => {
   let dbPath: string;
-  let backend: SqliteRepositoryBackend;
+  let db: SqliteDatabase & Disposable;
+  let backend: RepositoryBackend;
 
   beforeEach(() => {
     dbPath = join(tmpdir(), `nano-git-sqlite-backend-${Date.now()}-${Math.random()}.sqlite`);
-    backend = createSqliteRepositoryBackend(dbPath);
+    db = openTestSqlite(dbPath);
+    backend = createSqliteRepositoryBackend(db, { gitDir: dbPath });
   });
 
   afterEach(() => {
-    backend[Symbol.dispose]();
+    db[Symbol.dispose]();
     if (existsSync(dbPath)) {
       unlinkSync(dbPath);
     }
@@ -39,8 +45,10 @@ describe("createSqliteRepositoryBackend()", () => {
     expect(backend.packs).toBeNull();
   });
 
-  test("gitDir 返回数据库文件路径", () => {
+  test("gitDir 默认空字符串，也可显式传入", () => {
     expect(backend.gitDir).toBe(dbPath);
+    using mem = openTestSqlite();
+    expect(createSqliteRepositoryBackend(mem).gitDir).toBe("");
   });
 
   test("HEAD 引用默认存在并指向 main 分支", () => {
@@ -84,15 +92,7 @@ describe("createSqliteRepositoryBackend()", () => {
     }
   });
 
-  test("支持 Symbol.dispose 释放数据库连接", () => {
-    const backend2 = createSqliteRepositoryBackend(
-      join(tmpdir(), `nano-git-sqlite-dispose-${Date.now()}.sqlite`),
-    );
-    expect(typeof backend2[Symbol.dispose]).toBe("function");
-    backend2[Symbol.dispose]();
-  });
-
-  test("再次打开同一数据库文件可读取已有数据", () => {
+  test("关闭后再打开同一数据库文件可读取已有数据", () => {
     backend.refs.write("refs/heads/main", "def456");
     const blobHash = sha1("95d09f2b10159347eece71399a7e2e907ea3df4f");
     backend.objects.ingest({
@@ -100,26 +100,11 @@ describe("createSqliteRepositoryBackend()", () => {
       type: "blob",
       content: Buffer.from("hello world"),
     });
-    backend[Symbol.dispose]();
+    db[Symbol.dispose]();
 
-    // 重新打开
-    const backend2 = createSqliteRepositoryBackend(dbPath);
-    try {
-      expect(backend2.refs.read("refs/heads/main")).toBe("def456");
-      expect(backend2.objects.exists(blobHash)).toBe(true);
-    } finally {
-      backend2[Symbol.dispose]();
-    }
-  });
-
-  test("可通过 walMode: false 关闭 WAL 模式", () => {
-    const noWalPath = join(tmpdir(), `nano-git-sqlite-nowal-${Date.now()}.sqlite`);
-    const noWalBackend = createSqliteRepositoryBackend(noWalPath, { walMode: false });
-    try {
-      expect(noWalBackend.refs.read(HEAD_REF)).toBe("ref: refs/heads/main");
-    } finally {
-      noWalBackend[Symbol.dispose]();
-      if (existsSync(noWalPath)) unlinkSync(noWalPath);
-    }
+    using db2 = openTestSqlite(dbPath);
+    const backend2 = createSqliteRepositoryBackend(db2, { gitDir: dbPath });
+    expect(backend2.refs.read("refs/heads/main")).toBe("def456");
+    expect(backend2.objects.exists(blobHash)).toBe(true);
   });
 });

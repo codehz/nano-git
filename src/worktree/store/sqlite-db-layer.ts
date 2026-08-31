@@ -12,13 +12,12 @@ import {
   serializeDirectoryOverlayPayload,
 } from "./persist/overlay-codec.ts";
 
-import type { SqliteConnectionHandle } from "../../backend/sqlite-pool.ts";
 import type { SHA1 } from "../../types/index.ts";
+import type { SqliteDatabase, SqliteStatement } from "../../types/sqlite.ts";
 import type { NormalizedChangeRecord } from "../engine/change-index.ts";
 import type { NodeId } from "../model/ids.ts";
 import type { SqliteChangeRow } from "./persist/change-codec.ts";
 import type { VirtualWorktreeStateStore } from "./state-store.ts";
-import type { Database, Statement } from "native-sqlite";
 
 export const WORKTREE_SQLITE_SCHEMA_VERSION = 8;
 
@@ -41,7 +40,7 @@ interface NodeRow {
 
 /** 单个数据库文件上共享的 SQLite 语句与事务边界 */
 export interface SqliteVirtualWorktreeDbLayer {
-  readonly db: Database;
+  readonly db: SqliteDatabase;
   transact<T>(fn: () => T): T;
   listWorktreeKeys(prefix?: string): readonly string[];
   listWorktreeRows(prefix?: string): readonly WorktreeRow[];
@@ -65,68 +64,71 @@ function worktreeKeyPrefixEnd(prefix: string): string {
  *
  * @example
  * ```ts
- * using conn = acquireConnection(":memory:");
- * ensureWorktreeSqliteSchema(conn.db);
- * const layer = createSqliteVirtualWorktreeDbLayer(conn);
+ * import { Database } from "bun:sqlite";
+ * import type { SqliteDatabase } from "nano-git/types/sqlite";
+ *
+ * const db = new Database(":memory:") as unknown as SqliteDatabase;
+ * ensureWorktreeSqliteSchema(db);
+ * const layer = createSqliteVirtualWorktreeDbLayer(db);
  * const store = layer.bindStateStore("demo");
  * ```
  */
 export function createSqliteVirtualWorktreeDbLayer(
-  conn: SqliteConnectionHandle,
+  db: SqliteDatabase,
 ): SqliteVirtualWorktreeDbLayer {
-  const transactImpl = conn.db.transaction((fn: () => unknown) => fn());
+  const transactImpl = db.transaction((fn: () => unknown) => fn());
 
-  const listWorktreeKeysStmt = conn.prepare<{ worktree_key: string }>(
+  const listWorktreeKeysStmt = db.query<{ worktree_key: string }>(
     "SELECT worktree_key FROM worktrees ORDER BY worktree_key",
   );
-  const listWorktreeRowsStmt = conn.prepare<WorktreeRow>(
+  const listWorktreeRowsStmt = db.query<WorktreeRow>(
     "SELECT worktree_key, base_tree FROM worktrees ORDER BY worktree_key",
   );
-  const listWorktreeKeysByPrefixStmt = conn.prepare<{ worktree_key: string }>(
+  const listWorktreeKeysByPrefixStmt = db.query<{ worktree_key: string }>(
     "SELECT worktree_key FROM worktrees WHERE worktree_key >= ? AND worktree_key < ? ORDER BY worktree_key",
   );
-  const listWorktreeRowsByPrefixStmt = conn.prepare<WorktreeRow>(
+  const listWorktreeRowsByPrefixStmt = db.query<WorktreeRow>(
     "SELECT worktree_key, base_tree FROM worktrees WHERE worktree_key >= ? AND worktree_key < ? ORDER BY worktree_key",
   );
-  const deleteChangesByPrefixStmt = conn.prepare<void>(
+  const deleteChangesByPrefixStmt = db.query(
     "DELETE FROM worktree_changes WHERE worktree_key >= ? AND worktree_key < ?",
   );
-  const deleteNodesByPrefixStmt = conn.prepare<void>(
+  const deleteNodesByPrefixStmt = db.query(
     "DELETE FROM worktree_nodes WHERE worktree_key >= ? AND worktree_key < ?",
   );
-  const deleteWorktreesByPrefixStmt = conn.prepare<void>(
+  const deleteWorktreesByPrefixStmt = db.query(
     "DELETE FROM worktrees WHERE worktree_key >= ? AND worktree_key < ?",
   );
-  const existsWorktreeStmt = conn.prepare<{ "1": number } | null>(
+  const existsWorktreeStmt = db.query<{ "1": number }>(
     "SELECT 1 FROM worktrees WHERE worktree_key = ?",
   );
-  const readBaseTreeStmt = conn.prepare<Pick<WorktreeRow, "base_tree"> | null>(
+  const readBaseTreeStmt = db.query<Pick<WorktreeRow, "base_tree">>(
     "SELECT base_tree FROM worktrees WHERE worktree_key = ?",
   );
-  const upsertWorktreeStmt = conn.prepare<void>(
+  const upsertWorktreeStmt = db.query(
     "INSERT INTO worktrees (worktree_key, base_tree) VALUES (?, ?) ON CONFLICT(worktree_key) DO UPDATE SET base_tree = excluded.base_tree",
   );
-  const deleteWorktreeMetaStmt = conn.prepare<void>("DELETE FROM worktrees WHERE worktree_key = ?");
-  const renameWorktreeMetaStmt = conn.prepare<void>(
+  const deleteWorktreeMetaStmt = db.query("DELETE FROM worktrees WHERE worktree_key = ?");
+  const renameWorktreeMetaStmt = db.query(
     "UPDATE worktrees SET worktree_key = ? WHERE worktree_key = ?",
   );
-  const renameNodesWorktreeKeyStmt = conn.prepare<void>(
+  const renameNodesWorktreeKeyStmt = db.query(
     "UPDATE worktree_nodes SET worktree_key = ? WHERE worktree_key = ?",
   );
-  const renameChangesWorktreeKeyStmt = conn.prepare<void>(
+  const renameChangesWorktreeKeyStmt = db.query(
     "UPDATE worktree_changes SET worktree_key = ? WHERE worktree_key = ?",
   );
-  const getNodeStmt = conn.prepare<NodeRow | null>(
+  const getNodeStmt = db.query<NodeRow>(
     `SELECT node_id, origin_kind, origin_hash, origin_mode, state_kind, state_mode, content, target, directory_overlay
      FROM worktree_nodes
      WHERE worktree_key = ? AND node_id = ?`,
   );
-  const listAllNodesStmt = conn.prepare<NodeRow>(
+  const listAllNodesStmt = db.query<NodeRow>(
     `SELECT node_id, origin_kind, origin_hash, origin_mode, state_kind, state_mode, content, target, directory_overlay
      FROM worktree_nodes
      WHERE worktree_key = ?`,
   );
-  const setNodeStmt = conn.prepare<void>(
+  const setNodeStmt = db.query(
     `INSERT INTO worktree_nodes (
         worktree_key, node_id, origin_kind, origin_hash, origin_mode,
         state_kind, state_mode, content, target, directory_overlay
@@ -141,22 +143,22 @@ export function createSqliteVirtualWorktreeDbLayer(
         target = excluded.target,
         directory_overlay = excluded.directory_overlay`,
   );
-  const deleteNodeStmt = conn.prepare<void>(
+  const deleteNodeStmt = db.query(
     "DELETE FROM worktree_nodes WHERE worktree_key = ? AND node_id = ?",
   );
-  const clearNodesStmt = conn.prepare<void>("DELETE FROM worktree_nodes WHERE worktree_key = ?");
-  const listChangesStmt = conn.prepare<SqliteChangeRow>(
+  const clearNodesStmt = db.query("DELETE FROM worktree_nodes WHERE worktree_key = ?");
+  const listChangesStmt = db.query<SqliteChangeRow>(
     `SELECT path, previous_kind, previous_mode, previous_hash, current_kind, current_mode, current_hash
      FROM worktree_changes
      WHERE worktree_key = ?
      ORDER BY path`,
   );
-  const getChangeStmt = conn.prepare<SqliteChangeRow | null>(
+  const getChangeStmt = db.query<SqliteChangeRow>(
     `SELECT path, previous_kind, previous_mode, previous_hash, current_kind, current_mode, current_hash
      FROM worktree_changes
      WHERE worktree_key = ? AND path = ?`,
   );
-  const upsertChangeStmt = conn.prepare<void>(
+  const upsertChangeStmt = db.query(
     `INSERT INTO worktree_changes (
       worktree_key, path, previous_kind, previous_mode, previous_hash,
       current_kind, current_mode, current_hash
@@ -169,20 +171,18 @@ export function createSqliteVirtualWorktreeDbLayer(
       current_mode = excluded.current_mode,
       current_hash = excluded.current_hash`,
   );
-  const deleteChangeStmt = conn.prepare<void>(
+  const deleteChangeStmt = db.query(
     "DELETE FROM worktree_changes WHERE worktree_key = ? AND path = ?",
   );
-  const clearChangesStmt = conn.prepare<void>(
-    "DELETE FROM worktree_changes WHERE worktree_key = ?",
-  );
+  const clearChangesStmt = db.query("DELETE FROM worktree_changes WHERE worktree_key = ?");
 
-  const deleteWorktreeTx = conn.db.transaction((worktreeKey: string) => {
+  const deleteWorktreeTx = db.transaction((worktreeKey: string) => {
     clearChangesStmt.run(worktreeKey);
     clearNodesStmt.run(worktreeKey);
     deleteWorktreeMetaStmt.run(worktreeKey);
   });
 
-  const resetWorktreeTx = conn.db.transaction((worktreeKey: string, baseTree: SHA1) => {
+  const resetWorktreeTx = db.transaction((worktreeKey: string, baseTree: SHA1) => {
     upsertWorktreeStmt.run(worktreeKey, baseTree);
     clearNodesStmt.run(worktreeKey);
     clearChangesStmt.run(worktreeKey);
@@ -190,7 +190,7 @@ export function createSqliteVirtualWorktreeDbLayer(
   });
 
   return {
-    db: conn.db,
+    db,
 
     transact<T>(fn: () => T): T {
       return transactImpl(fn) as T;
@@ -234,7 +234,7 @@ export function createSqliteVirtualWorktreeDbLayer(
           worktreeKey: toKey,
         });
       }
-      const renameTx = conn.db.transaction(() => {
+      const renameTx = db.transaction(() => {
         renameChangesWorktreeKeyStmt.run(toKey, fromKey);
         renameNodesWorktreeKeyStmt.run(toKey, fromKey);
         renameWorktreeMetaStmt.run(toKey, fromKey);
@@ -248,7 +248,7 @@ export function createSqliteVirtualWorktreeDbLayer(
       if (keys.length === 0) {
         return 0;
       }
-      const deleteByPrefixTx = conn.db.transaction(() => {
+      const deleteByPrefixTx = db.transaction(() => {
         deleteChangesByPrefixStmt.run(prefix, end);
         deleteNodesByPrefixStmt.run(prefix, end);
         deleteWorktreesByPrefixStmt.run(prefix, end);
@@ -358,7 +358,7 @@ export function createSqliteVirtualWorktreeDbLayer(
 /**
  * 确保 VirtualWorktree SQLite schema 存在且版本兼容
  */
-export function ensureWorktreeSqliteSchema(db: Database): void {
+export function ensureWorktreeSqliteSchema(db: SqliteDatabase): void {
   const currentVersion = readSchemaVersion(db);
   const LEGACY_SCHEMA_VERSION = 7;
   if (
@@ -426,16 +426,16 @@ export function readBaseTreeValue(raw: unknown): SHA1 {
   }
 }
 
-function readSchemaVersion(db: Database): number {
-  const row = db.query<{ user_version: number }, []>("PRAGMA user_version").get();
+function readSchemaVersion(db: SqliteDatabase): number {
+  const row = db.query<{ user_version: number }>("PRAGMA user_version").get();
   return row?.user_version ?? 0;
 }
 
-function writeSchemaVersion(db: Database, version: number): void {
+function writeSchemaVersion(db: SqliteDatabase, version: number): void {
   db.run(`PRAGMA user_version = ${version}`);
 }
 
-function writeNode(stmt: Statement<void, any[]>, worktreeKey: string, node: WorktreeNode): void {
+function writeNode(stmt: SqliteStatement, worktreeKey: string, node: WorktreeNode): void {
   if (node.state.kind === "directory") {
     stmt.run(
       worktreeKey,

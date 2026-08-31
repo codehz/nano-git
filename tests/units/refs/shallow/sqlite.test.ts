@@ -6,11 +6,12 @@
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 
-import { acquireConnection } from "@/backend/sqlite-pool.ts";
+import { openTestSqlite } from "../../../helpers/sqlite.ts";
 import { createSqliteShallowStore } from "@/refs/shallow/sqlite.ts";
 import { sha1 } from "@/types/index.ts";
 
 import type { SHA1 } from "@/types/index.ts";
+import type { SqliteDatabase } from "@/types/sqlite.ts";
 
 function makeHash(seed: string): SHA1 {
   return sha1(seed.padStart(40, "0").slice(0, 40));
@@ -21,17 +22,17 @@ const HASH_B = makeHash("b");
 const HASH_C = makeHash("c");
 
 describe("createSqliteShallowStore()", () => {
-  let conn: ReturnType<typeof acquireConnection>;
+  let db: SqliteDatabase & Disposable;
   let store: ReturnType<typeof createSqliteShallowStore>;
 
   beforeEach(() => {
-    conn = acquireConnection(":memory:");
-    conn.db.run("CREATE TABLE IF NOT EXISTS shallow (hash TEXT PRIMARY KEY)");
-    store = createSqliteShallowStore(conn);
+    db = openTestSqlite();
+    db.run("CREATE TABLE IF NOT EXISTS shallow (hash TEXT PRIMARY KEY)");
+    store = createSqliteShallowStore(db);
   });
 
   afterEach(() => {
-    conn.release();
+    db[Symbol.dispose]();
   });
 
   test("默认状态下 read 返回空数组", () => {
@@ -84,14 +85,14 @@ describe("createSqliteShallowStore()", () => {
     store.write([HASH_A]);
 
     // readonly DB 会使写入操作失败
-    conn.db.run("PRAGMA query_only = 1");
+    db.run("PRAGMA query_only = 1");
 
     expect(() => {
       store.applyUpdate({ shallow: [HASH_B], unshallow: [HASH_A] });
     }).toThrow();
 
     // 恢复 readonly
-    conn.db.run("PRAGMA query_only = 0");
+    db.run("PRAGMA query_only = 0");
 
     // 确认数据未变更
     expect(store.read()).toEqual([HASH_A]);
@@ -100,13 +101,13 @@ describe("createSqliteShallowStore()", () => {
   test("write 原子性：中途出错时全部回滚", () => {
     store.write([HASH_A]);
 
-    conn.db.run("PRAGMA query_only = 1");
+    db.run("PRAGMA query_only = 1");
 
     expect(() => {
       store.write([HASH_B]);
     }).toThrow();
 
-    conn.db.run("PRAGMA query_only = 0");
+    db.run("PRAGMA query_only = 0");
 
     // write 是 DELETE ALL + INSERT，事务回滚应保持原状
     expect(store.read()).toEqual([HASH_A]);

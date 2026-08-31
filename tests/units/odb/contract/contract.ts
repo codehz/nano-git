@@ -8,7 +8,7 @@ import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { acquireConnection } from "@/backend/sqlite-pool.ts";
+import { openTestSqlite } from "../../../helpers/sqlite.ts";
 import { createFileObjectStore } from "@/odb/file.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
 import { createSqliteObjectStore } from "@/odb/sqlite.ts";
@@ -44,14 +44,14 @@ function createFileSession(): ObjectDatabaseContractSession {
 }
 
 function createSqliteSession(): ObjectDatabaseContractSession {
-  const conn = acquireConnection(":memory:");
-  conn.db.run(
+  const db = openTestSqlite();
+  db.run(
     "CREATE TABLE IF NOT EXISTS objects (hash TEXT PRIMARY KEY, type TEXT NOT NULL, content BLOB NOT NULL)",
   );
   return {
-    store: createSqliteObjectStore(conn),
+    store: createSqliteObjectStore(db),
     [Symbol.dispose](): void {
-      conn.release();
+      db[Symbol.dispose]();
     },
   };
 }

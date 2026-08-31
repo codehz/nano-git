@@ -2,7 +2,6 @@
  * Virtual Worktree SQLite 公开入口
  */
 
-import { acquireConnection } from "../../backend/sqlite-pool.ts";
 import { VirtualWorktreeError } from "../../errors.ts";
 import { openVirtualWorktree } from "../engine/worktree.ts";
 import {
@@ -13,13 +12,8 @@ import {
 
 import type { SHA1 } from "../../types/index.ts";
 import type { ObjectDatabase } from "../../types/odb.ts";
+import type { SqliteDatabase } from "../../types/sqlite.ts";
 import type { InitializeVirtualWorktreeOptions, VirtualWorktree } from "../core.ts";
-
-/** 打开 SQLite VirtualWorktree 数据库的可选参数 */
-export interface OpenSqliteVirtualWorktreeDatabaseOptions {
-  /** 开启 WAL 模式，默认 `true` */
-  readonly walMode?: boolean;
-}
 
 /** 数据库内单个 VirtualWorktree 条目的摘要 */
 export interface SqliteVirtualWorktreeEntrySummary {
@@ -30,14 +24,12 @@ export interface SqliteVirtualWorktreeEntrySummary {
 }
 
 /**
- * 单个 SQLite 文件上的 VirtualWorktree 集合管理器
+ * 单个 SQLite 连接上的 VirtualWorktree 集合管理器
  *
- * 持有数据库连接与共享 prepared statements；`openWorktree` 返回的实例不单独释放连接。
- * 使用 `[Symbol.dispose]()` 或 `using` 在作用域结束时释放连接。
+ * 持有共享 prepared statements；`openWorktree` 返回的实例绑定同一连接。
+ * 不关闭传入的数据库，生命周期由调用方负责。
  */
 export interface SqliteVirtualWorktreeDatabase {
-  /** 打开时使用的 SQLite 数据库文件路径（含 `:memory:` 等特殊路径） */
-  readonly dbPath: string;
   /**
    * 列举 worktree key
    *
@@ -98,55 +90,35 @@ export interface SqliteVirtualWorktreeDatabase {
    * @throws 若 worktree 不存在或完整性校验失败
    */
   openWorktree(source: ObjectDatabase, worktreeKey: string): VirtualWorktree;
-  /** 释放数据库连接；重复调用安全 */
-  [Symbol.dispose](): void;
 }
 
 /**
- * 打开 SQLite 文件上的 VirtualWorktree 数据库管理器
+ * 打开 SQLite 连接上的 VirtualWorktree 数据库管理器
  *
- * 若文件不存在会创建；首次打开会初始化 worktree 相关表结构。
- * 返回实例附带 `[Symbol.dispose]()`，推荐配合 `using` 管理生命周期。
+ * 首次打开会初始化 worktree 相关表结构。不关闭传入的 `db`。
  *
- * @param dbPath - SQLite 数据库路径（可使用 `:memory:`）
- * @param options - 连接选项（如 WAL）
+ * @param db - 已打开的 SQLite 数据库
  * @returns 多 worktree 集合管理器
  *
  * @example
  * ```ts
- * using db = openSqliteVirtualWorktreeDatabase("/tmp/worktrees.sqlite");
+ * import { Database } from "bun:sqlite";
+ * import type { SqliteDatabase } from "nano-git/types/sqlite";
+ *
+ * const sqlite = new Database("/tmp/worktrees.sqlite") as unknown as SqliteDatabase;
+ * const db = openSqliteVirtualWorktreeDatabase(sqlite);
  * db.createWorktree("demo", { baseTree: tree });
  * const worktree = db.openWorktree(repo.objects, "demo");
  * expect(db.listWorktreeKeys()).toEqual(["demo"]);
  * ```
  */
 export function openSqliteVirtualWorktreeDatabase(
-  dbPath: string,
-  options: OpenSqliteVirtualWorktreeDatabaseOptions = {},
+  db: SqliteDatabase,
 ): SqliteVirtualWorktreeDatabase {
-  const conn = acquireConnection(dbPath, options.walMode !== false);
-  let released = false;
-
-  const releaseOnce = (): void => {
-    if (released) {
-      return;
-    }
-    released = true;
-    conn.release();
-  };
-
-  try {
-    ensureWorktreeSqliteSchema(conn.db);
-  } catch (error) {
-    releaseOnce();
-    throw error;
-  }
-
-  const layer = createSqliteVirtualWorktreeDbLayer(conn);
+  ensureWorktreeSqliteSchema(db);
+  const layer = createSqliteVirtualWorktreeDbLayer(db);
 
   return {
-    dbPath,
-
     listWorktreeKeys(prefix?: string): readonly string[] {
       return layer.listWorktreeKeys(prefix);
     },
@@ -201,10 +173,6 @@ export function openSqliteVirtualWorktreeDatabase(
       }
       layer.validateWorktreeIntegrity(worktreeKey);
       return openVirtualWorktree(source, layer.bindStateStore(worktreeKey));
-    },
-
-    [Symbol.dispose](): void {
-      releaseOnce();
     },
   };
 }

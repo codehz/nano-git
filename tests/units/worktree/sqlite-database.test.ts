@@ -3,6 +3,7 @@
  */
 import { describe, test, expect } from "bun:test";
 
+import { openTestSqlite } from "../../helpers/sqlite.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
 import { openSqliteVirtualWorktreeDatabase } from "@/worktree/sqlite.ts";
 
@@ -12,7 +13,8 @@ describe("openSqliteVirtualWorktreeDatabase", () => {
     const baseA = repo.createTree([]);
     const baseB = repo.createTree([]);
 
-    using db = openSqliteVirtualWorktreeDatabase(":memory:");
+    using sqlite = openTestSqlite();
+    const db = openSqliteVirtualWorktreeDatabase(sqlite);
     db.createWorktree("a", { baseTree: baseA });
     db.createWorktree("b", { baseTree: baseB });
 
@@ -38,7 +40,8 @@ describe("openSqliteVirtualWorktreeDatabase", () => {
     const repo = createMemoryRepository();
     const baseTree = repo.createTree([]);
 
-    using db = openSqliteVirtualWorktreeDatabase(":memory:");
+    using sqlite = openTestSqlite();
+    const db = openSqliteVirtualWorktreeDatabase(sqlite);
     db.createWorktree("demo", { baseTree });
 
     expect(() => db.createWorktree("demo", { baseTree })).toThrow(
@@ -52,7 +55,8 @@ describe("openSqliteVirtualWorktreeDatabase", () => {
     const repo = createMemoryRepository();
     const baseTree = repo.createTree([]);
 
-    using db = openSqliteVirtualWorktreeDatabase(":memory:");
+    using sqlite = openTestSqlite();
+    const db = openSqliteVirtualWorktreeDatabase(sqlite);
     db.createWorktree("sess/a", { baseTree });
     db.createWorktree("sess/b", { baseTree });
     db.createWorktree("other", { baseTree });
@@ -73,7 +77,8 @@ describe("openSqliteVirtualWorktreeDatabase", () => {
     const repo = createMemoryRepository();
     const baseTree = repo.createTree([]);
 
-    using db = openSqliteVirtualWorktreeDatabase(":memory:");
+    using sqlite = openTestSqlite();
+    const db = openSqliteVirtualWorktreeDatabase(sqlite);
     db.createWorktree("old", { baseTree });
     const worktree = db.openWorktree(repo.objects, "old");
     worktree.writeFile("keep.txt", Buffer.from("data"));
@@ -91,7 +96,8 @@ describe("openSqliteVirtualWorktreeDatabase", () => {
     const repo = createMemoryRepository();
     const baseTree = repo.createTree([]);
 
-    using db = openSqliteVirtualWorktreeDatabase(":memory:");
+    using sqlite = openTestSqlite();
+    const db = openSqliteVirtualWorktreeDatabase(sqlite);
     db.createWorktree("a", { baseTree });
     db.createWorktree("b", { baseTree });
 

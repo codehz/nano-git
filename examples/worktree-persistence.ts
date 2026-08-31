@@ -14,9 +14,12 @@ import {
 } from "nano-git/worktree/file";
 import { openSqliteVirtualWorktreeDatabase } from "nano-git/worktree/sqlite";
 
+import { Database } from "bun:sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import type { SqliteDatabase } from "nano-git/types/sqlite";
 
 function createFixture() {
   const repo = createMemoryRepository();
@@ -54,9 +57,10 @@ function runSqliteDemo(): void {
   const rootDir = mkdtempSync(join(tmpdir(), "nano-git-worktree-sqlite-demo-"));
   const dbPath = join(rootDir, "worktree.sqlite");
   const { repo, baseTree } = createFixture();
+  const sqlite = new Database(dbPath) as unknown as SqliteDatabase;
 
   try {
-    using db = openSqliteVirtualWorktreeDatabase(dbPath);
+    const db = openSqliteVirtualWorktreeDatabase(sqlite);
     db.createWorktree("demo", { baseTree });
     const worktree = db.openWorktree(repo.objects, "demo");
 
@@ -73,6 +77,7 @@ function runSqliteDemo(): void {
 
     db.deleteWorktree("demo");
   } finally {
+    (sqlite as unknown as Database).close();
     rmSync(rootDir, { recursive: true, force: true });
   }
 }

@@ -7,6 +7,7 @@ import { existsSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { openTestSqlite } from "../../helpers/sqlite.ts";
 import { createSqliteRepository } from "@/repository/sqlite.ts";
 
 describe("createSqliteRepository()", () => {
@@ -26,16 +27,18 @@ describe("createSqliteRepository()", () => {
   }
 
   test("返回完整的 Repository 接口", () => {
-    using repo = createSqliteRepository(tmpPath());
+    using db = openTestSqlite(tmpPath());
+    const repo = createSqliteRepository(db);
     expect(repo).toHaveProperty("objects");
     expect(repo).toHaveProperty("refs");
     expect(repo).toHaveProperty("shallow");
     expect(repo).toHaveProperty("gitDir");
-    expect(repo.gitDir).not.toBeNull();
+    expect(repo.gitDir).toBe("");
   });
 
   test("writeBlob + catFile 正常", () => {
-    using repo = createSqliteRepository(tmpPath());
+    using db = openTestSqlite(tmpPath());
+    const repo = createSqliteRepository(db);
     const hash = repo.writeBlob(Buffer.from("hello sqlite"));
     const obj = repo.catFile(hash);
     expect(obj.type).toBe("blob");
@@ -45,12 +48,14 @@ describe("createSqliteRepository()", () => {
   });
 
   test("getCurrentBranch 默认返回 main", () => {
-    using repo = createSqliteRepository(tmpPath());
+    using db = openTestSqlite(tmpPath());
+    const repo = createSqliteRepository(db);
     expect(repo.getCurrentBranch()).toBe("main");
   });
 
   test("createBranch + listBranches", () => {
-    using repo = createSqliteRepository(tmpPath());
+    using db = openTestSqlite(tmpPath());
+    const repo = createSqliteRepository(db);
     const treeHash = repo.createTree([]);
     repo.createBranch("feature", treeHash);
 
@@ -58,21 +63,16 @@ describe("createSqliteRepository()", () => {
     expect(branches).toContain("feature");
   });
 
-  test("支持 Symbol.dispose", () => {
-    const repo = createSqliteRepository(tmpPath());
-    expect(typeof repo[Symbol.dispose]).toBe("function");
-    repo[Symbol.dispose]();
-  });
-
-  test("dispose 后数据库文件可被重新打开", () => {
+  test("关闭后再打开同一数据库文件可读取已有数据", () => {
     const path = tmpPath();
     const blobHash = (() => {
-      using repo = createSqliteRepository(path);
+      using db = openTestSqlite(path);
+      const repo = createSqliteRepository(db);
       return repo.writeBlob(Buffer.from("persist"));
     })();
 
-    // 重新打开同一文件，确认先前写入的数据仍可读取
-    using repo2 = createSqliteRepository(path);
+    using db2 = openTestSqlite(path);
+    const repo2 = createSqliteRepository(db2);
     const obj = repo2.catFile(blobHash);
     expect(obj.type).toBe("blob");
     if (obj.type === "blob") {

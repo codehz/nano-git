@@ -11,48 +11,44 @@
 import { RefNotFoundError, TransactionError } from "../errors.ts";
 import { validateRefName, validateRefPrefix } from "./names.ts";
 
-import type { SqliteConnectionHandle } from "../backend/sqlite-pool.ts";
 import type {
   RefStore,
   RefTransaction,
   RefTransactionHook,
   ReadonlyRefTransaction,
 } from "../types/refs.ts";
+import type { SqliteDatabase } from "../types/sqlite.ts";
 
 /**
  * 创建基于 SQLite 的 RefStore
  *
- * @param conn - SQLite 连接池句柄（含 statement 缓存）
+ * @param db - 已打开的 SQLite 数据库（需已有 refs 表）
  * @returns 符合 RefStore 接口的存储后端（含事务支持）
  *
  * @example
  * ```ts
- * import { acquireConnection } from "nano-git/backend/sqlite";
- * using conn = acquireConnection("/tmp/repo.sqlite");
- * const store = createSqliteRefStore(conn);
+ * import { Database } from "bun:sqlite";
+ * import { createSqliteRefStore } from "nano-git/refs/sqlite";
+ * import type { SqliteDatabase } from "nano-git/types/sqlite";
  *
+ * const db = new Database(":memory:") as unknown as SqliteDatabase;
+ * db.run("CREATE TABLE refs (name TEXT PRIMARY KEY, target TEXT NOT NULL)");
+ * const store = createSqliteRefStore(db);
  * store.write("refs/heads/main", "abc123");
- * const content = store.read("refs/heads/main");
  * ```
  */
-export function createSqliteRefStore(conn: SqliteConnectionHandle): RefStore {
-  // 预编译 SQL 语句（通过 conn.prepare 缓存复用）
-  // 注意：native-sqlite 的 .get() 会返回行对象，即使是单列查询
-  const selectStmt = conn.prepare<{ target: string } | null>(
-    "SELECT target FROM refs WHERE name = ?",
-  );
-  const selectExistsStmt = conn.prepare<{ "1": number }>("SELECT 1 FROM refs WHERE name = ?");
-  const insertStmt = conn.prepare<void>("INSERT OR REPLACE INTO refs (name, target) VALUES (?, ?)");
-  const deleteStmt = conn.prepare<void>("DELETE FROM refs WHERE name = ?");
-  const listPrefixStmt = conn.prepare<{ name: string }>(
+export function createSqliteRefStore(db: SqliteDatabase): RefStore {
+  // `.get()` 无匹配行时返回 null；单列查询仍返回行对象
+  const selectStmt = db.query<{ target: string }>("SELECT target FROM refs WHERE name = ?");
+  const selectExistsStmt = db.query<{ "1": number }>("SELECT 1 FROM refs WHERE name = ?");
+  const insertStmt = db.query("INSERT OR REPLACE INTO refs (name, target) VALUES (?, ?)");
+  const deleteStmt = db.query("DELETE FROM refs WHERE name = ?");
+  const listPrefixStmt = db.query<{ name: string }>(
     "SELECT name FROM refs WHERE name >= ? AND name < ? ORDER BY name",
   );
-  const listAllStmt = conn.prepare<{ name: string }>(
+  const listAllStmt = db.query<{ name: string }>(
     "SELECT name FROM refs WHERE name LIKE 'refs/%' ORDER BY name",
   );
-
-  // 以下代码通过 closure 引用上述 stmt 变量和 conn.db
-  const db = conn.db;
 
   /**
    * 开启一个新的事务

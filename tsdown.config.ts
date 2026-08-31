@@ -72,6 +72,7 @@ export default defineConfig({
     "src/worktree/core.ts",
     "src/worktree/sqlite.ts",
     "src/worktree/file.ts",
+    "src/types/sqlite.ts",
   ],
   format: ["esm"],
   dts: true,
@@ -87,8 +88,5 @@ export default defineConfig({
     customExports(exports) {
       return addTypesExport(exports);
     },
-  },
-  deps: {
-    neverBundle: ["native-sqlite"],
   },
 });

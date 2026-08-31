@@ -11,35 +11,37 @@
 
 import { sha1 } from "../../types/index.ts";
 
-import type { SqliteConnectionHandle } from "../../backend/sqlite-pool.ts";
 import type { SHA1 } from "../../types/index.ts";
 import type { ShallowStore, ShallowUpdate } from "../../types/shallow.ts";
+import type { SqliteDatabase } from "../../types/sqlite.ts";
 
 /**
  * 创建基于 SQLite 的 shallow 边界存储
  *
- * @param conn - SQLite 连接池句柄（含 statement 缓存）
+ * @param db - 已打开的 SQLite 数据库（需已有 shallow 表）
  * @returns 符合 ShallowStore 接口的存储后端
  *
  * @example
  * ```ts
- * import { acquireConnection } from "nano-git/backend/sqlite";
- * using conn = acquireConnection("/tmp/repo.sqlite");
- * const store = createSqliteShallowStore(conn);
+ * import { Database } from "bun:sqlite";
+ * import { createSqliteShallowStore } from "nano-git/refs/shallow/sqlite";
+ * import type { SqliteDatabase } from "nano-git/types/sqlite";
  *
+ * const db = new Database(":memory:") as unknown as SqliteDatabase;
+ * db.run("CREATE TABLE shallow (hash TEXT PRIMARY KEY)");
+ * const store = createSqliteShallowStore(db);
  * store.write([hashA, hashB]);
- * console.log(store.isShallow(hashA)); // true
  * ```
  */
-export function createSqliteShallowStore(conn: SqliteConnectionHandle): ShallowStore {
-  const selectAllStmt = conn.prepare<{ hash: string }>("SELECT hash FROM shallow ORDER BY hash");
-  const selectExistsStmt = conn.prepare<{ "1": number }>("SELECT 1 FROM shallow WHERE hash = ?");
-  const deleteAllStmt = conn.prepare<void>("DELETE FROM shallow");
-  const insertStmt = conn.prepare<void>("INSERT OR IGNORE INTO shallow (hash) VALUES (?)");
-  const deleteOneStmt = conn.prepare<void>("DELETE FROM shallow WHERE hash = ?");
+export function createSqliteShallowStore(db: SqliteDatabase): ShallowStore {
+  const selectAllStmt = db.query<{ hash: string }>("SELECT hash FROM shallow ORDER BY hash");
+  const selectExistsStmt = db.query<{ "1": number }>("SELECT 1 FROM shallow WHERE hash = ?");
+  const deleteAllStmt = db.query("DELETE FROM shallow");
+  const insertStmt = db.query("INSERT OR IGNORE INTO shallow (hash) VALUES (?)");
+  const deleteOneStmt = db.query("DELETE FROM shallow WHERE hash = ?");
 
   /** 全量替换事务 */
-  const replaceAllTx = conn.db.transaction((boundaries: SHA1[]) => {
+  const replaceAllTx = db.transaction((boundaries: SHA1[]) => {
     deleteAllStmt.run();
     for (const hash of boundaries) {
       insertStmt.run(hash);
@@ -47,7 +49,7 @@ export function createSqliteShallowStore(conn: SqliteConnectionHandle): ShallowS
   });
 
   /** 增量更新事务 */
-  const applyUpdateTx = conn.db.transaction((update: ShallowUpdate) => {
+  const applyUpdateTx = db.transaction((update: ShallowUpdate) => {
     for (const hash of update.unshallow) {
       deleteOneStmt.run(hash);
     }

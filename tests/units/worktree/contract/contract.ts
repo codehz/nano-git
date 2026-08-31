@@ -9,12 +9,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { openTestSqlite } from "../../../helpers/sqlite.ts";
 import { createFileVirtualWorktree, openFileVirtualWorktree } from "@/worktree/file.ts";
 import { createVirtualWorktree } from "@/worktree/memory.ts";
-import {
-  openSqliteVirtualWorktreeDatabase,
-  type SqliteVirtualWorktreeDatabase,
-} from "@/worktree/sqlite.ts";
+import { openSqliteVirtualWorktreeDatabase } from "@/worktree/sqlite.ts";
 
 import type { Repository } from "@/repository/types.ts";
 import type { InitializeVirtualWorktreeOptions, VirtualWorktree } from "@/worktree/core.ts";
@@ -45,12 +43,12 @@ export type PersistentVirtualWorktreeFactory = (
 ) => PersistentVirtualWorktreeHandle;
 
 const tempRoots: string[] = [];
-const sqliteDatabases: SqliteVirtualWorktreeDatabase[] = [];
+const sqliteHandles: Array<Disposable> = [];
 let sqliteContractCounter = 0;
 
 afterAll(() => {
-  for (const db of sqliteDatabases) {
-    db[Symbol.dispose]();
+  for (const handle of sqliteHandles) {
+    handle[Symbol.dispose]();
   }
   for (const root of tempRoots) {
     rmSync(root, { recursive: true, force: true });
@@ -84,8 +82,9 @@ export const virtualWorktreeBackends = [
   {
     name: "sqlite",
     createWorktree: (repo, options) => {
-      const db = openSqliteVirtualWorktreeDatabase(":memory:");
-      sqliteDatabases.push(db);
+      const sqlite = openTestSqlite();
+      sqliteHandles.push(sqlite);
+      const db = openSqliteVirtualWorktreeDatabase(sqlite);
       sqliteContractCounter += 1;
       const key = `demo-${sqliteContractCounter}`;
       db.createWorktree(key, options);
@@ -121,8 +120,9 @@ export const persistentVirtualWorktreeBackends = [
   {
     name: "sqlite",
     createPersistentWorktree: (repo, options) => {
-      const db = openSqliteVirtualWorktreeDatabase(":memory:");
-      sqliteDatabases.push(db);
+      const sqlite = openTestSqlite();
+      sqliteHandles.push(sqlite);
+      const db = openSqliteVirtualWorktreeDatabase(sqlite);
       sqliteContractCounter += 1;
       const key = `demo-${sqliteContractCounter}`;
       db.createWorktree(key, options);

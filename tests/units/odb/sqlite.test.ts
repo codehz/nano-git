@@ -4,28 +4,29 @@
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 
-import { acquireConnection } from "@/backend/sqlite-pool.ts";
+import { openTestSqlite } from "../../helpers/sqlite.ts";
 import { ObjectNotFoundError } from "@/errors.ts";
 import { encodeObject, writeObject } from "@/objects/raw.ts";
 import { createSqliteObjectStore } from "@/odb/sqlite.ts";
 import { sha1 } from "@/types/index.ts";
 
 import type { RawGitObject } from "@/types/index.ts";
+import type { SqliteDatabase } from "@/types/sqlite.ts";
 
 describe("createSqliteObjectStore()", () => {
-  let conn: ReturnType<typeof acquireConnection>;
+  let db: SqliteDatabase & Disposable;
   let store: ReturnType<typeof createSqliteObjectStore>;
 
   beforeEach(() => {
-    conn = acquireConnection(":memory:");
-    conn.db.run(
+    db = openTestSqlite();
+    db.run(
       "CREATE TABLE IF NOT EXISTS objects (hash TEXT PRIMARY KEY, type TEXT NOT NULL, content BLOB NOT NULL)",
     );
-    store = createSqliteObjectStore(conn);
+    store = createSqliteObjectStore(db);
   });
 
   afterEach(() => {
-    conn.release();
+    db[Symbol.dispose]();
   });
 
   test("读取不存在的对象应抛出 ObjectNotFoundError", () => {
