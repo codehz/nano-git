@@ -56,10 +56,8 @@ export { matchesRefSpec, mapRefName } from "./protocol/ref-match.ts";
 
 // 对象图算法
 export { collectReachable, peelTagChain, isAncestor } from "./protocol/object-graph.ts";
-export type {
-  CollectReachableMissing,
-  CollectReachableBitmapAssist,
-} from "./protocol/object-graph.ts";
+export type { CollectReachableMissing } from "./protocol/object-graph.ts";
+export type { ReachabilityAccelerator } from "../types/reachability.ts";
 
 // side-band 解复用
 export {

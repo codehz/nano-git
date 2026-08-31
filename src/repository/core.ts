@@ -5,7 +5,7 @@
  */
 
 export { createRepository } from "./create.ts";
-export type { Repository, FileRepository } from "./types.ts";
+export type { Repository } from "./types.ts";
 export type {
   DiffEntry,
   DiffChanges,

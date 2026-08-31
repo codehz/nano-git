@@ -18,7 +18,7 @@
  * ```
  */
 
-import { encodeObject, readObject, tryReadObject, writeObject } from "../../objects/raw.ts";
+import { encodeObject, tryReadObject, writeObject } from "../../objects/raw.ts";
 import { isTreeEntryMode } from "../../objects/tree.ts";
 import { resolveRefHash } from "../../refs/resolve.ts";
 import { sha1, type GitCommit, type GitTag, type GitTree, type SHA1 } from "../../types/index.ts";

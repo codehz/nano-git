@@ -21,10 +21,10 @@ import { join } from "node:path";
 
 import { createFileRepositoryBackend } from "../backend/file.ts";
 import { RepositoryError } from "../errors.ts";
-import { createRepository } from "./create.ts";
 import { createRepositoryFsObjectOperations } from "./ops/fs-object-operations.ts";
+import { createPackRepository } from "./pack.ts";
 
-import type { FileRepository } from "./types.ts";
+import type { FileRepository } from "./pack-types.ts";
 
 /**
  * 初始化一个新的 bare Git 仓库
@@ -81,7 +81,7 @@ export function openRepository(path: string): FileRepository {
 
 function createFileRepository(path: string): FileRepository {
   const backend = createFileRepositoryBackend(path);
-  const repo = createRepository(backend);
+  const repo = createPackRepository(backend);
   return {
     ...repo,
     ...createRepositoryFsObjectOperations(backend.objects, (data) => repo.writeBlob(data)),

@@ -3,10 +3,10 @@
  *
  * ## 设计理念
  *
- * 本库采用“默认入口提供高频纯能力，运行时边界通过子路径隔离”的设计：
- * - 默认入口（`"nano-git"`）导出常用类型、对象编解码、refs 工具与纯计算函数
- * - `node:fs` / `node:zlib` 等运行时相关能力仍通过子路径显式导入
- * - tree-shaking 依赖模块本身的无副作用结构，而不是把所有函数都拆成叶子级子路径
+ * 本库采用“核心能力与运行时后端分层”的设计：
+ * - 默认入口和 core/repository/sqlite/memory 入口不引用文件系统或 MIDX 文件实现
+ * - 文件系统能力通过 `repository/file`、`pack/file` 等明确子路径导入
+ * - 纯 Pack 类型通过 `pack/types` 与 `backend/pack` 导入，不经过运行时实现
  *
  * ## 子路径入口
  *
@@ -17,15 +17,19 @@
  * | `nano-git/errors` | 所有错误类 | 纯定义 |
  * | `nano-git/hash-file` | 文件 SHA-1 计算 | `node:fs` |
  * | `nano-git/objects` | 对象序列化/反序列化 + raw 转换 helper | `node:crypto` |
- * | `nano-git/pack` | Packfile 读写与索引 | `node:fs` + `node:zlib` |
- * | `nano-git/backend` | 仓库后端抽象类型 | 类型 |
+ * | `nano-git/pack/core` | 纯 Pack 解析、编码、IDX、MIDX parser | `node:crypto` + `node:zlib` |
+ * | `nano-git/pack/file` | Pack 目录、builder、store、MIDX 文件操作 | `node:fs` + `node:path` |
+ * | `nano-git/pack/types` | Pack 能力纯类型 | 纯类型 |
+ * | `nano-git/backend` | 核心仓库后端抽象类型 | 纯类型 |
+ * | `nano-git/backend/pack` | Pack 仓库后端抽象类型 | 纯类型 |
  * | `nano-git/backend/memory` | 内存后端实现 | 纯 TS |
  * | `nano-git/backend/file` | 文件后端实现 | `node:fs` + `node:zlib` |
  * | `nano-git/remote/http` | 纯远端查询 API | `fetch` + `node:crypto` |
- * | `nano-git/repository/core` | 通用仓库拼装 | 纯 TS |
- * | `nano-git/repository/memory` | 内存仓库便捷函数 | 纯 TS |
+ * | `nano-git/repository/core` | 核心仓库拼装 | 纯 TS + 网络 pack 编解码 |
+ * | `nano-git/repository/pack` | 自定义 Pack backend 仓库拼装 | 纯 TS |
+ * | `nano-git/repository/memory` | 内存仓库便捷函数 | 纯 TS + 网络 pack 编解码 |
  * | `nano-git/repository/file` | 文件仓库便捷函数 | `node:fs` + `node:zlib` |
- * | `nano-git/repository/sqlite` | SQLite 仓库便捷函数 | 注入 `SqliteDatabase` |
+ * | `nano-git/repository/sqlite` | SQLite 仓库便捷函数 | 注入 `SqliteDatabase` + 网络 pack 编解码 |
  * | `nano-git/backend/sqlite` | SQLite 仓库后端（组合工厂） | 注入 `SqliteDatabase` |
  * | `nano-git/odb/sqlite` | SQLite 对象存储 | 注入 `SqliteDatabase` |
  * | `nano-git/refs/sqlite` | SQLite 引用存储 | 注入 `SqliteDatabase` |
@@ -63,15 +67,10 @@ export type {
   TreeEntry,
   GitObject,
 } from "./types/index.ts";
-export type {
-  RepositoryBackend,
-  RepositoryGCOptions,
-  RepositoryPackSupport,
-  RepositoryRepackOptions,
-  PackRepackOptions,
-} from "./backend/types.ts";
+export type { RepositoryBackend, RepositoryGCOptions } from "./backend/types.ts";
 export type { HttpAuth, RemoteSource } from "./remote/types.ts";
-export type { Repository, FileRepository } from "./repository/types.ts";
+export type { Repository } from "./repository/types.ts";
+export type { ReachabilityAccelerator } from "./types/reachability.ts";
 export type { DiffEntry, DiffChanges, DiffObject, DiffObjectKind, DiffObjectMode } from "./diff.ts";
 export type { TreeSnapshotEntry } from "./repository/tree/tree-diff.ts";
 

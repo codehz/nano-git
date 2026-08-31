@@ -2,10 +2,9 @@
  * Pack 对象存储共享类型
  */
 
-import { PackReader } from "../reader/pack-reader.ts";
-
 import type { PackIndexReader } from "../idx/pack-index.ts";
 import type { MidxReader } from "../midx/midx-types.ts";
+import type { PackReader } from "../reader/pack-reader.ts";
 
 /**
  * 一个 packfile 及其索引的组合

@@ -1,5 +1,5 @@
 /**
- * MIDX 链顶 reachability bitmap 加载与可达性辅助
+ * MIDX 链顶 reachability bitmap 文件加载
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -9,14 +9,23 @@ import { createPackBitmapReader } from "../bitmap/pack-bitmap-reader.ts";
 import { loadIncrementalMidxChain } from "./midx-chain.ts";
 import { createMidxReader } from "./midx-reader.ts";
 
-import type { SHA1 } from "../../types/index.ts";
 import type { PackBitmapReader } from "../bitmap/pack-bitmap-reader.ts";
 import type { MidxReader } from "./midx-types.ts";
+
+export {
+  addReachableFromCommitBitmap,
+  createMidxReachabilityAccelerator,
+  findMidxObjectPosition,
+} from "./midx-bitmap-core.ts";
+export type { MidxBitmapAssist } from "./midx-bitmap-core.ts";
 
 const CHAIN_DIR = "multi-pack-index.d";
 
 /**
  * 解析链顶 MIDX 校验和（增量链 tip 或经典 `multi-pack-index` trailer）
+ *
+ * @param packDir - pack 目录
+ * @returns MIDX 校验和，不存在时返回 undefined
  */
 export function resolveMidxTipChecksumHex(packDir: string): string | undefined {
   const midx = loadIncrementalMidxChain(packDir, { expectedOidVersion: 1 });
@@ -37,7 +46,10 @@ export function resolveMidxTipChecksumHex(packDir: string): string | undefined {
 }
 
 /**
- * 加载与链顶 MIDX 关联的 `.bitmap` 文件（不存在或校验和不匹配时返回 undefined）
+ * 加载与链顶 MIDX 关联的 `.bitmap` 文件
+ *
+ * @param packDir - pack 目录
+ * @returns bitmap 读取器，不存在或校验和不匹配时返回 undefined
  */
 export function tryLoadTipMidxBitmap(packDir: string): PackBitmapReader | undefined {
   const checksumHex = resolveMidxTipChecksumHex(packDir);
@@ -63,75 +75,17 @@ function loadBitmapIfMatches(
 ): PackBitmapReader | undefined {
   try {
     const reader = createPackBitmapReader(data);
-    if (reader.checksumHex !== expectedChecksumHex) {
-      return undefined;
-    }
-    return reader;
+    return reader.checksumHex === expectedChecksumHex ? reader : undefined;
   } catch {
     return undefined;
   }
 }
 
 /**
- * 在 MIDX 全局 OID 序中查找对象位置
- */
-export function findMidxObjectPosition(midx: MidxReader, hash: SHA1): number | undefined {
-  const hashes = midx.listHashes();
-  const index = hashes.indexOf(hash);
-  return index >= 0 ? index : undefined;
-}
-
-/**
- * 将某 commit 的 reachability bitmap 中置位的对象加入集合
- *
- * @returns 是否成功使用了 bitmap（commit 有条目且已展开）
- */
-export function addReachableFromCommitBitmap(
-  midx: MidxReader,
-  bitmap: PackBitmapReader,
-  commitHash: SHA1,
-  reachable: Set<SHA1>,
-): boolean {
-  const pos = findMidxObjectPosition(midx, commitHash);
-  if (pos === undefined) {
-    return false;
-  }
-
-  const bits = bitmap.getReachabilityBitmap(pos);
-  if (!bits) {
-    return false;
-  }
-
-  const hashes = midx.listHashes();
-  const revindex = midx.getRevindexPseudoPackOrder?.();
-
-  if (revindex && revindex.length > 0) {
-    for (let pseudo = 0; pseudo < bits.bitCount; pseudo++) {
-      if (!bits.get(pseudo)) {
-        continue;
-      }
-      if (pseudo >= revindex.length) {
-        continue;
-      }
-      const globalPos = revindex[pseudo]!;
-      if (globalPos < hashes.length) {
-        reachable.add(hashes[globalPos]!);
-      }
-    }
-    return true;
-  }
-
-  const limit = Math.min(bits.bitCount, hashes.length);
-  for (let i = 0; i < limit; i++) {
-    if (bits.get(i)) {
-      reachable.add(hashes[i]!);
-    }
-  }
-  return true;
-}
-
-/**
  * 加载 pack 目录的 MIDX 读取器（经典或增量链）
+ *
+ * @param packDir - pack 目录
+ * @returns MIDX 读取器，不存在或损坏时返回 null
  */
 export function loadPackMidxReader(packDir: string): MidxReader | null {
   const chain = loadIncrementalMidxChain(packDir, { expectedOidVersion: 1 });
@@ -152,17 +106,12 @@ export function loadPackMidxReader(packDir: string): MidxReader | null {
 }
 
 /**
- * MIDX reachability bitmap 辅助（用于排除祖先、collectReachable 等）
- */
-export interface MidxBitmapAssist {
-  readonly midx: MidxReader;
-  readonly bitmap: PackBitmapReader;
-}
-
-/**
  * 若 pack 目录存在链顶 MIDX 与匹配 bitmap，则返回辅助对象
+ *
+ * @param packDir - pack 目录
+ * @returns 已加载的 MIDX 与 bitmap
  */
-export function tryLoadMidxBitmapAssist(packDir: string): MidxBitmapAssist | undefined {
+export function tryLoadMidxBitmapAssist(packDir: string) {
   const midx = loadPackMidxReader(packDir);
   if (!midx) {
     return undefined;

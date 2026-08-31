@@ -15,11 +15,10 @@
 
 import { ObjectNotFoundError } from "../../errors.ts";
 import { tryReadObject } from "../../objects/raw.ts";
-import { addReachableFromCommitBitmap } from "../../pack/midx/midx-bitmap.ts";
 
 import type { ObjectSource } from "../../odb/types.ts";
-import type { MidxBitmapAssist } from "../../pack/midx/midx-bitmap.ts";
 import type { SHA1 } from "../../types/index.ts";
+import type { ReachabilityAccelerator } from "../../types/reachability.ts";
 
 // ============================================================================
 // 可达性遍历
@@ -130,17 +129,15 @@ export function collectReachable(
   roots: SHA1[],
   missing: CollectReachableMissing = "skip",
   shallowBoundaries?: Set<SHA1>,
-  bitmapAssist?: CollectReachableBitmapAssist,
+  accelerator?: ReachabilityAccelerator,
 ): Set<SHA1> {
   const reachable = new Set<SHA1>();
 
   for (const hash of roots) {
-    if (bitmapAssist) {
+    if (accelerator) {
       const obj = tryReadObject(source, hash);
-      if (obj?.type === "commit") {
-        if (addReachableFromCommitBitmap(bitmapAssist.midx, bitmapAssist.bitmap, hash, reachable)) {
-          continue;
-        }
+      if (obj?.type === "commit" && accelerator.addReachableFromCommit(hash, reachable)) {
+        continue;
       }
     }
     collectReachableFrom(source, hash, reachable, missing, shallowBoundaries, false);
@@ -285,5 +282,4 @@ export function isAncestor(
   return false;
 }
 
-/** @see MidxBitmapAssist */
-export type CollectReachableBitmapAssist = MidxBitmapAssist;
+/** 可选的可达性加速器由 `ReachabilityAccelerator` 定义。 */

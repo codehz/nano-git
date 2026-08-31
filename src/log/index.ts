@@ -11,4 +11,4 @@
  */
 
 export { walkLogEntries } from "./walk.ts";
-export type { LogEntry, LogWalkOptions, CommitWalkOrder } from "./types.ts";
+export type { ReachabilityAccelerator } from "../types/reachability.ts";

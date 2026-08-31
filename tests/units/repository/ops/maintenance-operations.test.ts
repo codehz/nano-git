@@ -19,18 +19,8 @@ describe("createMaintenanceRepositoryOperations()", () => {
     refs = createMemoryRefStore(new Map([[HEAD_REF, `ref: ${HEADS_PREFIX}main`]]));
   });
 
-  test("packs 为 null 时 writePack 抛出异常", () => {
-    const ops = createMaintenanceRepositoryOperations(objects, refs, null);
-    expect(() => ops.writePack()).toThrow("Backend does not support packfile writes");
-  });
-
-  test("packs 为 null 时 repack 抛出异常", () => {
-    const ops = createMaintenanceRepositoryOperations(objects, refs, null);
-    expect(() => ops.repack()).toThrow("Backend does not support repack");
-  });
-
   test("listReachableObjects() 空仓库返回空数组", () => {
-    const ops = createMaintenanceRepositoryOperations(objects, refs, null);
+    const ops = createMaintenanceRepositoryOperations(objects, refs);
     expect(ops.listReachableObjects()).toHaveLength(0);
   });
 
@@ -63,7 +53,7 @@ describe("createMaintenanceRepositoryOperations()", () => {
     });
     refs.write("refs/heads/main", commitHash);
 
-    const ops = createMaintenanceRepositoryOperations(objects, refs, null);
+    const ops = createMaintenanceRepositoryOperations(objects, refs);
     const reachable = ops.listReachableObjects();
     expect(reachable).toContain(blobHash);
     expect(reachable).toContain(treeHash);
@@ -75,7 +65,7 @@ describe("createMaintenanceRepositoryOperations()", () => {
     writeObject(objects, { type: "blob", content: Buffer.from("unreachable") });
     refs.write("refs/heads/main", blobHash);
 
-    const ops = createMaintenanceRepositoryOperations(objects, refs, null);
+    const ops = createMaintenanceRepositoryOperations(objects, refs);
     const result = ops.gc();
 
     // gc 返回 undefined（无 pack 支持）

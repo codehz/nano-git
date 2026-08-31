@@ -15,7 +15,7 @@ import {
   linkMidxLayerToBase,
   createMidxReaderFromTip,
 } from "@/pack/midx/midx-layer.ts";
-import { writeMultiPackIndex } from "@/pack/midx/midx-writer.ts";
+import { writeMultiPackIndex } from "@/pack/midx/midx-writer-core.ts";
 import { loadPackPairs } from "@/pack/store/pack-store-loader.ts";
 import { sha1 } from "@/types/index.ts";
 

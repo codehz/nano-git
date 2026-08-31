@@ -12,8 +12,7 @@ import { createMemoryRepositoryBackend } from "@/backend/memory.ts";
 import { createRepository } from "@/repository/create.ts";
 import { initRepository } from "@/repository/file.ts";
 import { openRepository } from "@/repository/file.ts";
-
-import type { RepositoryBackend } from "@/backend/types.ts";
+import { createPackRepository } from "@/repository/pack.ts";
 
 describe("initRepository()", () => {
   let tempDir: string;
@@ -57,7 +56,6 @@ describe("createRepository()", () => {
 
     expect(repo.objects).toBe(backend.objects);
     expect(repo.refs).toBe(backend.refs);
-    expect(repo.packs).toBeNull();
     expect(repo.gitDir).toBeNull();
   });
 
@@ -69,8 +67,8 @@ describe("createRepository()", () => {
     writeFileSync(join(tempDir, ".git", "HEAD"), "ref: refs/heads/main\n");
 
     try {
-      const backend: RepositoryBackend = createFileRepositoryBackend(join(tempDir, ".git"));
-      const repo = createRepository(backend);
+      const backend = createFileRepositoryBackend(join(tempDir, ".git"));
+      const repo = createPackRepository(backend);
 
       expect(repo.gitDir).toBe(join(tempDir, ".git"));
       expect(repo.packs).not.toBeNull();

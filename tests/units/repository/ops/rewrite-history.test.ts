@@ -14,8 +14,9 @@ import { createMemoryObjectStore } from "@/odb/memory.ts";
 import { createMemoryRefStore } from "@/refs/memory.ts";
 import { createMaintenanceRepositoryOperations } from "@/repository/ops/maintenance-operations.ts";
 import { rewriteHistory } from "@/repository/ops/rewrite-history.ts";
-import { sha1, type GitAuthor, type SHA1, type TreeEntry } from "@/types/index.ts";
 import { HEAD_REF, HEADS_PREFIX, TAGS_PREFIX } from "@/types/refs.ts";
+
+import type { GitAuthor, SHA1, TreeEntry } from "@/types/index.ts";
 
 const AUTHOR: GitAuthor = {
   name: "Tester",
@@ -336,7 +337,7 @@ describe("rewriteHistory()", () => {
     const oldCommit = writeCommit(objects, badTree);
     refs.write(`${HEADS_PREFIX}main`, oldCommit);
 
-    const ops = createMaintenanceRepositoryOperations(objects, refs, null);
+    const ops = createMaintenanceRepositoryOperations(objects, refs);
     const result = ops.rewriteHistory({ pruneUnreachable: true });
 
     expect(result.updatedRefs[0]!.oldHash).toBe(oldCommit);

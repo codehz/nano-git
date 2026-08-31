@@ -21,10 +21,11 @@ import { ObjectNotFoundError } from "../../errors.ts";
 import { packObjectToRaw } from "../reader/pack-reader-types.ts";
 import { getPackReader, loadPackPairs, toPackFileInfo } from "./pack-store-loader.ts";
 
-import type { ObjectSource } from "../../odb/types.ts";
 import type { RawGitObject, SHA1 } from "../../types/index.ts";
 import type { MidxEntry, MidxReader } from "../midx/midx-types.ts";
-import type { PackFileInfo, PackPair } from "./pack-store-types.ts";
+import type { PackObjectSource } from "../types.ts";
+import type { PackPair } from "./pack-store-types.ts";
+import type { PackFileInfo } from "./pack-store-types.ts";
 
 export type { PackFileInfo } from "./pack-store-types.ts";
 
@@ -35,33 +36,7 @@ export type { PackFileInfo } from "./pack-store-types.ts";
 /**
  * 基于 Packfile 的对象源接口
  */
-export interface PackObjectStore extends ObjectSource {
-  /**
-   * 刷新 pack 目录缓存
-   *
-   * 当外部新增或删除 packfile 后，需要调用此方法重新扫描。
-   */
-  refresh(): void;
-
-  /**
-   * 列出当前可见的 pack 文件对
-   */
-  listPacks(): PackFileInfo[];
-
-  /**
-   * 获取所有 packfile 中的对象哈希列表
-   *
-   * 有 MIDX 时返回去重后的全局 OID 列表；
-   * 无 MIDX 时返回各 pack idx 的 OID 并集（可能重复）。
-   */
-  listHashes(): SHA1[];
-
-  /** 获取 packfile 数量 */
-  readonly packCount: number;
-
-  /** 获取所有对象数量 */
-  readonly objectCount: number;
-}
+export interface PackObjectStore extends PackObjectSource {}
 
 // ============================================================================
 // 工厂函数

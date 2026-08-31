@@ -27,6 +27,7 @@ import {
 } from "../writer/pack-encoding.ts";
 
 import type { RawGitObject, SHA1 } from "../../types/index.ts";
+import type { PackBuilder } from "../types.ts";
 import type { PackBuildResult } from "./pack-builder-types.ts";
 
 export type { PackBuildResult } from "./pack-builder-types.ts";
@@ -35,35 +36,7 @@ export type { PackBuildResult } from "./pack-builder-types.ts";
 // 接口
 // ============================================================================
 
-/**
- * Packfile 构建器接口
- */
-export interface PackBuilder {
-  /** 获取已添加的对象数量 */
-  readonly objectCount: number;
-
-  /**
-   * 添加一个原始对象
-   *
-   * @param raw - 原始 Git 对象
-   * @returns 对象的 SHA-1 哈希
-   */
-  addRaw(raw: RawGitObject): SHA1;
-
-  /**
-   * 构建 packfile 和索引文件
-   *
-   * @returns 构建结果，包含文件路径和校验和
-   *
-   * @example
-   * ```ts
-   * const result = builder.build();
-   * console.log(`Packfile: ${result.packPath}`);
-   * console.log(`Index: ${result.idxPath}`);
-   * ```
-   */
-  build(): PackBuildResult;
-}
+export type { PackBuilder } from "../types.ts";
 
 // ============================================================================
 // 工厂函数

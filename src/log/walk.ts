@@ -22,11 +22,10 @@
  */
 
 import { tryReadObject } from "../objects/raw.ts";
-import { addReachableFromCommitBitmap } from "../pack/midx/midx-bitmap.ts";
 
 import type { ObjectSource } from "../odb/types.ts";
-import type { MidxBitmapAssist } from "../pack/midx/midx-bitmap.ts";
 import type { GitCommit, SHA1 } from "../types/index.ts";
+import type { ReachabilityAccelerator } from "../types/reachability.ts";
 import type { CommitWalkOrder, LogEntry, LogWalkOptions } from "./types.ts";
 
 // ============================================================================
@@ -110,12 +109,9 @@ function markExcluded(
   source: ObjectSource,
   hash: SHA1,
   excluded: Set<SHA1>,
-  bitmapAssist?: MidxBitmapAssist,
+  accelerator?: ReachabilityAccelerator,
 ): void {
-  if (
-    bitmapAssist &&
-    addReachableFromCommitBitmap(bitmapAssist.midx, bitmapAssist.bitmap, hash, excluded)
-  ) {
+  if (accelerator && accelerator.addReachableFromCommit(hash, excluded)) {
     return;
   }
 
@@ -408,7 +404,7 @@ export function walkLogEntries(
     until,
     firstParent = false,
     maxCount,
-    bitmapAssist,
+    reachabilityAccelerator,
   } = options;
 
   // 无起点时立即返回空生成器
@@ -419,7 +415,7 @@ export function walkLogEntries(
   // 构建排除集
   const excluded = new Set<SHA1>();
   for (const hash of exclude) {
-    markExcluded(source, hash, excluded, bitmapAssist);
+    markExcluded(source, hash, excluded, reachabilityAccelerator);
   }
 
   if (order === "topo") {

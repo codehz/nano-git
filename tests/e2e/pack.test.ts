@@ -23,6 +23,7 @@ import {
 import { walkLogEntries } from "@/log/walk.ts";
 import { encodeObject, readObject } from "@/objects/raw.ts";
 import { createPackBuilder } from "@/pack/builder/pack-builder.ts";
+import { createMidxReachabilityAccelerator } from "@/pack/midx/midx-bitmap-core.ts";
 import {
   loadPackMidxReader,
   tryLoadMidxBitmapAssist,
@@ -368,15 +369,16 @@ describe("Packfile 兼容性: git → nano-git", () => {
     const excludeCommit = gitRevParse(tempDir, "HEAD~2");
     const store = createPackObjectStore(gitDir);
     const walkedHead = collectReachable(store, [headCommit]);
-    const assistedHead = collectReachable(store, [headCommit], "skip", undefined, {
-      midx: midx!,
-      bitmap: bitmapReader!,
-    });
+    const accelerator = createMidxReachabilityAccelerator(midx!, bitmapReader!);
+    const assistedHead = collectReachable(store, [headCommit], "skip", undefined, accelerator);
     const walkedExclude = collectReachable(store, [excludeCommit]);
-    const assistedExclude = collectReachable(store, [excludeCommit], "skip", undefined, {
-      midx: midx!,
-      bitmap: bitmapReader!,
-    });
+    const assistedExclude = collectReachable(
+      store,
+      [excludeCommit],
+      "skip",
+      undefined,
+      accelerator,
+    );
 
     expect(assistedHead.size).toBe(walkedHead.size);
     for (const hash of assistedHead) {
@@ -429,7 +431,14 @@ describe("Packfile 兼容性: git → nano-git", () => {
       walkLogEntries(store, { from: [head], exclude: [exclude] }),
     ).map((e) => e.hash);
     const withAssist = Array.from(
-      walkLogEntries(store, { from: [head], exclude: [exclude], bitmapAssist }),
+      walkLogEntries(store, {
+        from: [head],
+        exclude: [exclude],
+        reachabilityAccelerator: createMidxReachabilityAccelerator(
+          bitmapAssist!.midx,
+          bitmapAssist!.bitmap,
+        ),
+      }),
     ).map((e) => e.hash);
 
     expect(withAssist).toEqual(withoutAssist);

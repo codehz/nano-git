@@ -28,18 +28,17 @@ import type { Repository } from "./types.ts";
  * ```
  */
 export function createRepository(backend: RepositoryBackend): Repository {
-  const { objects, refs, packs, shallow, gitDir } = backend;
+  const { objects, refs, shallow, gitDir } = backend;
   const objectOps = createObjectRepositoryOperations(objects);
 
   return {
     objects,
     refs,
-    packs,
     shallow,
     gitDir,
     ...objectOps,
     ...createRefRepositoryOperations(backend),
-    ...createMaintenanceRepositoryOperations(objects, refs, packs),
+    ...createMaintenanceRepositoryOperations(objects, refs),
     ...createPushRepositoryOperations(backend),
     ...createFetchRepositoryOperations(backend),
     ...createRepoImportOperations(backend),

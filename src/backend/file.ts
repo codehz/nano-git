@@ -17,7 +17,7 @@ import { createFileShallowStore } from "../refs/shallow/file.ts";
 import { type RawGitObject, type SHA1 } from "../types/index.ts";
 
 import type { ObjectSource } from "../odb/types.ts";
-import type { PackRepackOptions, RepositoryBackend, RepositoryPackSupport } from "./types.ts";
+import type { PackRepackOptions, RepositoryPackBackend, RepositoryPackSupport } from "./pack.ts";
 
 /** 创建文件系统仓库后端的可选参数 */
 export interface CreateFileRepositoryBackendOptions {
@@ -37,13 +37,13 @@ export interface CreateFileRepositoryBackendOptions {
  * @example
  * ```ts
  * const backend = createFileRepositoryBackend("/path/to/repo/.git");
- * const repo = createRepository(backend);
- * ```
+ * const repo = createPackRepository(backend);
+ * repo.repack();
  */
 export function createFileRepositoryBackend(
   gitDir: string,
   options: CreateFileRepositoryBackendOptions = {},
-): RepositoryBackend {
+): RepositoryPackBackend {
   const looseObjects = createFileObjectStore(gitDir);
   const packSource = createPackObjectStore(gitDir);
   const objects =

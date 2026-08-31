@@ -71,6 +71,5 @@ export function createSqliteRepositoryBackend(
     objects: createSqliteObjectStore(db),
     refs: createSqliteRefStore(db),
     shallow: createSqliteShallowStore(db),
-    packs: null,
   };
 }

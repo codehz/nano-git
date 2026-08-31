@@ -13,7 +13,7 @@ import { createPackBuilder } from "@/pack/builder/pack-builder.ts";
 import { initRepository } from "@/repository/file.ts";
 import { openRepository } from "@/repository/file.ts";
 
-import type { FileRepository } from "@/repository/types.ts";
+import type { FileRepository } from "@/repository/pack-types.ts";
 import type { GitAuthor, TreeEntry } from "@/types/index.ts";
 
 const testAuthor: GitAuthor = {

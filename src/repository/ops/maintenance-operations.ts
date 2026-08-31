@@ -1,103 +1,46 @@
 /**
- * 仓库打包与维护操作组装
+ * 核心仓库维护操作组装
  *
- * GC 编排策略：
- * 1. 如果有 pack 支持，先 repack 可达对象（替换旧 pack）
- * 2. 如果后端 ObjectDatabase 支持 delete，清理不可达的 loose 对象
- * 3. 刷新 pack 视图
- *
- * 不再依赖 RepositoryPackSupport.gc()——GC 是仓库层的编排职责，
- * RepositoryPackSupport 只负责 packfile 层面的读写。
+ * 这里只处理与 pack 实现无关的可达性、GC 和历史重写。
+ * Pack 仓库通过独立的 pack maintenance 组装器覆盖 GC 并增加 repack 能力。
  */
 
-import { RepositoryError } from "../../errors.ts";
 import { listReachableObjects } from "./reachability.ts";
 import { rewriteHistory as rewriteHistoryImpl } from "./rewrite-history.ts";
 
-import type {
-  RepositoryGCOptions,
-  RepositoryPackSupport,
-  RepositoryRepackOptions,
-} from "../../backend/types.ts";
+import type { RepositoryGCOptions } from "../../backend/types.ts";
 import type { ObjectDatabase } from "../../odb/types.ts";
-import type { PackBuildResult } from "../../pack/builder/pack-builder.ts";
-import type { SHA1 } from "../../types/index.ts";
 import type { RefStore } from "../../types/refs.ts";
 import type { RepositoryMaintenanceOperations } from "./maintenance-types.ts";
 import type { RewriteHistoryOptions, RewriteHistoryResult } from "./rewrite-types.ts";
 
 /**
- * 创建仓库维护相关操作
+ * 创建核心仓库维护相关操作
  *
  * @example
  * ```ts
- * const ops = createMaintenanceRepositoryOperations(objects, refs, packs);
- * const reachable = ops.listReachableObjects();
- * const fixed = ops.rewriteHistory();
+ * const ops = createMaintenanceRepositoryOperations(objects, refs);
+ * ops.gc();
  * ```
  */
 export function createMaintenanceRepositoryOperations(
   objects: ObjectDatabase,
   refs: RefStore,
-  packs: RepositoryPackSupport | null,
 ): RepositoryMaintenanceOperations {
-  function gc(options?: RepositoryGCOptions): PackBuildResult | undefined {
+  function gc(options?: RepositoryGCOptions): void {
     const reachable = listReachableObjects(objects, refs);
-    const reachableSet = new Set(reachable);
-
-    // 1. 有 pack 支持时，repack 可达对象（自动替换旧 pack）
-    let result: PackBuildResult | undefined;
-    if (packs) {
-      result = packs.repack(objects, {
-        hashes: reachable,
-        replaceExistingPacks: options?.replaceExistingPacks,
-      });
-      packs.source.refresh();
-    }
-
-    // 2. 删除不可达对象（如果后端支持）
     if (options?.pruneLoose ?? true) {
+      const reachableSet = new Set(reachable);
       for (const hash of objects.list()) {
         if (!reachableSet.has(hash)) {
           objects.delete?.(hash);
         }
       }
     }
-
-    return result;
   }
 
   return {
-    writePack(hashes?: SHA1[]) {
-      if (!packs) {
-        throw new RepositoryError("Backend does not support packfile writes");
-      }
-      return packs.writeFromSource(objects, hashes ?? objects.list());
-    },
-
-    repack(options?: RepositoryRepackOptions) {
-      if (!packs) {
-        throw new RepositoryError("Backend does not support repack");
-      }
-
-      const hashes = options?.hashes ? Array.from(options.hashes) : Array.from(objects.list());
-      const result = packs.repack(objects, {
-        hashes,
-        replaceExistingPacks: options?.replaceExistingPacks,
-      });
-
-      // pruneLoose 由仓库层处理，不交给 packs.repack
-      if (options?.pruneLoose) {
-        for (const hash of hashes) {
-          objects.delete?.(hash);
-        }
-      }
-
-      packs.source.refresh();
-      return result;
-    },
-
-    listReachableObjects(): SHA1[] {
+    listReachableObjects() {
       return listReachableObjects(objects, refs);
     },
 

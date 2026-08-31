@@ -31,10 +31,10 @@
       "perry": "./src/backend/memory.ts",
       "default": "./dist/backend/memory.mjs"
     },
-    "./backend/sqlite": {
-      "types": "./dist/backend/sqlite.d.mts",
-      "perry": "./src/backend/sqlite.ts",
-      "default": "./dist/backend/sqlite.mjs"
+    "./backend/pack": {
+      "types": "./dist/backend/pack.d.mts",
+      "perry": "./src/backend/pack.ts",
+      "default": "./dist/backend/pack.mjs"
     },
     "./errors": {
       "types": "./dist/errors.d.mts",
@@ -76,10 +76,20 @@
       "perry": "./src/odb/sqlite.ts",
       "default": "./dist/odb/sqlite.mjs"
     },
-    "./pack": {
-      "types": "./dist/pack/index.d.mts",
-      "perry": "./src/pack/index.ts",
-      "default": "./dist/pack/index.mjs"
+    "./pack/core": {
+      "types": "./dist/pack/core.d.mts",
+      "perry": "./src/pack/core.ts",
+      "default": "./dist/pack/core.mjs"
+    },
+    "./pack/file": {
+      "types": "./dist/pack/file.d.mts",
+      "perry": "./src/pack/file.ts",
+      "default": "./dist/pack/file.mjs"
+    },
+    "./pack/types": {
+      "types": "./dist/pack/types.d.mts",
+      "perry": "./src/pack/types.ts",
+      "default": "./dist/pack/types.mjs"
     },
     "./refs/file": {
       "types": "./dist/refs/file.d.mts",
@@ -140,6 +150,11 @@
       "types": "./dist/repository/memory.d.mts",
       "perry": "./src/repository/memory.ts",
       "default": "./dist/repository/memory.mjs"
+    },
+    "./repository/pack": {
+      "types": "./dist/repository/pack.d.mts",
+      "perry": "./src/repository/pack.ts",
+      "default": "./dist/repository/pack.mjs"
     },
     "./repository/sqlite": {
       "types": "./dist/repository/sqlite.d.mts",

@@ -8,10 +8,4 @@
  * - `nano-git/backend/file`
  */
 
-export type {
-  PackRepackOptions,
-  RepositoryBackend,
-  RepositoryGCOptions,
-  RepositoryPackSupport,
-  RepositoryRepackOptions,
-} from "./types.ts";
+export type { RepositoryBackend, RepositoryGCOptions } from "./types.ts";

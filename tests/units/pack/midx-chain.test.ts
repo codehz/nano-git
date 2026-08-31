@@ -10,10 +10,8 @@ import { join } from "node:path";
 import { encodeObject } from "@/objects/raw.ts";
 import { createPackBuilder } from "@/pack/builder/pack-builder.ts";
 import { loadIncrementalMidxChain, tryLoadMidxChainTip } from "@/pack/midx/midx-chain.ts";
-import {
-  writeMultiPackIndex,
-  writeIncrementalMultiPackIndexFile,
-} from "@/pack/midx/midx-writer.ts";
+import { writeMultiPackIndex } from "@/pack/midx/midx-writer-core.ts";
+import { writeIncrementalMultiPackIndexFile } from "@/pack/midx/midx-writer.ts";
 import { loadPackPairs } from "@/pack/store/pack-store-loader.ts";
 
 import type { GitBlob } from "@/types/index.ts";

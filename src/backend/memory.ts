@@ -42,6 +42,5 @@ export function createMemoryRepositoryBackend(
     objects: createMemoryObjectStore(),
     refs: createMemoryRefStore(refs),
     shallow: createMemoryShallowStore(options.initialShallow),
-    packs: null,
   };
 }

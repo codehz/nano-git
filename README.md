@@ -472,12 +472,14 @@ bun run bench:worktree-diff
 ## 导出结构
 
 本库默认入口 `"nano-git"` 直接提供高频的纯计算能力：类型、错误、对象编解码、refs 工具和 SHA-1 工具。
-带 `node:fs` / `node:zlib` 的运行时能力通过子路径显式导入，例如 `nano-git/repository/file`、`nano-git/pack`、`nano-git/transport/http`。
+带 `node:fs` 的运行时能力通过明确的文件子路径导入，例如 `nano-git/repository/file`、`nano-git/pack/file`、`nano-git/transport/http`。
+纯 Pack 解析与编码通过 `nano-git/pack/core`，Pack 类型通过 `nano-git/pack/types`，Pack backend 类型通过 `nano-git/backend/pack`。
+`nano-git/repository/sqlite`、`nano-git/repository/memory` 与 `nano-git/repository/core` 不依赖文件系统或 MIDX；网络 fetch/push 使用的 pack 编解码属于核心传输能力。
 纯远端查询能力通过 `nano-git/remote/http` 导入。
 基于注入式 SQLite 接口的存储后端通过 `nano-git/odb/sqlite`、`nano-git/refs/sqlite`、`nano-git/backend/sqlite`、`nano-git/repository/sqlite`、`nano-git/types/sqlite` 等子路径导入；调用方自行打开并注入符合 `SqliteDatabase` 的连接。
 Virtual Worktree 通过 `nano-git/worktree/core`、`nano-git/worktree/memory`、`nano-git/worktree/file`、`nano-git/worktree/sqlite` 导入（后两者为持久化后端）。
 基础 merge（merge-base / 三方 tree 合并 / 交互会话）通过 `nano-git/merge` 导入。
-tree-shaking 主要依赖模块本身的无副作用结构，而不是把所有 API 都拆成叶子级子路径。完整入口表见 `package.json` 的 `exports` 与 `src/index.ts` 的 JSDoc。
+完整入口表见 `package.json` 的 `exports` 与 `src/index.ts` 的 JSDoc。
 
 ## Git 对象模型
 

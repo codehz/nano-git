@@ -18,8 +18,8 @@
  * ```
  */
 
-import type { MidxBitmapAssist } from "../pack/midx/midx-bitmap.ts";
 import type { GitCommit, SHA1 } from "../types/index.ts";
+import type { ReachabilityAccelerator } from "../types/reachability.ts";
 
 /** 单条提交日志条目 */
 export interface LogEntry {
@@ -96,10 +96,6 @@ export interface LogWalkOptions {
    */
   readonly firstParent?: boolean;
 
-  /**
-   * 链顶 MIDX reachability bitmap，用于加速 `exclude` 祖先标记。
-   *
-   * 无对应 bitmap 条目时自动回退为逐 parent 遍历。
-   */
-  readonly bitmapAssist?: MidxBitmapAssist;
+  /** 可选的可达性加速器，用于加速 exclude 的祖先标记 */
+  readonly reachabilityAccelerator?: ReachabilityAccelerator;
 }

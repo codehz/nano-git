@@ -36,13 +36,12 @@ describe("createSqliteRepositoryBackend()", () => {
     }
   });
 
-  test("返回完整的 RepositoryBackend 接口", () => {
+  test("返回核心 RepositoryBackend 接口", () => {
     expect(backend).toHaveProperty("gitDir");
     expect(backend).toHaveProperty("objects");
     expect(backend).toHaveProperty("refs");
     expect(backend).toHaveProperty("shallow");
-    expect(backend).toHaveProperty("packs");
-    expect(backend.packs).toBeNull();
+    expect(backend).not.toHaveProperty("packs");
   });
 
   test("gitDir 默认空字符串，也可显式传入", () => {
