@@ -3,6 +3,7 @@
  */
 import { describe, test, expect } from "bun:test";
 
+import { bytes, bytesToUtf8 } from "../../helpers/bytes.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
 import { createVirtualWorktree } from "@/worktree/memory.ts";
 import { VIRTUAL_ROOT_NODE_ID } from "@/worktree/model/nodes.ts";
@@ -16,13 +17,13 @@ describe("memory VirtualWorktree", () => {
     const a = createVirtualWorktree(repo.objects, { baseTree });
     const b = createVirtualWorktree(repo.objects, { baseTree });
 
-    a.writeFile("a.txt", Buffer.from("alpha"));
-    b.writeFile("b.txt", Buffer.from("beta"));
+    a.writeFile("a.txt", bytes("alpha"));
+    b.writeFile("b.txt", bytes("beta"));
 
     expect(a.exists("b.txt")).toBe(false);
     expect(b.exists("a.txt")).toBe(false);
-    expect(a.readFile("a.txt").toString()).toBe("alpha");
-    expect(b.readFile("b.txt").toString()).toBe("beta");
+    expect(bytesToUtf8(a.readFile("a.txt"))).toBe("alpha");
+    expect(bytesToUtf8(b.readFile("b.txt"))).toBe("beta");
   });
 
   test("state store transact 在异常时回滚变更", () => {

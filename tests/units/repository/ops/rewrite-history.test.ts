@@ -7,6 +7,7 @@
 
 import { describe, test, expect, beforeEach } from "bun:test";
 
+import { bytes, concatBytes, hexToBytes, utf8ToBytes } from "../../../helpers/bytes.ts";
 import { hashObject } from "@/hash/index.ts";
 import { encodeObject, readObject, writeObject } from "@/objects/raw.ts";
 import { compareTreeEntries } from "@/objects/tree.ts";
@@ -29,20 +30,20 @@ function ingestUnsortedTree(
   objects: ReturnType<typeof createMemoryObjectStore>,
   entries: TreeEntry[],
 ): SHA1 {
-  const parts: Buffer[] = [];
+  const parts: Uint8Array[] = [];
   for (const entry of entries) {
     const mode = entry.mode === "040000" ? "40000" : entry.mode;
-    parts.push(Buffer.from(`${mode} ${entry.name}\0`, "utf-8"));
-    parts.push(Buffer.from(entry.hash, "hex"));
+    parts.push(utf8ToBytes(`${mode} ${entry.name}\0`));
+    parts.push(hexToBytes(entry.hash));
   }
-  const content = Buffer.concat(parts);
+  const content = concatBytes(...parts);
   const hash = hashObject("tree", content);
   objects.ingest({ hash, type: "tree", content });
   return hash;
 }
 
 function writeBlob(objects: ReturnType<typeof createMemoryObjectStore>, text: string): SHA1 {
-  return writeObject(objects, { type: "blob", content: Buffer.from(text) });
+  return writeObject(objects, { type: "blob", content: bytes(text) });
 }
 
 function writeCommit(

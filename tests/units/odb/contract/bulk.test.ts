@@ -13,7 +13,7 @@ describe("ObjectDatabase contract: bulk", () => {
       const { store } = session;
 
       const raws = Array.from({ length: 256 }, (_, index) =>
-        encodeObject({ type: "blob", content: Buffer.from(`large-data-${index}`) }),
+        encodeObject({ type: "blob", content: Uint8Array.from(`large-data-${index}`) }),
       );
 
       store.ingestMany(raws);

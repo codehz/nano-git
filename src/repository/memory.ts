@@ -9,7 +9,7 @@
  * import { createMemoryRepository } from "nano-git/repository/memory";
  *
  * const repo = createMemoryRepository();
- * const hash = repo.writeBlob(Buffer.from("hello world"));
+ * const hash = repo.writeBlob(Uint8Array.from("hello world"));
  * ```
  */
 

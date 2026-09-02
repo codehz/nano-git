@@ -3,6 +3,7 @@
  */
 import { describe, test, expect } from "bun:test";
 
+import { bytes } from "../../helpers/bytes.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
 import { openVirtualWorktree } from "@/worktree/engine/worktree.ts";
 import { createVirtualWorktreeMemoryStateStore } from "@/worktree/store/memory-backend.ts";
@@ -14,9 +15,9 @@ describe("diff（写入操作）", () => {
     const store = createVirtualWorktreeMemoryStateStore(baseTree);
     const session = openVirtualWorktree(repo.objects, store);
 
-    session.writeFile("f.txt", Buffer.from("v1"));
-    session.writeFile("f.txt", Buffer.from("v2"));
-    session.writeFile("f.txt", Buffer.from("v3"));
+    session.writeFile("f.txt", bytes("v1"));
+    session.writeFile("f.txt", bytes("v2"));
+    session.writeFile("f.txt", bytes("v3"));
 
     expect(store.listChangeRecords()).toHaveLength(1);
     expect(session.diff()).toMatchObject([
@@ -37,7 +38,7 @@ describe("diff（写入操作）", () => {
     const store = createVirtualWorktreeMemoryStateStore(baseTree);
     const session = openVirtualWorktree(repo.objects, store);
 
-    session.writeFile("f.txt", Buffer.from("data"));
+    session.writeFile("f.txt", bytes("data"));
     expect(store.listChangeRecords()).toHaveLength(1);
 
     session.delete("f.txt");

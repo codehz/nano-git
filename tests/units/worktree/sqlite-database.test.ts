@@ -3,6 +3,7 @@
  */
 import { describe, test, expect } from "bun:test";
 
+import { bytes } from "../../helpers/bytes.ts";
 import { openTestSqlite } from "../../helpers/sqlite.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
 import { openSqliteVirtualWorktreeDatabase } from "@/worktree/sqlite.ts";
@@ -24,8 +25,8 @@ describe("openSqliteVirtualWorktreeDatabase", () => {
     const worktreeA = db.openWorktree(repo.objects, "a");
     const worktreeB = db.openWorktree(repo.objects, "b");
 
-    worktreeA.writeFile("only-a.txt", Buffer.from("a"));
-    worktreeB.writeFile("only-b.txt", Buffer.from("b"));
+    worktreeA.writeFile("only-a.txt", bytes("a"));
+    worktreeB.writeFile("only-b.txt", bytes("b"));
 
     expect(worktreeA.exists("only-b.txt")).toBe(false);
     expect(worktreeB.exists("only-a.txt")).toBe(false);
@@ -81,7 +82,7 @@ describe("openSqliteVirtualWorktreeDatabase", () => {
     const db = openSqliteVirtualWorktreeDatabase(sqlite);
     db.createWorktree("old", { baseTree });
     const worktree = db.openWorktree(repo.objects, "old");
-    worktree.writeFile("keep.txt", Buffer.from("data"));
+    worktree.writeFile("keep.txt", bytes("data"));
 
     db.renameWorktree("old", "new");
     expect(db.listWorktreeKeys()).toEqual(["new"]);
@@ -89,7 +90,7 @@ describe("openSqliteVirtualWorktreeDatabase", () => {
     expect(db.hasWorktree("new")).toBe(true);
 
     const reopened = db.openWorktree(repo.objects, "new");
-    expect(reopened.readFile("keep.txt")).toEqual(Buffer.from("data"));
+    expect(reopened.readFile("keep.txt")).toEqual(bytes("data"));
   });
 
   test("renameWorktree 在源不存在或目标已占用时失败", () => {

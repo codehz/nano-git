@@ -7,6 +7,14 @@ import { mkdirSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import {
+  allocBytes,
+  asciiToBytes,
+  bytes,
+  copyBytes,
+  writeU32BE,
+  writeU8,
+} from "../../helpers/bytes.ts";
 import { PackIndexError } from "@/errors.ts";
 import { encodeObject } from "@/objects/raw.ts";
 import { createPackBuilder } from "@/pack/builder/pack-builder.ts";
@@ -23,43 +31,43 @@ import type { GitBlob, SHA1 } from "@/types/index.ts";
 
 describe("parseMidxLayer()", () => {
   test("非法签名抛出 PackIndexError", () => {
-    expect(() => parseMidxLayer(Buffer.from("XXXX"))).toThrow(PackIndexError);
+    expect(() => parseMidxLayer(bytes("XXXX"))).toThrow(PackIndexError);
   });
 
   test("数据过小抛出 PackIndexError", () => {
-    expect(() => parseMidxLayer(Buffer.from("MIDX"))).toThrow(PackIndexError);
+    expect(() => parseMidxLayer(bytes("MIDX"))).toThrow(PackIndexError);
   });
 
   test("不支持的 version 抛出 PackIndexError", () => {
-    const header = Buffer.alloc(12);
-    header.write("MIDX", 0);
-    header.writeUInt8(0, 4); // version = 0
-    header.writeUInt8(1, 5); // oidVersion = SHA-1
-    header.writeUInt8(0, 6); // chunkCount
-    header.writeUInt8(0, 7); // baseMidxCount
-    header.writeUInt32BE(0, 8); // packCount
+    const header = allocBytes(12);
+    copyBytes(header, 0, asciiToBytes("MIDX"));
+    writeU8(header, 4, 0); // version = 0
+    writeU8(header, 5, 1); // oidVersion = SHA-1
+    writeU8(header, 6, 0); // chunkCount
+    writeU8(header, 7, 0); // baseMidxCount
+    writeU32BE(header, 8, 0); // packCount
     expect(() => parseMidxLayer(header)).toThrow(PackIndexError);
   });
 
   test("不支持的 OID version 抛出 PackIndexError", () => {
-    const header = Buffer.alloc(12);
-    header.write("MIDX", 0);
-    header.writeUInt8(1, 4); // version = 1
-    header.writeUInt8(3, 5); // oidVersion = 3 (invalid)
-    header.writeUInt8(0, 6);
-    header.writeUInt8(0, 7);
-    header.writeUInt32BE(0, 8);
+    const header = allocBytes(12);
+    copyBytes(header, 0, asciiToBytes("MIDX"));
+    writeU8(header, 4, 1); // version = 1
+    writeU8(header, 5, 3); // oidVersion = 3 (invalid)
+    writeU8(header, 6, 0);
+    writeU8(header, 7, 0);
+    writeU32BE(header, 8, 0);
     expect(() => parseMidxLayer(header)).toThrow(PackIndexError);
   });
 
   test("OID version 与预期不匹配时抛出 PackIndexError", () => {
-    const header = Buffer.alloc(12);
-    header.write("MIDX", 0);
-    header.writeUInt8(1, 4); // version = 1
-    header.writeUInt8(2, 5); // oidVersion = 2 (SHA-256)
-    header.writeUInt8(0, 6);
-    header.writeUInt8(0, 7);
-    header.writeUInt32BE(0, 8);
+    const header = allocBytes(12);
+    copyBytes(header, 0, asciiToBytes("MIDX"));
+    writeU8(header, 4, 1); // version = 1
+    writeU8(header, 5, 2); // oidVersion = 2 (SHA-256)
+    writeU8(header, 6, 0);
+    writeU8(header, 7, 0);
+    writeU32BE(header, 8, 0);
     // 默认期望 SHA-1 (oidVersion=1)，不匹配
     expect(() => parseMidxLayer(header)).toThrow(PackIndexError);
   });
@@ -67,19 +75,19 @@ describe("parseMidxLayer()", () => {
   test("缺少必需 chunk 时抛出 PackIndexError", () => {
     // 构造一个只有 MIDX 头部 + 空 chunk lookup 表的数据
     // 头部 + 1 项 chunk lookup (12 bytes) + checksum
-    const midxSig = Buffer.from("MIDX");
-    const header = Buffer.alloc(12);
-    midxSig.copy(header, 0);
-    header.writeUInt8(1, 4); // version
-    header.writeUInt8(1, 5); // oidVersion
-    header.writeUInt8(0, 6); // chunkCount = 0
-    header.writeUInt8(0, 7); // baseMidxCount
-    header.writeUInt32BE(1, 8); // packCount
+    const midxSig = bytes("MIDX");
+    const header = allocBytes(12);
+    copyBytes(header, 0, midxSig);
+    writeU8(header, 4, 1); // version
+    writeU8(header, 5, 1); // oidVersion
+    writeU8(header, 6, 0); // chunkCount = 0
+    writeU8(header, 7, 0); // baseMidxCount
+    writeU32BE(header, 8, 1); // packCount
 
     const lookupSize = (0 + 1) * 12; // chunkCount=0, so 1 terminator entry
     const totalSize = 12 + lookupSize + 20; // + 20 for SHA-1 trailer
-    const data = Buffer.alloc(totalSize, 0);
-    header.copy(data, 0);
+    const data = allocBytes(totalSize, 0);
+    copyBytes(data, 0, header);
     // lookup 表全部为零（终止标记）
 
     expect(() => parseMidxLayer(data)).toThrow(PackIndexError);
@@ -88,7 +96,7 @@ describe("parseMidxLayer()", () => {
 
 describe("parseMidxLayer + createMidxReaderFromTip", () => {
   function buildSinglePackMidx(): {
-    midxData: Buffer;
+    midxData: Uint8Array;
     hashes: SHA1[];
     cleanup: () => void;
   } {
@@ -99,7 +107,7 @@ describe("parseMidxLayer + createMidxReaderFromTip", () => {
 
     const hashes: SHA1[] = [];
     const builder = createPackBuilder(gitDir);
-    const blob: GitBlob = { type: "blob", content: Buffer.from("midx layer test") };
+    const blob: GitBlob = { type: "blob", content: bytes("midx layer test") };
     const hash = builder.addRaw(encodeObject(blob));
     builder.build();
     hashes.push(hash);
@@ -185,12 +193,12 @@ describe("parseMidxLayer + createMidxReaderFromTip", () => {
 
     try {
       const builder1 = createPackBuilder(gitDir);
-      const blob1: GitBlob = { type: "blob", content: Buffer.from("layer a") };
+      const blob1: GitBlob = { type: "blob", content: bytes("layer a") };
       const hash1 = builder1.addRaw(encodeObject(blob1));
       builder1.build();
 
       const builder2 = createPackBuilder(gitDir);
-      const blob2: GitBlob = { type: "blob", content: Buffer.from("layer b") };
+      const blob2: GitBlob = { type: "blob", content: bytes("layer b") };
       const hash2 = builder2.addRaw(encodeObject(blob2));
       builder2.build();
 

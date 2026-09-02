@@ -5,6 +5,7 @@
  */
 import { describe, test, expect } from "bun:test";
 
+import { bytes } from "../../helpers/bytes.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
 import { openVirtualWorktree } from "@/worktree/engine/worktree.ts";
 import { createVirtualWorktreeMemoryStateStore } from "@/worktree/store/memory-backend.ts";
@@ -16,7 +17,7 @@ describe("copy", () => {
     const store = createVirtualWorktreeMemoryStateStore(baseTree);
     const session = openVirtualWorktree(repo.objects, store);
 
-    session.writeFile("a.txt", Buffer.from("data"));
+    session.writeFile("a.txt", bytes("data"));
     session.copy("a.txt", "b.txt");
 
     expect(store.listChangeRecords()).toHaveLength(2);

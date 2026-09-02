@@ -4,6 +4,7 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { bytesToUtf8 } from "../../helpers/bytes.ts";
 import {
   serialize,
   deserialize,
@@ -86,8 +87,8 @@ describe("Tree 序列化", () => {
     };
     const serialized = serialize(tree);
     // 验证包含正确的 header
-    expect(serialized.toString("utf-8").startsWith("tree ")).toBe(true);
-    expect(serialized.includes("\0")).toBe(true);
+    expect(bytesToUtf8(serialized).startsWith("tree ")).toBe(true);
+    expect(bytesToUtf8(serialized).includes("\0")).toBe(true);
   });
 
   test("序列化空 tree", () => {
@@ -96,7 +97,7 @@ describe("Tree 序列化", () => {
       entries: [],
     };
     const serialized = serialize(tree);
-    expect(serialized.toString("utf-8")).toBe("tree 0\0");
+    expect(bytesToUtf8(serialized)).toBe("tree 0\0");
   });
 
   test("序列化时自动按 Git 规范重排条目", () => {

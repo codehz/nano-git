@@ -7,6 +7,14 @@ import { mkdirSync, rmSync, existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import {
+  allocBytes,
+  asciiToBytes,
+  bytes,
+  copyBytes,
+  writeU32BE,
+  writeU8,
+} from "../../helpers/bytes.ts";
 import { encodeObject } from "@/objects/raw.ts";
 import { createPackBuilder } from "@/pack/builder/pack-builder.ts";
 import { createMidxReader } from "@/pack/midx/midx-reader.ts";
@@ -28,7 +36,7 @@ describe("createMidxReader", () => {
     // 创建多个 pack，每个 pack 包含不同 blob
     for (let i = 0; i < 3; i++) {
       const builder = createPackBuilder(gitDir);
-      const blob: GitBlob = { type: "blob", content: Buffer.from(`midx blob ${i}`) };
+      const blob: GitBlob = { type: "blob", content: Uint8Array.from(`midx blob ${i}`) };
       const hash = builder.addRaw(encodeObject(blob));
       builder.build();
       hashes.push(hash);
@@ -66,7 +74,7 @@ describe("createMidxReader", () => {
     const { gitDir, hashes, cleanup } = buildMidxFixture();
     try {
       const midxPath = join(gitDir, "objects", "pack", "multi-pack-index");
-      writeFileSync(midxPath, Buffer.from("MIDX\x00\x00\x00\x00"));
+      writeFileSync(midxPath, bytes("MIDX\x00\x00\x00\x00"));
 
       const store = createPackObjectStore(gitDir);
       expect(store.packCount).toBe(3);
@@ -80,22 +88,22 @@ describe("createMidxReader", () => {
   });
 
   test("createMidxReader 拒绝非法签名", () => {
-    expect(() => createMidxReader(Buffer.from("XXXX"))).toThrow();
+    expect(() => createMidxReader(bytes("XXXX"))).toThrow();
   });
 
   test("createMidxReader 拒绝过小的数据", () => {
-    expect(() => createMidxReader(Buffer.from("MIDX"))).toThrow();
+    expect(() => createMidxReader(bytes("MIDX"))).toThrow();
   });
 
   test("createMidxReader 在 OID 版本不匹配时抛出", () => {
     // 构造一个 SHA-256 MIDX 头部（version=1, oidVersion=2）
-    const header = Buffer.alloc(12);
-    header.write("MIDX", 0);
-    header.writeUInt8(1, 4); // version
-    header.writeUInt8(2, 5); // oidVersion = SHA-256
-    header.writeUInt8(0, 6); // chunkCount
-    header.writeUInt8(0, 7); // baseMidxCount
-    header.writeUInt32BE(0, 8); // packCount
+    const header = allocBytes(12);
+    copyBytes(header, 0, asciiToBytes("MIDX"));
+    writeU8(header, 4, 1); // version
+    writeU8(header, 5, 2); // oidVersion = SHA-256
+    writeU8(header, 6, 0); // chunkCount
+    writeU8(header, 7, 0); // baseMidxCount
+    writeU32BE(header, 8, 0); // packCount
 
     // 默认期望 SHA-1，应抛出
     expect(() => createMidxReader(header)).toThrow();

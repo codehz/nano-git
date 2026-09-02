@@ -4,6 +4,7 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { bytes } from "../../helpers/bytes.ts";
 import { walkLogEntries } from "@/log/walk.ts";
 import { writeObject } from "@/objects/raw.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
@@ -217,7 +218,7 @@ describe("walkLogEntries", () => {
     const objects = createMemoryObjectStore();
     const tree = emptyTree(objects);
     const commitHash = createCommit(objects, tree, [], "Only commit", 1000);
-    const blobHash = writeObject(objects, { type: "blob", content: Buffer.from("data") });
+    const blobHash = writeObject(objects, { type: "blob", content: bytes("data") });
 
     // from 中包含 blob 哈希，应被自动跳过
     const results = collectResults(walkLogEntries(objects, { from: [commitHash, blobHash] }));

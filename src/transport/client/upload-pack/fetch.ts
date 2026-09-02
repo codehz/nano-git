@@ -36,6 +36,16 @@
  * @see https://git-scm.com/docs/protocol-v2#_fetch
  */
 
+import {
+  bytesEqual,
+  bytesToUtf8,
+  concatBytes,
+  hexToBytes,
+  readU32BE,
+  readU32LE,
+  toUint8Array,
+  utf8ToBytes,
+} from "../../../bytes.ts";
 import { GitError } from "../../../errors.ts";
 import { createPackReader, packObjectToRaw } from "../../../pack/reader/pack-reader.ts";
 import { sha1 } from "../../../types/index.ts";
@@ -45,7 +55,7 @@ import {
   encodeFlushPkt,
   encodePktLine,
   encodeResponseEndPkt,
-  splitPktLinesFromBuffer,
+  splitPktLinesFromBytes,
 } from "../../protocol/pkt-line.ts";
 import { createFetchHaveSelector } from "./fetch-negotiator.ts";
 
@@ -142,8 +152,8 @@ function createGitOidSetState(): GitOidSetState {
 }
 
 function readOidHash(oid: string): number {
-  const raw = Buffer.from(oid.slice(0, 8), "hex");
-  return HOST_IS_LITTLE_ENDIAN ? raw.readUInt32LE(0) : raw.readUInt32BE(0);
+  const raw = hexToBytes(oid.slice(0, 8));
+  return HOST_IS_LITTLE_ENDIAN ? readU32LE(raw, 0) : readU32BE(raw, 0);
 }
 
 function resizeGitOidSet(state: GitOidSetState, requestedBuckets: number): void {
@@ -439,7 +449,7 @@ export async function v2Fetch(
  * ```
  */
 export function parseV2FetchResponse(
-  data: Buffer,
+  data: Uint8Array,
   _hasDone: boolean,
   sidebandAll: boolean,
 ): V2FetchResponse {
@@ -452,17 +462,17 @@ export function parseV2FetchResponse(
     throw new V2FetchError("Empty fetch response");
   }
 
-  // 使用 splitPktLinesFromBuffer 优雅处理尾部非 pkt-line 数据
-  const { lines: pktLines, trailing } = splitPktLinesFromBuffer(data);
+  // 使用 splitPktLinesFromBytes 优雅处理尾部非 pkt-line 数据
+  const { lines: pktLines, trailing } = splitPktLinesFromBytes(data);
 
   // 解析节结构
   interface MutableSection {
     header: string;
-    lines: Buffer[];
+    lines: Uint8Array[];
   }
   const sections: MutableSection[] = [];
   let currentSection: MutableSection | null = null;
-  const packfileFrames: Buffer[] = [];
+  const packfileFrames: Uint8Array[] = [];
   let inPackfile = false;
 
   for (const pkt of pktLines) {
@@ -479,7 +489,7 @@ export function parseV2FetchResponse(
     if (pkt.type !== "data") continue;
 
     const payload = pkt.payload;
-    const text = payload.toString("utf-8");
+    const text = bytesToUtf8(payload);
     const trimmed = text.replace(/\n$/, "");
 
     if (currentSection === null && !inPackfile) {
@@ -500,7 +510,7 @@ export function parseV2FetchResponse(
     }
   }
 
-  // packfile 尾部数据也加入（splitPktLinesFromBuffer 道出的 trailing 数据）
+  // packfile 尾部数据也加入（splitPktLinesFromBytes 道出的 trailing 数据）
   if (trailing.length > 0) {
     packfileFrames.push(trailing);
   }
@@ -511,7 +521,7 @@ export function parseV2FetchResponse(
     shallowInfo?: { shallow: string[]; unshallow: string[] };
     wantedRefs?: Array<{ oid: string; refname: string }>;
     packfileUris?: Array<{ oid: string; uri: string }>;
-    packfile?: Buffer;
+    packfile?: Uint8Array;
   } = {};
 
   for (const section of sections) {
@@ -551,7 +561,7 @@ function validateV2FetchResponseSections(
     shallowInfo?: { shallow: string[]; unshallow: string[] };
     wantedRefs?: Array<{ oid: string; refname: string }>;
     packfileUris?: Array<{ oid: string; uri: string }>;
-    packfile?: Buffer;
+    packfile?: Uint8Array;
   },
 ): void {
   const hasPackfileSection = headers.includes("packfile");
@@ -584,9 +594,9 @@ function validateV2FetchResponseSections(
   }
 }
 
-function demultiplexSidebandAll(data: Buffer): Buffer {
-  const { lines } = splitPktLinesFromBuffer(data);
-  const parts: Buffer[] = [];
+function demultiplexSidebandAll(data: Uint8Array): Uint8Array {
+  const { lines } = splitPktLinesFromBytes(data);
+  const parts: Uint8Array[] = [];
   let inPackfile = false;
 
   for (const pkt of lines) {
@@ -609,12 +619,12 @@ function demultiplexSidebandAll(data: Buffer): Buffer {
         const channel = pkt.payload[0]!;
         const payload = pkt.payload.subarray(1);
         if (inPackfile) {
-          parts.push(encodePktLine(Buffer.concat([Buffer.from([channel]), payload])));
+          parts.push(encodePktLine(concatBytes(Uint8Array.from([channel]), payload)));
           continue;
         }
         if (channel === 0x01) {
           parts.push(encodePktLine(payload));
-          if (payload.equals(Buffer.from("packfile\n"))) {
+          if (bytesEqual(payload, utf8ToBytes("packfile\n"))) {
             inPackfile = true;
           }
           continue;
@@ -623,14 +633,14 @@ function demultiplexSidebandAll(data: Buffer): Buffer {
           continue;
         }
         if (channel === 0x03) {
-          throw new V2FetchError(`remote fatal: ${payload.toString("utf-8").trim()}`);
+          throw new V2FetchError(`remote fatal: ${bytesToUtf8(payload).trim()}`);
         }
         continue;
       }
     }
   }
 
-  return Buffer.concat(parts);
+  return concatBytes(...parts);
 }
 
 // ============================================================================
@@ -649,13 +659,17 @@ function demultiplexSidebandAll(data: Buffer): Buffer {
  * ready\n
  * ```
  */
-function parseAcknowledgments(lines: Buffer[]): { nak?: boolean; acks: string[]; ready?: boolean } {
+function parseAcknowledgments(lines: Uint8Array[]): {
+  nak?: boolean;
+  acks: string[];
+  ready?: boolean;
+} {
   const acks: string[] = [];
   let nak = false;
   let ready = false;
 
   for (const line of lines) {
-    const text = line.toString("utf-8").trim();
+    const text = bytesToUtf8(line).trim();
     if (text === "NAK") {
       nak = true;
     } else if (text === "ready") {
@@ -677,12 +691,12 @@ function parseAcknowledgments(lines: Buffer[]): { nak?: boolean; acks: string[];
  * unshallow <oid>\n
  * ```
  */
-function parseShallowInfo(lines: Buffer[]): { shallow: string[]; unshallow: string[] } {
+function parseShallowInfo(lines: Uint8Array[]): { shallow: string[]; unshallow: string[] } {
   const shallow: string[] = [];
   const unshallow: string[] = [];
 
   for (const line of lines) {
-    const text = line.toString("utf-8").trim();
+    const text = bytesToUtf8(line).trim();
     if (text.startsWith("shallow ")) {
       shallow.push(text.substring(8).trim());
     } else if (text.startsWith("unshallow ")) {
@@ -701,11 +715,11 @@ function parseShallowInfo(lines: Buffer[]): { shallow: string[]; unshallow: stri
  * <oid> <refname>\n
  * ```
  */
-function parseWantedRefs(lines: Buffer[]): Array<{ oid: string; refname: string }> {
+function parseWantedRefs(lines: Uint8Array[]): Array<{ oid: string; refname: string }> {
   const refs: Array<{ oid: string; refname: string }> = [];
 
   for (const line of lines) {
-    const text = line.toString("utf-8").trim();
+    const text = bytesToUtf8(line).trim();
     if (text.length === 0) continue;
 
     const spaceIdx = text.indexOf(" ");
@@ -728,11 +742,11 @@ function parseWantedRefs(lines: Buffer[]): Array<{ oid: string; refname: string 
  * <oid> <uri>\n
  * ```
  */
-function parsePackfileUris(lines: Buffer[]): Array<{ oid: string; uri: string }> {
+function parsePackfileUris(lines: Uint8Array[]): Array<{ oid: string; uri: string }> {
   const uris: Array<{ oid: string; uri: string }> = [];
 
   for (const line of lines) {
-    const text = line.toString("utf-8").trim();
+    const text = bytesToUtf8(line).trim();
     if (text.length === 0) continue;
 
     const spaceIdx = text.indexOf(" ");
@@ -759,8 +773,8 @@ function parsePackfileUris(lines: Buffer[]): Array<{ oid: string; uri: string }>
  * @param frames - pkt-line payload 数组（不含长度前缀，含 channel 字节）
  * @returns 拼接后的完整 packfile buffer
  */
-function extractPackfileFromFrames(frames: Buffer[]): Buffer {
-  const chunks: Buffer[] = [];
+function extractPackfileFromFrames(frames: Uint8Array[]): Uint8Array {
+  const chunks: Uint8Array[] = [];
 
   for (const frame of frames) {
     if (frame.length < 1) continue;
@@ -770,7 +784,7 @@ function extractPackfileFromFrames(frames: Buffer[]): Buffer {
     if (channel === CHANNEL_PACKFILE) {
       chunks.push(frame.subarray(1));
     } else if (channel === 0x03) {
-      throw new V2FetchError(`remote fatal: ${frame.subarray(1).toString("utf-8").trim()}`);
+      throw new V2FetchError(`remote fatal: ${bytesToUtf8(frame.subarray(1)).trim()}`);
     }
     // channel 2 为进度消息，忽略
   }
@@ -779,7 +793,7 @@ function extractPackfileFromFrames(frames: Buffer[]): Buffer {
     throw new V2FetchError("No packfile data found in fetch response");
   }
 
-  return Buffer.concat(chunks);
+  return concatBytes(...chunks);
 }
 
 // ============================================================================

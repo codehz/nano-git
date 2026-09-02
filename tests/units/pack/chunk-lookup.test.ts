@@ -4,6 +4,7 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { allocBytes, asciiToBytes, copyBytes, writeU64BE } from "../../helpers/bytes.ts";
 import { PackIndexError } from "@/errors.ts";
 import { parseChunkLookup } from "@/pack/chunk-lookup.ts";
 
@@ -13,19 +14,19 @@ describe("parseChunkLookup()", () => {
    *
    * 保证文件总大小满足所有 chunk offset 不越界。
    */
-  function buildChunkData(chunks: Array<{ id: string; offset: number }>): Buffer {
+  function buildChunkData(chunks: Array<{ id: string; offset: number }>): Uint8Array {
     const headerSize = 12;
     const entrySize = 12;
     const minSize = headerSize + (chunks.length + 1) * entrySize;
     // 额外填充确保 offset 不越界（chunkOffset > data.length 时抛错）
     const maxOffset = chunks.reduce((max, c) => Math.max(max, c.offset), 0);
     const totalsize = Math.max(minSize, maxOffset + 1);
-    const buf = Buffer.alloc(totalsize, 0);
+    const buf = allocBytes(totalsize, 0);
 
     for (let i = 0; i < chunks.length; i++) {
       const entryOffset = headerSize + i * entrySize;
-      buf.write(chunks[i]!.id, entryOffset, 4, "ascii");
-      buf.writeBigUInt64BE(BigInt(chunks[i]!.offset), entryOffset + 4);
+      copyBytes(buf, entryOffset, asciiToBytes(chunks[i]!.id));
+      writeU64BE(buf, entryOffset + 4, BigInt(chunks[i]!.offset));
     }
 
     // 终止标记（全零）由初始化的零值自动满足
@@ -66,18 +67,18 @@ describe("parseChunkLookup()", () => {
     const headerSize = 12;
     const entrySize = 12;
     // 声明 5 个 chunk 但只写 2 个，后面全零
-    const buf = Buffer.alloc(headerSize + 6 * entrySize + 1, 0);
-    buf.write("PNAM", headerSize, 4, "ascii");
-    buf.writeBigUInt64BE(BigInt(headerSize + 6 * entrySize - 10), headerSize + 4);
-    buf.write("OIDF", headerSize + entrySize, 4, "ascii");
-    buf.writeBigUInt64BE(BigInt(headerSize + 6 * entrySize - 5), headerSize + entrySize + 4);
+    const buf = allocBytes(headerSize + 6 * entrySize + 1, 0);
+    copyBytes(buf, headerSize, asciiToBytes("PNAM"));
+    writeU64BE(buf, headerSize + 4, BigInt(headerSize + 6 * entrySize - 10));
+    copyBytes(buf, headerSize + entrySize, asciiToBytes("OIDF"));
+    writeU64BE(buf, headerSize + entrySize + 4, BigInt(headerSize + 6 * entrySize - 5));
 
     const chunks = parseChunkLookup(buf, 12, 5);
     expect(chunks.ids()).toEqual(["PNAM", "OIDF"]);
   });
 
   test("数据截断时抛出 PackIndexError", () => {
-    const data = Buffer.alloc(20); // headerSize=12, chunkCount=2 -> 需要 12 + 3*12 = 48 字节
+    const data = allocBytes(20); // headerSize=12, chunkCount=2 -> 需要 12 + 3*12 = 48 字节
     expect(() => parseChunkLookup(data, 12, 2)).toThrow(PackIndexError);
   });
 
@@ -87,9 +88,9 @@ describe("parseChunkLookup()", () => {
     // 要让 offset > data.length，需要设 offset 大于 data.length
     expect(() => parseChunkLookup(data, 12, 1)).not.toThrow();
     // 构造真正越界的场景：数据只有 50 字节，但 offset=100
-    const small = Buffer.alloc(50, 0);
-    small.write("PNAM", 12, 4, "ascii");
-    small.writeBigUInt64BE(BigInt(100), 16);
+    const small = allocBytes(50, 0);
+    copyBytes(small, 12, asciiToBytes("PNAM"));
+    writeU64BE(small, 16, 100n);
     expect(() => parseChunkLookup(small, 12, 1)).toThrow(PackIndexError);
   });
 

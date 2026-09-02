@@ -6,6 +6,7 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { allocBytes, bytes, concatBytes } from "../../helpers/bytes.ts";
 import { createMemoryRepositoryBackend } from "@/backend/memory.ts";
 import { writeObject } from "@/objects/raw.ts";
 import { encodeObject } from "@/objects/raw.ts";
@@ -1009,7 +1010,7 @@ describe("apply 写 ref", () => {
     });
 
     // 创建 blob（用于非 commit 命名空间）
-    const blobContent = Buffer.from("hello world");
+    const blobContent = bytes("hello world");
     const blobHash = writeObject(objects, {
       type: "blob",
       content: blobContent,
@@ -1119,15 +1120,15 @@ describe("apply 写 ref", () => {
     writer.addRaw(encodeObject(parent));
     writer.addRaw(encodeObject(remoteCommit));
 
-    const fetchResponse = Buffer.concat([
+    const fetchResponse = concatBytes(
       encodePktLine("shallow-info\n"),
       encodePktLine(`shallow ${parentHash}\n`),
       encodePktLine(`unshallow ${localTipHash}\n`),
       encodeDelimiterPkt(),
       encodePktLine("packfile\n"),
-      encodePktLine(Buffer.concat([Buffer.from([0x01]), writer.build()])),
+      encodePktLine(concatBytes(Uint8Array.from([0x01]), writer.build())),
       encodeFlushPkt(),
-    ]);
+    );
 
     const mockV2Transport: V2GitServiceTransport = {
       advertise: async () => ({ capabilities: {}, commands: [] }),
@@ -1199,15 +1200,15 @@ describe("apply 写 ref", () => {
     const writer = createPackWriter();
     writer.addRaw(encodeObject(parent));
     const calls: string[][] = [];
-    const fetchResponse = Buffer.concat([
+    const fetchResponse = concatBytes(
       encodePktLine("shallow-info\n"),
       encodePktLine(`shallow ${parentHash}\n`),
       encodePktLine(`unshallow ${tipHash}\n`),
       encodeDelimiterPkt(),
       encodePktLine("packfile\n"),
-      encodePktLine(Buffer.concat([Buffer.from([0x01]), writer.build()])),
+      encodePktLine(concatBytes(Uint8Array.from([0x01]), writer.build())),
       encodeFlushPkt(),
-    ]);
+    );
     const mockV2Transport: V2GitServiceTransport = {
       advertise: async () => ({ capabilities: {}, commands: [] }),
       command: async (_command, args) => {
@@ -1290,15 +1291,15 @@ describe("apply 写 ref", () => {
     const writer = createPackWriter();
     writer.addRaw(encodeObject(parent));
     const calls: string[][] = [];
-    const fetchResponse = Buffer.concat([
+    const fetchResponse = concatBytes(
       encodePktLine("shallow-info\n"),
       encodePktLine(`shallow ${parentHash}\n`),
       encodePktLine(`unshallow ${tipHash}\n`),
       encodeDelimiterPkt(),
       encodePktLine("packfile\n"),
-      encodePktLine(Buffer.concat([Buffer.from([0x01]), writer.build()])),
+      encodePktLine(concatBytes(Uint8Array.from([0x01]), writer.build())),
       encodeFlushPkt(),
-    ]);
+    );
     const mockV2Transport: V2GitServiceTransport = {
       advertise: async () => ({ capabilities: {}, commands: [] }),
       command: async (_command, args) => {
@@ -1387,11 +1388,11 @@ describe("apply 写 ref", () => {
       advertise: async () => ({ capabilities: {}, commands: [] }),
       command: async (_command, args) => {
         calls.push([...(args ?? [])]);
-        return Buffer.concat([
+        return concatBytes(
           encodePktLine("acknowledgments\n"),
           encodePktLine("NAK\n"),
           encodeFlushPkt(),
-        ]);
+        );
       },
     };
     const adv: RefAdvertisement = {
@@ -1446,7 +1447,7 @@ describe("apply 写 ref", () => {
     backend.shallow.write([tipHash]);
 
     const writer = createPackWriter();
-    const fetchResponse = Buffer.concat([
+    const fetchResponse = concatBytes(
       encodePktLine("acknowledgments\n"),
       encodePktLine(`ACK ${tipHash}\n`),
       encodePktLine("ready\n"),
@@ -1455,9 +1456,9 @@ describe("apply 写 ref", () => {
       encodePktLine(`unshallow ${tipHash}\n`),
       encodeDelimiterPkt(),
       encodePktLine("packfile\n"),
-      encodePktLine(Buffer.concat([Buffer.from([0x01]), writer.build()])),
+      encodePktLine(concatBytes(Uint8Array.from([0x01]), writer.build())),
       encodeFlushPkt(),
-    ]);
+    );
     const mockV2Transport: V2GitServiceTransport = {
       advertise: async () => ({ capabilities: {}, commands: [] }),
       command: async () => fetchResponse,
@@ -1968,16 +1969,16 @@ describe("apply 错误处理", () => {
     const writer = createPackWriter();
     writer.addRaw(encodeObject(tree));
     writer.addRaw(encodeObject(commit));
-    const packfileResponse = Buffer.concat([
+    const packfileResponse = concatBytes(
       encodePktLine("packfile\n"),
-      encodePktLine(Buffer.concat([Buffer.from([0x01]), writer.build()])),
+      encodePktLine(concatBytes(Uint8Array.from([0x01]), writer.build())),
       encodeFlushPkt(),
-    ]);
-    const negotiationResponse = Buffer.concat([
+    );
+    const negotiationResponse = concatBytes(
       encodePktLine("acknowledgments\n"),
       encodePktLine("NAK\n"),
       encodeFlushPkt(),
-    ]);
+    );
 
     const mockV2Transport: V2GitServiceTransport = {
       advertise: async () => ({ capabilities: {}, commands: [] }),
@@ -2043,16 +2044,16 @@ describe("apply 错误处理", () => {
 
     const writer = createPackWriter();
     writer.addRaw(encodeObject(remoteCommit));
-    const packfileResponse = Buffer.concat([
+    const packfileResponse = concatBytes(
       encodePktLine("packfile\n"),
-      encodePktLine(Buffer.concat([Buffer.from([0x01]), writer.build()])),
+      encodePktLine(concatBytes(Uint8Array.from([0x01]), writer.build())),
       encodeFlushPkt(),
-    ]);
-    const negotiationResponse = Buffer.concat([
+    );
+    const negotiationResponse = concatBytes(
       encodePktLine("acknowledgments\n"),
       encodePktLine("NAK\n"),
       encodeFlushPkt(),
-    ]);
+    );
 
     const calls: string[][] = [];
     const mockV2Transport: V2GitServiceTransport = {
@@ -2144,16 +2145,16 @@ describe("apply 错误处理", () => {
     const writer = createPackWriter();
     writer.addRaw(remoteFeatureRaw);
     writer.addRaw(remoteMainRaw);
-    const packfileResponse = Buffer.concat([
+    const packfileResponse = concatBytes(
       encodePktLine("packfile\n"),
-      encodePktLine(Buffer.concat([Buffer.from([0x01]), writer.build()])),
+      encodePktLine(concatBytes(Uint8Array.from([0x01]), writer.build())),
       encodeFlushPkt(),
-    ]);
-    const negotiationResponse = Buffer.concat([
+    );
+    const negotiationResponse = concatBytes(
       encodePktLine("acknowledgments\n"),
       encodePktLine("NAK\n"),
       encodeFlushPkt(),
-    ]);
+    );
 
     const calls: string[][] = [];
     const mockV2Transport: V2GitServiceTransport = {
@@ -2223,11 +2224,11 @@ describe("apply 错误处理", () => {
     const remoteTagRaw = encodeObject(remoteTag);
     const writer = createPackWriter();
     writer.addRaw(remoteTagRaw);
-    const packfileResponse = Buffer.concat([
+    const packfileResponse = concatBytes(
       encodePktLine("packfile\n"),
-      encodePktLine(Buffer.concat([Buffer.from([0x01]), writer.build()])),
+      encodePktLine(concatBytes(Uint8Array.from([0x01]), writer.build())),
       encodeFlushPkt(),
-    ]);
+    );
 
     const calls: string[][] = [];
     const mockV2Transport: V2GitServiceTransport = {
@@ -2299,11 +2300,11 @@ describe("apply 错误处理", () => {
     const writer = createPackWriter();
     writer.addRaw(remoteCommitRaw);
     writer.addRaw(remoteTagRaw);
-    const packfileResponse = Buffer.concat([
+    const packfileResponse = concatBytes(
       encodePktLine("packfile\n"),
-      encodePktLine(Buffer.concat([Buffer.from([0x01]), writer.build()])),
+      encodePktLine(concatBytes(Uint8Array.from([0x01]), writer.build())),
       encodeFlushPkt(),
-    ]);
+    );
 
     const calls: string[][] = [];
     const mockV2Transport: V2GitServiceTransport = {
@@ -2382,11 +2383,11 @@ describe("apply 错误处理", () => {
     const writer = createPackWriter();
     writer.addRaw(remoteCommitRaw);
     writer.addRaw(remoteTagRaw);
-    const packfileResponse = Buffer.concat([
+    const packfileResponse = concatBytes(
       encodePktLine("packfile\n"),
-      encodePktLine(Buffer.concat([Buffer.from([0x01]), writer.build()])),
+      encodePktLine(concatBytes(Uint8Array.from([0x01]), writer.build())),
       encodeFlushPkt(),
-    ]);
+    );
 
     const calls: string[][] = [];
     const mockV2Transport: V2GitServiceTransport = {
@@ -2468,11 +2469,11 @@ describe("apply 错误处理", () => {
     const writer = createPackWriter();
     writer.addRaw(remoteCommitRaw);
     writer.addRaw(remoteTagRaw);
-    const packfileResponse = Buffer.concat([
+    const packfileResponse = concatBytes(
       encodePktLine("packfile\n"),
-      encodePktLine(Buffer.concat([Buffer.from([0x01]), writer.build()])),
+      encodePktLine(concatBytes(Uint8Array.from([0x01]), writer.build())),
       encodeFlushPkt(),
-    ]);
+    );
 
     const calls: string[][] = [];
     const mockV2Transport: V2GitServiceTransport = {
@@ -2541,11 +2542,11 @@ describe("apply 错误处理", () => {
 
     const writer = createPackWriter();
     writer.addRaw(remoteCommitRaw);
-    const packfileResponse = Buffer.concat([
+    const packfileResponse = concatBytes(
       encodePktLine("packfile\n"),
-      encodePktLine(Buffer.concat([Buffer.from([0x01]), writer.build()])),
+      encodePktLine(concatBytes(Uint8Array.from([0x01]), writer.build())),
       encodeFlushPkt(),
-    ]);
+    );
 
     const calls: string[][] = [];
     const mockV2Transport: V2GitServiceTransport = {
@@ -2605,11 +2606,11 @@ describe("apply 错误处理", () => {
 
     const writer = createPackWriter();
     writer.addRaw(remoteCommitRaw);
-    const packfileResponse = Buffer.concat([
+    const packfileResponse = concatBytes(
       encodePktLine("packfile\n"),
-      encodePktLine(Buffer.concat([Buffer.from([0x01]), writer.build()])),
+      encodePktLine(concatBytes(Uint8Array.from([0x01]), writer.build())),
       encodeFlushPkt(),
-    ]);
+    );
 
     const calls: string[][] = [];
     const mockV2Transport: V2GitServiceTransport = {
@@ -2679,7 +2680,7 @@ describe("openImportSession source 透传", () => {
     const backend = createMemoryRepositoryBackend();
     const mockV2Transport: V2GitServiceTransport = {
       advertise: async () => ({ capabilities: {}, commands: [] }),
-      command: async () => Buffer.alloc(0),
+      command: async () => allocBytes(0),
     };
     const repo = createRepoImportOperations(backend, mockV2Transport);
     const session = await repo.openImportSession({
@@ -2701,11 +2702,11 @@ describe("openImportSession source 透传", () => {
       advertise: async () => ({ capabilities: {}, commands: [] }),
       command: async (_command, args) => {
         commandCalls.push([...(args ?? [])]);
-        return Buffer.concat([
+        return concatBytes(
           encodePktLine(`${MOCK_HASH_A} HEAD symref-target:refs/heads/main\n`),
           encodePktLine(`${MOCK_HASH_A} refs/heads/main\n`),
           encodeFlushPkt(),
-        ]);
+        );
       },
     };
 

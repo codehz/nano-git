@@ -6,6 +6,7 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { bytes } from "../../../helpers/bytes.ts";
 import { writeObject } from "@/objects/raw.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
 import { createMemoryRefStore } from "@/refs/memory.ts";
@@ -21,7 +22,7 @@ import type { RefUpdatePlanItem } from "@/transport/protocol/update-refs.ts";
 import type { SHA1 } from "@/types/index.ts";
 
 function makeBlob(store: ReturnType<typeof createMemoryObjectStore>, content: string): SHA1 {
-  return writeObject(store, { type: "blob", content: Buffer.from(content) });
+  return writeObject(store, { type: "blob", content: bytes(content) });
 }
 
 function makeTree(

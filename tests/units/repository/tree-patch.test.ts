@@ -4,6 +4,7 @@
 
 import { describe, test, expect, beforeEach } from "bun:test";
 
+import { bytes } from "../../helpers/bytes.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
 
 import type { Repository } from "@/repository/types.ts";
@@ -18,7 +19,7 @@ describe("patchTree()", () => {
 
   test("upsert 新文件到根目录", () => {
     const rootHash = repo.createTree([]);
-    const blobHash = repo.writeBlob(Buffer.from("content"));
+    const blobHash = repo.writeBlob(bytes("content"));
 
     const result = repo.patchTree(rootHash, [
       { op: "upsert", path: "file.txt", mode: "100644", hash: blobHash },
@@ -37,7 +38,7 @@ describe("patchTree()", () => {
 
   test("upsert 符号链接", () => {
     const rootHash = repo.createTree([]);
-    const targetHash = repo.writeBlob(Buffer.from("/usr/bin/node"));
+    const targetHash = repo.writeBlob(bytes("/usr/bin/node"));
 
     const result = repo.patchTree(rootHash, [
       { op: "upsert", path: "node", mode: "120000", hash: targetHash },
@@ -54,7 +55,7 @@ describe("patchTree()", () => {
 
   test("upsert 到新子目录（自动创建中间目录）", () => {
     const rootHash = repo.createTree([]);
-    const blobHash = repo.writeBlob(Buffer.from("nested content"));
+    const blobHash = repo.writeBlob(bytes("nested content"));
 
     const result = repo.patchTree(rootHash, [
       { op: "upsert", path: "a/b/c/file.txt", mode: "100644", hash: blobHash },
@@ -92,9 +93,9 @@ describe("patchTree()", () => {
   });
 
   test("upsert 替换已有文件", () => {
-    const oldHash = repo.writeBlob(Buffer.from("old"));
+    const oldHash = repo.writeBlob(bytes("old"));
     const rootHash = repo.createTree([{ mode: "100644", name: "file.txt", hash: oldHash }]);
-    const newHash = repo.writeBlob(Buffer.from("new"));
+    const newHash = repo.writeBlob(bytes("new"));
 
     const result = repo.patchTree(rootHash, [
       { op: "upsert", path: "file.txt", mode: "100755", hash: newHash },
@@ -111,11 +112,11 @@ describe("patchTree()", () => {
   });
 
   test("upsert 替换子树中的文件", () => {
-    const oldHash = repo.writeBlob(Buffer.from("old"));
+    const oldHash = repo.writeBlob(bytes("old"));
     const subTreeHash = repo.createTree([{ mode: "100644", name: "old.txt", hash: oldHash }]);
     const rootHash = repo.createTree([{ mode: "040000", name: "sub", hash: subTreeHash }]);
 
-    const newHash = repo.writeBlob(Buffer.from("new"));
+    const newHash = repo.writeBlob(bytes("new"));
     const result = repo.patchTree(rootHash, [
       { op: "upsert", path: "sub/old.txt", mode: "100644", hash: newHash },
     ]);
@@ -134,9 +135,9 @@ describe("patchTree()", () => {
   });
 
   test("delete 删除已有文件", () => {
-    const blobHash = repo.writeBlob(Buffer.from("to-delete"));
+    const blobHash = repo.writeBlob(bytes("to-delete"));
     const rootHash = repo.createTree([
-      { mode: "100644", name: "keep.txt", hash: repo.writeBlob(Buffer.from("keep")) },
+      { mode: "100644", name: "keep.txt", hash: repo.writeBlob(bytes("keep")) },
       { mode: "100644", name: "delete.txt", hash: blobHash },
     ]);
 
@@ -159,7 +160,7 @@ describe("patchTree()", () => {
 
   test("delete 支持删除目录条目", () => {
     const subHash = repo.createTree([
-      { mode: "100644", name: "f.txt", hash: repo.writeBlob(Buffer.from("f")) },
+      { mode: "100644", name: "f.txt", hash: repo.writeBlob(bytes("f")) },
     ]);
     const rootHash = repo.createTree([{ mode: "040000", name: "subdir", hash: subHash }]);
 
@@ -181,8 +182,8 @@ describe("patchTree()", () => {
 
   test("同路径多次操作最后一个生效（最后是 upsert）", () => {
     const rootHash = repo.createTree([]);
-    const hash1 = repo.writeBlob(Buffer.from("first"));
-    const hash2 = repo.writeBlob(Buffer.from("second"));
+    const hash1 = repo.writeBlob(bytes("first"));
+    const hash2 = repo.writeBlob(bytes("second"));
 
     const result = repo.patchTree(rootHash, [
       { op: "upsert", path: "f.txt", mode: "100644", hash: hash1 },
@@ -201,7 +202,7 @@ describe("patchTree()", () => {
 
   test("同路径多次操作最后一个生效（最后是 delete）", () => {
     const rootHash = repo.createTree([]);
-    const hash = repo.writeBlob(Buffer.from("content"));
+    const hash = repo.writeBlob(bytes("content"));
 
     const result = repo.patchTree(rootHash, [
       { op: "upsert", path: "f.txt", mode: "100644", hash },
@@ -217,8 +218,8 @@ describe("patchTree()", () => {
 
   test("同时在多个不同路径 upsert", () => {
     const rootHash = repo.createTree([]);
-    const h1 = repo.writeBlob(Buffer.from("a"));
-    const h2 = repo.writeBlob(Buffer.from("b"));
+    const h1 = repo.writeBlob(bytes("a"));
+    const h2 = repo.writeBlob(bytes("b"));
 
     const result = repo.patchTree(rootHash, [
       { op: "upsert", path: "src/a.ts", mode: "100644", hash: h1 },
@@ -244,7 +245,7 @@ describe("patchTree()", () => {
   });
 
   test("空操作列表返回原 tree", () => {
-    const blobHash = repo.writeBlob(Buffer.from("content"));
+    const blobHash = repo.writeBlob(bytes("content"));
     const rootHash = repo.createTree([{ mode: "100644", name: "f.txt", hash: blobHash }]);
 
     const result = repo.patchTree(rootHash, []);
@@ -255,7 +256,7 @@ describe("patchTree()", () => {
 
   test("writtenTrees 包含所有新写入的中间 tree", () => {
     const rootHash = repo.createTree([]);
-    const blobHash = repo.writeBlob(Buffer.from("deep"));
+    const blobHash = repo.writeBlob(bytes("deep"));
 
     const result = repo.patchTree(rootHash, [
       { op: "upsert", path: "x/y/z.txt", mode: "100644", hash: blobHash },
@@ -296,7 +297,7 @@ describe("patchTree()", () => {
   // ---- rename 操作 ----
 
   test("rename 文件在同层目录", () => {
-    const hash = repo.writeBlob(Buffer.from("content"));
+    const hash = repo.writeBlob(bytes("content"));
     const rootHash = repo.createTree([{ mode: "100644", name: "old.txt", hash }]);
 
     const result = repo.patchTree(rootHash, [{ op: "rename", from: "old.txt", to: "new.txt" }]);
@@ -312,7 +313,7 @@ describe("patchTree()", () => {
   });
 
   test("rename 符号链接", () => {
-    const targetHash = repo.writeBlob(Buffer.from("/usr/bin/node"));
+    const targetHash = repo.writeBlob(bytes("/usr/bin/node"));
     const rootHash = repo.createTree([{ mode: "120000", name: "old-link", hash: targetHash }]);
 
     const result = repo.patchTree(rootHash, [{ op: "rename", from: "old-link", to: "new-link" }]);
@@ -329,7 +330,7 @@ describe("patchTree()", () => {
 
   test("rename 目录（子树平移，tree hash 不变）", () => {
     const subHash = repo.createTree([
-      { mode: "100644", name: "a.txt", hash: repo.writeBlob(Buffer.from("a")) },
+      { mode: "100644", name: "a.txt", hash: repo.writeBlob(bytes("a")) },
     ]);
     const rootHash = repo.createTree([{ mode: "040000", name: "src", hash: subHash }]);
 
@@ -346,7 +347,7 @@ describe("patchTree()", () => {
   });
 
   test("rename 跨目录移动文件", () => {
-    const hash = repo.writeBlob(Buffer.from("content"));
+    const hash = repo.writeBlob(bytes("content"));
     const subHash = repo.createTree([]);
     const rootHash = repo.createTree([
       { mode: "100644", name: "file.txt", hash },
@@ -372,7 +373,7 @@ describe("patchTree()", () => {
   });
 
   test("rename 跨目录且自动创建中间目录", () => {
-    const hash = repo.writeBlob(Buffer.from("nested"));
+    const hash = repo.writeBlob(bytes("nested"));
     const rootHash = repo.createTree([{ mode: "100644", name: "old.txt", hash }]);
 
     const result = repo.patchTree(rootHash, [
@@ -388,8 +389,8 @@ describe("patchTree()", () => {
   });
 
   test("rename 到已存在的路径（覆盖）", () => {
-    const oldHash = repo.writeBlob(Buffer.from("old"));
-    const newHash = repo.writeBlob(Buffer.from("new"));
+    const oldHash = repo.writeBlob(bytes("old"));
+    const newHash = repo.writeBlob(bytes("new"));
     const rootHash = repo.createTree([
       { mode: "100644", name: "src", hash: oldHash },
       { mode: "100644", name: "dst", hash: newHash },
@@ -421,7 +422,7 @@ describe("patchTree()", () => {
   });
 
   test("rename from === to 为 no-op", () => {
-    const hash = repo.writeBlob(Buffer.from("content"));
+    const hash = repo.writeBlob(bytes("content"));
     const rootHash = repo.createTree([{ mode: "100644", name: "f.txt", hash }]);
 
     const result = repo.patchTree(rootHash, [{ op: "rename", from: "f.txt", to: "f.txt" }]);
@@ -431,7 +432,7 @@ describe("patchTree()", () => {
   });
 
   test("rename 链式操作：a → b → c", () => {
-    const hash = repo.writeBlob(Buffer.from("content"));
+    const hash = repo.writeBlob(bytes("content"));
     const rootHash = repo.createTree([{ mode: "100644", name: "a", hash }]);
 
     const result = repo.patchTree(rootHash, [
@@ -449,8 +450,8 @@ describe("patchTree()", () => {
   });
 
   test("rename 与 upsert 交错执行", () => {
-    const hash1 = repo.writeBlob(Buffer.from("first"));
-    const hash2 = repo.writeBlob(Buffer.from("second"));
+    const hash1 = repo.writeBlob(bytes("first"));
+    const hash2 = repo.writeBlob(bytes("second"));
     const rootHash = repo.createTree([{ mode: "100644", name: "a", hash: hash1 }]);
 
     const result = repo.patchTree(rootHash, [
@@ -468,7 +469,7 @@ describe("patchTree()", () => {
   });
 
   test("rename 与 delete 交错执行", () => {
-    const hash = repo.writeBlob(Buffer.from("content"));
+    const hash = repo.writeBlob(bytes("content"));
     const rootHash = repo.createTree([
       { mode: "100644", name: "a", hash },
       { mode: "100644", name: "b", hash },

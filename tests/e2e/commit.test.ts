@@ -6,6 +6,7 @@
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 
+import { bytes } from "../helpers/bytes.ts";
 import {
   gitInitBare,
   gitCatFile,
@@ -48,7 +49,7 @@ describe("Commit 兼容性", () => {
     test("nano-git 创建的初始 commit 能被 git 正确读取", () => {
       const repo = openRepository(tempDir);
 
-      const fileHash = repo.writeBlob(Buffer.from("initial content"));
+      const fileHash = repo.writeBlob(bytes("initial content"));
       const treeHash = repo.createTree([{ mode: "100644", name: "README.md", hash: fileHash }]);
       const commitHash = repo.createCommit(treeHash, [], "Initial commit", testAuthor);
 
@@ -140,11 +141,11 @@ describe("Commit 兼容性", () => {
     test("nano-git 创建的 commit 链能通过 git fsck 验证", () => {
       const repo = openRepository(tempDir);
 
-      const file1Hash = repo.writeBlob(Buffer.from("v1"));
+      const file1Hash = repo.writeBlob(bytes("v1"));
       const tree1Hash = repo.createTree([{ mode: "100644", name: "file.txt", hash: file1Hash }]);
       const commit1Hash = repo.createCommit(tree1Hash, [], "First", testAuthor);
 
-      const file2Hash = repo.writeBlob(Buffer.from("v2"));
+      const file2Hash = repo.writeBlob(bytes("v2"));
       const tree2Hash = repo.createTree([{ mode: "100644", name: "file.txt", hash: file2Hash }]);
       const commit2Hash = repo.createCommit(tree2Hash, [commit1Hash], "Second", testAuthor);
 
@@ -158,7 +159,7 @@ describe("Commit 兼容性", () => {
     test("nano-git 创建的 commit 能被 git log 显示", () => {
       const repo = openRepository(tempDir);
 
-      const fileHash = repo.writeBlob(Buffer.from("content"));
+      const fileHash = repo.writeBlob(bytes("content"));
       const treeHash = repo.createTree([{ mode: "100644", name: "file.txt", hash: fileHash }]);
       const commitHash = repo.createCommit(treeHash, [], "Test log message", testAuthor);
 
@@ -213,7 +214,7 @@ describe("Commit 兼容性", () => {
     test("git 和 nano-git 对相同 commit 参数产生相同的哈希", () => {
       const repo = openRepository(tempDir);
 
-      const fileHash = repo.writeBlob(Buffer.from("same"));
+      const fileHash = repo.writeBlob(bytes("same"));
       const treeHash = repo.createTree([{ mode: "100644", name: "same.txt", hash: fileHash }]);
 
       const nanoGitCommit = repo.createCommit(treeHash, [], "Same message", testAuthor);

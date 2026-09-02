@@ -7,6 +7,7 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { bytes, bytesToUtf8 } from "../../helpers/bytes.ts";
 import { createMemoryRefStore } from "@/refs/memory.ts";
 import { PushError } from "@/transport/client/receive-pack/push-error.ts";
 import {
@@ -175,11 +176,11 @@ describe("buildPushRequestBody()", () => {
         refName: "refs/heads/main",
       },
     ];
-    const packfile = Buffer.from("PACK data");
+    const packfile = bytes("PACK data");
     const caps = ["report-status", "side-band-64k"];
 
     const body = buildPushRequestBody(commands, packfile, caps);
     expect(body.length).toBeGreaterThan(0);
-    expect(body.toString("utf-8")).toContain("refs/heads/main");
+    expect(bytesToUtf8(body)).toContain("refs/heads/main");
   });
 });

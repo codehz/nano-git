@@ -17,7 +17,7 @@ export interface PackPair {
   /** packfile 读取器（延迟加载） */
   reader: PackReader | null;
   /** packfile 数据（延迟加载） */
-  packData: Buffer | null;
+  packData: Uint8Array | null;
 }
 
 /**

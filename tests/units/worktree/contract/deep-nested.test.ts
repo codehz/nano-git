@@ -6,6 +6,7 @@
  */
 import { describe, expect, test } from "bun:test";
 
+import { bytes, bytesToUtf8 } from "../../../helpers/bytes.ts";
 import { virtualWorktreeBackends } from "./contract.ts";
 import { readTree } from "./test-utils.ts";
 import { VirtualPathNotFoundError } from "@/errors.ts";
@@ -18,16 +19,16 @@ describe("VirtualWorktree contract: deep nested", () => {
       const session = createWorktree(repo, { baseTree: repo.createTree([]) });
 
       session.mkdir("a/b/c/d", { recursive: true });
-      session.writeFile("a/b/c/d/target.txt", Buffer.from("deep"));
+      session.writeFile("a/b/c/d/target.txt", bytes("deep"));
       session.move("a/b", "x/y");
 
-      expect(session.readFile("x/y/c/d/target.txt").toString()).toBe("deep");
+      expect(bytesToUtf8(session.readFile("x/y/c/d/target.txt"))).toBe("deep");
       expect(() => session.readFile("a/b/c/d/target.txt")).toThrow(VirtualPathNotFoundError);
       expect(session.exists("a")).toBe(true);
       expect(session.readdir("a")).toEqual([]);
 
-      session.writeFile("a/new.txt", Buffer.from("new-root"));
-      expect(session.readFile("a/new.txt").toString()).toBe("new-root");
+      session.writeFile("a/new.txt", bytes("new-root"));
+      expect(bytesToUtf8(session.readFile("a/new.txt"))).toBe("new-root");
 
       const rootHash = session.writeTree();
       const root = readTree(repo, rootHash);
@@ -40,17 +41,17 @@ describe("VirtualWorktree contract: deep nested", () => {
       const session = createWorktree(repo, { baseTree: repo.createTree([]) });
 
       session.mkdir("a/b/c", { recursive: true });
-      session.writeFile("a/b/c/file.txt", Buffer.from("original"));
+      session.writeFile("a/b/c/file.txt", bytes("original"));
       session.copy("a", "copy");
 
-      session.writeFile("a/b/c/file.txt", Buffer.from("source-edit"));
-      session.writeFile("copy/b/c/file.txt", Buffer.from("copy-edit"));
+      session.writeFile("a/b/c/file.txt", bytes("source-edit"));
+      session.writeFile("copy/b/c/file.txt", bytes("copy-edit"));
 
-      expect(session.readFile("a/b/c/file.txt").toString()).toBe("source-edit");
-      expect(session.readFile("copy/b/c/file.txt").toString()).toBe("copy-edit");
+      expect(bytesToUtf8(session.readFile("a/b/c/file.txt"))).toBe("source-edit");
+      expect(bytesToUtf8(session.readFile("copy/b/c/file.txt"))).toBe("copy-edit");
 
-      session.writeFile("copy/b/c/extra.txt", Buffer.from("extra"));
-      expect(session.readFile("copy/b/c/extra.txt").toString()).toBe("extra");
+      session.writeFile("copy/b/c/extra.txt", bytes("extra"));
+      expect(bytesToUtf8(session.readFile("copy/b/c/extra.txt"))).toBe("extra");
       expect(() => session.readFile("a/b/c/extra.txt")).toThrow(VirtualPathNotFoundError);
     });
   });

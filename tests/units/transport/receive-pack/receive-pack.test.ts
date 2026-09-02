@@ -6,6 +6,7 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { allocBytes, bytes, bytesToUtf8, concatBytes } from "../../../helpers/bytes.ts";
 import { createMemoryRepositoryBackend } from "@/backend/memory.ts";
 import { writeObject } from "@/objects/raw.ts";
 import { encodePktLine, encodeFlushPkt } from "@/transport/protocol/pkt-line.ts";
@@ -32,7 +33,7 @@ function createTestBackend(params?: { withCommitHash?: string; extraRefs?: Map<s
 
   const blobHash = writeObject(backend.objects, {
     type: "blob" as const,
-    content: Buffer.from("hello"),
+    content: bytes("hello"),
   });
   const treeHash = writeObject(backend.objects, {
     type: "tree" as const,
@@ -66,7 +67,7 @@ describe("advertiseReceivePack", () => {
   test("返回 ref 广告，首行含 # service=git-receive-pack", () => {
     const { backend } = createTestBackend();
     const buf = advertiseReceivePack(backend);
-    const text = buf.toString("utf-8");
+    const text = bytesToUtf8(buf);
 
     expect(text).toContain("# service=git-receive-pack");
   });
@@ -74,7 +75,7 @@ describe("advertiseReceivePack", () => {
   test("首行 ref 带 capabilities（NUL 分隔）", () => {
     const { backend } = createTestBackend();
     const buf = advertiseReceivePack(backend);
-    const text = buf.toString("utf-8");
+    const text = bytesToUtf8(buf);
 
     // 第一行 ref 后应有 NUL + capabilities
     expect(text).toContain("\0report-status");
@@ -87,7 +88,7 @@ describe("advertiseReceivePack", () => {
   test("包含 refs/heads/main 和 HEAD", () => {
     const { backend, commitHash } = createTestBackend();
     const buf = advertiseReceivePack(backend);
-    const text = buf.toString("utf-8");
+    const text = bytesToUtf8(buf);
 
     expect(text).toContain(commitHash);
     expect(text).toContain("refs/heads/main");
@@ -98,7 +99,7 @@ describe("advertiseReceivePack", () => {
       initialRefs: new Map([["HEAD", "ref: refs/heads/main"]]),
     });
     const buf = advertiseReceivePack(backend);
-    const text = buf.toString("utf-8");
+    const text = bytesToUtf8(buf);
 
     // 空仓库时应有 capabilities^{} 占位行
     expect(text).toContain("capabilities^{}");
@@ -112,7 +113,7 @@ describe("advertiseReceivePack", () => {
 
     const blobHash = writeObject(backend.objects, {
       type: "blob" as const,
-      content: Buffer.from("hello"),
+      content: bytes("hello"),
     });
     const treeHash = writeObject(backend.objects, {
       type: "tree" as const,
@@ -138,7 +139,7 @@ describe("advertiseReceivePack", () => {
     backend.refs.write("refs/tags/v1.0", tagHash);
 
     const buf = advertiseReceivePack(backend);
-    const text = buf.toString("utf-8");
+    const text = bytesToUtf8(buf);
     expect(text).toContain(`${tagHash} refs/tags/v1.0`);
     expect(text).toContain(`${commitHash} refs/tags/v1.0^{}`);
   });
@@ -150,12 +151,12 @@ describe("advertiseReceivePack", () => {
 
 describe("parseReceivePackRequest", () => {
   test("解析单条命令（新建 ref）", () => {
-    const body = Buffer.concat([
+    const body = concatBytes(
       encodePktLine(
         `${ZERO_HASH} aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa refs/heads/new\0report-status\n`,
       ),
       encodeFlushPkt(),
-    ]);
+    );
 
     const parsed = parseReceivePackRequest(body);
     expect(parsed.commands).toHaveLength(1);
@@ -165,13 +166,13 @@ describe("parseReceivePackRequest", () => {
   });
 
   test("解析多条命令", () => {
-    const body = Buffer.concat([
+    const body = concatBytes(
       encodePktLine(
         `${ZERO_HASH} aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa refs/heads/a\0report-status\n`,
       ),
       encodePktLine(`${ZERO_HASH} bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb refs/heads/b\n`),
       encodeFlushPkt(),
-    ]);
+    );
 
     const parsed = parseReceivePackRequest(body);
     expect(parsed.commands).toHaveLength(2);
@@ -180,25 +181,25 @@ describe("parseReceivePackRequest", () => {
   });
 
   test("解析带 packfile 的请求", () => {
-    const packfileData = Buffer.from("PACK...."); // 不是合法 packfile，但解析器不校验
-    const body = Buffer.concat([
+    const packfileData = bytes("PACK...."); // 不是合法 packfile，但解析器不校验
+    const body = concatBytes(
       encodePktLine(
         `${ZERO_HASH} aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa refs/heads/a\0report-status\n`,
       ),
       encodeFlushPkt(),
       packfileData,
-    ]);
+    );
 
     const parsed = parseReceivePackRequest(body);
     expect(parsed.packfile).toEqual(packfileData);
   });
 
   test("空 body 抛出错误", () => {
-    expect(() => parseReceivePackRequest(Buffer.alloc(0))).toThrow(ReceivePackServiceError);
+    expect(() => parseReceivePackRequest(allocBytes(0))).toThrow(ReceivePackServiceError);
   });
 
   test("无效命令格式抛出错误", () => {
-    const body = Buffer.concat([encodePktLine("invalid command\n"), encodeFlushPkt()]);
+    const body = concatBytes(encodePktLine("invalid command\n"), encodeFlushPkt());
     expect(() => parseReceivePackRequest(body)).toThrow(ReceivePackServiceError);
   });
 });
@@ -212,13 +213,13 @@ describe("handleReceivePackRequest", () => {
     const { backend, commitHash } = createTestBackend();
 
     // 模拟 push: 新建 refs/heads/new -> commitHash
-    const body = Buffer.concat([
+    const body = concatBytes(
       encodePktLine(`${ZERO_HASH} ${commitHash} refs/heads/new\0report-status side-band-64k\n`),
       encodeFlushPkt(),
-    ]);
+    );
 
     const response = handleReceivePackRequest(backend, body);
-    const text = response.toString("utf-8");
+    const text = bytesToUtf8(response);
 
     expect(text).toContain("unpack ok");
     expect(text).toContain("ok refs/heads/new");
@@ -227,13 +228,13 @@ describe("handleReceivePackRequest", () => {
   test("快速推进分支成功", () => {
     const { backend, commitHash } = createTestBackend();
 
-    const body = Buffer.concat([
+    const body = concatBytes(
       encodePktLine(`${commitHash} ${commitHash} refs/heads/main\0report-status\n`),
       encodeFlushPkt(),
-    ]);
+    );
 
     const response = handleReceivePackRequest(backend, body);
-    const text = response.toString("utf-8");
+    const text = bytesToUtf8(response);
 
     expect(text).toContain("unpack ok");
     expect(text).toContain("ok refs/heads/main");
@@ -243,13 +244,13 @@ describe("handleReceivePackRequest", () => {
     const { backend, commitHash } = createTestBackend();
 
     const fakeOld = "0000000000000000000000000000000000000001" as SHA1;
-    const body = Buffer.concat([
+    const body = concatBytes(
       encodePktLine(`${fakeOld} ${commitHash} refs/heads/main\0report-status\n`),
       encodeFlushPkt(),
-    ]);
+    );
 
     const response = handleReceivePackRequest(backend, body);
-    const text = response.toString("utf-8");
+    const text = bytesToUtf8(response);
 
     expect(text).toContain("unpack ok");
     expect(text).toContain("ng refs/heads/main");
@@ -261,13 +262,13 @@ describe("handleReceivePackRequest", () => {
     // 先创建标签
     backend.refs.write("refs/tags/v1", commitHash);
 
-    const body = Buffer.concat([
+    const body = concatBytes(
       encodePktLine(`${commitHash} ${commitHash} refs/tags/v1\0report-status\n`),
       encodeFlushPkt(),
-    ]);
+    );
 
     const response = handleReceivePackRequest(backend, body);
-    const text = response.toString("utf-8");
+    const text = bytesToUtf8(response);
 
     expect(text).toContain("unpack ok");
     expect(text).toContain("ng refs/tags/v1");
@@ -276,13 +277,13 @@ describe("handleReceivePackRequest", () => {
   test("删除 ref 成功（带 delete-refs 能力）", () => {
     const { backend, commitHash } = createTestBackend();
 
-    const body = Buffer.concat([
+    const body = concatBytes(
       encodePktLine(`${commitHash} ${ZERO_HASH} refs/heads/main\0report-status delete-refs\n`),
       encodeFlushPkt(),
-    ]);
+    );
 
     const response = handleReceivePackRequest(backend, body);
-    const text = response.toString("utf-8");
+    const text = bytesToUtf8(response);
 
     expect(text).toContain("unpack ok");
     expect(text).toContain("ok refs/heads/main");
@@ -291,13 +292,13 @@ describe("handleReceivePackRequest", () => {
   test("删除 ref 不带 delete-refs 能力成功（允许删除是默认行为）", () => {
     const { backend, commitHash } = createTestBackend();
 
-    const body = Buffer.concat([
+    const body = concatBytes(
       encodePktLine(`${commitHash} ${ZERO_HASH} refs/heads/main\0report-status\n`),
       encodeFlushPkt(),
-    ]);
+    );
 
     const response = handleReceivePackRequest(backend, body);
-    const text = response.toString("utf-8");
+    const text = bytesToUtf8(response);
 
     expect(text).toContain("unpack ok");
     expect(text).toContain("ok refs/heads/main");
@@ -314,7 +315,7 @@ describe("createReceivePackService", () => {
     const service = createReceivePackService(backend);
 
     const buf = service.advertise();
-    const text = buf.toString("utf-8");
+    const text = bytesToUtf8(buf);
 
     expect(text).toContain("# service=git-receive-pack");
     expect(text).toContain("report-status");
@@ -324,13 +325,13 @@ describe("createReceivePackService", () => {
     const { backend, commitHash } = createTestBackend();
     const service = createReceivePackService(backend);
 
-    const body = Buffer.concat([
+    const body = concatBytes(
       encodePktLine(`${ZERO_HASH} ${commitHash} refs/heads/new\0report-status\n`),
       encodeFlushPkt(),
-    ]);
+    );
 
     const response = service.handleRequest(body);
-    const text = response.toString("utf-8");
+    const text = bytesToUtf8(response);
 
     expect(text).toContain("unpack ok");
     expect(text).toContain("ok refs/heads/new");

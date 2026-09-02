@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deflateSync } from "node:zlib";
 
+import { bytes, bytesEqual, bytesToUtf8 } from "../../helpers/bytes.ts";
 import { serialize } from "@/objects/index.ts";
 import {
   getLooseObjectPath,
@@ -45,7 +46,7 @@ describe("loose object 文件操作", () => {
 
   const blob: GitBlob = {
     type: "blob",
-    content: Buffer.from("hello world"),
+    content: bytes("hello world"),
   };
   const blobHash = sha1("95d09f2b10159347eece71399a7e2e907ea3df4f");
 
@@ -58,7 +59,7 @@ describe("loose object 文件操作", () => {
     // 验证内容是压缩的序列化数据
     const raw = readFileSync(expectedPath);
     const expectedRaw = deflateSync(serialize(blob));
-    expect(raw.equals(expectedRaw)).toBe(true);
+    expect(bytesEqual(raw, expectedRaw)).toBe(true);
   });
 
   test("hasLooseObject() 检查存在性", () => {
@@ -72,7 +73,7 @@ describe("loose object 文件操作", () => {
     const obj = readLooseObject(objectsDir, blobHash);
     expect(obj.type).toBe("blob");
     if (obj.type === "blob") {
-      expect(obj.content.toString()).toBe("hello world");
+      expect(bytesToUtf8(obj.content)).toBe("hello world");
     }
   });
 
@@ -106,7 +107,7 @@ describe("loose object 文件操作", () => {
     writeLooseObject(objectsDir, blobHash, blob);
 
     const hash2 = sha1("e69de29bb2d1d6434b8b29ae775ad8c2e48c5391");
-    const emptyBlob: GitBlob = { type: "blob", content: Buffer.from("") };
+    const emptyBlob: GitBlob = { type: "blob", content: bytes("") };
     writeLooseObject(objectsDir, hash2, emptyBlob);
 
     const hashes = listLooseObjects(objectsDir);

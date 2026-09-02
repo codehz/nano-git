@@ -23,6 +23,7 @@ import {
 } from "../src/worktree/engine/change-index.ts";
 import { openVirtualWorktree } from "../src/worktree/engine/worktree.ts";
 import { createVirtualWorktreeMemoryStateStore } from "../src/worktree/store/memory-backend.ts";
+import { bytes } from "../tests/helpers/bytes.ts";
 
 import type { Repository } from "../src/repository/types.ts";
 import type { SHA1 } from "../src/types/index.ts";
@@ -165,7 +166,7 @@ function setupLargeTreeSmallChangeScenario(
 ): ScenarioRuntime {
   const { repo, paths, worktree, state } = createBaseWorktree(totalFiles);
   for (const [index, path] of selectSpreadPaths(paths, changedFiles).entries()) {
-    worktree.writeFile(path, Buffer.from(`changed:${index}:${path}\n`));
+    worktree.writeFile(path, bytes(`changed:${index}:${path}\n`));
   }
   return {
     repo,
@@ -196,7 +197,7 @@ function setupRepeatedModifyScenario(totalFiles: number, rewriteCount: number): 
     throw new Error("Repeated modify scenario requires at least one base path");
   }
   for (let index = 0; index < rewriteCount; index += 1) {
-    worktree.writeFile(targetPath, Buffer.from(`rewrite:${index}\n`));
+    worktree.writeFile(targetPath, bytes(`rewrite:${index}\n`));
   }
   return {
     repo,
@@ -220,7 +221,7 @@ function createBaseWorktree(totalFiles: number): {
     op: "upsert",
     path,
     mode: "100644",
-    hash: repo.writeBlob(Buffer.from(`base:${index}:${path}\n`)),
+    hash: repo.writeBlob(bytes(`base:${index}:${path}\n`)),
   })) satisfies Parameters<typeof patchTree>[2];
   const baseTree = patchTree(repo.objects, rootTree, ops).rootHash;
   const state = createVirtualWorktreeMemoryStateStore(baseTree);

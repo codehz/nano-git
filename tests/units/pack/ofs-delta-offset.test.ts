@@ -4,13 +4,14 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { allocBytes, toUint8Array } from "../../helpers/bytes.ts";
 import { InvalidPackError } from "@/errors.ts";
 import { decodeOfsDeltaOffset, encodeOfsDeltaOffset } from "@/pack/utils/ofs-delta-offset.ts";
 
 describe("decodeOfsDeltaOffset()", () => {
   test("解码单字节偏移量", () => {
     // value=5, without continue bit
-    const buf = Buffer.from([0b0000_0101]);
+    const buf = Uint8Array.from([0b0000_0101]);
     const [value, bytesRead] = decodeOfsDeltaOffset(buf, 0);
     expect(value).toBe(5);
     expect(bytesRead).toBe(1);
@@ -18,19 +19,19 @@ describe("decodeOfsDeltaOffset()", () => {
 
   test("解码双字节偏移量", () => {
     // encodeOfsDeltaOffset(128) produces [0x80, 0x00]
-    const buf = Buffer.from([0x80, 0x00]);
+    const buf = Uint8Array.from([0x80, 0x00]);
     const [value, bytesRead] = decodeOfsDeltaOffset(buf, 0);
     expect(value).toBe(128);
     expect(bytesRead).toBe(2);
   });
 
   test("空缓冲区抛出异常", () => {
-    const buf = Buffer.from([]);
+    const buf = allocBytes(0);
     expect(() => decodeOfsDeltaOffset(buf, 0)).toThrow(InvalidPackError);
   });
 
   test("不完整的变长整数抛出异常", () => {
-    const buf = Buffer.from([0x80]);
+    const buf = Uint8Array.from([0x80]);
     expect(() => decodeOfsDeltaOffset(buf, 0)).toThrow(InvalidPackError);
   });
 });
@@ -38,7 +39,7 @@ describe("decodeOfsDeltaOffset()", () => {
 describe("encodeOfsDeltaOffset()", () => {
   test("编码小偏移量", () => {
     const encoded = encodeOfsDeltaOffset(5);
-    expect(encoded).toEqual(Buffer.from([0b0000_0101]));
+    expect(encoded).toEqual(Uint8Array.from([0b0000_0101]));
   });
 
   test("编码-解码往返一致性", () => {

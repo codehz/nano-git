@@ -5,15 +5,16 @@
 import { describe, test, expect } from "bun:test";
 import { deflateSync } from "node:zlib";
 
+import { bytes, concatBytes } from "../../helpers/bytes.ts";
 import { resolvePlainPackObject } from "@/pack/reader/pack-reader-resolver.ts";
 import { sha1 } from "@/types/index.ts";
 
 describe("resolvePlainPackObject()", () => {
   test("解析普通 blob 对象", () => {
-    const content = Buffer.from("hello world");
+    const content = bytes("hello world");
     const compressed = deflateSync(content);
     // Construct full pack-like data: object header + compressed content
-    const data = Buffer.concat([Buffer.from([0x00]), compressed]);
+    const data = concatBytes(Uint8Array.from([0x00]), compressed);
 
     const result = resolvePlainPackObject(data, 1, 0, 3); // type 3 = blob
     expect(result.object.type).toBe("blob");
@@ -23,10 +24,10 @@ describe("resolvePlainPackObject()", () => {
   });
 
   test("nextOffset 精确定位", () => {
-    const content = Buffer.from("hello world");
+    const content = bytes("hello world");
     const compressed = deflateSync(content);
     // Simulate packed data: first object compressed data only
-    const data = Buffer.concat([Buffer.from([0x00, 0x00]), compressed, Buffer.from("trailing")]);
+    const data = concatBytes(Uint8Array.from([0x00, 0x00]), compressed, bytes("trailing"));
 
     const result1 = resolvePlainPackObject(data, 2, 0, 3);
     expect(result1.nextOffset).toBe(2 + compressed.length);

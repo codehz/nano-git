@@ -20,7 +20,7 @@ export interface PackObject {
   /** 对象在 packfile 中的偏移量 */
   offset: number;
   /** 解压后的原始数据（对应 RawGitObject.content） */
-  data: Buffer;
+  data: Uint8Array;
 }
 
 /**

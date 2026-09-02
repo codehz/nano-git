@@ -8,6 +8,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 
+import { bytes, bytesToUtf8, toUint8Array } from "../helpers/bytes.ts";
 import {
   git,
   gitInit,
@@ -47,7 +48,7 @@ describe("Tree 兼容性", () => {
     test("nano-git 创建的简单 tree 能被 git 正确读取", () => {
       const repo = openRepository(tempDir);
 
-      const fileHash = repo.writeBlob(Buffer.from("file content"));
+      const fileHash = repo.writeBlob(bytes("file content"));
       const treeHash = repo.createTree([{ mode: "100644", name: "file.txt", hash: fileHash }]);
 
       const output = gitCatFile(tempDir, treeHash);
@@ -59,9 +60,9 @@ describe("Tree 兼容性", () => {
     test("nano-git 创建的多文件 tree 能被 git 正确读取", () => {
       const repo = openRepository(tempDir);
 
-      const hash1 = repo.writeBlob(Buffer.from("content 1"));
-      const hash2 = repo.writeBlob(Buffer.from("content 2"));
-      const hash3 = repo.writeBlob(Buffer.from("#!/bin/sh\necho hi"));
+      const hash1 = repo.writeBlob(bytes("content 1"));
+      const hash2 = repo.writeBlob(bytes("content 2"));
+      const hash3 = repo.writeBlob(bytes("#!/bin/sh\necho hi"));
 
       const treeHash = repo.createTree([
         { mode: "100644", name: "a.txt", hash: hash1 },
@@ -80,7 +81,7 @@ describe("Tree 兼容性", () => {
     test("nano-git 创建的嵌套 tree（子目录）能被 git 正确读取", () => {
       const repo = openRepository(tempDir);
 
-      const fileHash = repo.writeBlob(Buffer.from("nested file"));
+      const fileHash = repo.writeBlob(bytes("nested file"));
       const subTreeHash = repo.createTree([{ mode: "100644", name: "nested.txt", hash: fileHash }]);
       const rootTreeHash = repo.createTree([{ mode: "040000", name: "subdir", hash: subTreeHash }]);
 
@@ -139,7 +140,7 @@ describe("Tree 兼容性", () => {
     test("git 和 nano-git 对相同 tree 结构产生相同的哈希", () => {
       const repo = openRepository(tempDir);
 
-      const fileHash = repo.writeBlob(Buffer.from("same content"));
+      const fileHash = repo.writeBlob(bytes("same content"));
       const nanoGitTreeHash = repo.createTree([
         { mode: "100644", name: "same.txt", hash: fileHash },
       ]);
@@ -161,7 +162,7 @@ describe("Tree 兼容性", () => {
     test("nano-git createTree 创建的符号链接 tree 能被 git ls-tree 正确显示", () => {
       const repo = openRepository(tempDir);
 
-      const targetHash = repo.writeBlob(Buffer.from("/usr/bin/node"));
+      const targetHash = repo.writeBlob(bytes("/usr/bin/node"));
       const treeHash = repo.createTree([{ mode: "120000", name: "node", hash: targetHash }]);
 
       const output = git(["ls-tree", treeHash], tempDir);
@@ -184,7 +185,7 @@ describe("Tree 兼容性", () => {
         expect(match).not.toBeNull();
         if (match) {
           const blobContent = gitCatFileRaw(workDir, match[1]!);
-          expect(blobContent.toString("utf-8")).toBe("/usr/bin/python3");
+          expect(bytesToUtf8(blobContent)).toBe("/usr/bin/python3");
         }
       } finally {
         cleanupDir(workDir);
@@ -195,7 +196,7 @@ describe("Tree 兼容性", () => {
       const repo = openRepository(tempDir);
 
       const target = "/some/symlink/target";
-      const nanoGitHash = repo.writeBlob(Buffer.from(target));
+      const nanoGitHash = repo.writeBlob(bytes(target));
       const gitHash = gitHashObject(tempDir, target);
 
       expect(nanoGitHash).toBe(gitHash);
@@ -219,7 +220,7 @@ describe("Tree 兼容性", () => {
         const blob = repo.catFile(tree.entries[0]!.hash);
         expect(blob.type).toBe("blob");
         if (blob.type === "blob") {
-          expect(blob.content.toString("utf-8")).toBe("/usr/bin/node");
+          expect(bytesToUtf8(blob.content)).toBe("/usr/bin/node");
         }
       }
     });
@@ -230,7 +231,7 @@ describe("Tree 兼容性", () => {
       const gitBlobHash = gitHashObjectWrite(tempDir, "/target/path");
       const gitTreeHash = gitMktree(tempDir, [`120000 blob ${gitBlobHash}\tsymlink`]);
 
-      const nanoBlobHash = repo.writeBlob(Buffer.from("/target/path"));
+      const nanoBlobHash = repo.writeBlob(bytes("/target/path"));
       expect(nanoBlobHash).toBe(gitBlobHash);
 
       const nanoTreeHash = repo.createTree([

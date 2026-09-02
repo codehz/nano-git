@@ -23,6 +23,7 @@
  * 当前文件只保留对象遍历与 delta 解析主流程。
  */
 
+import { bytesToHex } from "../../bytes.ts";
 import { InvalidPackError } from "../../errors.ts";
 import {
   PACK_HEADER_SIZE,
@@ -66,7 +67,7 @@ export { packObjectToRaw } from "./pack-reader-types.ts";
  * }
  * ```
  */
-export function createPackReader(data: Buffer, externalBases?: ObjectSource): PackReader {
+export function createPackReader(data: Uint8Array, externalBases?: ObjectSource): PackReader {
   return new PackReader(data, externalBases);
 }
 
@@ -78,7 +79,7 @@ export function createPackReader(data: Buffer, externalBases?: ObjectSource): Pa
  * - objects() / listHashes() 解析全部对象
  */
 export class PackReader {
-  private readonly data: Buffer;
+  private readonly data: Uint8Array;
   private readonly _objectCount: number;
   private readonly externalBases?: ObjectSource;
   private readonly objectsByOffset: Map<number, PackObject> = new Map();
@@ -87,7 +88,7 @@ export class PackReader {
   private parsedCount = 0;
   private fullyParsed = false;
 
-  constructor(data: Buffer, externalBases?: ObjectSource) {
+  constructor(data: Uint8Array, externalBases?: ObjectSource) {
     this.data = data;
     this.externalBases = externalBases;
     this._objectCount = parsePackHeader(data);
@@ -136,7 +137,7 @@ export class PackReader {
       obj = resolved.object;
       this.parseOffset = resolved.nextOffset;
     } else if (typeNum === OBJ_REF_DELTA) {
-      const baseHash = this.data.subarray(this.parseOffset, this.parseOffset + 20).toString("hex");
+      const baseHash = bytesToHex(this.data.subarray(this.parseOffset, this.parseOffset + 20));
       this.parseOffset += 20;
       const resolved = resolveRefDeltaPackObject(
         this.data,

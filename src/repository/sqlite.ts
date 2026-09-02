@@ -13,7 +13,7 @@
  *
  * const db = new Database("/tmp/cache.sqlite") as unknown as SqliteDatabase;
  * const repo = createSqliteRepository(db);
- * const hash = repo.writeBlob(Buffer.from("hello world"));
+ * const hash = repo.writeBlob(Uint8Array.from("hello world"));
  * ```
  */
 
@@ -45,7 +45,7 @@ export type { CreateSqliteRepositoryBackendOptions } from "../backend/sqlite.ts"
  * const db = new Database("/tmp/repo.sqlite") as unknown as SqliteDatabase;
  * const repo = createSqliteRepository(db);
  * repo.createBranch("main", repo.createTree([]));
- * repo.writeBlob(Buffer.from("data"));
+ * repo.writeBlob(Uint8Array.from("data"));
  * ```
  */
 export function createSqliteRepository(

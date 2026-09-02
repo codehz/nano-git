@@ -12,6 +12,7 @@
  * 本模块在序列化/反序列化边界做双向转换，内部统一使用规范形式（"040000"）。
  */
 
+import { bytesToHex, bytesToUtf8, concatBytes, hexToBytes, utf8ToBytes } from "../bytes.ts";
 import { InvalidObjectError } from "../errors.ts";
 import { sha1 } from "../types/index.ts";
 
@@ -168,17 +169,17 @@ export function sortTreeEntries(entries: readonly TreeEntry[]): TreeEntry[] {
  * const buf = serializeTree(tree);
  * ```
  */
-export function serializeTree(tree: GitTree): Buffer {
-  const buffers: Buffer[] = [];
+export function serializeTree(tree: GitTree): Uint8Array {
+  const buffers: Uint8Array[] = [];
 
   // 始终按 Git 规范排序，避免 createTree/patchTree 调用方漏排序导致 treeNotSorted
   for (const entry of sortTreeEntries(tree.entries)) {
     // 将规范 mode 转为磁盘格式（如 "040000" → "40000"）
     const mode = toOnDiskMode(entry.mode);
     // "<mode> <name>\0"
-    const entryHeader = Buffer.from(`${mode} ${entry.name}\0`, "utf-8");
+    const entryHeader = utf8ToBytes(`${mode} ${entry.name}\0`);
     // 20 字节的原始哈希
-    const entryHash = Buffer.from(entry.hash, "hex");
+    const entryHash = hexToBytes(entry.hash);
 
     if (entryHash.length !== 20) {
       throw new InvalidObjectError(`invalid SHA-1 hash length: ${entryHash.length}`);
@@ -187,7 +188,7 @@ export function serializeTree(tree: GitTree): Buffer {
     buffers.push(entryHeader, entryHash);
   }
 
-  return Buffer.concat(buffers);
+  return concatBytes(...buffers);
 }
 
 /**
@@ -195,7 +196,7 @@ export function serializeTree(tree: GitTree): Buffer {
  *
  * 读取时自动将磁盘 mode 转换为规范形式（如 "40000" → "040000"）。
  */
-export function deserializeTree(content: Buffer): GitTree {
+export function deserializeTree(content: Uint8Array): GitTree {
   const entries: TreeEntry[] = [];
   let offset = 0;
 
@@ -207,7 +208,7 @@ export function deserializeTree(content: Buffer): GitTree {
     }
 
     // 解析 "<mode> <name>"
-    const entryHeader = content.subarray(offset, nullIndex).toString("utf-8");
+    const entryHeader = bytesToUtf8(content.subarray(offset, nullIndex));
     const spaceIndex = entryHeader.indexOf(" ");
     if (spaceIndex === -1) {
       throw new InvalidObjectError(`invalid tree entry: ${entryHeader}`);
@@ -223,7 +224,7 @@ export function deserializeTree(content: Buffer): GitTree {
       throw new InvalidObjectError("tree: truncated hash");
     }
 
-    const hash = content.subarray(hashStart, hashEnd).toString("hex");
+    const hash = bytesToHex(content.subarray(hashStart, hashEnd));
 
     // 将磁盘 mode 转为规范形式（如 "40000" → "040000"）
     entries.push({ mode: toCanonicalMode(mode), name, hash: sha1(hash) });

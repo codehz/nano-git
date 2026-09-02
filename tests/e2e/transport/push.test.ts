@@ -12,6 +12,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { bytes, bytesToUtf8, concatBytes, utf8ToBytes } from "../../helpers/bytes.ts";
 import { git, gitInit, createTempDir, cleanupDir, createFile, FIXED_AUTHOR } from "../helpers.ts";
 import { startGitHttpBackendServer } from "./http-server.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
@@ -33,17 +34,17 @@ function enableReceivePack(repoDir: string): void {
   }
 }
 
-function encodeSideBandFrame(channel: 1 | 2 | 3, payload: Buffer | string): Buffer {
-  const data = typeof payload === "string" ? Buffer.from(payload, "utf-8") : payload;
-  return encodePktLine(Buffer.concat([Buffer.from([channel]), data]));
+function encodeSideBandFrame(channel: 1 | 2 | 3, payload: Uint8Array | string): Uint8Array {
+  const data = typeof payload === "string" ? utf8ToBytes(payload) : payload;
+  return encodePktLine(concatBytes(Uint8Array.from([channel]), data));
 }
 
 function rewriteReceivePackResponseAsSplitSideBand(
   response: GitHttpBackendResponse,
 ): GitHttpBackendResponse {
   const outerLines = parsePktLines(response.body);
-  const channel1Chunks: Buffer[] = [];
-  const progressChunks: Buffer[] = [];
+  const channel1Chunks: Uint8Array[] = [];
+  const progressChunks: Uint8Array[] = [];
 
   for (const line of outerLines) {
     if (line.type !== "data" || line.payload.length === 0) {
@@ -58,19 +59,19 @@ function rewriteReceivePackResponseAsSplitSideBand(
     }
   }
 
-  const reportStatus = Buffer.concat(channel1Chunks);
+  const reportStatus = concatBytes(...channel1Chunks);
   if (reportStatus.length < 2) {
     return response;
   }
 
   const splitAt = Math.max(1, Math.floor(reportStatus.length / 2));
-  const rewrittenBody = Buffer.concat([
+  const rewrittenBody = concatBytes(
     ...progressChunks.map((chunk) => encodeSideBandFrame(2, chunk)),
     encodeSideBandFrame(2, "remote: side-band progress\n"),
     encodeSideBandFrame(1, reportStatus.subarray(0, splitAt)),
     encodeSideBandFrame(1, reportStatus.subarray(splitAt)),
     encodeFlushPkt(),
-  ]);
+  );
 
   return {
     ...response,
@@ -96,7 +97,7 @@ function rewriteAdvertisementCapabilities(
   rewrite: (capabilities: string[]) => string[],
 ): GitHttpBackendResponse {
   const lines = parsePktLines(response.body);
-  const chunks: Buffer[] = [];
+  const chunks: Uint8Array[] = [];
   let rewritten = false;
 
   for (const line of lines) {
@@ -113,17 +114,11 @@ function rewriteAdvertisementCapabilities(
       const nullIndex = line.payload.indexOf(0);
       if (nullIndex !== -1) {
         const refPart = line.payload.subarray(0, nullIndex);
-        const originalCaps = line.payload
-          .subarray(nullIndex + 1)
-          .toString("utf-8")
+        const originalCaps = bytesToUtf8(line.payload.subarray(nullIndex + 1))
           .split(" ")
           .filter((token) => token.length > 0);
         const caps = rewrite(originalCaps);
-        const payload = Buffer.concat([
-          refPart,
-          Buffer.from([0]),
-          Buffer.from(caps.join(" "), "utf-8"),
-        ]);
+        const payload = concatBytes(refPart, Uint8Array.from([0]), utf8ToBytes(caps.join(" ")));
         chunks.push(encodePktLine(payload));
         rewritten = true;
         continue;
@@ -135,7 +130,7 @@ function rewriteAdvertisementCapabilities(
 
   return {
     ...response,
-    body: Buffer.concat(chunks),
+    body: concatBytes(...chunks),
   };
 }
 
@@ -143,7 +138,7 @@ function rewriteReceivePackResponseAsPlainReportStatus(
   response: GitHttpBackendResponse,
 ): GitHttpBackendResponse {
   const outerLines = parsePktLines(response.body);
-  const channel1Chunks: Buffer[] = [];
+  const channel1Chunks: Uint8Array[] = [];
 
   for (const line of outerLines) {
     if (line.type !== "data" || line.payload.length === 0) {
@@ -154,7 +149,7 @@ function rewriteReceivePackResponseAsPlainReportStatus(
     }
   }
 
-  const reportStatus = Buffer.concat(channel1Chunks);
+  const reportStatus = concatBytes(...channel1Chunks);
   if (reportStatus.length === 0) {
     return response;
   }
@@ -211,7 +206,7 @@ describe("push() 端到端", () => {
     const repo = createMemoryRepository();
     const author = { ...FIXED_AUTHOR };
 
-    const fileHash = repo.writeBlob(Buffer.from("new branch content"));
+    const fileHash = repo.writeBlob(bytes("new branch content"));
     const treeHash = repo.createTree([{ mode: "100644", name: "new-branch.txt", hash: fileHash }]);
     const commitHash = repo.createCommit(treeHash, [], "New branch commit", author);
     repo.updateRef("refs/heads/new-feature", commitHash);
@@ -242,7 +237,7 @@ describe("push() 端到端", () => {
     const repo = createMemoryRepository();
     const author = { ...FIXED_AUTHOR };
 
-    const fileHash = repo.writeBlob(Buffer.from("initial empty remote push"));
+    const fileHash = repo.writeBlob(bytes("initial empty remote push"));
     const treeHash = repo.createTree([{ mode: "100644", name: "README.md", hash: fileHash }]);
     const commitHash = repo.createCommit(treeHash, [], "Initial push to empty remote", author);
     repo.updateRef("refs/heads/main", commitHash);
@@ -317,7 +312,7 @@ describe("push() 端到端", () => {
     const repo = createMemoryRepository();
     const author = { ...FIXED_AUTHOR };
 
-    const fileHash = repo.writeBlob(Buffer.from("plain report-status"));
+    const fileHash = repo.writeBlob(bytes("plain report-status"));
     const treeHash = repo.createTree([{ mode: "100644", name: "plain.txt", hash: fileHash }]);
     const commitHash = repo.createCommit(treeHash, [], "Plain report-status", author);
     repo.updateRef("refs/heads/plain-status", commitHash);
@@ -357,7 +352,7 @@ describe("push() 端到端", () => {
     const repo = createMemoryRepository();
     const author = { ...FIXED_AUTHOR };
 
-    const fileHash = repo.writeBlob(Buffer.from("minimal receive-pack caps"));
+    const fileHash = repo.writeBlob(bytes("minimal receive-pack caps"));
     const treeHash = repo.createTree([{ mode: "100644", name: "minimal.txt", hash: fileHash }]);
     const commitHash = repo.createCommit(treeHash, [], "Minimal receive-pack caps", author);
     repo.updateRef("refs/heads/minimal-status", commitHash);
@@ -389,7 +384,7 @@ describe("push() 端到端", () => {
     );
 
     // 本地创建分叉 commit
-    const fileHash = repo.writeBlob(Buffer.from("divergent"));
+    const fileHash = repo.writeBlob(bytes("divergent"));
     const treeHash = repo.createTree([{ mode: "100644", name: "d.txt", hash: fileHash }]);
     const divergentHash = repo.createCommit(treeHash, [], "Divergent", author);
     repo.updateRef("refs/heads/main", divergentHash);
@@ -405,7 +400,7 @@ describe("push() 端到端", () => {
     const repo = createMemoryRepository();
     const author = { ...FIXED_AUTHOR };
 
-    const fileHash = repo.writeBlob(Buffer.from("forced"));
+    const fileHash = repo.writeBlob(bytes("forced"));
     const treeHash = repo.createTree([{ mode: "100644", name: "f.txt", hash: fileHash }]);
     const forceHash = repo.createCommit(treeHash, [], "Forced", author);
     repo.updateRef("refs/heads/main", forceHash);
@@ -427,7 +422,7 @@ describe("push() 端到端", () => {
     const repo = createMemoryRepository();
     const author = { ...FIXED_AUTHOR };
 
-    const fileHash = repo.writeBlob(Buffer.from("tagged content"));
+    const fileHash = repo.writeBlob(bytes("tagged content"));
     const treeHash = repo.createTree([{ mode: "100644", name: "tagged.txt", hash: fileHash }]);
     const commitHash = repo.createCommit(treeHash, [], "Tagged commit", author);
     repo.updateRef("refs/tags/v1", commitHash);
@@ -449,13 +444,13 @@ describe("push() 端到端", () => {
     const author = { ...FIXED_AUTHOR };
 
     // 创建第一个分支的 commit
-    const hashA = repo.writeBlob(Buffer.from("multi branch a"));
+    const hashA = repo.writeBlob(bytes("multi branch a"));
     const treeA = repo.createTree([{ mode: "100644", name: "a.txt", hash: hashA }]);
     const commitA = repo.createCommit(treeA, [], "Feature A", author);
     repo.updateRef("refs/heads/feature-a", commitA);
 
     // 创建第二个分支的 commit
-    const hashB = repo.writeBlob(Buffer.from("multi branch b"));
+    const hashB = repo.writeBlob(bytes("multi branch b"));
     const treeB = repo.createTree([{ mode: "100644", name: "b.txt", hash: hashB }]);
     const commitB = repo.createCommit(treeB, [], "Feature B", author);
     repo.updateRef("refs/heads/feature-b", commitB);
@@ -484,7 +479,7 @@ describe("push() 端到端", () => {
     const author = { ...FIXED_AUTHOR };
 
     // 先创建一个 commit 用于 tag 指向
-    const blobHash = repo.writeBlob(Buffer.from("annotated tag content"));
+    const blobHash = repo.writeBlob(bytes("annotated tag content"));
     const treeHash = repo.createTree([{ mode: "100644", name: "annotated.txt", hash: blobHash }]);
     const commitHash = repo.createCommit(treeHash, [], "Commit for annotated tag", author);
     repo.updateRef("refs/heads/main", commitHash);
@@ -520,7 +515,7 @@ describe("push() 端到端", () => {
     const repo = createMemoryRepository();
     const author = { ...FIXED_AUTHOR };
 
-    const blobHash = repo.writeBlob(Buffer.from("blob payload for custom ref"));
+    const blobHash = repo.writeBlob(bytes("blob payload for custom ref"));
     const firstTagHash = repo.createAnnotatedTag(
       "blobtag-v1",
       blobHash,
@@ -609,7 +604,7 @@ describe("push() 端到端", () => {
     const repo = createMemoryRepository();
     const author = { ...FIXED_AUTHOR };
 
-    const blobHash = repo.writeBlob(Buffer.from("custom branch target"));
+    const blobHash = repo.writeBlob(bytes("custom branch target"));
     const treeHash = repo.createTree([{ mode: "100644", name: "custom.txt", hash: blobHash }]);
     const commitHash = repo.createCommit(treeHash, [], "Custom branch commit", author);
     repo.updateRef("refs/heads/main", commitHash);
@@ -634,7 +629,7 @@ describe("push() 端到端", () => {
     const author = { ...FIXED_AUTHOR };
 
     // 1. 第一次推送：建立远程分支
-    const blobHash = repo.writeBlob(Buffer.from("up to date content"));
+    const blobHash = repo.writeBlob(bytes("up to date content"));
     const treeHash = repo.createTree([{ mode: "100644", name: "uptodate.txt", hash: blobHash }]);
     const commitHash = repo.createCommit(treeHash, [], "Uptodate commit", author);
     repo.updateRef("refs/heads/uptodate", commitHash);
@@ -661,7 +656,7 @@ describe("push() 端到端", () => {
     const repo = createMemoryRepository();
     const author = { ...FIXED_AUTHOR };
 
-    const fileHash = repo.writeBlob(Buffer.from("tag up to date"));
+    const fileHash = repo.writeBlob(bytes("tag up to date"));
     const treeHash = repo.createTree([{ mode: "100644", name: "tagged.txt", hash: fileHash }]);
     const commitHash = repo.createCommit(treeHash, [], "Tag commit", author);
     repo.updateRef("refs/tags/v-up2date", commitHash);
@@ -688,7 +683,7 @@ describe("push() 端到端", () => {
     const author = { ...FIXED_AUTHOR };
 
     // 1. 推送第一个 commit
-    const blob1 = repo.writeBlob(Buffer.from("commit 1"));
+    const blob1 = repo.writeBlob(bytes("commit 1"));
     const tree1 = repo.createTree([{ mode: "100644", name: "f1.txt", hash: blob1 }]);
     const commit1 = repo.createCommit(tree1, [], "First commit", author);
     repo.updateRef("refs/heads/incremental", commit1);
@@ -699,7 +694,7 @@ describe("push() 端到端", () => {
     expect(result1.pushedRefs[0]!.success).toBe(true);
 
     // 2. 在第一个 commit 之上再推送第二个 commit
-    const blob2 = repo.writeBlob(Buffer.from("commit 2"));
+    const blob2 = repo.writeBlob(bytes("commit 2"));
     const tree2 = repo.createTree([
       { mode: "100644", name: "f1.txt", hash: blob1 },
       { mode: "100644", name: "f2.txt", hash: blob2 },
@@ -714,7 +709,7 @@ describe("push() 端到端", () => {
     expect(result2.objectCount).toBeGreaterThan(0);
 
     // 3. 再推送第三个 commit
-    const blob3 = repo.writeBlob(Buffer.from("commit 3"));
+    const blob3 = repo.writeBlob(bytes("commit 3"));
     const tree3 = repo.createTree([
       { mode: "100644", name: "f1.txt", hash: blob1 },
       { mode: "100644", name: "f2.txt", hash: blob2 },
@@ -747,12 +742,12 @@ describe("push() 端到端", () => {
     const author = { ...FIXED_AUTHOR };
 
     // 创建两个分支
-    const hashA = repo.writeBlob(Buffer.from("wildcard a"));
+    const hashA = repo.writeBlob(bytes("wildcard a"));
     const treeA = repo.createTree([{ mode: "100644", name: "wa.txt", hash: hashA }]);
     const commitA = repo.createCommit(treeA, [], "Wildcard A", author);
     repo.updateRef("refs/heads/branch-wa", commitA);
 
-    const hashB = repo.writeBlob(Buffer.from("wildcard b"));
+    const hashB = repo.writeBlob(bytes("wildcard b"));
     const treeB = repo.createTree([{ mode: "100644", name: "wb.txt", hash: hashB }]);
     const commitB = repo.createCommit(treeB, [], "Wildcard B", author);
     repo.updateRef("refs/heads/branch-wb", commitB);
@@ -785,8 +780,8 @@ describe("push() 端到端", () => {
     const repo = createMemoryRepository();
     const author = { ...FIXED_AUTHOR };
 
-    const hashA = repo.writeBlob(Buffer.from("present blob"));
-    const missingBlob = repo.hashObject(Buffer.from("missing blob"));
+    const hashA = repo.writeBlob(bytes("present blob"));
+    const missingBlob = repo.hashObject(bytes("missing blob"));
     const treeHash = repo.createTree([
       { mode: "100644", name: "ok.txt", hash: hashA },
       { mode: "100644", name: "missing.txt", hash: missingBlob },
@@ -836,7 +831,7 @@ describe("push() 端到端", () => {
     const baseCommit = sha1(mirroredMain);
 
     // 在 feature 分支上创建 commit（基于已 fetch 的对象）
-    const fileHash = repo.writeBlob(Buffer.from("feature branch content"));
+    const fileHash = repo.writeBlob(bytes("feature branch content"));
     const treeHash = repo.createTree([{ mode: "100644", name: "feature.txt", hash: fileHash }]);
     const commitHash = repo.createCommit(treeHash, [baseCommit], "Feature branch commit", author);
     repo.updateRef("refs/heads/feature", commitHash);
@@ -873,7 +868,7 @@ describe("push() 端到端", () => {
     );
 
     // 在 main 上创建新 commit
-    const fileHash = repo.writeBlob(Buffer.from("main update"));
+    const fileHash = repo.writeBlob(bytes("main update"));
     const treeHash = repo.createTree([{ mode: "100644", name: "update.txt", hash: fileHash }]);
     const commitHash = repo.createCommit(treeHash, [initialCommit], "Main update", author);
     repo.updateRef("refs/heads/main", commitHash);
@@ -894,7 +889,7 @@ describe("push() 端到端", () => {
     const author = { ...FIXED_AUTHOR };
 
     // 创建一个 commit
-    const fileHash = repo.writeBlob(Buffer.from("detached content"));
+    const fileHash = repo.writeBlob(bytes("detached content"));
     const treeHash = repo.createTree([{ mode: "100644", name: "detached.txt", hash: fileHash }]);
     const commitHash = repo.createCommit(treeHash, [], "Detached commit", author);
 
@@ -921,7 +916,7 @@ describe("push() 端到端", () => {
     const repo = createMemoryRepository();
     const author = { ...FIXED_AUTHOR };
 
-    const fileHash = repo.writeBlob(Buffer.from("split side-band push"));
+    const fileHash = repo.writeBlob(bytes("split side-band push"));
     const treeHash = repo.createTree([{ mode: "100644", name: "split.txt", hash: fileHash }]);
     const commitHash = repo.createCommit(treeHash, [], "Split side-band", author);
     repo.updateRef("refs/heads/split-side-band", commitHash);
@@ -946,7 +941,7 @@ describe("push() 端到端", () => {
     const repo = createMemoryRepository();
     const author = { ...FIXED_AUTHOR };
 
-    const fileHash = repo.writeBlob(Buffer.from("auth test"));
+    const fileHash = repo.writeBlob(bytes("auth test"));
     const treeHash = repo.createTree([{ mode: "100644", name: "auth.txt", hash: fileHash }]);
     const commitHash = repo.createCommit(treeHash, [], "auth options test", author);
     repo.updateRef("refs/heads/auth-test", commitHash);
@@ -971,7 +966,7 @@ describe("push() 端到端", () => {
       git(["--git-dir", serverRepoDir, "rev-parse", "refs/heads/main"], tempDir).trim(),
     );
 
-    const fileHash = repo.writeBlob(Buffer.from("shallow boundary test"));
+    const fileHash = repo.writeBlob(bytes("shallow boundary test"));
     const treeHash = repo.createTree([{ mode: "100644", name: "sb.txt", hash: fileHash }]);
     const commitHash = repo.createCommit(treeHash, [missingParent], "boundary test", author);
     repo.updateRef("refs/heads/boundary-test", commitHash);

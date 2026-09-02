@@ -7,6 +7,7 @@
  * 所有对象按 canonical raw object 直接写入，不经过语义序列化/反序列化。
  */
 
+import { bytesToHex } from "../../../bytes.ts";
 import { hashObject } from "../../../hash/index.ts";
 import {
   PACK_HEADER_SIZE,
@@ -35,7 +36,7 @@ import type { ObjectType, RawGitObject } from "../../../types/index.ts";
  * @param packfile - push 请求中的 packfile 数据
  * @throws {ReceivePackServiceError} 当解包失败时
  */
-export function unpackPackfile(db: ObjectDatabase, packfile: Buffer): void {
+export function unpackPackfile(db: ObjectDatabase, packfile: Uint8Array): void {
   if (packfile.length < PACK_HEADER_SIZE + PACK_CHECKSUM_SIZE) {
     throw new ReceivePackServiceError("Packfile too small to contain any objects");
   }
@@ -45,9 +46,9 @@ export function unpackPackfile(db: ObjectDatabase, packfile: Buffer): void {
   if (objectCount === 0) return;
 
   // 已解析对象缓存：offset → { type, data }（用于 ofs_delta 解析）
-  const resolvedByOffset = new Map<number, { type: ObjectType; data: Buffer }>();
+  const resolvedByOffset = new Map<number, { type: ObjectType; data: Uint8Array }>();
   // 已解析对象缓存：hash → { type, data }（用于 ref_delta 解析）
-  const resolvedByHash = new Map<string, { type: ObjectType; data: Buffer }>();
+  const resolvedByHash = new Map<string, { type: ObjectType; data: Uint8Array }>();
 
   let offset = PACK_HEADER_SIZE;
 
@@ -82,7 +83,7 @@ export function unpackPackfile(db: ObjectDatabase, packfile: Buffer): void {
       resolvedByOffset.set(objOffset, { type: base.type, data: resolvedData });
       resolvedByHash.set(hash, { type: base.type, data: resolvedData });
     } else if (typeNum === OBJ_REF_DELTA) {
-      const baseHash = packfile.subarray(offset, offset + 20).toString("hex");
+      const baseHash = bytesToHex(packfile.subarray(offset, offset + 20));
       offset += 20;
 
       // 读取压缩的 delta 数据
@@ -90,7 +91,7 @@ export function unpackPackfile(db: ObjectDatabase, packfile: Buffer): void {
       offset += compressedBytes;
 
       // 查找 base：先在已解析缓存中查找，再在已有数据库中查找
-      let base: { type: ObjectType; data: Buffer } | undefined;
+      let base: { type: ObjectType; data: Uint8Array } | undefined;
       const cachedBase = resolvedByHash.get(baseHash);
 
       if (cachedBase) {

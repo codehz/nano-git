@@ -19,6 +19,7 @@
  * @see https://git-scm.com/docs/git-http-backend
  */
 
+import { toUint8Array } from "../../bytes.ts";
 import { createReceivePackService } from "../server/receive-pack/index.ts";
 import { createUploadPackService } from "../server/upload-pack/index.ts";
 
@@ -124,14 +125,14 @@ function handleInfoRefs(
  * 处理 /git-upload-pack POST 请求
  */
 async function handleUploadPack(
-  body: Buffer,
+  body: Uint8Array,
   uploadPackService: ReturnType<typeof createUploadPackService>,
 ): Promise<Response> {
   if (body.length === 0) {
     return errorResponse(400, "Request body is required");
   }
 
-  let response: Buffer;
+  let response: Uint8Array;
   try {
     response = uploadPackService.handleRequest(body);
   } catch (err) {
@@ -174,10 +175,10 @@ async function handleUploadPack(
  * const handler = createSmartHttpHandler(openRepository("/repo"));
  * createServer(async (req, res) => {
  *   const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
- *   const body = await new Promise<Buffer>((resolve) => {
- *     const chunks: Buffer[] = [];
+ *   const body = await new Promise<Uint8Array>((resolve) => {
+ *     const chunks: Uint8Array[] = [];
  *     req.on("data", (c) => chunks.push(c));
- *     req.on("end", () => resolve(Buffer.concat(chunks)));
+ *     req.on("end", () => resolve(concatBytes(...chunks)));
  *   });
  *   const response = await handler(new Request(url, {
  *     method: req.method,
@@ -185,7 +186,7 @@ async function handleUploadPack(
  *     body: req.method === "POST" ? body : undefined,
  *   }));
  *   res.writeHead(response.status, Object.fromEntries(response.headers));
- *   res.end(Buffer.from(await response.arrayBuffer()));
+ *   res.end(Uint8Array.from(await response.arrayBuffer()));
  * }).listen(8080);
  *
  * // Cloudflare Workers / Deno
@@ -227,7 +228,7 @@ export function createSmartHttpHandler(backend: RepositoryBackend): SmartHttpHan
       const validationError = validateServiceRequest(method, request.headers.get("content-type"));
       if (validationError) return validationError;
 
-      const body = Buffer.from(await request.arrayBuffer());
+      const body = toUint8Array(await request.arrayBuffer());
       return handleUploadPack(body, uploadPackService);
     }
 
@@ -236,7 +237,7 @@ export function createSmartHttpHandler(backend: RepositoryBackend): SmartHttpHan
       const validationError = validateServiceRequest(method, request.headers.get("content-type"));
       if (validationError) return validationError;
 
-      const body = Buffer.from(await request.arrayBuffer());
+      const body = toUint8Array(await request.arrayBuffer());
       const response = receivePackService.handleRequest(body);
 
       return new Response(response, {

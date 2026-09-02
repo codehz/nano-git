@@ -30,6 +30,7 @@
  * @see https://git-scm.com/docs/http-protocol#_smart_server_response
  */
 
+import { bytesToUtf8 } from "../../../bytes.ts";
 import { GitError } from "../../../errors.ts";
 import { parsePktLines } from "../../protocol/pkt-line.ts";
 
@@ -81,7 +82,7 @@ const KNOWN_COMMANDS = ["ls-refs", "fetch", "object-info"] as const;
  * console.log(adv.agent); // "nano-git/0.1"
  * ```
  */
-export function parseV2CapabilityAdvertisement(data: Buffer): V2CapabilityAdvertisement {
+export function parseV2CapabilityAdvertisement(data: Uint8Array): V2CapabilityAdvertisement {
   const lines = parsePktLines(data);
 
   if (lines.length === 0) {
@@ -95,7 +96,7 @@ export function parseV2CapabilityAdvertisement(data: Buffer): V2CapabilityAdvert
   //    对齐 parseRefAdvertisement / 官方 remote-curl check_smart_http
   const firstPkt = lines[idx];
   if (firstPkt && firstPkt.type === "data") {
-    const firstPayload = firstPkt.payload.toString("utf-8");
+    const firstPayload = bytesToUtf8(firstPkt.payload);
     if (firstPayload.startsWith(SERVICE_HEADER_PREFIX)) {
       const headerService = firstPayload.slice(SERVICE_HEADER_PREFIX.length).trim();
       if (headerService !== EXPECTED_SERVICE) {
@@ -123,7 +124,7 @@ export function parseV2CapabilityAdvertisement(data: Buffer): V2CapabilityAdvert
     );
   }
 
-  const versionStr = versionLine.payload.toString("utf-8").trim();
+  const versionStr = bytesToUtf8(versionLine.payload).trim();
   if (versionStr !== "version 2") {
     throw new V2CapabilityError(formatNonV2Error(versionStr, sawServiceHeader));
   }
@@ -140,7 +141,7 @@ export function parseV2CapabilityAdvertisement(data: Buffer): V2CapabilityAdvert
       break;
     }
 
-    const text = line.payload.toString("utf-8").trim();
+    const text = bytesToUtf8(line.payload).trim();
     if (text.length === 0) continue;
 
     // 检查是否为命令行（ls-refs, fetch, object-info 等）

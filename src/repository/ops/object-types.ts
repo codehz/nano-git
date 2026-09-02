@@ -16,14 +16,14 @@ export interface RepositoryObjectOperations {
    *
    * 等价于 `git hash-object --stdin`
    */
-  hashObject(data: Buffer): SHA1;
+  hashObject(data: Uint8Array): SHA1;
 
   /**
    * 将数据作为 blob 写入对象存储
    *
    * 等价于 `git hash-object -w --stdin`
    */
-  writeBlob(data: Buffer): SHA1;
+  writeBlob(data: Uint8Array): SHA1;
 
   /**
    * 读取对象

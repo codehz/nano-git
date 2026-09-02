@@ -4,6 +4,7 @@
  * 从 transport 返回的原始 HTTP body 中解析 side-band 与 report-status。
  */
 
+import { bytesToUtf8, concatBytes } from "../../../bytes.ts";
 import { GitError } from "../../../errors.ts";
 import { parsePktLines } from "../../protocol/pkt-line.ts";
 import { parseReceivePackResult } from "./result.ts";
@@ -25,7 +26,7 @@ export class ReceivePackResponseError extends GitError {
  * 解码后的 receive-pack 响应
  */
 export interface DecodedReceivePackResponse {
-  readonly data: Buffer;
+  readonly data: Uint8Array;
   readonly refUpdates: PushRefUpdate[];
   readonly progress: string[];
 }
@@ -35,7 +36,7 @@ export interface DecodedReceivePackResponse {
  *
  * @param data - transport.request() 返回的原始 body
  */
-export function decodeReceivePackResponse(data: Buffer): DecodedReceivePackResponse {
+export function decodeReceivePackResponse(data: Uint8Array): DecodedReceivePackResponse {
   let progress: string[] = [];
   let refUpdates: PushRefUpdate[] = [];
 
@@ -47,7 +48,7 @@ export function decodeReceivePackResponse(data: Buffer): DecodedReceivePackRespo
       firstPayload.length > 0 &&
       (firstPayload[0] === 0x01 || firstPayload[0] === 0x02 || firstPayload[0] === 0x03)
     ) {
-      const reportStatusChunks: Buffer[] = [];
+      const reportStatusChunks: Uint8Array[] = [];
 
       for (const line of pktLines) {
         if (line.type !== "data") continue;
@@ -60,16 +61,16 @@ export function decodeReceivePackResponse(data: Buffer): DecodedReceivePackRespo
         if (channel === 0x01) {
           reportStatusChunks.push(frameData);
         } else if (channel === 0x02) {
-          progress.push(frameData.toString("utf-8").trimEnd());
+          progress.push(bytesToUtf8(frameData).trimEnd());
         } else if (channel === 0x03) {
           throw new ReceivePackResponseError(
-            `Server reported error: ${frameData.toString("utf-8").trimEnd()}`,
+            `Server reported error: ${bytesToUtf8(frameData).trimEnd()}`,
           );
         }
       }
 
       if (reportStatusChunks.length > 0) {
-        const reconstructed = Buffer.concat(reportStatusChunks);
+        const reconstructed = concatBytes(...reportStatusChunks);
         refUpdates = parseReceivePackResult(reconstructed);
       }
     } else {

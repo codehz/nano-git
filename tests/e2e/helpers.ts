@@ -10,6 +10,7 @@ import { mkdirSync, rmSync, existsSync, writeFileSync, chmodSync } from "node:fs
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { allocBytes, bytes, bytesToUtf8, concatBytes, toUint8Array } from "../helpers/bytes.ts";
 import { sha1, type SHA1 } from "@/types/index.ts";
 
 // ============================================================================
@@ -98,8 +99,8 @@ export function gitWithTimeout(args: string[], cwd: string, timeoutMs?: number):
       env: { ...process.env, ...GIT_ENV },
     });
 
-    const stdoutChunks: Buffer[] = [];
-    const stderrChunks: Buffer[] = [];
+    const stdoutChunks: Uint8Array[] = [];
+    const stderrChunks: Uint8Array[] = [];
     let timedOut = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -110,8 +111,8 @@ export function gitWithTimeout(args: string[], cwd: string, timeoutMs?: number):
       }, timeoutMs);
     }
 
-    child.stdout?.on("data", (c: Buffer) => stdoutChunks.push(c));
-    child.stderr?.on("data", (c: Buffer) => stderrChunks.push(c));
+    child.stdout?.on("data", (c: Uint8Array) => stdoutChunks.push(c));
+    child.stderr?.on("data", (c: Uint8Array) => stderrChunks.push(c));
 
     child.on("error", (err) => {
       if (timer) clearTimeout(timer);
@@ -120,8 +121,8 @@ export function gitWithTimeout(args: string[], cwd: string, timeoutMs?: number):
 
     child.on("close", (code, signal) => {
       if (timer) clearTimeout(timer);
-      const stdout = Buffer.concat(stdoutChunks).toString("utf-8");
-      const stderr = Buffer.concat(stderrChunks).toString("utf-8");
+      const stdout = bytesToUtf8(concatBytes(...stdoutChunks));
+      const stderr = bytesToUtf8(concatBytes(...stderrChunks));
 
       if (timedOut) {
         reject(
@@ -154,7 +155,7 @@ export function gitWithTimeout(args: string[], cwd: string, timeoutMs?: number):
 /**
  * 执行 git 命令并返回原始 Buffer stdout（用于二进制内容）
  */
-export function gitRaw(args: string[], cwd: string): Buffer {
+export function gitRaw(args: string[], cwd: string): Uint8Array {
   const result = spawnSync("git", args, {
     cwd,
     env: { ...process.env, ...GIT_ENV },
@@ -165,7 +166,7 @@ export function gitRaw(args: string[], cwd: string): Buffer {
     throw new Error(`git ${args.join(" ")} failed (exit ${result.status}): ${stderr}`);
   }
 
-  return result.stdout ?? Buffer.alloc(0);
+  return result.stdout ?? allocBytes(0);
 }
 
 // ============================================================================
@@ -195,8 +196,8 @@ export function gitInitBare(dir: string): void {
  *
  * 等价于: echo -n "<content>" | git hash-object -w --stdin
  */
-export function gitHashObjectWrite(dir: string, content: Buffer | string): SHA1 {
-  const buf = typeof content === "string" ? Buffer.from(content) : content;
+export function gitHashObjectWrite(dir: string, content: Uint8Array | string): SHA1 {
+  const buf = typeof content === "string" ? bytes(content) : content;
   const result = spawnSync("git", ["hash-object", "-w", "--stdin"], {
     cwd: dir,
     env: { ...process.env, ...GIT_ENV },
@@ -214,8 +215,8 @@ export function gitHashObjectWrite(dir: string, content: Buffer | string): SHA1 
 /**
  * 计算内容的 blob 哈希（不写入）
  */
-export function gitHashObject(dir: string, content: Buffer | string): SHA1 {
-  const buf = typeof content === "string" ? Buffer.from(content) : content;
+export function gitHashObject(dir: string, content: Uint8Array | string): SHA1 {
+  const buf = typeof content === "string" ? bytes(content) : content;
   const result = spawnSync("git", ["hash-object", "--stdin"], {
     cwd: dir,
     env: { ...process.env, ...GIT_ENV },
@@ -242,7 +243,7 @@ export function gitCatFile(dir: string, hash: string): string {
 /**
  * 读取对象的原始内容（-s 获取大小，不带 -p 获取原始数据）
  */
-export function gitCatFileRaw(dir: string, hash: string): Buffer {
+export function gitCatFileRaw(dir: string, hash: string): Uint8Array {
   return gitRaw(["cat-file", "blob", hash], dir);
 }
 

@@ -15,6 +15,7 @@
  * @see https://git-scm.com/docs/pack-protocol#_report_status
  */
 
+import { bytesToUtf8 } from "../../../bytes.ts";
 import { GitError } from "../../../errors.ts";
 import { parsePktLines } from "../../protocol/pkt-line.ts";
 
@@ -69,7 +70,7 @@ const NG_PREFIX = "ng ";
  * }
  * ```
  */
-export function parseReceivePackResult(data: Buffer): PushRefUpdate[] {
+export function parseReceivePackResult(data: Uint8Array): PushRefUpdate[] {
   const pktLines = parsePktLines(data);
   const updates: PushRefUpdate[] = [];
   let seenUnpack = false;
@@ -80,7 +81,7 @@ export function parseReceivePackResult(data: Buffer): PushRefUpdate[] {
       continue;
     }
 
-    const payload = line.payload.toString("utf-8").trimEnd();
+    const payload = bytesToUtf8(line.payload).trimEnd();
 
     if (payload.length === 0) {
       continue;

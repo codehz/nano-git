@@ -7,6 +7,18 @@ import { mkdirSync, rmSync, existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import {
+  allocBytes,
+  asciiToBytes,
+  bytes,
+  bytesToUtf8,
+  concatBytes,
+  copyBytes,
+  hexToBytes,
+  writeU32BE,
+  writeU64BE,
+  writeU8,
+} from "../../helpers/bytes.ts";
 import { encodeObject } from "@/objects/raw.ts";
 import { createPackBuilder } from "@/pack/builder/pack-builder.ts";
 import { createPackObjectStore } from "@/pack/store/pack-store.ts";
@@ -33,7 +45,7 @@ describe("PackObjectStore", () => {
 
     // 创建 packfile
     const builder = createPackBuilder(gitDir);
-    const blob: GitBlob = { type: "blob", content: Buffer.from("test content") };
+    const blob: GitBlob = { type: "blob", content: bytes("test content") };
     const hash = builder.addRaw(encodeObject(blob));
     builder.build();
 
@@ -44,7 +56,7 @@ describe("PackObjectStore", () => {
     const obj = store.read(hash);
     expect(obj.type).toBe("blob");
     if (obj.type === "blob") {
-      expect(obj.content.toString("utf-8")).toBe("test content");
+      expect(bytesToUtf8(obj.content)).toBe("test content");
     }
   });
 
@@ -53,11 +65,11 @@ describe("PackObjectStore", () => {
     mkdirSync(join(gitDir, "objects", "pack"), { recursive: true });
 
     const builder1 = createPackBuilder(gitDir);
-    const hash1 = builder1.addRaw(encodeObject({ type: "blob", content: Buffer.from("pack one") }));
+    const hash1 = builder1.addRaw(encodeObject({ type: "blob", content: bytes("pack one") }));
     builder1.build();
 
     const builder2 = createPackBuilder(gitDir);
-    const hash2 = builder2.addRaw(encodeObject({ type: "blob", content: Buffer.from("pack two") }));
+    const hash2 = builder2.addRaw(encodeObject({ type: "blob", content: bytes("pack two") }));
     builder2.build();
 
     const store = createPackObjectStore(gitDir);
@@ -71,10 +83,10 @@ describe("PackObjectStore", () => {
     expect(obj1.type).toBe("blob");
     expect(obj2.type).toBe("blob");
     if (obj1.type === "blob") {
-      expect(obj1.content.toString("utf-8")).toBe("pack one");
+      expect(bytesToUtf8(obj1.content)).toBe("pack one");
     }
     if (obj2.type === "blob") {
-      expect(obj2.content.toString("utf-8")).toBe("pack two");
+      expect(bytesToUtf8(obj2.content)).toBe("pack two");
     }
   });
 
@@ -93,7 +105,7 @@ describe("PackObjectStore", () => {
     expect(store.packCount).toBe(0);
 
     const builder = createPackBuilder(gitDir);
-    builder.addRaw(encodeObject({ type: "blob", content: Buffer.from("after refresh") }));
+    builder.addRaw(encodeObject({ type: "blob", content: bytes("after refresh") }));
     builder.build();
 
     store.refresh();
@@ -106,56 +118,54 @@ describe("PackObjectStore", () => {
 
     // pack A：会被纳入 MIDX
     const builderA = createPackBuilder(gitDir);
-    const hashA = builderA.addRaw(encodeObject({ type: "blob", content: Buffer.from("in midx") }));
+    const hashA = builderA.addRaw(encodeObject({ type: "blob", content: bytes("in midx") }));
     const resultA = builderA.build();
 
     // pack B：不纳入 MIDX（手动构造只覆盖 pack A 的 MIDX）
     const builderB = createPackBuilder(gitDir);
-    const hashB = builderB.addRaw(
-      encodeObject({ type: "blob", content: Buffer.from("not in midx") }),
-    );
+    const hashB = builderB.addRaw(encodeObject({ type: "blob", content: bytes("not in midx") }));
     builderB.build();
 
     // 构造一个只包含 pack A 的合法 MIDX v1
     const checksumA = resultA.checksum;
-    const pnam = Buffer.from(`pack-${checksumA}.pack\0`, "ascii");
-    const pnamPadding = Buffer.alloc((4 - (pnam.length % 4)) % 4);
-    const oidf = Buffer.alloc(256 * 4);
+    const pnam = asciiToBytes(`pack-${checksumA}.pack\0`);
+    const pnamPadding = allocBytes((4 - (pnam.length % 4)) % 4);
+    const oidf = allocBytes(256 * 4);
     // 对象首字节为 0xea = 234，fanout[234..255] 应为 1
     for (let i = 234; i < 256; i++) {
-      oidf.writeUInt32BE(1, i * 4);
+      writeU32BE(oidf, i * 4, 1);
     }
-    const oidl = Buffer.from(hashA, "hex");
-    const ooff = Buffer.alloc(8);
-    ooff.writeUInt32BE(0, 0); // packId = 0
-    ooff.writeUInt32BE(12, 4); // offset = 12（pack 头之后）
+    const oidl = hexToBytes(hashA);
+    const ooff = allocBytes(8);
+    writeU32BE(ooff, 0, 0); // packId = 0
+    writeU32BE(ooff, 4, 12); // offset = 12（pack 头之后）
 
     const chunks = [
-      { id: "PNAM", data: Buffer.concat([pnam, pnamPadding]) },
+      { id: "PNAM", data: concatBytes(pnam, pnamPadding) },
       { id: "OIDF", data: oidf },
       { id: "OIDL", data: oidl },
       { id: "OOFF", data: ooff },
     ];
 
-    const header = Buffer.alloc(12);
-    header.write("MIDX", 0);
-    header.writeUInt8(1, 4); // version
-    header.writeUInt8(1, 5); // oidVersion = SHA-1
-    header.writeUInt8(chunks.length, 6);
-    header.writeUInt8(0, 7);
-    header.writeUInt32BE(1, 8); // packCount = 1
+    const header = allocBytes(12);
+    copyBytes(header, 0, asciiToBytes("MIDX"));
+    writeU8(header, 4, 1); // version
+    writeU8(header, 5, 1); // oidVersion = SHA-1
+    writeU8(header, 6, chunks.length);
+    writeU8(header, 7, 0);
+    writeU32BE(header, 8, 1); // packCount = 1
 
     const lookupSize = (chunks.length + 1) * 12;
-    const lookup = Buffer.alloc(lookupSize);
+    const lookup = allocBytes(lookupSize);
     let chunkOffset = 12 + lookupSize;
     for (let i = 0; i < chunks.length; i++) {
-      lookup.write(chunks[i]!.id, i * 12);
-      lookup.writeBigUInt64BE(BigInt(chunkOffset), i * 12 + 4);
+      copyBytes(lookup, i * 12, asciiToBytes(chunks[i]!.id));
+      writeU64BE(lookup, i * 12 + 4, BigInt(chunkOffset));
       chunkOffset += chunks[i]!.data.length;
     }
 
     const bodyChunks = chunks.map((c) => c.data);
-    const body = Buffer.concat([header, lookup, ...bodyChunks]);
+    const body = concatBytes(header, lookup, ...bodyChunks);
 
     // 写入 MIDX（无 trailer 校验和，策略与 idx 一致）
     writeFileSync(join(gitDir, "objects", "pack", "multi-pack-index"), body);
@@ -167,7 +177,7 @@ describe("PackObjectStore", () => {
     const objA = store.read(hashA);
     expect(objA.type).toBe("blob");
     if (objA.type === "blob") {
-      expect(objA.content.toString("utf-8")).toBe("in midx");
+      expect(bytesToUtf8(objA.content)).toBe("in midx");
     }
 
     // pack B 未纳入 MIDX，应通过 idx 回退读取
@@ -175,7 +185,7 @@ describe("PackObjectStore", () => {
     const objB = store.read(hashB);
     expect(objB.type).toBe("blob");
     if (objB.type === "blob") {
-      expect(objB.content.toString("utf-8")).toBe("not in midx");
+      expect(bytesToUtf8(objB.content)).toBe("not in midx");
     }
 
     // objectCount 应为 MIDX 对象数 + 未覆盖 pack 对象数

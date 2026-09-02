@@ -13,12 +13,13 @@
  * @example
  * ```ts
  * const data = encodePktLine("hello");
- * console.log(data.toString("hex")); // => "000968656c6c6f"
+ * console.log(bytesToHex(data)); // => "000968656c6c6f"
  * ```
  *
  * @see https://github.com/git/git/blob/master/Documentation/technical/pkt-line.txt
  */
 
+import { bytesToHex, bytesToUtf8, concatBytes, toUint8Array, utf8ToBytes } from "../../bytes.ts";
 import { GitError } from "../../errors.ts";
 
 import type { GitErrorOptions } from "../../errors.ts";
@@ -31,7 +32,7 @@ import type { GitErrorOptions } from "../../errors.ts";
 export interface PktLineData {
   type: "data";
   /** 负载数据（不含 4 字节长度前缀） */
-  payload: Buffer;
+  payload: Uint8Array;
 }
 
 export interface PktLineFlush {
@@ -95,11 +96,11 @@ const MAX_PAYLOAD_SIZE = MAX_PACKET_SIZE - LENGTH_PREFIX_BYTES; // 65520
  * @example
  * ```ts
  * const buf = encodePktLine("hello");
- * console.log(buf.toString("utf-8")); // => "0009hello"
+ * console.log(bytesToUtf8(buf)); // => "0009hello"
  * ```
  */
-export function encodePktLine(payload: string | Buffer): Buffer {
-  const data = typeof payload === "string" ? Buffer.from(payload, "utf-8") : payload;
+export function encodePktLine(payload: string | Uint8Array): Uint8Array {
+  const data = typeof payload === "string" ? utf8ToBytes(payload) : payload;
 
   if (data.length > MAX_PAYLOAD_SIZE) {
     throw new PktLineError(`Payload too large: ${data.length} bytes (max ${MAX_PAYLOAD_SIZE})`);
@@ -107,7 +108,7 @@ export function encodePktLine(payload: string | Buffer): Buffer {
 
   const length = data.length + LENGTH_PREFIX_BYTES;
   const prefix = length.toString(16).padStart(4, "0").toUpperCase();
-  return Buffer.concat([Buffer.from(prefix, "utf-8"), data]);
+  return concatBytes(utf8ToBytes(prefix), data);
 }
 
 /**
@@ -118,11 +119,11 @@ export function encodePktLine(payload: string | Buffer): Buffer {
  * @example
  * ```ts
  * const buf = encodeFlushPkt();
- * console.log(buf.toString("utf-8")); // => "0000"
+ * console.log(bytesToUtf8(buf)); // => "0000"
  * ```
  */
-export function encodeFlushPkt(): Buffer {
-  return Buffer.from(FLUSH_PKT_HEX, "utf-8");
+export function encodeFlushPkt(): Uint8Array {
+  return utf8ToBytes(FLUSH_PKT_HEX);
 }
 
 /**
@@ -130,8 +131,8 @@ export function encodeFlushPkt(): Buffer {
  *
  * @returns Buffer("0001")
  */
-export function encodeDelimiterPkt(): Buffer {
-  return Buffer.from(DELIMITER_PKT_HEX, "utf-8");
+export function encodeDelimiterPkt(): Uint8Array {
+  return utf8ToBytes(DELIMITER_PKT_HEX);
 }
 
 /**
@@ -139,8 +140,8 @@ export function encodeDelimiterPkt(): Buffer {
  *
  * @returns Buffer("0002")
  */
-export function encodeResponseEndPkt(): Buffer {
-  return Buffer.from(RESPONSE_END_PKT_HEX, "utf-8");
+export function encodeResponseEndPkt(): Uint8Array {
+  return utf8ToBytes(RESPONSE_END_PKT_HEX);
 }
 
 // ============================================================================
@@ -157,12 +158,12 @@ export function encodeResponseEndPkt(): Buffer {
  *
  * @example
  * ```ts
- * const lines = parsePktLines(Buffer.from("0009hello0000", "utf-8"));
- * // lines[0] = { type: "data", payload: Buffer("hello") }
+ * const lines = parsePktLines(Uint8Array.from("0009hello0000", "utf-8"));
+ * // lines[0] = { type: "data", payload: Uint8Array("hello") }
  * // lines[1] = { type: "flush" }
  * ```
  */
-export function parsePktLines(data: Buffer): PktLine[] {
+export function parsePktLines(data: Uint8Array): PktLine[] {
   const result: PktLine[] = [];
   let offset = 0;
 
@@ -174,7 +175,7 @@ export function parsePktLines(data: Buffer): PktLine[] {
       );
     }
 
-    const hex = data.subarray(offset, offset + LENGTH_PREFIX_BYTES).toString("utf-8");
+    const hex = bytesToUtf8(data.subarray(offset, offset + LENGTH_PREFIX_BYTES));
 
     // 校验十六进制格式
     if (!/^[0-9a-fA-F]{4}$/.test(hex)) {
@@ -240,14 +241,17 @@ export function parsePktLines(data: Buffer): PktLine[] {
  *
  * @example
  * ```ts
- * const { lines, trailing } = splitPktLinesFromBuffer(
- *   Buffer.concat([encodePktLine("NAK\n"), rawPackfile]),
+ * const { lines, trailing } = splitPktLinesFromBytes(
+ *   concatBytes(encodePktLine("NAK\n"), rawPackfile),
  * );
- * // lines[0] = { type: "data", payload: Buffer("NAK\n") }
+ * // lines[0] = { type: "data", payload: Uint8Array("NAK\n") }
  * // trailing = <raw packfile>
  * ```
  */
-export function splitPktLinesFromBuffer(data: Buffer): { lines: PktLine[]; trailing: Buffer } {
+export function splitPktLinesFromBytes(data: Uint8Array): {
+  lines: PktLine[];
+  trailing: Uint8Array;
+} {
   const lines: PktLine[] = [];
   let offset = 0;
 
@@ -257,7 +261,7 @@ export function splitPktLinesFromBuffer(data: Buffer): { lines: PktLine[]; trail
       break;
     }
 
-    const hex = data.subarray(offset, offset + LENGTH_PREFIX_BYTES).toString("utf-8");
+    const hex = bytesToUtf8(data.subarray(offset, offset + LENGTH_PREFIX_BYTES));
 
     // 非有效十六进制长度前缀 → 视为尾部原始数据，停止解析
     if (!/^[0-9a-fA-F]{4}$/.test(hex)) {
@@ -302,6 +306,6 @@ export function splitPktLinesFromBuffer(data: Buffer): { lines: PktLine[]; trail
     offset += LENGTH_PREFIX_BYTES + payloadLength;
   }
 
-  const trailing = Buffer.from(data.subarray(offset));
+  const trailing = toUint8Array(data.subarray(offset));
   return { lines, trailing };
 }

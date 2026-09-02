@@ -7,6 +7,7 @@
  * @see https://git-scm.com/docs/pack-protocol#_git_gt_transport
  */
 
+import { concatBytes } from "../../../bytes.ts";
 import { tryReadObject } from "../../../objects/raw.ts";
 import { resolveRefHash } from "../../../refs/resolve.ts";
 import { sha1 } from "../../../types/index.ts";
@@ -59,8 +60,8 @@ function readAllRefs(backend: RepositoryBackend): Map<string, string> {
  * // Response 的 Content-Type 应为 "application/x-git-receive-pack-advertisement"
  * ```
  */
-export function advertiseReceivePack(backend: RepositoryBackend): Buffer {
-  const parts: Buffer[] = [];
+export function advertiseReceivePack(backend: RepositoryBackend): Uint8Array {
+  const parts: Uint8Array[] = [];
 
   // 1. service 声明
   parts.push(encodePktLine("# service=git-receive-pack\n"));
@@ -123,5 +124,5 @@ export function advertiseReceivePack(backend: RepositoryBackend): Buffer {
   // 4. 结尾 flush
   parts.push(encodeFlushPkt());
 
-  return Buffer.concat(parts);
+  return concatBytes(...parts);
 }

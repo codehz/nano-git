@@ -25,7 +25,7 @@ import type { RepositoryFsObjectOperations } from "./object-types.ts";
  */
 export function createRepositoryFsObjectOperations(
   objects: ObjectDatabase,
-  writeBlob: (data: Buffer) => SHA1,
+  writeBlob: (data: Uint8Array) => SHA1,
 ): RepositoryFsObjectOperations {
   return {
     writeBlobFile(filePath: string): SHA1 {

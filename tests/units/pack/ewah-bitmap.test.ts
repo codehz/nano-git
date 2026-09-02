@@ -4,17 +4,18 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { allocBytes, writeU32BE, writeU64BE } from "../../helpers/bytes.ts";
 import { decodeEwahBitmap } from "@/pack/bitmap/ewah-bitmap.ts";
 
 /** 构造仅含一个 RLW（run of 3 zeros）的 EWAH 块 */
-function buildEwahRunZeros(bitCount: number, runLength: number): Buffer {
+function buildEwahRunZeros(bitCount: number, runLength: number): Uint8Array {
   const wordCount = 1;
   const rlw = BigInt(runLength); // repeated bit 0, literals 0
-  const buf = Buffer.alloc(8 + 8 + 4);
-  buf.writeUInt32BE(bitCount, 0);
-  buf.writeUInt32BE(wordCount, 4);
-  buf.writeBigUInt64BE(rlw, 8);
-  buf.writeUInt32BE(0, 16);
+  const buf = allocBytes(8 + 8 + 4);
+  writeU32BE(buf, 0, bitCount);
+  writeU32BE(buf, 4, wordCount);
+  writeU64BE(buf, 8, rlw);
+  writeU32BE(buf, 16, 0);
   return buf;
 }
 
@@ -32,12 +33,12 @@ describe("decodeEwahBitmap", () => {
     const bitCount = 4;
     const rlw = 0n; // no run
     const literal = 0b0101n;
-    const buf = Buffer.alloc(8 + 8 + 8 + 4);
-    buf.writeUInt32BE(bitCount, 0);
-    buf.writeUInt32BE(2, 4);
-    buf.writeBigUInt64BE(rlw | (1n << 32n), 8);
-    buf.writeBigUInt64BE(literal, 16);
-    buf.writeUInt32BE(1, 24);
+    const buf = allocBytes(8 + 8 + 8 + 4);
+    writeU32BE(buf, 0, bitCount);
+    writeU32BE(buf, 4, 2);
+    writeU64BE(buf, 8, rlw | (1n << 32n));
+    writeU64BE(buf, 16, literal);
+    writeU32BE(buf, 24, 1);
 
     const { bitmap } = decodeEwahBitmap(buf, 0);
     expect(bitmap.get(0)).toBe(true);

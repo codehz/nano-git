@@ -27,7 +27,7 @@ import type { PackObject } from "./pack-reader-types.ts";
  * ```
  */
 export function resolvePlainPackObject(
-  data: Buffer,
+  data: Uint8Array,
   offset: number,
   objOffset: number,
   typeNum: number,
@@ -64,7 +64,7 @@ export function resolvePlainPackObject(
  * ```
  */
 export function resolveOfsDeltaPackObject(
-  data: Buffer,
+  data: Uint8Array,
   offset: number,
   objOffset: number,
   negOffset: number,
@@ -111,7 +111,7 @@ export function resolveOfsDeltaPackObject(
  * ```
  */
 export function resolveRefDeltaPackObject(
-  data: Buffer,
+  data: Uint8Array,
   offset: number,
   objOffset: number,
   baseHash: string,

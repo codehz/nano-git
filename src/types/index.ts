@@ -29,7 +29,7 @@ export interface RawGitObject {
   /** 对象类型 */
   readonly type: ObjectType;
   /** 去 header 后的原始内容 */
-  readonly content: Buffer;
+  readonly content: Uint8Array;
 }
 
 /**
@@ -53,7 +53,7 @@ export function assertObjectType(value: string): ObjectType {
 /** Blob 对象 — 存储文件内容 */
 export interface GitBlob {
   type: "blob";
-  content: Buffer;
+  content: Uint8Array;
 }
 
 /** Tree 条目 — 目录中的一个文件或子目录 */

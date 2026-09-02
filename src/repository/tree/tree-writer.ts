@@ -5,6 +5,7 @@
 import { readFileSync, readdirSync, lstatSync, readlinkSync } from "node:fs";
 import { join } from "node:path";
 
+import { utf8ToBytes } from "../../bytes.ts";
 import { writeObject } from "../../objects/raw.ts";
 import { compareTreeEntries } from "../../objects/tree.ts";
 
@@ -48,7 +49,7 @@ export function writeTreeRecursive(store: ObjectDatabase, dirPath: string): SHA1
       });
     } else if (stat.isSymbolicLink()) {
       const target = readlinkSync(fullPath);
-      const content = Buffer.from(target, "utf-8");
+      const content = utf8ToBytes(target);
       const blob: GitBlob = { type: "blob", content };
       const blobHash = writeObject(store, blob);
 

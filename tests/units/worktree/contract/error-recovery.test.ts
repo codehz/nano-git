@@ -5,6 +5,7 @@
  */
 import { describe, expect, test } from "bun:test";
 
+import { bytes, bytesToUtf8 } from "../../../helpers/bytes.ts";
 import { virtualWorktreeBackends } from "./contract.ts";
 import { readTree } from "./test-utils.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
@@ -13,21 +14,21 @@ describe("VirtualWorktree contract: error recovery", () => {
   describe.each(virtualWorktreeBackends)("$name", ({ createWorktree }) => {
     test("构造事务回滚后 diff 仍正确收敛", () => {
       const repo = createMemoryRepository();
-      const fileHash = repo.writeBlob(Buffer.from("base"));
+      const fileHash = repo.writeBlob(bytes("base"));
       const baseTree = repo.createTree([{ mode: "100644", name: "f", hash: fileHash }]);
       const session = createWorktree(repo, { baseTree });
 
-      session.writeFile("g", Buffer.from("new"));
+      session.writeFile("g", bytes("new"));
 
       session.mkdir("parent");
-      session.writeFile("parent/child.txt", Buffer.from("child"));
+      session.writeFile("parent/child.txt", bytes("child"));
 
-      session.writeFile("h", Buffer.from("extra"));
+      session.writeFile("h", bytes("extra"));
 
-      expect(session.readFile("f").toString()).toBe("base");
-      expect(session.readFile("g").toString()).toBe("new");
-      expect(session.readFile("h").toString()).toBe("extra");
-      expect(session.readFile("parent/child.txt").toString()).toBe("child");
+      expect(bytesToUtf8(session.readFile("f"))).toBe("base");
+      expect(bytesToUtf8(session.readFile("g"))).toBe("new");
+      expect(bytesToUtf8(session.readFile("h"))).toBe("extra");
+      expect(bytesToUtf8(session.readFile("parent/child.txt"))).toBe("child");
 
       const rootHash = session.writeTree();
       const root = readTree(repo, rootHash);

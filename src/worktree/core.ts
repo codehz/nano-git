@@ -108,7 +108,7 @@ export interface InitializeVirtualWorktreeOptions {
  * const tree = repo.writeTree(); // 初始空 tree
  * const worktree = createVirtualWorktree(repo.objects, { baseTree: tree });
  *
- * worktree.writeFile("hello.txt", Buffer.from("world"));
+ * worktree.writeFile("hello.txt", Uint8Array.from("world"));
  * const newTree = worktree.writeTree();
  * ```
  */
@@ -128,7 +128,7 @@ export interface VirtualWorktree {
   readdir(path?: string): VirtualDirEntry[];
 
   /** 读取文件内容 */
-  readFile(path: string): Buffer;
+  readFile(path: string): Uint8Array;
 
   /** 读取符号链接目标 */
   readLink(path: string): string;
@@ -136,7 +136,11 @@ export interface VirtualWorktree {
   // ==================== 写入操作 ====================
 
   /** 写入文件（新建或覆盖） */
-  writeFile(path: string, content: Buffer, options?: { readonly mode?: "100644" | "100755" }): void;
+  writeFile(
+    path: string,
+    content: Uint8Array,
+    options?: { readonly mode?: "100644" | "100755" },
+  ): void;
 
   /** 写入符号链接（新建或覆盖） */
   writeLink(path: string, target: string): void;

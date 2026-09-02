@@ -4,6 +4,15 @@
  * 供经典单文件与增量 `multi-pack-index.d/` 链共用。
  */
 
+import {
+  bytesEqual,
+  bytesToAscii,
+  bytesToHex,
+  readU32BE,
+  readU64BE,
+  readU8,
+  utf8ToBytes,
+} from "../../bytes.ts";
 import { PackIndexError } from "../../errors.ts";
 import { sha1 } from "../../types/index.ts";
 import { parseChunkLookup } from "../chunk-lookup.ts";
@@ -21,7 +30,7 @@ import type {
 // 常量
 // ============================================================================
 
-const MIDX_SIGNATURE = Buffer.from("MIDX");
+const MIDX_SIGNATURE = utf8ToBytes("MIDX");
 const MIDX_HEADER_SIZE = 12;
 const SHA1_OID_LEN = 20;
 const SHA256_OID_LEN = 32;
@@ -73,22 +82,22 @@ export interface MidxLayer {
  * @param data - 完整 MIDX 文件内容
  * @param options - 构造选项
  */
-export function parseMidxLayer(data: Buffer, options?: CreateMidxReaderOptions): MidxLayer {
+export function parseMidxLayer(data: Uint8Array, options?: CreateMidxReaderOptions): MidxLayer {
   if (data.length < MIDX_HEADER_SIZE) {
     throw new PackIndexError("MIDX file too small");
   }
 
   const signature = data.subarray(0, 4);
-  if (!signature.equals(MIDX_SIGNATURE)) {
-    throw new PackIndexError(`Invalid MIDX signature: ${signature.toString("hex")}`);
+  if (!bytesEqual(signature, MIDX_SIGNATURE)) {
+    throw new PackIndexError(`Invalid MIDX signature: ${bytesToHex(signature)}`);
   }
 
-  const version = data.readUInt8(4);
+  const version = readU8(data, 4);
   if (version !== 1 && version !== 2) {
     throw new PackIndexError(`Unsupported MIDX version: ${version}`);
   }
 
-  const oidVersion = data.readUInt8(5);
+  const oidVersion = readU8(data, 5);
   if (oidVersion !== 1 && oidVersion !== 2) {
     throw new PackIndexError(`Unsupported MIDX OID version: ${oidVersion}`);
   }
@@ -100,9 +109,9 @@ export function parseMidxLayer(data: Buffer, options?: CreateMidxReaderOptions):
     );
   }
 
-  const chunkCount = data.readUInt8(6);
-  const baseMidxCount = data.readUInt8(7);
-  const packCount = data.readUInt32BE(8);
+  const chunkCount = readU8(data, 6);
+  const baseMidxCount = readU8(data, 7);
+  const packCount = readU32BE(data, 8);
 
   const header: MidxHeader = {
     version,
@@ -146,18 +155,18 @@ export function parseMidxLayer(data: Buffer, options?: CreateMidxReaderOptions):
   const hashLen = oidLen;
   let fileChecksumHex: string | undefined;
   if (data.length >= hashLen) {
-    fileChecksumHex = data.subarray(data.length - hashLen, data.length).toString("hex");
+    fileChecksumHex = bytesToHex(data.subarray(data.length - hashLen, data.length));
   }
 
   function getHashAtLayerIndex(index: number): string {
     const offset = oidTableOffset + index * oidLen;
-    return data.subarray(offset, offset + oidLen).toString("hex");
+    return bytesToHex(data.subarray(offset, offset + oidLen));
   }
 
   function readOffsetAt(index: number): { localPackId: number; offset: number } {
     const ooffEntryOffset = ooffOffset! + index * OOFF_ENTRY_SIZE;
-    const localPackId = data.readUInt32BE(ooffEntryOffset);
-    let offset = data.readUInt32BE(ooffEntryOffset + 4);
+    const localPackId = readU32BE(data, ooffEntryOffset);
+    let offset = readU32BE(data, ooffEntryOffset + 4);
 
     if (offset & 0x80000000) {
       if (largeOffsets === undefined) {
@@ -404,7 +413,7 @@ export function createMidxReaderFromTip(tip: MidxLayer): MidxReader {
 // 辅助函数
 // ============================================================================
 
-function parsePackNames(data: Buffer, offset: number, packCount: number): string[] {
+function parsePackNames(data: Uint8Array, offset: number, packCount: number): string[] {
   const names: string[] = [];
   let cursor = offset;
 
@@ -418,7 +427,7 @@ function parsePackNames(data: Buffer, offset: number, packCount: number): string
       throw new PackIndexError("PNAM chunk truncated");
     }
 
-    const name = data.subarray(cursor, end).toString("ascii");
+    const name = bytesToAscii(data.subarray(cursor, end));
     names.push(name);
     cursor = end + 1;
   }
@@ -426,16 +435,16 @@ function parsePackNames(data: Buffer, offset: number, packCount: number): string
   return names;
 }
 
-function parseFanout(data: Buffer, offset: number): number[] {
+function parseFanout(data: Uint8Array, offset: number): number[] {
   const fanout: number[] = [];
   for (let i = 0; i < 256; i++) {
-    fanout.push(data.readUInt32BE(offset + i * 4));
+    fanout.push(readU32BE(data, offset + i * 4));
   }
   return fanout;
 }
 
-function parseLargeOffsets(data: Buffer, offset: number): bigint[] {
-  const oidLen = data.readUInt8(5) === 1 ? SHA1_OID_LEN : SHA256_OID_LEN;
+function parseLargeOffsets(data: Uint8Array, offset: number): bigint[] {
+  const oidLen = readU8(data, 5) === 1 ? SHA1_OID_LEN : SHA256_OID_LEN;
   const trailerStart = data.length - oidLen;
 
   if (trailerStart < offset) {
@@ -450,14 +459,14 @@ function parseLargeOffsets(data: Buffer, offset: number): bigint[] {
   const count = loffSize / 8;
   const offsets: bigint[] = [];
   for (let i = 0; i < count; i++) {
-    offsets.push(data.readBigUInt64BE(offset + i * 8));
+    offsets.push(readU64BE(data, offset + i * 8));
   }
 
   return offsets;
 }
 
 function parseBitmappedPacks(
-  data: Buffer,
+  data: Uint8Array,
   offset: number | undefined,
   packCount: number,
 ): Array<MidxBitmappedPack | undefined> {
@@ -471,8 +480,8 @@ function parseBitmappedPacks(
     if (entryOffset + BTMP_ENTRY_SIZE > data.length) {
       break;
     }
-    const bitmapPos = data.readUInt32BE(entryOffset);
-    const bitmapNr = data.readUInt32BE(entryOffset + 4);
+    const bitmapPos = readU32BE(data, entryOffset);
+    const bitmapNr = readU32BE(data, entryOffset + 4);
     if (bitmapNr === 0) {
       result[i] = undefined;
     } else {
@@ -484,7 +493,7 @@ function parseBitmappedPacks(
 }
 
 function parseRevindex(
-  data: Buffer,
+  data: Uint8Array,
   offset: number | undefined,
   objectCount: number,
 ): readonly number[] | undefined {
@@ -498,7 +507,7 @@ function parseRevindex(
     if (pos + 4 > data.length) {
       throw new PackIndexError("RIDX chunk truncated");
     }
-    values.push(data.readUInt32BE(pos));
+    values.push(readU32BE(data, pos));
   }
   return values;
 }

@@ -78,8 +78,8 @@ export interface V2GitServiceTransport {
     command: string,
     args?: string[],
     capabilities?: string[],
-    body?: Buffer,
-  ): Promise<Buffer>;
+    body?: Uint8Array,
+  ): Promise<Uint8Array>;
 }
 
 // ============================================================================
@@ -153,7 +153,7 @@ export interface V2FetchResponse {
   /** packfile-uris 节 */
   readonly packfileUris?: Array<{ oid: string; uri: string }>;
   /** 原始 packfile buffer */
-  readonly packfile?: Buffer;
+  readonly packfile?: Uint8Array;
 }
 
 // ============================================================================

@@ -13,6 +13,7 @@
  * ```
  */
 
+import { bytesToUtf8, utf8ToBytes } from "../bytes.ts";
 import { InvalidObjectError } from "../errors.ts";
 import { sha1 } from "../types/index.ts";
 import { formatAuthor, parseAuthor } from "./author.ts";
@@ -202,19 +203,16 @@ function buildCommitHeaderLines(commit: GitCommit): string[] {
  * const buf = serializeCommit(commit);
  * ```
  */
-export function serializeCommit(commit: GitCommit): Buffer {
+export function serializeCommit(commit: GitCommit): Uint8Array {
   const headerLines = buildCommitHeaderLines(commit);
-  return Buffer.from(
-    `${headerLines.join("\n")}\n\n${commit.message.replace(/\n+$/, "")}\n`,
-    "utf-8",
-  );
+  return utf8ToBytes(`${headerLines.join("\n")}\n\n${commit.message.replace(/\n+$/, "")}\n`);
 }
 
 /**
  * 反序列化 Commit 对象
  */
-export function deserializeCommit(content: Buffer): GitCommit {
-  const text = content.toString("utf-8");
+export function deserializeCommit(content: Uint8Array): GitCommit {
+  const text = bytesToUtf8(content);
   const separatorIndex = text.indexOf("\n\n");
   const headerText = separatorIndex === -1 ? text : text.slice(0, separatorIndex);
   const rawMessage = separatorIndex === -1 ? "" : text.slice(separatorIndex + 2);

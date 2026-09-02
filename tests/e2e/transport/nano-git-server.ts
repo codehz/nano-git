@@ -5,6 +5,7 @@
  * 供 e2e 测试使用（git CLI 和 nano-git 客户端）。
  */
 
+import { bytes } from "../../helpers/bytes.ts";
 import { createMemoryRepositoryBackend } from "@/backend/memory.ts";
 import { writeObject } from "@/objects/raw.ts";
 import { createSmartHttpHandler } from "@/transport/http/smart-http.ts";
@@ -69,7 +70,7 @@ export function createDefaultBackend(): RepositoryBackend {
 
   const blobHash = writeObject(backend.objects, {
     type: "blob" as const,
-    content: Buffer.from("nano-git e2e test\n"),
+    content: bytes("nano-git e2e test\n"),
   });
   const treeHash = writeObject(backend.objects, {
     type: "tree" as const,

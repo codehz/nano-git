@@ -25,6 +25,7 @@
  * @see https://git-scm.com/docs/protocol-v2#_object_info
  */
 
+import { bytesToUtf8 } from "../../../bytes.ts";
 import { GitError } from "../../../errors.ts";
 import { parsePktLines } from "../../protocol/pkt-line.ts";
 
@@ -129,7 +130,7 @@ export async function objectInfo(
  * console.log(result.attrs); // ["size"]
  * ```
  */
-export function parseObjectInfoResponse(data: Buffer): ObjectInfoQueryResult {
+export function parseObjectInfoResponse(data: Uint8Array): ObjectInfoQueryResult {
   const pktLines = parsePktLines(data);
   const objects: ObjectInfoResult[] = [];
   let attrs: string[] = [];
@@ -137,7 +138,7 @@ export function parseObjectInfoResponse(data: Buffer): ObjectInfoQueryResult {
   for (const line of pktLines) {
     if (line.type !== "data") continue;
 
-    const text = line.payload.toString("utf-8").trim();
+    const text = bytesToUtf8(line.payload).trim();
     if (text.length === 0) continue;
 
     // 第一行是 attrs（以空格分隔）

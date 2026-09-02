@@ -7,6 +7,7 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { join } from "node:path";
 
+import { bytes, bytesToUtf8 } from "../helpers/bytes.ts";
 import {
   git,
   gitInit,
@@ -48,13 +49,13 @@ describe("完整工作流", () => {
   test("nano-git 创建的完整仓库能被 git 正常使用", () => {
     const repo = initRepository(tempDir);
 
-    const readmeHash = repo.writeBlob(Buffer.from("# My Project\n\nHello world!\n"));
+    const readmeHash = repo.writeBlob(bytes("# My Project\n\nHello world!\n"));
     const tree1Hash = repo.createTree([{ mode: "100644", name: "README.md", hash: readmeHash }]);
     const commit1Hash = repo.createCommit(tree1Hash, [], "Initial commit", testAuthor);
     repo.updateRef("refs/heads/main", commit1Hash);
 
-    const srcHash = repo.writeBlob(Buffer.from('console.log("hello");\n'));
-    const readmeV2Hash = repo.writeBlob(Buffer.from("# My Project\n\nHello world!\n\n## Usage\n"));
+    const srcHash = repo.writeBlob(bytes('console.log("hello");\n'));
+    const readmeV2Hash = repo.writeBlob(bytes("# My Project\n\nHello world!\n\n## Usage\n"));
     const srcTreeHash = repo.createTree([{ mode: "100644", name: "index.js", hash: srcHash }]);
     const tree2Hash = repo.createTree([
       { mode: "100644", name: "README.md", hash: readmeV2Hash },
@@ -121,7 +122,7 @@ describe("完整工作流", () => {
         const blob = repo.catFile(helloEntry!.hash);
         expect(blob.type).toBe("blob");
         if (blob.type === "blob") {
-          expect(blob.content.toString("utf-8")).toBe("Hello from git!\n");
+          expect(bytesToUtf8(blob.content)).toBe("Hello from git!\n");
         }
       }
     }
@@ -131,7 +132,7 @@ describe("完整工作流", () => {
     gitInit(tempDir);
     const repo = openRepository(join(tempDir, ".git"));
 
-    const file1Hash = repo.writeBlob(Buffer.from("version 1\n"));
+    const file1Hash = repo.writeBlob(bytes("version 1\n"));
     const tree1Hash = repo.createTree([{ mode: "100644", name: "data.txt", hash: file1Hash }]);
     const commit1Hash = repo.createCommit(tree1Hash, [], "nano-git: first commit", testAuthor);
     repo.updateRef("refs/heads/main", commit1Hash);
@@ -169,12 +170,12 @@ describe("完整工作流", () => {
 
   test("nano-git gc 后仓库仍能被 git 正常读取", () => {
     const repo = initRepository(tempDir);
-    const blobHash = repo.writeBlob(Buffer.from("tracked"));
+    const blobHash = repo.writeBlob(bytes("tracked"));
     const treeHash = repo.createTree([{ mode: "100644", name: "tracked.txt", hash: blobHash }]);
     const commitHash = repo.createCommit(treeHash, [], "keep", testAuthor);
     repo.updateRef("refs/heads/main", commitHash);
 
-    repo.writeBlob(Buffer.from("dangling"));
+    repo.writeBlob(bytes("dangling"));
     repo.gc();
 
     expect(gitRevParse(tempDir, "HEAD")).toBe(commitHash);

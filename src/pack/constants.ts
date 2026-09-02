@@ -12,6 +12,7 @@
  * - 7: ref_delta（基于引用的 delta）
  */
 
+import { utf8ToBytes } from "../bytes.ts";
 import { InvalidObjectError } from "../errors.ts";
 
 import type { ObjectType } from "../types/index.ts";
@@ -29,7 +30,7 @@ export const OBJ_OFS_DELTA = 6;
 export const OBJ_REF_DELTA = 7;
 
 /** Packfile 魔数 "PACK" */
-export const PACK_SIGNATURE = Buffer.from("PACK");
+export const PACK_SIGNATURE = utf8ToBytes("PACK");
 
 /** Packfile 版本号（当前支持 v2） */
 export const PACK_VERSION = 2;
@@ -41,7 +42,7 @@ export const PACK_HEADER_SIZE = 12;
 export const PACK_CHECKSUM_SIZE = 20;
 
 /** idx v2 文件魔数 */
-export const IDX_V2_SIGNATURE = Buffer.from([0xff, 0x74, 0x4f, 0x63]);
+export const IDX_V2_SIGNATURE = Uint8Array.from([0xff, 0x74, 0x4f, 0x63]);
 
 /** idx v2 版本号 */
 export const IDX_V2_VERSION = 2;

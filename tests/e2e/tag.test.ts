@@ -6,6 +6,7 @@
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 
+import { bytes } from "../helpers/bytes.ts";
 import {
   git,
   gitInitBare,
@@ -49,7 +50,7 @@ describe("Tag 兼容性", () => {
     test("nano-git 创建的 tag 能被 git cat-file 读取", () => {
       const repo = openRepository(tempDir);
 
-      const fileHash = repo.writeBlob(Buffer.from("tagged content"));
+      const fileHash = repo.writeBlob(bytes("tagged content"));
       const treeHash = repo.createTree([{ mode: "100644", name: "file.txt", hash: fileHash }]);
       const commitHash = repo.createCommit(treeHash, [], "Tagged commit", testAuthor);
 

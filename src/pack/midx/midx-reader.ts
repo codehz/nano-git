@@ -34,7 +34,7 @@ import type { CreateMidxReaderOptions, MidxReader } from "./midx-types.ts";
  * console.log(midx.objectCount);
  * ```
  */
-export function createMidxReader(data: Buffer, options?: CreateMidxReaderOptions): MidxReader {
+export function createMidxReader(data: Uint8Array, options?: CreateMidxReaderOptions): MidxReader {
   const layer = parseMidxLayer(data, options);
   return createMidxReaderFromTip(layer);
 }

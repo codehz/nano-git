@@ -6,6 +6,7 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { allocBytes, bytes, bytesToUtf8, concatBytes, utf8ToBytes } from "../../helpers/bytes.ts";
 import { createMemoryRepositoryBackend } from "@/backend/memory.ts";
 import { writeObject } from "@/objects/raw.ts";
 import { createPackWriter } from "@/pack/writer/pack-writer.ts";
@@ -24,25 +25,25 @@ import { sha1 } from "@/types/index.ts";
 
 import type { V2GitServiceTransport } from "@/transport/client/upload-pack/types.ts";
 
-function pkt(text: string): Buffer {
+function pkt(text: string): Uint8Array {
   return encodePktLine(text);
 }
 
-function encodePackfileSection(payload = "PACK\u0000\u0000\u0000\u0002..."): Buffer {
-  return Buffer.concat([
+function encodePackfileSection(payload = "PACK\u0000\u0000\u0000\u0002..."): Uint8Array {
+  return concatBytes(
     pkt("packfile\n"),
-    encodePktLine(Buffer.concat([Buffer.from([0x01]), Buffer.from(payload)])),
+    encodePktLine(concatBytes(Uint8Array.from([0x01]), utf8ToBytes(payload))),
     encodeFlushPkt(),
-  ]);
+  );
 }
 
-function createMockTransport(responses: Buffer[], calls: string[][]): V2GitServiceTransport {
+function createMockTransport(responses: Uint8Array[], calls: string[][]): V2GitServiceTransport {
   return {
     advertise(): Promise<never> {
       throw new Error("not implemented");
     },
 
-    async command(_command: string, args?: string[]): Promise<Buffer> {
+    async command(_command: string, args?: string[]): Promise<Uint8Array> {
       calls.push([...(args ?? [])]);
       const response = responses.shift();
       if (!response) {
@@ -55,7 +56,7 @@ function createMockTransport(responses: Buffer[], calls: string[][]): V2GitServi
 
 describe("parseV2FetchResponse()", () => {
   test("仅有 acknowledgments + NAK（无 packfile）", () => {
-    const buf = Buffer.concat([pkt("acknowledgments\n"), pkt("NAK\n"), encodeFlushPkt()]);
+    const buf = concatBytes(pkt("acknowledgments\n"), pkt("NAK\n"), encodeFlushPkt());
 
     const result = parseV2FetchResponse(buf, false, false);
     expect(result.acknowledgments?.acks).toEqual([]);
@@ -64,12 +65,12 @@ describe("parseV2FetchResponse()", () => {
   });
 
   test("有 ACK 的响应", () => {
-    const buf = Buffer.concat([
+    const buf = concatBytes(
       pkt("acknowledgments\n"),
       pkt("ACK 95d09f2b10159347eece71399a7e2e907ea3df4f\n"),
       pkt("ACK aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d\n"),
       encodeFlushPkt(),
-    ]);
+    );
 
     const result = parseV2FetchResponse(buf, false, false);
     expect(result.acknowledgments?.acks).toHaveLength(2);
@@ -79,13 +80,13 @@ describe("parseV2FetchResponse()", () => {
   });
 
   test("ready 缺少 packfile 节时应抛错", () => {
-    const buf = Buffer.concat([
+    const buf = concatBytes(
       pkt("acknowledgments\n"),
       pkt("ACK 95d09f2b10159347eece71399a7e2e907ea3df4f\n"),
       pkt("ready\n"),
       encodeDelimiterPkt(),
       encodeFlushPkt(),
-    ]);
+    );
 
     expect(() => parseV2FetchResponse(buf, false, false)).toThrow(
       /Received 'ready' without packfile section/,
@@ -93,16 +94,14 @@ describe("parseV2FetchResponse()", () => {
   });
 
   test("无 ready 时若继续返回其他节应抛错", () => {
-    const buf = Buffer.concat([
+    const buf = concatBytes(
       pkt("acknowledgments\n"),
       pkt("NAK\n"),
       encodeDelimiterPkt(),
       pkt("packfile\n"),
-      encodePktLine(
-        Buffer.concat([Buffer.from([0x01]), Buffer.from("PACK\u0000\u0000\u0000\u0002...")]),
-      ),
+      encodePktLine(concatBytes(Uint8Array.from([0x01]), bytes("PACK\u0000\u0000\u0000\u0002..."))),
       encodeFlushPkt(),
-    ]);
+    );
 
     expect(() => parseV2FetchResponse(buf, false, false)).toThrow(
       /Received extra sections without 'ready'/,
@@ -112,26 +111,26 @@ describe("parseV2FetchResponse()", () => {
   test("packfile 数据提取", () => {
     // packfile 节头后跟 pkt-line 编码的包数据
     // 每个数据帧需要 channel 字节: 0x01 = packfile 数据
-    const pktLine1 = Buffer.concat([
-      Buffer.from([0x01]),
-      Buffer.from("PACK\u0000\u0000\u0000\u0002..."),
-    ]);
-    const pktLine2 = Buffer.concat([Buffer.from([0x01]), Buffer.from("morepackdata")]);
-    const buf = Buffer.concat([
+    const pktLine1 = concatBytes(
+      Uint8Array.from([0x01]),
+      utf8ToBytes("PACK\u0000\u0000\u0000\u0002..."),
+    );
+    const pktLine2 = concatBytes(Uint8Array.from([0x01]), utf8ToBytes("morepackdata"));
+    const buf = concatBytes(
       pkt("packfile\n"),
       encodePktLine(pktLine1),
       encodePktLine(pktLine2),
       encodeFlushPkt(),
-    ]);
+    );
 
     const result = parseV2FetchResponse(buf, false, false);
     expect(result.packfile).toBeDefined();
     expect(result.packfile!.length).toBeGreaterThan(0);
-    expect(result.packfile!.toString()).toContain("PACK");
+    expect(bytesToUtf8(result.packfile!)).toContain("PACK");
   });
 
   test("空 packfile 节应抛错", () => {
-    const buf = Buffer.concat([pkt("packfile\n"), encodeFlushPkt()]);
+    const buf = concatBytes(pkt("packfile\n"), encodeFlushPkt());
 
     expect(() => parseV2FetchResponse(buf, true, false)).toThrow(
       /Missing packfile payload in packfile section/,
@@ -139,7 +138,7 @@ describe("parseV2FetchResponse()", () => {
   });
 
   test("无节头的空响应", () => {
-    const buf = Buffer.concat([pkt("\n"), encodeFlushPkt()]);
+    const buf = concatBytes(pkt("\n"), encodeFlushPkt());
 
     const result = parseV2FetchResponse(buf, false, false);
     expect(result.acknowledgments).toBeUndefined();
@@ -147,31 +146,29 @@ describe("parseV2FetchResponse()", () => {
   });
 
   test("sideband-all 响应可正确解复用", () => {
-    const channelized = (text: string): Buffer =>
-      encodePktLine(Buffer.concat([Buffer.from([0x01]), Buffer.from(text)]));
-    const buf = Buffer.concat([
+    const channelized = (text: string): Uint8Array =>
+      encodePktLine(concatBytes(Uint8Array.from([0x01]), utf8ToBytes(text)));
+    const buf = concatBytes(
       channelized("acknowledgments\n"),
       channelized("ACK 95d09f2b10159347eece71399a7e2e907ea3df4f\n"),
       channelized("ready\n"),
       encodeDelimiterPkt(),
       channelized("packfile\n"),
-      encodePktLine(
-        Buffer.concat([Buffer.from([0x01]), Buffer.from("PACK\u0000\u0000\u0000\u0002...")]),
-      ),
+      encodePktLine(concatBytes(Uint8Array.from([0x01]), bytes("PACK\u0000\u0000\u0000\u0002..."))),
       encodeFlushPkt(),
-    ]);
+    );
 
     const result = parseV2FetchResponse(buf, false, true);
     expect(result.acknowledgments?.acks).toEqual(["95d09f2b10159347eece71399a7e2e907ea3df4f"]);
-    expect(result.packfile?.subarray(0, 4).toString("utf-8")).toBe("PACK");
+    expect(bytesToUtf8(result.packfile!.subarray(0, 4))).toBe("PACK");
   });
 
   test("packfile section 中的 fatal channel 应抛错", () => {
-    const buf = Buffer.concat([
+    const buf = concatBytes(
       pkt("packfile\n"),
-      encodePktLine(Buffer.concat([Buffer.from([0x03]), Buffer.from("boom\n")])),
+      encodePktLine(concatBytes(Uint8Array.from([0x03]), bytes("boom\n"))),
       encodeFlushPkt(),
-    ]);
+    );
 
     expect(() => parseV2FetchResponse(buf, false, false)).toThrow(/remote fatal: boom/);
   });
@@ -201,13 +198,13 @@ describe("v2 fetch 协商请求", () => {
   test("ready 响应已携带 packfile 时不再额外补发 done", async () => {
     const calls: string[][] = [];
     const common = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-    const response = Buffer.concat([
+    const response = concatBytes(
       pkt("acknowledgments\n"),
       pkt(`ACK ${common}\n`),
       pkt("ready\n"),
       encodeDelimiterPkt(),
       encodePackfileSection(),
-    ]);
+    );
     const transport = createMockTransport([response], calls);
 
     const result = await negotiateV2Fetch(
@@ -223,13 +220,13 @@ describe("v2 fetch 协商请求", () => {
   test("ready 缺少 packfile 时直接报错而不是补发 done", async () => {
     const calls: string[][] = [];
     const common = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-    const response = Buffer.concat([
+    const response = concatBytes(
       pkt("acknowledgments\n"),
       pkt(`ACK ${common}\n`),
       pkt("ready\n"),
       encodeDelimiterPkt(),
       encodeFlushPkt(),
-    ]);
+    );
     const transport = createMockTransport([response], calls);
 
     expect(
@@ -251,7 +248,7 @@ describe("v2 fetch 协商请求", () => {
     });
 
     const calls: string[][] = [];
-    const transport = createMockTransport([Buffer.alloc(0)], calls);
+    const transport = createMockTransport([allocBytes(0)], calls);
 
     expect(
       v2FetchObjects(backend.objects, transport, [tip], [tip], ["shallow"], [], {
@@ -277,14 +274,14 @@ describe("v2 fetch 协商请求", () => {
 
     const calls: string[][] = [];
     const writer = createPackWriter();
-    const response = Buffer.concat([
+    const response = concatBytes(
       pkt("shallow-info\n"),
       pkt(`unshallow ${tip}\n`),
       encodeDelimiterPkt(),
       pkt("packfile\n"),
-      encodePktLine(Buffer.concat([Buffer.from([0x01]), writer.build()])),
+      encodePktLine(concatBytes(Uint8Array.from([0x01]), writer.build())),
       encodeFlushPkt(),
-    ]);
+    );
     const transport = createMockTransport([response], calls);
 
     expect(
@@ -300,7 +297,7 @@ describe("v2 fetch 协商请求", () => {
     const common = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     const transport = createMockTransport(
       [
-        Buffer.concat([pkt("acknowledgments\n"), pkt(`ACK ${common}\n`), encodeFlushPkt()]),
+        concatBytes(pkt("acknowledgments\n"), pkt(`ACK ${common}\n`), encodeFlushPkt()),
         encodePackfileSection(),
       ],
       calls,
@@ -322,13 +319,13 @@ describe("v2 fetch 协商请求", () => {
     const topicRecent = "57d610da821e9d1500b28e901be034760391af43";
     const transport = createMockTransport(
       [
-        Buffer.concat([
+        concatBytes(
           pkt("acknowledgments\n"),
           pkt(`ACK ${main}\n`),
           pkt(`ACK ${topicOld}\n`),
           pkt(`ACK ${topicRecent}\n`),
           encodeFlushPkt(),
-        ]),
+        ),
         encodePackfileSection(),
       ],
       calls,

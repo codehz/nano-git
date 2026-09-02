@@ -4,6 +4,7 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { bytes, bytesToUtf8 } from "../helpers/bytes.ts";
 import { planCommitMerge, createMergeSession } from "@/merge/index.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
 
@@ -21,15 +22,15 @@ describe("merge e2e", () => {
     const repo = createMemoryRepository();
 
     const baseTree = repo.createTree([
-      { mode: "100644", name: "a.txt", hash: repo.writeBlob(Buffer.from("a0")) },
-      { mode: "100644", name: "b.txt", hash: repo.writeBlob(Buffer.from("b0")) },
+      { mode: "100644", name: "a.txt", hash: repo.writeBlob(bytes("a0")) },
+      { mode: "100644", name: "b.txt", hash: repo.writeBlob(bytes("b0")) },
     ]);
     const base = repo.createCommit(baseTree, [], "base", author);
 
     const ours = repo.createCommit(
       repo.createTree([
-        { mode: "100644", name: "a.txt", hash: repo.writeBlob(Buffer.from("a1")) },
-        { mode: "100644", name: "b.txt", hash: repo.writeBlob(Buffer.from("b0")) },
+        { mode: "100644", name: "a.txt", hash: repo.writeBlob(bytes("a1")) },
+        { mode: "100644", name: "b.txt", hash: repo.writeBlob(bytes("b0")) },
       ]),
       [base],
       "ours",
@@ -38,8 +39,8 @@ describe("merge e2e", () => {
 
     const theirs = repo.createCommit(
       repo.createTree([
-        { mode: "100644", name: "a.txt", hash: repo.writeBlob(Buffer.from("a0")) },
-        { mode: "100644", name: "b.txt", hash: repo.writeBlob(Buffer.from("b1")) },
+        { mode: "100644", name: "a.txt", hash: repo.writeBlob(bytes("a0")) },
+        { mode: "100644", name: "b.txt", hash: repo.writeBlob(bytes("b1")) },
       ]),
       [base],
       "theirs",
@@ -55,8 +56,8 @@ describe("merge e2e", () => {
     const { tree } = session.finalize();
 
     const expected = repo.createTree([
-      { mode: "100644", name: "a.txt", hash: repo.writeBlob(Buffer.from("a1")) },
-      { mode: "100644", name: "b.txt", hash: repo.writeBlob(Buffer.from("b1")) },
+      { mode: "100644", name: "a.txt", hash: repo.writeBlob(bytes("a1")) },
+      { mode: "100644", name: "b.txt", hash: repo.writeBlob(bytes("b1")) },
     ]);
     expect(tree).toBe(expected);
 
@@ -72,21 +73,17 @@ describe("merge e2e", () => {
   test("conflicted merge：resolve 后 finalize", () => {
     const repo = createMemoryRepository();
     const baseTree = repo.createTree([
-      { mode: "100644", name: "f.txt", hash: repo.writeBlob(Buffer.from("base")) },
+      { mode: "100644", name: "f.txt", hash: repo.writeBlob(bytes("base")) },
     ]);
     const base = repo.createCommit(baseTree, [], "base", author);
     const ours = repo.createCommit(
-      repo.createTree([
-        { mode: "100644", name: "f.txt", hash: repo.writeBlob(Buffer.from("ours")) },
-      ]),
+      repo.createTree([{ mode: "100644", name: "f.txt", hash: repo.writeBlob(bytes("ours")) }]),
       [base],
       "ours",
       author,
     );
     const theirs = repo.createCommit(
-      repo.createTree([
-        { mode: "100644", name: "f.txt", hash: repo.writeBlob(Buffer.from("theirs")) },
-      ]),
+      repo.createTree([{ mode: "100644", name: "f.txt", hash: repo.writeBlob(bytes("theirs")) }]),
       [base],
       "theirs",
       author,
@@ -99,7 +96,7 @@ describe("merge e2e", () => {
     session.resolve("f.txt", {
       take: "custom",
       mode: "100644",
-      content: Buffer.from("merged"),
+      content: bytes("merged"),
     });
     const { tree } = session.finalize();
     const mergeCommit = repo.createCommit(tree, [ours, theirs], "Merge", author);
@@ -110,7 +107,7 @@ describe("merge e2e", () => {
       const blob = repo.catFile(treeObj.entries[0]!.hash);
       expect(blob.type).toBe("blob");
       if (blob.type === "blob") {
-        expect(blob.content.toString()).toBe("merged");
+        expect(bytesToUtf8(blob.content)).toBe("merged");
       }
     }
 

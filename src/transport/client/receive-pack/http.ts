@@ -7,6 +7,7 @@
  * @see https://git-scm.com/docs/http-protocol
  */
 
+import { toUint8Array } from "../../../bytes.ts";
 import { GitError } from "../../../errors.ts";
 import { parseRefAdvertisement, RefAdvertisementError } from "../../protocol/ref-advertisement.ts";
 import { buildGitHttpAuthHeader } from "../http-auth.ts";
@@ -84,9 +85,9 @@ function applyAuthHeaders(
   return { ...base, ...result };
 }
 
-async function readResponseBody(response: Response, context: string): Promise<Buffer> {
+async function readResponseBody(response: Response, context: string): Promise<Uint8Array> {
   try {
-    return Buffer.from(await response.arrayBuffer());
+    return toUint8Array(await response.arrayBuffer());
   } catch (err: unknown) {
     throw new SmartHttpError(`Failed to read response body (${context})`, {
       cause: err,
@@ -167,7 +168,7 @@ export function createReceivePackHttpClient(
       }
     },
 
-    async request(body: Buffer): Promise<Buffer> {
+    async request(body: Uint8Array): Promise<Uint8Array> {
       const url = `${normalizedUrl}${RECEIVE_PACK_RPC_PATH}`;
 
       let response: Response;

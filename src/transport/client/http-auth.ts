@@ -6,6 +6,8 @@
  * REST API 常用的 Bearer token 在此处通常会被拒绝。
  */
 
+import { bytesToBase64, utf8ToBytes } from "../../bytes.ts";
+
 /**
  * 由 username/password 构造 Authorization 头值
  *
@@ -21,5 +23,5 @@
  * ```
  */
 export function buildGitHttpAuthHeader(username: string, password: string): string {
-  return `Basic ${Buffer.from(`${username}:${password}`, "utf-8").toString("base64")}`;
+  return `Basic ${bytesToBase64(utf8ToBytes(`${username}:${password}`))}`;
 }

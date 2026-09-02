@@ -2,6 +2,7 @@
  * Packfile 对象头部编码/解码
  */
 
+import { toUint8Array } from "../../bytes.ts";
 import { InvalidPackError } from "../../errors.ts";
 
 /**
@@ -21,7 +22,7 @@ import { InvalidPackError } from "../../errors.ts";
  * ```
  */
 export function decodeObjectHeader(
-  buf: Buffer,
+  buf: Uint8Array,
   offset: number,
 ): [type: number, size: number, bytesRead: number] {
   if (offset >= buf.length) {
@@ -62,7 +63,7 @@ export function decodeObjectHeader(
  * const header = encodeObjectHeader(3, 11);
  * ```
  */
-export function encodeObjectHeader(type: number, size: number): Buffer {
+export function encodeObjectHeader(type: number, size: number): Uint8Array {
   const bytes: number[] = [];
 
   let byte = ((type & 0x07) << 4) | (size & 0x0f);
@@ -83,5 +84,5 @@ export function encodeObjectHeader(type: number, size: number): Buffer {
     bytes.push(byte);
   }
 
-  return Buffer.from(bytes);
+  return Uint8Array.from(bytes);
 }

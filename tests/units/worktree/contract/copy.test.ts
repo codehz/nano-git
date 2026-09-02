@@ -6,6 +6,7 @@
  */
 import { describe, expect, test } from "bun:test";
 
+import { bytes, bytesToUtf8 } from "../../../helpers/bytes.ts";
 import { virtualWorktreeBackends } from "./contract.ts";
 import { readBlob, readTree } from "./test-utils.ts";
 import { VirtualPathNotFoundError } from "@/errors.ts";
@@ -18,15 +19,15 @@ describe("VirtualWorktree contract: copy", () => {
       const session = createWorktree(repo, { baseTree: repo.createTree([]) });
 
       session.mkdir("src");
-      session.writeFile("src/a.txt", Buffer.from("a"));
-      session.writeFile("src/b.txt", Buffer.from("b"));
+      session.writeFile("src/a.txt", bytes("a"));
+      session.writeFile("src/b.txt", bytes("b"));
       session.copy("src", "copy");
 
       session.delete("src/a.txt");
 
-      expect(session.readFile("copy/a.txt").toString()).toBe("a");
+      expect(bytesToUtf8(session.readFile("copy/a.txt"))).toBe("a");
       expect(() => session.readFile("src/a.txt")).toThrow(VirtualPathNotFoundError);
-      expect(session.readFile("src/b.txt").toString()).toBe("b");
+      expect(bytesToUtf8(session.readFile("src/b.txt"))).toBe("b");
 
       const rootHash = session.writeTree();
       const root = readTree(repo, rootHash);
@@ -41,25 +42,25 @@ describe("VirtualWorktree contract: copy", () => {
       const session = createWorktree(repo, { baseTree: repo.createTree([]) });
 
       session.mkdir("shared");
-      session.writeFile("shared/file.txt", Buffer.from("original"));
+      session.writeFile("shared/file.txt", bytes("original"));
       session.copy("shared", "fork");
 
-      session.writeFile("shared/file.txt", Buffer.from("source-edit"));
-      session.writeFile("fork/file.txt", Buffer.from("fork-edit"));
+      session.writeFile("shared/file.txt", bytes("source-edit"));
+      session.writeFile("fork/file.txt", bytes("fork-edit"));
 
-      expect(session.readFile("shared/file.txt").toString()).toBe("source-edit");
-      expect(session.readFile("fork/file.txt").toString()).toBe("fork-edit");
+      expect(bytesToUtf8(session.readFile("shared/file.txt"))).toBe("source-edit");
+      expect(bytesToUtf8(session.readFile("fork/file.txt"))).toBe("fork-edit");
 
       const rootHash = session.writeTree();
       const root = readTree(repo, rootHash);
       const shared = readTree(repo, root.entries.find((e) => e.name === "shared")!.hash);
       const fork = readTree(repo, root.entries.find((e) => e.name === "fork")!.hash);
       expect(
-        readBlob(repo, shared.entries.find((e) => e.name === "file.txt")!.hash).toString(),
+        bytesToUtf8(readBlob(repo, shared.entries.find((e) => e.name === "file.txt")!.hash)),
       ).toBe("source-edit");
-      expect(readBlob(repo, fork.entries.find((e) => e.name === "file.txt")!.hash).toString()).toBe(
-        "fork-edit",
-      );
+      expect(
+        bytesToUtf8(readBlob(repo, fork.entries.find((e) => e.name === "file.txt")!.hash)),
+      ).toBe("fork-edit");
     });
 
     test("copy 子树后在源子树中新增文件，目标不含新增文件", () => {
@@ -67,14 +68,14 @@ describe("VirtualWorktree contract: copy", () => {
       const session = createWorktree(repo, { baseTree: repo.createTree([]) });
 
       session.mkdir("base");
-      session.writeFile("base/a.txt", Buffer.from("a"));
+      session.writeFile("base/a.txt", bytes("a"));
       session.copy("base", "derived");
 
-      session.writeFile("base/b.txt", Buffer.from("b"));
+      session.writeFile("base/b.txt", bytes("b"));
 
-      expect(session.readFile("base/a.txt").toString()).toBe("a");
-      expect(session.readFile("base/b.txt").toString()).toBe("b");
-      expect(session.readFile("derived/a.txt").toString()).toBe("a");
+      expect(bytesToUtf8(session.readFile("base/a.txt"))).toBe("a");
+      expect(bytesToUtf8(session.readFile("base/b.txt"))).toBe("b");
+      expect(bytesToUtf8(session.readFile("derived/a.txt"))).toBe("a");
       expect(() => session.readFile("derived/b.txt")).toThrow(VirtualPathNotFoundError);
     });
 
@@ -83,20 +84,20 @@ describe("VirtualWorktree contract: copy", () => {
       const session = createWorktree(repo, { baseTree: repo.createTree([]) });
 
       session.mkdir("data");
-      session.writeFile("data/file.txt", Buffer.from("common"));
+      session.writeFile("data/file.txt", bytes("common"));
       session.copy("data", "copy1");
       session.copy("data", "copy2");
       session.copy("data", "copy3");
 
-      session.writeFile("data/file.txt", Buffer.from("original"));
-      session.writeFile("copy1/file.txt", Buffer.from("one"));
+      session.writeFile("data/file.txt", bytes("original"));
+      session.writeFile("copy1/file.txt", bytes("one"));
       session.delete("copy2/file.txt");
-      session.writeFile("copy3/file.txt", Buffer.from("three"));
+      session.writeFile("copy3/file.txt", bytes("three"));
 
-      expect(session.readFile("data/file.txt").toString()).toBe("original");
-      expect(session.readFile("copy1/file.txt").toString()).toBe("one");
+      expect(bytesToUtf8(session.readFile("data/file.txt"))).toBe("original");
+      expect(bytesToUtf8(session.readFile("copy1/file.txt"))).toBe("one");
       expect(() => session.readFile("copy2/file.txt")).toThrow(VirtualPathNotFoundError);
-      expect(session.readFile("copy3/file.txt").toString()).toBe("three");
+      expect(bytesToUtf8(session.readFile("copy3/file.txt"))).toBe("three");
 
       const rootHash = session.writeTree();
       const root = readTree(repo, rootHash);
@@ -105,10 +106,10 @@ describe("VirtualWorktree contract: copy", () => {
       const copy1 = readTree(repo, root.entries.find((e) => e.name === "copy1")!.hash);
       const copy2 = readTree(repo, root.entries.find((e) => e.name === "copy2")!.hash);
       const copy3 = readTree(repo, root.entries.find((e) => e.name === "copy3")!.hash);
-      expect(readBlob(repo, data.entries[0]!.hash).toString()).toBe("original");
-      expect(readBlob(repo, copy1.entries[0]!.hash).toString()).toBe("one");
+      expect(bytesToUtf8(readBlob(repo, data.entries[0]!.hash))).toBe("original");
+      expect(bytesToUtf8(readBlob(repo, copy1.entries[0]!.hash))).toBe("one");
       expect(copy2.entries).toHaveLength(0);
-      expect(readBlob(repo, copy3.entries[0]!.hash).toString()).toBe("three");
+      expect(bytesToUtf8(readBlob(repo, copy3.entries[0]!.hash))).toBe("three");
     });
   });
 });

@@ -7,6 +7,7 @@
  * - 写出前按 `compareTreeEntries` 排序
  */
 
+import { allocBytes } from "../bytes.ts";
 import { MergeError } from "../errors.ts";
 import { writeObject } from "../objects/raw.ts";
 import { compareTreeEntries } from "../objects/tree.ts";
@@ -68,7 +69,7 @@ export function ensureEmptyTree(objects: ObjectDatabase): SHA1 {
   objects.ingest({
     hash: EMPTY_TREE_HASH,
     type: "tree",
-    content: Buffer.alloc(0),
+    content: allocBytes(0),
   });
   return EMPTY_TREE_HASH;
 }

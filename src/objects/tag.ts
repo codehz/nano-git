@@ -12,6 +12,7 @@
  * ```
  */
 
+import { bytesToUtf8, utf8ToBytes } from "../bytes.ts";
 import { InvalidObjectError } from "../errors.ts";
 import { assertObjectType, sha1 } from "../types/index.ts";
 import { formatAuthor, parseAuthor } from "./author.ts";
@@ -173,7 +174,7 @@ function buildTagHeaderLines(tag: GitTag): string[] {
  * const buf = serializeTag(tag);
  * ```
  */
-export function serializeTag(tag: GitTag): Buffer {
+export function serializeTag(tag: GitTag): Uint8Array {
   const lines: string[] = [
     ...buildTagHeaderLines(tag),
     "", // 空行分隔
@@ -181,14 +182,14 @@ export function serializeTag(tag: GitTag): Buffer {
     tag.message.replace(/\n+$/, ""),
   ];
 
-  return Buffer.from(lines.join("\n") + "\n", "utf-8");
+  return utf8ToBytes(lines.join("\n") + "\n");
 }
 
 /**
  * 反序列化 Tag 对象
  */
-export function deserializeTag(content: Buffer): GitTag {
-  const text = content.toString("utf-8");
+export function deserializeTag(content: Uint8Array): GitTag {
+  const text = bytesToUtf8(content);
   const headerEnd = text.indexOf("\n\n");
 
   if (headerEnd === -1) {

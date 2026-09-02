@@ -5,6 +5,7 @@
 import { createHash } from "node:crypto";
 import { inflateSync } from "node:zlib";
 
+import { bytesEqual, bytesToHex, readU32BE, toUint8Array } from "../../bytes.ts";
 import { InvalidPackError } from "../../errors.ts";
 import {
   PACK_CHECKSUM_SIZE,
@@ -24,28 +25,28 @@ import {
  * const objectCount = parsePackHeader(packData);
  * ```
  */
-export function parsePackHeader(data: Buffer): number {
+export function parsePackHeader(data: Uint8Array): number {
   if (data.length < PACK_HEADER_SIZE + PACK_CHECKSUM_SIZE) {
     throw new InvalidPackError("Packfile too small");
   }
 
   const signature = data.subarray(0, 4);
-  if (!signature.equals(PACK_SIGNATURE)) {
-    throw new InvalidPackError(`Invalid signature: ${signature.toString("hex")}`);
+  if (!bytesEqual(signature, PACK_SIGNATURE)) {
+    throw new InvalidPackError(`Invalid signature: ${bytesToHex(signature)}`);
   }
 
-  const version = data.readUInt32BE(4);
+  const version = readU32BE(data, 4);
   if (version !== PACK_VERSION) {
     throw new InvalidPackError(`Unsupported version: ${version}`);
   }
 
-  const objectCount = data.readUInt32BE(8);
+  const objectCount = readU32BE(data, 8);
   const expectedChecksum = data.subarray(data.length - PACK_CHECKSUM_SIZE);
   const actualChecksum = createHash("sha1")
     .update(data.subarray(0, data.length - PACK_CHECKSUM_SIZE))
     .digest();
 
-  if (!expectedChecksum.equals(actualChecksum)) {
+  if (!bytesEqual(expectedChecksum, actualChecksum)) {
     throw new InvalidPackError("Checksum mismatch");
   }
 
@@ -68,9 +69,9 @@ export function parsePackHeader(data: Buffer): number {
  * ```
  */
 export function readCompressedData(
-  data: Buffer,
+  data: Uint8Array,
   offset: number,
-): [buffer: Buffer, bytesRead: number] {
+): [buffer: Uint8Array, bytesRead: number] {
   const remaining = data.subarray(offset);
 
   try {
@@ -96,7 +97,7 @@ export function readCompressedData(
       throw new InvalidPackError("Failed to determine compressed stream length", { offset });
     }
 
-    return [Buffer.from(result.buffer), consumed];
+    return [toUint8Array(result.buffer), consumed];
   } catch (err) {
     if (err instanceof InvalidPackError) {
       throw err;

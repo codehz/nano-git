@@ -4,6 +4,7 @@
 
 import { describe, test, expect, beforeEach } from "bun:test";
 
+import { bytes } from "../../../helpers/bytes.ts";
 import { writeObject } from "@/objects/raw.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
 import { createMemoryRefStore } from "@/refs/memory.ts";
@@ -27,7 +28,7 @@ describe("createMaintenanceRepositoryOperations()", () => {
   test("listReachableObjects() 返回所有可达对象", () => {
     const blobHash = writeObject(objects, {
       type: "blob",
-      content: Buffer.from("content"),
+      content: bytes("content"),
     });
     const treeHash = writeObject(objects, {
       type: "tree",
@@ -61,8 +62,8 @@ describe("createMaintenanceRepositoryOperations()", () => {
   });
 
   test("gc() 无 pack 支持时清理不可达对象", () => {
-    const blobHash = writeObject(objects, { type: "blob", content: Buffer.from("reachable") });
-    writeObject(objects, { type: "blob", content: Buffer.from("unreachable") });
+    const blobHash = writeObject(objects, { type: "blob", content: bytes("reachable") });
+    writeObject(objects, { type: "blob", content: bytes("unreachable") });
     refs.write("refs/heads/main", blobHash);
 
     const ops = createMaintenanceRepositoryOperations(objects, refs);

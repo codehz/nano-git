@@ -14,7 +14,7 @@
  * @example
  * ```ts
  * const writer = createPackWriter();
- * writer.addObject({ type: "blob", content: Buffer.from("hello") });
+ * writer.addObject({ type: "blob", content: Uint8Array.from("hello") });
  * const packData = writer.build();
  * ```
  */
@@ -37,8 +37,8 @@ import type { RawGitObject, SHA1 } from "../../types/index.ts";
  * const writer = createPackWriter();
  *
  * // 添加对象
- * writer.addObject({ type: "blob", content: Buffer.from("hello") });
- * writer.addObject({ type: "blob", content: Buffer.from("world") });
+ * writer.addObject({ type: "blob", content: Uint8Array.from("hello") });
+ * writer.addObject({ type: "blob", content: Uint8Array.from("world") });
  *
  * // 构建 packfile
  * const packData = writer.build();
@@ -98,7 +98,7 @@ export class PackWriter {
    * writeFileSync("objects/pack/pack-xxx.pack", packData);
    * ```
    */
-  build(): Buffer {
+  build(): Uint8Array {
     return buildEncodedPack(this.entries).packData;
   }
 

@@ -84,7 +84,7 @@ export function createSqliteObjectStore(db: SqliteDatabase): ObjectDatabase {
       return {
         hash: sha1(row.hash),
         type: row.type as ObjectType,
-        content: Buffer.from(row.content),
+        content: Uint8Array.from(row.content),
       };
     },
 
@@ -96,7 +96,7 @@ export function createSqliteObjectStore(db: SqliteDatabase): ObjectDatabase {
       return {
         hash: sha1(row.hash),
         type: row.type as ObjectType,
-        content: Buffer.from(row.content),
+        content: Uint8Array.from(row.content),
       };
     },
 

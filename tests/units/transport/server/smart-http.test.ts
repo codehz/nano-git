@@ -12,6 +12,14 @@
 
 import { describe, test, expect } from "bun:test";
 
+import {
+  allocBytes,
+  bytes,
+  bytesToUtf8,
+  concatBytes,
+  toUint8Array,
+  utf8ToBytes,
+} from "../../../helpers/bytes.ts";
 import { createMemoryRepositoryBackend } from "@/backend/memory.ts";
 import { writeObject } from "@/objects/raw.ts";
 import { createSmartHttpHandler } from "@/transport/http/smart-http.ts";
@@ -32,7 +40,7 @@ function createTestBackend() {
 
   const blobHash = writeObject(backend.objects, {
     type: "blob" as const,
-    content: Buffer.from("hello"),
+    content: bytes("hello"),
   });
   const treeHash = writeObject(backend.objects, {
     type: "tree" as const,
@@ -58,7 +66,7 @@ function createGitRequest(
     method?: string;
     searchParams?: Record<string, string>;
     headers?: Record<string, string>;
-    body?: Buffer;
+    body?: Uint8Array;
   },
 ): Request {
   let urlStr = `http://localhost${path}`;
@@ -113,19 +121,19 @@ describe("createSmartHttpHandler — 路由", () => {
     const { backend, commitHash } = createTestBackend();
     const handler = createSmartHttpHandler(backend);
 
-    const _body = Buffer.concat([
-      Buffer.from("command=ls-refs\n0011", "utf-8"),
-      Buffer.from([0x00, 0x01]),
-      Buffer.from("0013000a", "utf-8"),
-    ]);
-    const validBody = Buffer.concat([
+    const _body = concatBytes(
+      utf8ToBytes("command=ls-refs\n0011"),
+      Uint8Array.from([0x00, 0x01]),
+      utf8ToBytes("0013000a"),
+    );
+    const validBody = concatBytes(
       encodePktLine("command=fetch\n"),
       encodeDelimiterPkt(),
       encodePktLine(`want ${commitHash}\n`),
       encodePktLine("ofs-delta\n"),
       encodePktLine("done\n"),
       encodeFlushPkt(),
-    ]);
+    );
 
     const req = createGitRequest("/git-upload-pack", {
       method: "POST",
@@ -244,7 +252,7 @@ describe("createSmartHttpHandler — 请求验证", () => {
     const req = createGitRequest("/git-upload-pack", {
       method: "POST",
       headers: { "Content-Type": "application/x-git-upload-pack-request" },
-      body: Buffer.alloc(0),
+      body: allocBytes(0),
     });
     const res = await handler(req);
     expect(res.status).toBe(400);
@@ -260,12 +268,12 @@ describe("createSmartHttpHandler — 完整请求", () => {
     const { backend, commitHash } = createTestBackend();
     const handler = createSmartHttpHandler(backend);
 
-    const body = Buffer.concat([
+    const body = concatBytes(
       encodePktLine("command=ls-refs\n"),
       encodeDelimiterPkt(),
       encodePktLine("symrefs\n"),
       encodeFlushPkt(),
-    ]);
+    );
 
     const req = createGitRequest("/git-upload-pack", {
       method: "POST",
@@ -285,13 +293,13 @@ describe("createSmartHttpHandler — 完整请求", () => {
     const { backend, commitHash } = createTestBackend();
     const handler = createSmartHttpHandler(backend);
 
-    const body = Buffer.concat([
+    const body = concatBytes(
       encodePktLine("command=fetch\n"),
       encodeDelimiterPkt(),
       encodePktLine(`want ${commitHash}\n`),
       encodePktLine("done\n"),
       encodeFlushPkt(),
-    ]);
+    );
 
     const req = createGitRequest("/git-upload-pack", {
       method: "POST",
@@ -301,8 +309,8 @@ describe("createSmartHttpHandler — 完整请求", () => {
     const res = await handler(req);
     expect(res.status).toBe(200);
 
-    const buf = Buffer.from(await res.arrayBuffer());
-    const bufText = buf.toString("utf-8");
+    const buf = toUint8Array(await res.arrayBuffer());
+    const bufText = bytesToUtf8(buf);
     expect(bufText).toContain("packfile");
   });
 

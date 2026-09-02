@@ -3,6 +3,7 @@
  */
 import { describe, expect, test } from "bun:test";
 
+import { bytes } from "../../helpers/bytes.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
 import {
   rebuildNormalizedChangeIndex,
@@ -14,13 +15,13 @@ import { createVirtualWorktreeMemoryStateStore } from "@/worktree/store/memory-b
 describe("change-index", () => {
   test("refreshChangeRecordForPath() 基于当前最终状态重算记录", () => {
     const repo = createMemoryRepository();
-    const blobHash = repo.writeBlob(Buffer.from("data"));
+    const blobHash = repo.writeBlob(bytes("data"));
     const baseTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]);
     const store = createVirtualWorktreeMemoryStateStore(baseTree);
     const session = openVirtualWorktree(repo.objects, store);
 
     session.move("a.txt", "b.txt");
-    session.writeFile("b.txt", Buffer.from("changed"));
+    session.writeFile("b.txt", bytes("changed"));
 
     refreshChangeRecordForPath(repo.objects, store, "b.txt");
 
@@ -37,13 +38,13 @@ describe("change-index", () => {
 
   test("rebuildNormalizedChangeIndex() 将路径变更收敛为最终 create/remove", () => {
     const repo = createMemoryRepository();
-    const blobHash = repo.writeBlob(Buffer.from("data"));
+    const blobHash = repo.writeBlob(bytes("data"));
     const baseTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]);
     const store = createVirtualWorktreeMemoryStateStore(baseTree);
     const session = openVirtualWorktree(repo.objects, store);
 
     session.move("a.txt", "b.txt");
-    session.writeFile("b.txt", Buffer.from("changed"));
+    session.writeFile("b.txt", bytes("changed"));
     session.copy("b.txt", "c.txt");
 
     const records = rebuildNormalizedChangeIndex(repo.objects, store);

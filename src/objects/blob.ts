@@ -12,13 +12,13 @@ import type { GitBlob } from "../types/index.ts";
  *
  * Blob 的内容就是原始文件数据，无需额外处理。
  */
-export function serializeBlob(blob: GitBlob): Buffer {
+export function serializeBlob(blob: GitBlob): Uint8Array {
   return blob.content;
 }
 
 /**
  * 反序列化 Blob 对象
  */
-export function deserializeBlob(content: Buffer): GitBlob {
+export function deserializeBlob(content: Uint8Array): GitBlob {
   return { type: "blob", content };
 }

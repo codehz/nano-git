@@ -7,6 +7,7 @@ import { mkdirSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { bytes, bytesToUtf8 } from "../../helpers/bytes.ts";
 import { encodeObject, readObject } from "@/objects/raw.ts";
 import { createPackBuilder } from "@/pack/builder/pack-builder.ts";
 import { createPackObjectStore } from "@/pack/store/pack-store.ts";
@@ -38,8 +39,8 @@ describe("PackBuilder", () => {
     const gitDir = tempDir;
     const builder = createPackBuilder(gitDir);
 
-    const blob1: GitBlob = { type: "blob", content: Buffer.from("file1") };
-    const blob2: GitBlob = { type: "blob", content: Buffer.from("file2") };
+    const blob1: GitBlob = { type: "blob", content: bytes("file1") };
+    const blob2: GitBlob = { type: "blob", content: bytes("file2") };
 
     builder.addRaw(encodeObject(blob1));
     builder.addRaw(encodeObject(blob2));
@@ -56,7 +57,7 @@ describe("PackBuilder", () => {
     const gitDir = tempDir;
     const builder = createPackBuilder(gitDir);
 
-    const blob: GitBlob = { type: "blob", content: Buffer.from("test") };
+    const blob: GitBlob = { type: "blob", content: bytes("test") };
     const hash = builder.addRaw(encodeObject(blob));
     builder.build();
 
@@ -64,14 +65,14 @@ describe("PackBuilder", () => {
     const obj = store.read(hash);
     expect(obj.type).toBe("blob");
     if (obj.type === "blob") {
-      expect(obj.content.toString("utf-8")).toBe("test");
+      expect(bytesToUtf8(obj.content)).toBe("test");
     }
   });
 
   test("构建器会去重重复对象", () => {
     const gitDir = tempDir;
     const builder = createPackBuilder(gitDir);
-    const blob: GitBlob = { type: "blob", content: Buffer.from("same content") };
+    const blob: GitBlob = { type: "blob", content: bytes("same content") };
 
     const hash1 = builder.addRaw(encodeObject(blob));
     const hash2 = builder.addRaw(encodeObject(blob));
@@ -85,7 +86,7 @@ describe("PackBuilder", () => {
     const gitDir = tempDir;
     const builder = createPackBuilder(gitDir);
     const blobHash = builder.addRaw(
-      encodeObject({ type: "blob", content: Buffer.from("release artifact") }),
+      encodeObject({ type: "blob", content: bytes("release artifact") }),
     );
 
     const tag: GitTag = {

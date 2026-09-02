@@ -15,6 +15,7 @@
  * @see https://git-scm.com/docs/pack-protocol#_reference_discovery
  */
 
+import { bytesToUtf8 } from "../../bytes.ts";
 import { sha1, type SHA1 } from "../../types/index.ts";
 import { parsePktLines, PktLineError } from "./pkt-line.ts";
 
@@ -70,7 +71,7 @@ const PEELED_TAG_SUFFIX = "^{}";
  * ```
  */
 export function parseRefAdvertisement(
-  data: Buffer,
+  data: Uint8Array,
   service: "git-upload-pack" | "git-receive-pack",
 ): RefAdvertisement {
   const pktLines = parsePktLines(data);
@@ -87,7 +88,7 @@ export function parseRefAdvertisement(
   if (idx < pktLines.length) {
     const firstPkt = pktLines[idx]!;
     if (firstPkt.type === "data") {
-      const firstPayload = firstPkt.payload.toString("utf-8");
+      const firstPayload = bytesToUtf8(firstPkt.payload);
       if (firstPayload.startsWith(SERVICE_HEADER_PREFIX)) {
         // 提取服务名（# service=<name>\n）
         const headerService = firstPayload.slice(SERVICE_HEADER_PREFIX.length).trim();
@@ -125,9 +126,7 @@ export function parseRefAdvertisement(
     // NUL 截断：capabilities 在 NUL 之后
     const nullIndex = payload.indexOf(0);
     const refLine: string = (
-      nullIndex === -1
-        ? payload.toString("utf-8")
-        : payload.subarray(0, nullIndex).toString("utf-8")
+      nullIndex === -1 ? bytesToUtf8(payload) : bytesToUtf8(payload.subarray(0, nullIndex))
     ).trim();
 
     // 跳过空行
@@ -137,7 +136,7 @@ export function parseRefAdvertisement(
 
     // 解析 capabilities（仅第一条 ref 行包含）
     if (nullIndex !== -1 && payload.length > nullIndex + 1) {
-      const capsStr = payload.subarray(nullIndex + 1).toString("utf-8");
+      const capsStr = bytesToUtf8(payload.subarray(nullIndex + 1));
       capabilities = parseCapabilities(capsStr);
     }
 

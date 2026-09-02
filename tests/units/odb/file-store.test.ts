@@ -7,6 +7,7 @@ import { mkdirSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { bytes, bytesToUtf8 } from "../../helpers/bytes.ts";
 import { writeObject } from "@/objects/raw.ts";
 import { createFileObjectStore } from "@/odb/file.ts";
 import { sha1 } from "@/types/index.ts";
@@ -32,7 +33,7 @@ describe("createFileObjectStore()", () => {
   test("写入并读取 blob 对象", () => {
     const blob: GitBlob = {
       type: "blob",
-      content: Buffer.from("hello world"),
+      content: bytes("hello world"),
     };
     const hash = writeObject(store, blob);
     expect(hash).toBe(sha1("95d09f2b10159347eece71399a7e2e907ea3df4f"));
@@ -40,14 +41,14 @@ describe("createFileObjectStore()", () => {
     const read = store.read(hash);
     expect(read.type).toBe("blob");
     if (read.type === "blob") {
-      expect(read.content.toString("utf-8")).toBe("hello world");
+      expect(bytesToUtf8(read.content)).toBe("hello world");
     }
   });
 
   test("对象文件存储在正确的路径", () => {
     const blob: GitBlob = {
       type: "blob",
-      content: Buffer.from("hello world"),
+      content: bytes("hello world"),
     };
     const hash = writeObject(store, blob);
     const expectedPath = join(tempDir, "objects", hash.slice(0, 2), hash.slice(2));

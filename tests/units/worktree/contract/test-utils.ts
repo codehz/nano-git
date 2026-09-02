@@ -11,7 +11,10 @@ export function readTree(repo: ReturnType<typeof createMemoryRepository>, hash: 
   return obj;
 }
 
-export function readBlob(repo: ReturnType<typeof createMemoryRepository>, hash: string): Buffer {
+export function readBlob(
+  repo: ReturnType<typeof createMemoryRepository>,
+  hash: string,
+): Uint8Array {
   const obj = repo.catFile(hash as SHA1);
   if (obj.type !== "blob") throw new Error(`Expected blob, got ${obj.type}`);
   return obj.content;

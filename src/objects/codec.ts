@@ -4,6 +4,7 @@
  * 提供完整对象格式与对象内容格式之间的转换能力。
  */
 
+import { concatBytes, bytesToUtf8, utf8ToBytes } from "../bytes.ts";
 import { InvalidObjectError } from "../errors.ts";
 import { assertObjectType } from "../types/index.ts";
 import { serializeBlob, deserializeBlob } from "./blob.ts";
@@ -22,15 +23,15 @@ import type { GitObject, ObjectType } from "../types/index.ts";
  *
  * @example
  * ```ts
- * const blob: GitBlob = { type: "blob", content: Buffer.from("hello") };
+ * const blob: GitBlob = { type: "blob", content: new TextEncoder().encode("hello") };
  * const data = serialize(blob);
- * // => Buffer("blob 5\0hello")
+ * // => Uint8Array("blob 5\0hello")
  * ```
  */
-export function serialize(obj: GitObject): Buffer {
+export function serialize(obj: GitObject): Uint8Array {
   const content = serializeContent(obj);
   const header = `${obj.type} ${content.length}\0`;
-  return Buffer.concat([Buffer.from(header), content]);
+  return concatBytes(utf8ToBytes(header), content);
 }
 
 /**
@@ -38,17 +39,17 @@ export function serialize(obj: GitObject): Buffer {
  *
  * @example
  * ```ts
- * const obj = deserialize(Buffer.from("blob 5\0hello"));
+ * const obj = deserialize(new TextEncoder().encode("blob 5\0hello"));
  * console.log(obj.type); // => "blob"
  * ```
  */
-export function deserialize(data: Buffer): GitObject {
+export function deserialize(data: Uint8Array): GitObject {
   const nullIndex = data.indexOf(0);
   if (nullIndex === -1) {
     throw new InvalidObjectError("missing null byte");
   }
 
-  const header = data.subarray(0, nullIndex).toString("utf-8");
+  const header = bytesToUtf8(data.subarray(0, nullIndex));
   const match = header.match(/^(blob|tree|commit|tag) (\d+)$/);
   if (!match) {
     throw new InvalidObjectError(`invalid header: ${header}`);
@@ -74,11 +75,11 @@ export function deserialize(data: Buffer): GitObject {
  *
  * @example
  * ```ts
- * const content = serializeContent({ type: "blob", content: Buffer.from("hello") });
- * console.log(content.toString("utf-8")); // => "hello"
+ * const content = serializeContent({ type: "blob", content: new TextEncoder().encode("hello") });
+ * console.log(new TextDecoder().decode(content)); // => "hello"
  * ```
  */
-export function serializeContent(obj: GitObject): Buffer {
+export function serializeContent(obj: GitObject): Uint8Array {
   switch (obj.type) {
     case "blob":
       return serializeBlob(obj);
@@ -96,11 +97,11 @@ export function serializeContent(obj: GitObject): Buffer {
  *
  * @example
  * ```ts
- * const obj = deserializeContent("blob", Buffer.from("hello"));
+ * const obj = deserializeContent("blob", new TextEncoder().encode("hello"));
  * console.log(obj.type); // => "blob"
  * ```
  */
-export function deserializeContent(type: ObjectType, content: Buffer): GitObject {
+export function deserializeContent(type: ObjectType, content: Uint8Array): GitObject {
   switch (type) {
     case "blob":
       return deserializeBlob(content);

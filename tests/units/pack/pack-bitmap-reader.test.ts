@@ -5,14 +5,25 @@
 import { describe, test, expect } from "bun:test";
 import { createHash } from "node:crypto";
 
+import {
+  allocBytes,
+  bytes,
+  concatBytes,
+  copyBytes,
+  hexToBytes,
+  writeU16BE,
+  writeU32BE,
+  writeU64BE,
+  writeU8,
+} from "../../helpers/bytes.ts";
 import { createPackBitmapReader } from "@/pack/bitmap/pack-bitmap-reader.ts";
 
-function appendEwah(buf: Buffer[], bitCount: number, runZeros: number): void {
-  const part = Buffer.alloc(8 + 8 + 4);
-  part.writeUInt32BE(bitCount, 0);
-  part.writeUInt32BE(1, 4);
-  part.writeBigUInt64BE(BigInt(runZeros), 8);
-  part.writeUInt32BE(0, 16);
+function appendEwah(buf: Uint8Array[], bitCount: number, runZeros: number): void {
+  const part = allocBytes(8 + 8 + 4);
+  writeU32BE(part, 0, bitCount);
+  writeU32BE(part, 4, 1);
+  writeU64BE(part, 8, BigInt(runZeros));
+  writeU32BE(part, 16, 0);
   buf.push(part);
 }
 
@@ -20,14 +31,14 @@ function buildMinimalBitmapV1(
   checksumHex: string,
   objectCount: number,
   entryCount: number,
-): Buffer {
-  const parts: Buffer[] = [];
-  const header = Buffer.alloc(32);
-  Buffer.from("BITM").copy(header, 0);
-  header.writeUInt16BE(1, 4);
-  header.writeUInt16BE(0x0001, 6); // FULL_DAG
-  header.writeUInt32BE(entryCount, 8);
-  Buffer.from(checksumHex, "hex").copy(header, 12);
+): Uint8Array {
+  const parts: Uint8Array[] = [];
+  const header = allocBytes(32);
+  copyBytes(header, 0, bytes("BITM"));
+  writeU16BE(header, 4, 1);
+  writeU16BE(header, 6, 0x0001); // FULL_DAG
+  writeU32BE(header, 8, entryCount);
+  copyBytes(header, 12, hexToBytes(checksumHex));
   parts.push(header);
 
   for (let t = 0; t < 4; t++) {
@@ -35,23 +46,23 @@ function buildMinimalBitmapV1(
   }
 
   for (let i = 0; i < entryCount; i++) {
-    const entry = Buffer.alloc(6);
-    entry.writeUInt32BE(i, 0);
-    entry.writeUInt8(0, 4);
-    entry.writeUInt8(0, 5);
+    const entry = allocBytes(6);
+    writeU32BE(entry, 0, i);
+    writeU8(entry, 4, 0);
+    writeU8(entry, 5, 0);
     parts.push(entry);
-    const ewah = Buffer.alloc(8 + 8 + 4);
-    ewah.writeUInt32BE(objectCount, 0);
-    ewah.writeUInt32BE(1, 4);
+    const ewah = allocBytes(8 + 8 + 4);
+    writeU32BE(ewah, 0, objectCount);
+    writeU32BE(ewah, 4, 1);
     const rlw = (1n << 63n) | 1n;
-    ewah.writeBigUInt64BE(rlw, 8);
-    ewah.writeUInt32BE(0, 16);
+    writeU64BE(ewah, 8, rlw);
+    writeU32BE(ewah, 16, 0);
     parts.push(ewah);
   }
 
-  const body = Buffer.concat(parts);
+  const body = concatBytes(...parts);
   const trailer = createHash("sha1").update(body).digest();
-  return Buffer.concat([body, trailer]);
+  return concatBytes(body, trailer);
 }
 
 describe("createPackBitmapReader", () => {

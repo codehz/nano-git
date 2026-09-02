@@ -10,6 +10,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
+import { bytes } from "../../helpers/bytes.ts";
 import { createTempDir, cleanupDir, gitWithTimeout } from "../helpers.ts";
 import { startGitHttpBackendServer } from "./http-server.ts";
 import { startNanoGitServer, createDefaultBackend } from "./nano-git-server.ts";
@@ -47,7 +48,7 @@ async function applyDraft(draft: ImportPlanDraft) {
 function addCommit(backend: RepositoryBackend, parent: SHA1, msg: string): SHA1 {
   const blobHash = writeObject(backend.objects, {
     type: "blob" as const,
-    content: Buffer.from(msg),
+    content: bytes(msg),
   });
   const treeHash = writeObject(backend.objects, {
     type: "tree" as const,
@@ -70,7 +71,7 @@ function addCommit(backend: RepositoryBackend, parent: SHA1, msg: string): SHA1 
 function addRootCommit(backend: RepositoryBackend, msg: string): SHA1 {
   const blobHash = writeObject(backend.objects, {
     type: "blob" as const,
-    content: Buffer.from(msg),
+    content: bytes(msg),
   });
   const treeHash = writeObject(backend.objects, {
     type: "tree" as const,

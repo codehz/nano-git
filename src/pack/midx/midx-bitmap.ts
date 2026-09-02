@@ -5,6 +5,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { bytesToHex, toUint8Array } from "../../bytes.ts";
 import { createPackBitmapReader } from "../bitmap/pack-bitmap-reader.ts";
 import { loadIncrementalMidxChain } from "./midx-chain.ts";
 import { createMidxReader } from "./midx-reader.ts";
@@ -42,7 +43,7 @@ export function resolveMidxTipChecksumHex(packDir: string): string | undefined {
   if (data.length < 20) {
     return undefined;
   }
-  return data.subarray(data.length - 20).toString("hex");
+  return bytesToHex(data.subarray(data.length - 20));
 }
 
 /**
@@ -70,7 +71,7 @@ export function tryLoadTipMidxBitmap(packDir: string): PackBitmapReader | undefi
 }
 
 function loadBitmapIfMatches(
-  data: Buffer,
+  data: Uint8Array,
   expectedChecksumHex: string,
 ): PackBitmapReader | undefined {
   try {

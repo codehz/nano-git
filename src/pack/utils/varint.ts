@@ -2,6 +2,7 @@
  * Packfile 通用变长整数编码/解码
  */
 
+import { toUint8Array } from "../../bytes.ts";
 import { InvalidPackError } from "../../errors.ts";
 
 /**
@@ -19,7 +20,7 @@ import { InvalidPackError } from "../../errors.ts";
  * const [value, bytesRead] = decodeVarint(buf, 0);
  * ```
  */
-export function decodeVarint(buf: Buffer, offset: number): [value: number, bytesRead: number] {
+export function decodeVarint(buf: Uint8Array, offset: number): [value: number, bytesRead: number] {
   let value = 0;
   let shift = 0;
   let bytesRead = 0;
@@ -49,7 +50,7 @@ export function decodeVarint(buf: Buffer, offset: number): [value: number, bytes
  * const encoded = encodeVarint(123);
  * ```
  */
-export function encodeVarint(value: number): Buffer {
+export function encodeVarint(value: number): Uint8Array {
   const bytes: number[] = [];
 
   do {
@@ -61,5 +62,5 @@ export function encodeVarint(value: number): Buffer {
     bytes.push(byte);
   } while (value > 0);
 
-  return Buffer.from(bytes);
+  return Uint8Array.from(bytes);
 }

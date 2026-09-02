@@ -6,6 +6,7 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { allocBytes, bytes, bytesToUtf8, utf8ToBytes } from "../../helpers/bytes.ts";
 import { buildReceivePackRequest } from "@/transport/client/receive-pack/request.ts";
 import { parsePktLines } from "@/transport/protocol/pkt-line.ts";
 import { sha1 } from "@/types/index.ts";
@@ -22,11 +23,11 @@ function makeCmd(refName: string, oldHash = ZERO_HASH, newHash = HASH_A): Receiv
 
 describe("buildReceivePackRequest()", () => {
   test("单命令带 capabilities", () => {
-    const buf = buildReceivePackRequest([makeCmd("refs/heads/main")], Buffer.alloc(0), [
+    const buf = buildReceivePackRequest([makeCmd("refs/heads/main")], allocBytes(0), [
       "report-status",
       "side-band-64k",
     ]);
-    const text = buf.toString("utf-8");
+    const text = bytesToUtf8(buf);
 
     // 首行应包含 capabilities，以 NUL 分隔
     expect(text).toContain("refs/heads/main");
@@ -39,7 +40,7 @@ describe("buildReceivePackRequest()", () => {
   test("多命令仅首行带 capabilities", () => {
     const buf = buildReceivePackRequest(
       [makeCmd("refs/heads/a"), makeCmd("refs/heads/b")],
-      Buffer.alloc(0),
+      allocBytes(0),
       ["report-status"],
     );
     const lines = parsePktLines(buf);
@@ -47,8 +48,8 @@ describe("buildReceivePackRequest()", () => {
     const dataLines = lines.filter((l) => l.type === "data");
     expect(dataLines).toHaveLength(2);
 
-    const text0 = dataLines[0]!.payload.toString("utf-8");
-    const text1 = dataLines[1]!.payload.toString("utf-8");
+    const text0 = bytesToUtf8(dataLines[0]!.payload);
+    const text1 = bytesToUtf8(dataLines[1]!.payload);
 
     // 首行带 capabilities
     expect(text0).toContain("refs/heads/a");
@@ -59,12 +60,11 @@ describe("buildReceivePackRequest()", () => {
   });
 
   test("packfile 数据追加在 flush 之后", () => {
-    const packfile = Buffer.from("PACK\u0000\u0000\u0000\u0002somepackdata");
+    const packfile = bytes("PACK\u0000\u0000\u0000\u0002somepackdata");
     const buf = buildReceivePackRequest([makeCmd("refs/heads/main")], packfile, ["report-status"]);
 
     // 找到最后一个 0000（flush）之后的内容
-    const flushMarker = Buffer.from("0000", "utf-8");
-    const lastFlushIdx = buf.lastIndexOf(flushMarker);
+    const lastFlushIdx = bytesToUtf8(buf).lastIndexOf("0000");
     expect(lastFlushIdx).not.toBe(-1);
 
     const afterFlush = buf.subarray(lastFlushIdx + 4);
@@ -72,7 +72,7 @@ describe("buildReceivePackRequest()", () => {
   });
 
   test("空 packfile 不追加额外数据", () => {
-    const buf = buildReceivePackRequest([makeCmd("refs/heads/main")], Buffer.alloc(0), [
+    const buf = buildReceivePackRequest([makeCmd("refs/heads/main")], allocBytes(0), [
       "report-status",
     ]);
     const lines = parsePktLines(buf);
@@ -87,8 +87,8 @@ describe("buildReceivePackRequest()", () => {
   });
 
   test("无 capabilities 时命令行不带 NUL", () => {
-    const buf = buildReceivePackRequest([makeCmd("refs/heads/main")], Buffer.alloc(0), []);
-    const text = buf.toString("utf-8");
+    const buf = buildReceivePackRequest([makeCmd("refs/heads/main")], allocBytes(0), []);
+    const text = bytesToUtf8(buf);
 
     // 不应包含 NUL
     expect(text).not.toContain("\0");
@@ -98,16 +98,16 @@ describe("buildReceivePackRequest()", () => {
   test("删除操作（000...0 newHash）生成正确命令", () => {
     const buf = buildReceivePackRequest(
       [makeCmd("refs/heads/feature", HASH_A, ZERO_HASH)],
-      Buffer.alloc(0),
+      allocBytes(0),
       ["report-status"],
     );
-    const text = buf.toString("utf-8");
+    const text = bytesToUtf8(buf);
 
     expect(text).toContain(`${HASH_A} ${ZERO_HASH} refs/heads/feature`);
   });
 
   test("空命令列表抛出错误", () => {
-    expect(() => buildReceivePackRequest([], Buffer.alloc(0), ["report-status"])).toThrow(
+    expect(() => buildReceivePackRequest([], allocBytes(0), ["report-status"])).toThrow(
       "At least one command is required",
     );
   });
@@ -115,14 +115,14 @@ describe("buildReceivePackRequest()", () => {
   test("命令内容按 oldHash newHash refName 顺序排列", () => {
     const buf = buildReceivePackRequest(
       [makeCmd("refs/heads/main", HASH_A, HASH_B)],
-      Buffer.alloc(0),
+      allocBytes(0),
       ["report-status"],
     );
     const lines = parsePktLines(buf);
     const dataLine = lines.find((l) => l.type === "data");
     expect(dataLine).toBeDefined();
     if (dataLine?.type === "data") {
-      const payload = dataLine.payload.toString("utf-8");
+      const payload = bytesToUtf8(dataLine.payload);
       // 格式: <old-hash> <new-hash> <ref-name>\0<capabilities>
       const cmdLine = payload.split("\0")[0];
       expect(cmdLine).toBe(`${HASH_A} ${HASH_B} refs/heads/main`);

@@ -5,6 +5,7 @@
  */
 import { describe, expect, test } from "bun:test";
 
+import { bytes, bytesToUtf8 } from "../../../helpers/bytes.ts";
 import { virtualWorktreeBackends } from "./contract.ts";
 import { readBlob, readTree } from "./test-utils.ts";
 import { VirtualPathNotFoundError } from "@/errors.ts";
@@ -14,13 +15,13 @@ describe("VirtualWorktree contract: type swap", () => {
   describe.each(virtualWorktreeBackends)("$name", ({ createWorktree }) => {
     test("基线的目录被删除后创建为同名文件，writeTree 不残留旧子树", () => {
       const repo = createMemoryRepository();
-      const fileHash = repo.writeBlob(Buffer.from("alpha"));
+      const fileHash = repo.writeBlob(bytes("alpha"));
       const subTree = repo.createTree([{ mode: "100644", name: "nested.txt", hash: fileHash }]);
       const baseTree = repo.createTree([{ mode: "040000", name: "dir", hash: subTree }]);
       const session = createWorktree(repo, { baseTree });
 
       session.delete("dir");
-      session.writeFile("dir", Buffer.from("file-now"));
+      session.writeFile("dir", bytes("file-now"));
 
       expect(session.stat("dir")).toMatchObject({ kind: "blob", mode: "100644" });
       expect(() => session.readFile("dir/nested.txt")).toThrow(VirtualPathNotFoundError);
@@ -29,21 +30,21 @@ describe("VirtualWorktree contract: type swap", () => {
       const root = readTree(repo, rootHash);
       expect(root.entries).toHaveLength(1);
       expect(root.entries[0]!).toMatchObject({ mode: "100644", name: "dir" });
-      expect(readBlob(repo, root.entries[0]!.hash).toString()).toBe("file-now");
+      expect(bytesToUtf8(readBlob(repo, root.entries[0]!.hash))).toBe("file-now");
     });
 
     test("基线的文件被删除后创建为同名目录，writeTree 后目录可含子文件", () => {
       const repo = createMemoryRepository();
-      const fileHash = repo.writeBlob(Buffer.from("content"));
+      const fileHash = repo.writeBlob(bytes("content"));
       const baseTree = repo.createTree([{ mode: "100644", name: "f", hash: fileHash }]);
       const session = createWorktree(repo, { baseTree });
 
       session.delete("f");
       session.mkdir("f");
-      session.writeFile("f/child.txt", Buffer.from("child"));
+      session.writeFile("f/child.txt", bytes("child"));
 
       expect(session.stat("f")).toMatchObject({ kind: "tree", mode: "040000" });
-      expect(session.readFile("f/child.txt").toString()).toBe("child");
+      expect(bytesToUtf8(session.readFile("f/child.txt"))).toBe("child");
 
       const rootHash = session.writeTree();
       const root = readTree(repo, rootHash);
@@ -59,24 +60,24 @@ describe("VirtualWorktree contract: type swap", () => {
       const baseTree = repo.createTree([]);
       const session = createWorktree(repo, { baseTree });
 
-      session.writeFile("x", Buffer.from("v1"));
+      session.writeFile("x", bytes("v1"));
       const t1 = session.writeTree();
-      expect(readBlob(repo, readTree(repo, t1).entries[0]!.hash).toString()).toBe("v1");
+      expect(bytesToUtf8(readBlob(repo, readTree(repo, t1).entries[0]!.hash))).toBe("v1");
 
       session.delete("x");
       session.mkdir("x");
-      session.writeFile("x/y.txt", Buffer.from("v2"));
+      session.writeFile("x/y.txt", bytes("v2"));
       const t2 = session.writeTree();
       const t2Root = readTree(repo, t2);
       expect(t2Root.entries[0]!).toMatchObject({ mode: "040000", name: "x" });
       expect(
-        readBlob(repo, readTree(repo, t2Root.entries[0]!.hash).entries[0]!.hash).toString(),
+        bytesToUtf8(readBlob(repo, readTree(repo, t2Root.entries[0]!.hash).entries[0]!.hash)),
       ).toBe("v2");
 
       session.delete("x");
-      session.writeFile("x", Buffer.from("v3"));
+      session.writeFile("x", bytes("v3"));
       const t3 = session.writeTree();
-      expect(readBlob(repo, readTree(repo, t3).entries[0]!.hash).toString()).toBe("v3");
+      expect(bytesToUtf8(readBlob(repo, readTree(repo, t3).entries[0]!.hash))).toBe("v3");
     });
   });
 });

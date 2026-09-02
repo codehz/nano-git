@@ -19,6 +19,7 @@
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
+import { bytesToHex } from "../../bytes.ts";
 import { createPackIndexWriter } from "../idx/pack-index.ts";
 import {
   buildEncodedPack,
@@ -91,7 +92,7 @@ export function createPackBuilder(gitDir: string): PackBuilder {
     const idxData = idxWriter.build(encoded.packChecksum);
 
     // 生成文件名
-    const checksumHex = encoded.packChecksum.toString("hex");
+    const checksumHex = bytesToHex(encoded.packChecksum);
     const packPath = join(packDir, `pack-${checksumHex}.pack`);
     const idxPath = join(packDir, `pack-${checksumHex}.idx`);
 

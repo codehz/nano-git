@@ -5,6 +5,13 @@
 import { describe, test, expect } from "bun:test";
 
 import {
+  allocBytes,
+  bytesEqual,
+  bytesToUtf8,
+  concatBytes,
+  utf8ToBytes,
+} from "../../helpers/bytes.ts";
+import {
   encodePktLine,
   encodeFlushPkt,
   encodeDelimiterPkt,
@@ -22,24 +29,24 @@ import type { PktLineData } from "@/transport/protocol/pkt-line.ts";
 describe("encodePktLine()", () => {
   test("编码字符串 payload", () => {
     const buf = encodePktLine("hello");
-    expect(buf.toString("utf-8")).toBe("0009hello");
+    expect(bytesToUtf8(buf)).toBe("0009hello");
   });
 
   test("编码 Buffer payload", () => {
-    const buf = encodePktLine(Buffer.from("world", "utf-8"));
-    expect(buf.toString("utf-8")).toBe("0009world");
+    const buf = encodePktLine(utf8ToBytes("world"));
+    expect(bytesToUtf8(buf)).toBe("0009world");
   });
 
   test("编码空 payload（0004）", () => {
     const buf = encodePktLine("");
-    expect(buf.toString("utf-8")).toBe("0004");
+    expect(bytesToUtf8(buf)).toBe("0004");
   });
 
   test("编码最大长度 payload（65520 字节）", () => {
     const payload = "a".repeat(65520);
     const buf = encodePktLine(payload);
     expect(buf.length).toBe(65524);
-    expect(buf.subarray(0, 4).toString("utf-8")).toBe("FFF4");
+    expect(bytesToUtf8(buf.subarray(0, 4))).toBe("FFF4");
   });
 
   test("payload 超长应抛出 PktLineError", () => {
@@ -51,19 +58,19 @@ describe("encodePktLine()", () => {
 describe("特殊帧编码", () => {
   test("encodeFlushPkt", () => {
     const buf = encodeFlushPkt();
-    expect(buf.toString("utf-8")).toBe("0000");
+    expect(bytesToUtf8(buf)).toBe("0000");
     expect(buf.length).toBe(4);
   });
 
   test("encodeDelimiterPkt", () => {
     const buf = encodeDelimiterPkt();
-    expect(buf.toString("utf-8")).toBe("0001");
+    expect(bytesToUtf8(buf)).toBe("0001");
     expect(buf.length).toBe(4);
   });
 
   test("encodeResponseEndPkt", () => {
     const buf = encodeResponseEndPkt();
-    expect(buf.toString("utf-8")).toBe("0002");
+    expect(bytesToUtf8(buf)).toBe("0002");
     expect(buf.length).toBe(4);
   });
 });
@@ -74,12 +81,12 @@ describe("特殊帧编码", () => {
 
 describe("parsePktLines()", () => {
   test("解析单个数据帧", () => {
-    const data = Buffer.from("0009hello", "utf-8");
+    const data = utf8ToBytes("0009hello");
     const lines = parsePktLines(data);
     expect(lines).toHaveLength(1);
     expect(lines[0]!.type).toBe("data");
     const line = lines[0] as PktLineData;
-    expect(line.payload.toString("utf-8")).toBe("hello");
+    expect(bytesToUtf8(line.payload)).toBe("hello");
   });
 
   test("解析 flush-pkt", () => {
@@ -104,29 +111,25 @@ describe("parsePktLines()", () => {
   });
 
   test("解析多个数据帧", () => {
-    const data = Buffer.concat([
-      encodePktLine("hello"),
-      encodePktLine("world"),
-      encodePktLine("foo"),
-    ]);
+    const data = concatBytes(encodePktLine("hello"), encodePktLine("world"), encodePktLine("foo"));
     const lines = parsePktLines(data);
     expect(lines).toHaveLength(3);
-    expect((lines[0] as PktLineData).payload.toString("utf-8")).toBe("hello");
-    expect((lines[1] as PktLineData).payload.toString("utf-8")).toBe("world");
-    expect((lines[2] as PktLineData).payload.toString("utf-8")).toBe("foo");
+    expect(bytesToUtf8((lines[0] as PktLineData).payload)).toBe("hello");
+    expect(bytesToUtf8((lines[1] as PktLineData).payload)).toBe("world");
+    expect(bytesToUtf8((lines[2] as PktLineData).payload)).toBe("foo");
   });
 
   test("解析混合帧序列", () => {
-    const data = Buffer.concat([encodePktLine("hello"), encodeFlushPkt()]);
+    const data = concatBytes(encodePktLine("hello"), encodeFlushPkt());
     const lines = parsePktLines(data);
     expect(lines).toHaveLength(2);
     expect(lines[0]!.type).toBe("data");
-    expect((lines[0] as PktLineData).payload.toString("utf-8")).toBe("hello");
+    expect(bytesToUtf8((lines[0] as PktLineData).payload)).toBe("hello");
     expect(lines[1]!.type).toBe("flush");
   });
 
   test("解析空 payload（0004）", () => {
-    const data = Buffer.from("0004", "utf-8");
+    const data = utf8ToBytes("0004");
     const lines = parsePktLines(data);
     expect(lines).toHaveLength(1);
     expect(lines[0]!.type).toBe("data");
@@ -134,7 +137,7 @@ describe("parsePktLines()", () => {
   });
 
   test("空缓冲区返回空列表", () => {
-    const lines = parsePktLines(Buffer.alloc(0));
+    const lines = parsePktLines(allocBytes(0));
     expect(lines).toHaveLength(0);
   });
 });
@@ -145,29 +148,29 @@ describe("parsePktLines()", () => {
 
 describe("parsePktLines() 错误处理", () => {
   test("非法的十六进制长度字段应抛出 PktLineError", () => {
-    const data = Buffer.from("00ZZinvalid", "utf-8");
+    const data = utf8ToBytes("00ZZinvalid");
     expect(() => parsePktLines(data)).toThrow(PktLineError);
   });
 
   test("长度前缀截断应抛出 PktLineError", () => {
-    const data = Buffer.from("00", "utf-8");
+    const data = utf8ToBytes("00");
     expect(() => parsePktLines(data)).toThrow(PktLineError);
   });
 
   test("长度声明大于缓冲区剩余应抛出 PktLineError", () => {
     // 声明 000A（10 字节）但只有 4 字节 payload 数据
-    const data = Buffer.from("000A1234", "utf-8");
+    const data = utf8ToBytes("000A1234");
     expect(() => parsePktLines(data)).toThrow(PktLineError);
   });
 
   test("长度小于 4 的非法数据帧应抛出 PktLineError", () => {
     // 0003 表示总长度 3，但数据帧最小总长度为 4（0004）
-    const data = Buffer.from("0003", "utf-8");
+    const data = utf8ToBytes("0003");
     expect(() => parsePktLines(data)).toThrow(PktLineError);
   });
 
   test("长度超过 65524 应抛出 PktLineError", () => {
-    const data = Buffer.from("FFFF", "utf-8");
+    const data = utf8ToBytes("FFFF");
     expect(() => parsePktLines(data)).toThrow(PktLineError);
   });
 });
@@ -183,7 +186,7 @@ describe("编解码往返", () => {
     const decoded = parsePktLines(encoded);
     expect(decoded).toHaveLength(1);
     expect(decoded[0]!.type).toBe("data");
-    expect((decoded[0] as PktLineData).payload.toString("utf-8")).toBe(original);
+    expect(bytesToUtf8((decoded[0] as PktLineData).payload)).toBe(original);
   });
 
   test("flush-pkt 编码再解码保持一致", () => {
@@ -211,13 +214,13 @@ describe("编解码往返", () => {
     const original = "你好，世界！";
     const encoded = encodePktLine(original);
     const decoded = parsePktLines(encoded);
-    expect((decoded[0] as PktLineData).payload.toString("utf-8")).toBe(original);
+    expect(bytesToUtf8((decoded[0] as PktLineData).payload)).toBe(original);
   });
 
   test("二进制数据编码再解码保持一致", () => {
-    const original = Buffer.from([0x00, 0x01, 0xff, 0xfe, 0x80, 0x7f]);
+    const original = Uint8Array.from([0x00, 0x01, 0xff, 0xfe, 0x80, 0x7f]);
     const encoded = encodePktLine(original);
     const decoded = parsePktLines(encoded);
-    expect(Buffer.compare((decoded[0] as PktLineData).payload, original)).toBe(0);
+    expect(bytesEqual((decoded[0] as PktLineData).payload, original)).toBe(true);
   });
 });

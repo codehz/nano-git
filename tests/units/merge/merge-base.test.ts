@@ -4,6 +4,7 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { bytes } from "../../helpers/bytes.ts";
 import { MergeBaseError } from "@/errors.ts";
 import { findMergeBase, findMergeBases } from "@/merge/merge-base.ts";
 import { writeObject } from "@/objects/raw.ts";
@@ -19,7 +20,7 @@ const author: GitAuthor = {
 };
 
 function writeBlob(store: ReturnType<typeof createMemoryObjectStore>, text: string): SHA1 {
-  return writeObject(store, { type: "blob", content: Buffer.from(text) });
+  return writeObject(store, { type: "blob", content: bytes(text) });
 }
 
 function writeTree(

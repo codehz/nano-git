@@ -3,6 +3,7 @@
  */
 import { describe, expect, test } from "bun:test";
 
+import { bytes, bytesToUtf8 } from "../../../helpers/bytes.ts";
 import { objectDatabaseBackends } from "./contract.ts";
 import { readObject, writeObject } from "@/objects/raw.ts";
 import { sha1 } from "@/types/index.ts";
@@ -24,7 +25,7 @@ describe("ObjectDatabase contract: basic", () => {
 
       const blob: GitBlob = {
         type: "blob",
-        content: Buffer.from("hello world"),
+        content: bytes("hello world"),
       };
       const hash = writeObject(store, blob);
 
@@ -34,7 +35,7 @@ describe("ObjectDatabase contract: basic", () => {
       expect(read.type).toBe("blob");
       expect(read.hash).toBe(hash);
       if (read.type === "blob") {
-        expect(read.content.toString("utf-8")).toBe("hello world");
+        expect(bytesToUtf8(read.content)).toBe("hello world");
       }
     });
 
@@ -44,7 +45,7 @@ describe("ObjectDatabase contract: basic", () => {
 
       const blobHash = writeObject(store, {
         type: "blob",
-        content: Buffer.from("content"),
+        content: bytes("content"),
       });
       const tree: GitTree = {
         type: "tree",
@@ -90,7 +91,7 @@ describe("ObjectDatabase contract: basic", () => {
 
       const blob: GitBlob = {
         type: "blob",
-        content: Buffer.from("duplicate"),
+        content: bytes("duplicate"),
       };
       const hash1 = writeObject(store, blob);
       const hash2 = writeObject(store, blob);
@@ -105,7 +106,7 @@ describe("ObjectDatabase contract: basic", () => {
 
       const hash = writeObject(store, {
         type: "blob",
-        content: Buffer.from("test"),
+        content: bytes("test"),
       });
       const missingHash = sha1("0000000000000000000000000000000000000000");
 
@@ -122,8 +123,8 @@ describe("ObjectDatabase contract: basic", () => {
 
       expect(store.list()).toHaveLength(0);
 
-      const hash1 = writeObject(store, { type: "blob", content: Buffer.from("a") });
-      const hash2 = writeObject(store, { type: "blob", content: Buffer.from("b") });
+      const hash1 = writeObject(store, { type: "blob", content: bytes("a") });
+      const hash2 = writeObject(store, { type: "blob", content: bytes("b") });
 
       const list = store.list();
       expect(list).toHaveLength(2);
@@ -137,7 +138,7 @@ describe("ObjectDatabase contract: basic", () => {
 
       const hash = writeObject(store, {
         type: "blob",
-        content: Buffer.from("to-delete"),
+        content: bytes("to-delete"),
       });
       const missingHash = sha1("0000000000000000000000000000000000000000");
 

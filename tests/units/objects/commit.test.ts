@@ -4,6 +4,7 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { bytes, bytesToUtf8, utf8ToBytes } from "../../helpers/bytes.ts";
 import { deserializeCommit, serializeCommit } from "@/objects/commit.ts";
 import { serialize, deserialize } from "@/objects/index.ts";
 import { sha1 } from "@/types/index.ts";
@@ -29,7 +30,7 @@ describe("Commit 序列化", () => {
     };
 
     const serialized = serialize(commit);
-    const text = serialized.toString("utf-8");
+    const text = bytesToUtf8(serialized);
 
     expect(text).toContain("tree 1111111111111111111111111111111111111111");
     expect(text).toContain("author Test User <test@example.com>");
@@ -49,7 +50,7 @@ describe("Commit 序列化", () => {
     };
 
     const serialized = serialize(commit);
-    const text = serialized.toString("utf-8");
+    const text = bytesToUtf8(serialized);
     expect(text).toContain("parent 2222222222222222222222222222222222222222");
   });
 
@@ -67,7 +68,7 @@ describe("Commit 序列化", () => {
     };
 
     const serialized = serialize(commit);
-    const text = serialized.toString("utf-8");
+    const text = bytesToUtf8(serialized);
     expect(text).toContain("parent 2222222222222222222222222222222222222222");
     expect(text).toContain("parent 3333333333333333333333333333333333333333");
   });
@@ -107,7 +108,7 @@ describe("Commit 序列化", () => {
   });
 
   test("应解析 gpgsig、mergetag 与自定义 header", () => {
-    const raw = Buffer.from(
+    const raw = utf8ToBytes(
       [
         "tree be0788944df13c5d170e050f2fe178360c3df5a5",
         "parent 7fd1a60b01f91b314f59955a4e4d4e80d8edf11d",
@@ -133,7 +134,6 @@ describe("Commit 序列化", () => {
         "body",
         "",
       ].join("\n"),
-      "utf-8",
     );
 
     const commit = deserializeCommit(raw);
@@ -195,7 +195,7 @@ describe("Commit 序列化", () => {
       message: "hello",
     };
 
-    const serialized = serializeCommit(commit).toString("utf-8");
+    const serialized = bytesToUtf8(serializeCommit(commit));
 
     expect(serialized).toBe(
       [
@@ -222,7 +222,7 @@ describe("Commit 序列化", () => {
   });
 
   test("反序列化后的 commit 重新序列化时会归一化为 canonical 顺序", () => {
-    const raw = Buffer.from(
+    const raw = utf8ToBytes(
       [
         "tree be0788944df13c5d170e050f2fe178360c3df5a5",
         "x-extra middle",
@@ -236,12 +236,11 @@ describe("Commit 序列化", () => {
         "msg",
         "",
       ].join("\n"),
-      "utf-8",
     );
 
     const commit = deserializeCommit(raw);
 
-    expect(serializeCommit(commit).toString("utf-8")).toBe(
+    expect(bytesToUtf8(serializeCommit(commit))).toBe(
       [
         "tree be0788944df13c5d170e050f2fe178360c3df5a5",
         "parent 7fd1a60b01f91b314f59955a4e4d4e80d8edf11d",

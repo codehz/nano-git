@@ -35,7 +35,7 @@ export function readRepoTree(source: ObjectSource, hash: SHA1, path: string): Gi
 /**
  * 读取 blob 原始内容；缺失时抛 VirtualOriginUnavailableError
  */
-export function readRepoBlobContent(source: ObjectSource, hash: SHA1, path: string): Buffer {
+export function readRepoBlobContent(source: ObjectSource, hash: SHA1, path: string): Uint8Array {
   const obj = tryReadObject(source, hash);
   if (obj === undefined) {
     throw new VirtualOriginUnavailableError(path, {

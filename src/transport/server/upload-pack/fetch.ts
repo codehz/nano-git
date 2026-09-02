@@ -6,6 +6,7 @@
  * @see https://git-scm.com/docs/protocol-v2#_fetch
  */
 
+import { allocBytes, concatBytes, copyBytes, utf8ToBytes } from "../../../bytes.ts";
 import { tryReadObject } from "../../../objects/raw.ts";
 import { createPackWriter } from "../../../pack/writer/pack-writer.ts";
 import { resolveRefHash } from "../../../refs/resolve.ts";
@@ -532,16 +533,16 @@ function computeObjectsToPack(
  *
  * 每个 pkt-line 帧：<4字节长度><1字节channel><数据>
  */
-function encodePackfileWithSideBand(packfile: Buffer): Buffer[] {
+function encodePackfileWithSideBand(packfile: Uint8Array): Uint8Array[] {
   const maxPayload = MAX_PKT_PAYLOAD - 1; // 1 byte for channel
-  const frames: Buffer[] = [];
+  const frames: Uint8Array[] = [];
   let offset = 0;
 
   while (offset < packfile.length) {
     const chunkSize = Math.min(maxPayload, packfile.length - offset);
-    const frame = Buffer.alloc(1 + chunkSize);
+    const frame = allocBytes(1 + chunkSize);
     frame[0] = CHANNEL_PACKFILE;
-    packfile.copy(frame, 1, offset, offset + chunkSize);
+    copyBytes(frame, 1, packfile, offset, chunkSize);
     frames.push(encodePktLine(frame));
     offset += chunkSize;
   }
@@ -549,9 +550,9 @@ function encodePackfileWithSideBand(packfile: Buffer): Buffer[] {
   return frames;
 }
 
-function encodeSidebandData(payload: string | Buffer, channel = CHANNEL_PACKFILE): Buffer {
-  const data = typeof payload === "string" ? Buffer.from(payload, "utf-8") : payload;
-  return encodePktLine(Buffer.concat([Buffer.from([channel]), data]));
+function encodeSidebandData(payload: string | Uint8Array, channel = CHANNEL_PACKFILE): Uint8Array {
+  const data = typeof payload === "string" ? utf8ToBytes(payload) : payload;
+  return encodePktLine(concatBytes(Uint8Array.from([channel]), data));
 }
 
 function shouldEmitShallowInfoSection(
@@ -600,9 +601,9 @@ function generatePackfileResponse(
   params: FetchServerParams,
   wantedRefs: ReadonlyArray<{ refname: string; oid: SHA1 }>,
   shallowPlan: ShallowFetchPlan,
-  ackSection?: Buffer,
-): Buffer {
-  const parts: Buffer[] = [];
+  ackSection?: Uint8Array,
+): Uint8Array {
+  const parts: Uint8Array[] = [];
 
   // acknowledgments 节（仅协商命中 ready 时）：与后续节之间以 delim-pkt 分隔。
   if (ackSection !== undefined) {
@@ -671,7 +672,7 @@ function generatePackfileResponse(
 
   parts.push(encodeFlushPkt());
 
-  return Buffer.concat(parts);
+  return concatBytes(...parts);
 }
 
 /**
@@ -820,8 +821,8 @@ function wantReachesCommon(
 function buildAcknowledgmentsSection(
   backend: RepositoryBackend,
   params: FetchServerParams,
-): { section: Buffer; ready: boolean } {
-  const parts: Buffer[] = [];
+): { section: Uint8Array; ready: boolean } {
+  const parts: Uint8Array[] = [];
   parts.push(
     params.sidebandAll
       ? encodeSidebandData("acknowledgments\n")
@@ -843,7 +844,7 @@ function buildAcknowledgmentsSection(
     parts.push(params.sidebandAll ? encodeSidebandData("NAK\n") : encodePktLine("NAK\n"));
   }
 
-  return { section: Buffer.concat(parts), ready: ready && !params.waitForDone };
+  return { section: concatBytes(...parts), ready: ready && !params.waitForDone };
 }
 
 /**
@@ -862,7 +863,7 @@ function buildAcknowledgmentsSection(
 export function generateFetchResponse(
   backend: RepositoryBackend,
   params: FetchServerParams,
-): Buffer {
+): Uint8Array {
   if (params.wants.length === 0 && params.wantRefs.length === 0) {
     throw new UploadPackServiceError("fetch: no wants or want-refs specified");
   }
@@ -871,7 +872,7 @@ export function generateFetchResponse(
   for (const want of params.wants) {
     if (!backend.objects.exists(want)) {
       // 用 side-band channel 3 返回错误（packfile 节为响应的最后一节，前面无 delim）
-      const parts: Buffer[] = [];
+      const parts: Uint8Array[] = [];
       parts.push(
         params.sidebandAll ? encodeSidebandData("packfile\n") : encodePktLine("packfile\n"),
       );
@@ -879,14 +880,14 @@ export function generateFetchResponse(
         params.sidebandAll
           ? encodeSidebandData(`want ${want} not found\n`, CHANNEL_FATAL)
           : encodePktLine(
-              Buffer.concat([
-                Buffer.from([CHANNEL_FATAL]),
-                Buffer.from(`want ${want} not found\n`),
-              ]),
+              concatBytes(
+                Uint8Array.from([CHANNEL_FATAL]),
+                utf8ToBytes(`want ${want} not found\n`),
+              ),
             ),
       );
       parts.push(encodeFlushPkt());
-      return Buffer.concat(parts);
+      return concatBytes(...parts);
     }
   }
 
@@ -923,5 +924,5 @@ export function generateFetchResponse(
   }
 
   // 未 ready：仅返回 acknowledgments 节（客户端将继续多轮协商）
-  return Buffer.concat([ackSection, encodeFlushPkt()]);
+  return concatBytes(ackSection, encodeFlushPkt());
 }

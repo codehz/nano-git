@@ -2,6 +2,7 @@
  * 仓库对象操作组装
  */
 
+import { allocBytes } from "../../bytes.ts";
 import { hashObject } from "../../hash/index.ts";
 import { writeObject, readObject } from "../../objects/raw.ts";
 import { diffTrees, readTreeSnapshot } from "../tree/tree-diff.ts";
@@ -32,9 +33,9 @@ import type { RepositoryObjectOperations } from "./object-types.ts";
  * 预计算一份避免每次重复序列化和哈希。
  */
 const EMPTY_TREE_RAW: RawGitObject = {
-  hash: hashObject("tree", Buffer.alloc(0)),
+  hash: hashObject("tree", allocBytes(0)),
   type: "tree",
-  content: Buffer.alloc(0),
+  content: allocBytes(0),
 };
 
 /**
@@ -43,19 +44,19 @@ const EMPTY_TREE_RAW: RawGitObject = {
  * @example
  * ```ts
  * const ops = createObjectRepositoryOperations(store);
- * const hash = ops.writeBlob(Buffer.from("hello"));
+ * const hash = ops.writeBlob(Uint8Array.from("hello"));
  * ```
  */
 export function createObjectRepositoryOperations(
   objects: ObjectDatabase,
 ): RepositoryObjectOperations {
-  function writeBlob(data: Buffer): SHA1 {
+  function writeBlob(data: Uint8Array): SHA1 {
     const blob: GitBlob = { type: "blob", content: data };
     return writeObject(objects, blob);
   }
 
   return {
-    hashObject(data: Buffer): SHA1 {
+    hashObject(data: Uint8Array): SHA1 {
       return hashObject("blob", data);
     },
 

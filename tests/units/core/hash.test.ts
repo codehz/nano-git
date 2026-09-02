@@ -6,6 +6,7 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { bytes } from "../../helpers/bytes.ts";
 import { hashData, hashObject, hashToPath, pathToHash, isValidSHA1 } from "@/hash/index.ts";
 import { sha1 } from "@/types/index.ts";
 
@@ -21,7 +22,7 @@ describe("hashData()", () => {
   });
 
   test("计算 Buffer 的 SHA-1 哈希", () => {
-    const hash = hashData(Buffer.from("hello world"));
+    const hash = hashData(bytes("hello world"));
     expect(hash).toBe(sha1("2aae6c35c94fcfb415dbe95f408b9ce91ee846ed"));
   });
 
@@ -46,23 +47,23 @@ describe("hashData()", () => {
 describe("hashObject()", () => {
   test("blob 对象的哈希 — hello world", () => {
     // 这是 Git 中最经典的哈希值
-    const hash = hashObject("blob", Buffer.from("hello world"));
+    const hash = hashObject("blob", bytes("hello world"));
     expect(hash).toBe(sha1("95d09f2b10159347eece71399a7e2e907ea3df4f"));
   });
 
   test("空 blob 的哈希", () => {
     // git hash-object -t blob --stdin <<< "" (不含换行)
-    const hash = hashObject("blob", Buffer.from(""));
+    const hash = hashObject("blob", bytes(""));
     expect(hash).toBe(sha1("e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"));
   });
 
   test("相同内容相同类型产生相同哈希", () => {
-    const content = Buffer.from("some content");
+    const content = bytes("some content");
     expect(hashObject("blob", content)).toBe(hashObject("blob", content));
   });
 
   test("相同内容不同类型产生不同哈希", () => {
-    const content = Buffer.from("test");
+    const content = bytes("test");
     const blobHash = hashObject("blob", content);
     // tree 和 commit 的内容格式不同，但 hashObject 只关心 header 中的 type
     // 所以相同内容 + 不同类型 = 不同哈希
@@ -71,7 +72,7 @@ describe("hashObject()", () => {
   });
 
   test("哈希格式为 40 位十六进制", () => {
-    const hash = hashObject("blob", Buffer.from("test"));
+    const hash = hashObject("blob", bytes("test"));
     expect(hash).toMatch(/^[0-9a-f]{40}$/);
   });
 });

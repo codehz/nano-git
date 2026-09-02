@@ -6,6 +6,7 @@
  */
 import { describe, expect, test } from "bun:test";
 
+import { bytes, bytesToUtf8 } from "../../../helpers/bytes.ts";
 import { virtualWorktreeBackends } from "./contract.ts";
 import { readTree } from "./test-utils.ts";
 import { VirtualPathNotFoundError } from "@/errors.ts";
@@ -15,7 +16,7 @@ describe("VirtualWorktree contract: multi-path", () => {
   describe.each(virtualWorktreeBackends)("$name", ({ createWorktree }) => {
     test("多个独立路径的并行操作互不干扰", () => {
       const repo = createMemoryRepository();
-      const fileHash = repo.writeBlob(Buffer.from("base"));
+      const fileHash = repo.writeBlob(bytes("base"));
       const baseTree = repo.createTree([
         { mode: "100644", name: "a.txt", hash: fileHash },
         { mode: "100644", name: "b.txt", hash: fileHash },
@@ -23,12 +24,12 @@ describe("VirtualWorktree contract: multi-path", () => {
       ]);
       const session = createWorktree(repo, { baseTree });
 
-      session.writeFile("a.txt", Buffer.from("a-edited"));
-      session.writeFile("new.txt", Buffer.from("new"));
+      session.writeFile("a.txt", bytes("a-edited"));
+      session.writeFile("new.txt", bytes("new"));
       session.delete("b.txt");
-      session.writeFile("dir/child.txt", Buffer.from("child"));
+      session.writeFile("dir/child.txt", bytes("child"));
       session.mkdir("extra");
-      session.writeFile("extra/x.txt", Buffer.from("x"));
+      session.writeFile("extra/x.txt", bytes("x"));
 
       const diff = session.diff();
       expect(diff.find((e) => e.path === "a.txt")).toMatchObject({ kind: "update" });
@@ -46,17 +47,17 @@ describe("VirtualWorktree contract: multi-path", () => {
     test("基线目录中新增与删除交织，overlay 不出现同名冲突", () => {
       const repo = createMemoryRepository();
       const subTree = repo.createTree([
-        { mode: "100644", name: "keep.txt", hash: repo.writeBlob(Buffer.from("keep")) },
+        { mode: "100644", name: "keep.txt", hash: repo.writeBlob(bytes("keep")) },
       ]);
       const baseTree = repo.createTree([{ mode: "040000", name: "dir", hash: subTree }]);
       const session = createWorktree(repo, { baseTree });
 
       session.delete("dir/keep.txt");
-      session.writeFile("dir/keep.txt", Buffer.from("overwrite"));
+      session.writeFile("dir/keep.txt", bytes("overwrite"));
       session.delete("dir/keep.txt");
-      session.writeFile("dir/keep.txt", Buffer.from("final"));
+      session.writeFile("dir/keep.txt", bytes("final"));
 
-      expect(session.readFile("dir/keep.txt").toString()).toBe("final");
+      expect(bytesToUtf8(session.readFile("dir/keep.txt"))).toBe("final");
       expect(session.diff()[0]).toMatchObject({
         kind: "update",
         path: "dir/keep.txt",
@@ -67,21 +68,21 @@ describe("VirtualWorktree contract: multi-path", () => {
       const repo = createMemoryRepository();
       const session = createWorktree(repo, { baseTree: repo.createTree([]) });
 
-      session.writeFile("a.txt", Buffer.from("a"));
-      session.writeFile("b.txt", Buffer.from("b"));
+      session.writeFile("a.txt", bytes("a"));
+      session.writeFile("b.txt", bytes("b"));
       session.mkdir("sub");
-      session.writeFile("sub/x.txt", Buffer.from("x"));
+      session.writeFile("sub/x.txt", bytes("x"));
 
       session.delete("b.txt");
       session.copy("sub", "sub2");
       session.move("a.txt", "sub/a.txt");
-      session.writeFile("sub2/y.txt", Buffer.from("y"));
+      session.writeFile("sub2/y.txt", bytes("y"));
       session.delete("sub/x.txt");
 
-      expect(session.readFile("sub/a.txt").toString()).toBe("a");
+      expect(bytesToUtf8(session.readFile("sub/a.txt"))).toBe("a");
       expect(() => session.readFile("sub/x.txt")).toThrow(VirtualPathNotFoundError);
-      expect(session.readFile("sub2/x.txt").toString()).toBe("x");
-      expect(session.readFile("sub2/y.txt").toString()).toBe("y");
+      expect(bytesToUtf8(session.readFile("sub2/x.txt"))).toBe("x");
+      expect(bytesToUtf8(session.readFile("sub2/y.txt"))).toBe("y");
       expect(session.exists("b.txt")).toBe(false);
       expect(session.exists("a.txt")).toBe(false);
 

@@ -7,6 +7,7 @@ import { existsSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { bytes, bytesToUtf8 } from "../../helpers/bytes.ts";
 import { openTestSqlite } from "../../helpers/sqlite.ts";
 import { createSqliteRepository } from "@/repository/sqlite.ts";
 
@@ -39,11 +40,11 @@ describe("createSqliteRepository()", () => {
   test("writeBlob + catFile 正常", () => {
     using db = openTestSqlite(tmpPath());
     const repo = createSqliteRepository(db);
-    const hash = repo.writeBlob(Buffer.from("hello sqlite"));
+    const hash = repo.writeBlob(bytes("hello sqlite"));
     const obj = repo.catFile(hash);
     expect(obj.type).toBe("blob");
     if (obj.type === "blob") {
-      expect(obj.content.toString("utf-8")).toBe("hello sqlite");
+      expect(bytesToUtf8(obj.content)).toBe("hello sqlite");
     }
   });
 
@@ -68,7 +69,7 @@ describe("createSqliteRepository()", () => {
     const blobHash = (() => {
       using db = openTestSqlite(path);
       const repo = createSqliteRepository(db);
-      return repo.writeBlob(Buffer.from("persist"));
+      return repo.writeBlob(bytes("persist"));
     })();
 
     using db2 = openTestSqlite(path);
@@ -76,7 +77,7 @@ describe("createSqliteRepository()", () => {
     const obj = repo2.catFile(blobHash);
     expect(obj.type).toBe("blob");
     if (obj.type === "blob") {
-      expect(obj.content.toString("utf-8")).toBe("persist");
+      expect(bytesToUtf8(obj.content)).toBe("persist");
     }
     expect(repo2.objects.exists(blobHash)).toBe(true);
   });

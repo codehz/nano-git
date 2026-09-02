@@ -6,6 +6,7 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { bytesToUtf8 } from "../../helpers/bytes.ts";
 import {
   OBJ_COMMIT,
   OBJ_TREE,
@@ -37,7 +38,7 @@ describe("对象类型常量", () => {
 
 describe("Packfile 格式常量", () => {
   test("PACK_SIGNATURE 应为 'PACK'", () => {
-    expect(PACK_SIGNATURE.toString()).toBe("PACK");
+    expect(bytesToUtf8(PACK_SIGNATURE)).toBe("PACK");
   });
   test("PACK_VERSION 应为 2", () => expect(PACK_VERSION).toBe(2));
   test("PACK_HEADER_SIZE 应为 12", () => expect(PACK_HEADER_SIZE).toBe(12));
@@ -46,7 +47,7 @@ describe("Packfile 格式常量", () => {
 
 describe("Index v2 格式常量", () => {
   test("IDX_V2_SIGNATURE 应为 \\xfftOc", () => {
-    expect(IDX_V2_SIGNATURE).toEqual(Buffer.from([0xff, 0x74, 0x4f, 0x63]));
+    expect(IDX_V2_SIGNATURE).toEqual(Uint8Array.from([0xff, 0x74, 0x4f, 0x63]));
   });
   test("IDX_V2_VERSION 应为 2", () => expect(IDX_V2_VERSION).toBe(2));
   test("IDX_V2_HEADER_SIZE 应为 8", () => expect(IDX_V2_HEADER_SIZE).toBe(8));

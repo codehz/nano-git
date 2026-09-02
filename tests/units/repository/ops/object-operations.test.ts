@@ -7,6 +7,7 @@ import { writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { bytes, bytesToUtf8 } from "../../../helpers/bytes.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
 import { createRepositoryFsObjectOperations } from "@/repository/ops/fs-object-operations.ts";
 import { createObjectRepositoryOperations } from "@/repository/ops/object-operations.ts";
@@ -29,19 +30,19 @@ describe("createObjectRepositoryOperations()", () => {
   });
 
   test("hashObject() 计算 blob 哈希但不写入", () => {
-    const hash = ops.hashObject(Buffer.from("hello world"));
+    const hash = ops.hashObject(bytes("hello world"));
     expect(hash).toBe(sha1("95d09f2b10159347eece71399a7e2e907ea3df4f"));
     expect(() => ops.catFile(hash)).toThrow("Object not found");
   });
 
   test("writeBlob() 写入并返回哈希", () => {
-    const hash = ops.writeBlob(Buffer.from("hello world"));
+    const hash = ops.writeBlob(bytes("hello world"));
     expect(hash).toBe(sha1("95d09f2b10159347eece71399a7e2e907ea3df4f"));
 
     const obj = ops.catFile(hash);
     expect(obj.type).toBe("blob");
     if (obj.type === "blob") {
-      expect(obj.content.toString()).toBe("hello world");
+      expect(bytesToUtf8(obj.content)).toBe("hello world");
     }
   });
 
@@ -56,7 +57,7 @@ describe("createObjectRepositoryOperations()", () => {
       const obj = ops.catFile(hash);
       expect(obj.type).toBe("blob");
       if (obj.type === "blob") {
-        expect(obj.content.toString()).toBe("file content");
+        expect(bytesToUtf8(obj.content)).toBe("file content");
       }
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -64,7 +65,7 @@ describe("createObjectRepositoryOperations()", () => {
   });
 
   test("catFile() 读取已存在的对象", () => {
-    const hash = ops.writeBlob(Buffer.from("data"));
+    const hash = ops.writeBlob(bytes("data"));
     const obj = ops.catFile(hash);
     expect(obj.type).toBe("blob");
   });
@@ -75,7 +76,7 @@ describe("createObjectRepositoryOperations()", () => {
   });
 
   test("catFileType() 返回对象类型字符串", () => {
-    const h1 = ops.writeBlob(Buffer.from("a"));
+    const h1 = ops.writeBlob(bytes("a"));
     expect(ops.catFileType(h1)).toBe("blob");
 
     const h2 = ops.createTree([]);
@@ -84,13 +85,13 @@ describe("createObjectRepositoryOperations()", () => {
 
   test("listObjects() 列出所有对象", () => {
     expect(ops.listObjects()).toHaveLength(0);
-    ops.writeBlob(Buffer.from("a"));
-    ops.writeBlob(Buffer.from("b"));
+    ops.writeBlob(bytes("a"));
+    ops.writeBlob(bytes("b"));
     expect(ops.listObjects()).toHaveLength(2);
   });
 
   test("createTree() 创建并写入 tree 对象", () => {
-    const fileHash = ops.writeBlob(Buffer.from("content"));
+    const fileHash = ops.writeBlob(bytes("content"));
     const treeHash = ops.createTree([{ mode: "100644", name: "file.txt", hash: fileHash }]);
 
     const tree = ops.catFile(treeHash);
@@ -148,7 +149,7 @@ describe("createObjectRepositoryOperations()", () => {
   });
 
   test("patchTree() 增量修改 tree", () => {
-    const fileHash = ops.writeBlob(Buffer.from("content"));
+    const fileHash = ops.writeBlob(bytes("content"));
     const treeHash = ops.createTree([]);
 
     const result = ops.patchTree(treeHash, [

@@ -26,7 +26,7 @@ export interface ReceivePackService {
   /**
    * 生成 ref 广告
    */
-  advertise(): Buffer;
+  advertise(): Uint8Array;
 
   /**
    * 处理请求
@@ -34,7 +34,7 @@ export interface ReceivePackService {
    * @param body - 客户端请求体
    * @returns 服务端响应
    */
-  handleRequest(body: Buffer): Buffer;
+  handleRequest(body: Uint8Array): Uint8Array;
 }
 
 /**
@@ -56,11 +56,11 @@ export function createReceivePackService(
   options?: ReceivePackOptions,
 ): ReceivePackService {
   return {
-    advertise(): Buffer {
+    advertise(): Uint8Array {
       return advertiseReceivePack(backend);
     },
 
-    handleRequest(body: Buffer): Buffer {
+    handleRequest(body: Uint8Array): Uint8Array {
       return handleReceivePackRequest(backend, body, options);
     },
   };

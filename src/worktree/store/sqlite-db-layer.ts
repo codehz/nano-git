@@ -2,6 +2,7 @@
  * SQLite VirtualWorktree 数据库层：共享 prepared statements 与按 key 绑定的 state store
  */
 
+import { toUint8Array } from "../../bytes.ts";
 import { VirtualWorktreeError } from "../../errors.ts";
 import { sha1 } from "../../types/index.ts";
 import { createRootDirectoryNode, type WorktreeNode } from "../model/nodes.ts";
@@ -544,7 +545,7 @@ function readNode(row: NodeRow): WorktreeNode {
   };
 }
 
-function readBlobColumn(raw: unknown, column: "content" | "target"): Buffer | undefined {
+function readBlobColumn(raw: unknown, column: "content" | "target"): Uint8Array | undefined {
   if (raw === null) {
     return undefined;
   }
@@ -557,5 +558,5 @@ function readBlobColumn(raw: unknown, column: "content" | "target"): Buffer | un
       `Invalid SQLite worktree ${column} column type: expected Uint8Array, got ${typeof raw} (constructor=${ctorName}, value=${JSON.stringify(raw)})`,
     );
   }
-  return Buffer.from(raw);
+  return toUint8Array(raw);
 }

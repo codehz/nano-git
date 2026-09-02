@@ -21,7 +21,7 @@ export interface GitServiceTransport {
   /** 获取 ref 广告（已解析为 RefAdvertisement，含 defaultBranch） */
   advertise(): Promise<RefAdvertisement>;
   /** 发送协议 RPC 请求，返回原始响应 body */
-  request(body: Buffer): Promise<Buffer>;
+  request(body: Uint8Array): Promise<Uint8Array>;
 }
 
 /**

@@ -15,6 +15,7 @@ import { serialize, deserialize } from "../src/objects/index.ts";
 import { createMemoryRepository } from "../src/repository/memory.ts";
 import { readTree } from "../src/repository/tree/tree-diff.ts";
 import { patchTree } from "../src/repository/tree/tree-patch.ts";
+import { bytes, bytesToUtf8 } from "../tests/helpers/bytes.ts";
 
 import type { GitBlob, GitAuthor } from "../src/types/index.ts";
 
@@ -27,7 +28,7 @@ console.log("=== nano-git 演示 ===\n");
 console.log("1. SHA-1 哈希计算");
 console.log("-".repeat(50));
 
-const helloWorld = Buffer.from("hello world");
+const helloWorld = bytes("hello world");
 const hash = hashObject("blob", helloWorld);
 console.log(`"hello world" 的 blob 哈希: ${hash}`);
 console.log(`预期值: 95d09f2b10159347eece71399a7e2e907ea3df4f`);
@@ -42,17 +43,17 @@ console.log("-".repeat(50));
 
 const blob: GitBlob = {
   type: "blob",
-  content: Buffer.from("Hello, nano-git!"),
+  content: bytes("Hello, nano-git!"),
 };
 
 const serialized = serialize(blob);
-console.log(`序列化后的 blob: ${serialized.toString("utf-8")}`);
+console.log(`序列化后的 blob: ${bytesToUtf8(serialized)}`);
 console.log(`格式: "blob <size>\\0<content>"`);
 
 const deserialized = deserialize(serialized);
 console.log(`反序列化成功: ${deserialized.type === "blob"}`);
 if (deserialized.type === "blob") {
-  console.log(`内容: ${deserialized.content.toString("utf-8")}\n`);
+  console.log(`内容: ${bytesToUtf8(deserialized.content)}\n`);
 }
 
 // ============================================================================
@@ -65,9 +66,9 @@ console.log("-".repeat(50));
 const repo = createMemoryRepository();
 
 // 写入多个 blob
-const file1Hash = repo.writeBlob(Buffer.from("file 1 content"));
-const file2Hash = repo.writeBlob(Buffer.from("file 2 content"));
-const file3Hash = repo.writeBlob(Buffer.from("#!/bin/bash\necho hello"));
+const file1Hash = repo.writeBlob(bytes("file 1 content"));
+const file2Hash = repo.writeBlob(bytes("file 2 content"));
+const file3Hash = repo.writeBlob(bytes("#!/bin/bash\necho hello"));
 
 console.log(`file1.txt: ${file1Hash}`);
 console.log(`file2.txt: ${file2Hash}`);
@@ -131,7 +132,7 @@ console.log("\n5. 创建第二个 Commit（带父节点）");
 console.log("-".repeat(50));
 
 // 修改一个文件
-const file1UpdatedHash = repo.writeBlob(Buffer.from("file 1 content - updated!"));
+const file1UpdatedHash = repo.writeBlob(bytes("file 1 content - updated!"));
 
 // 创建新的 tree
 const tree2Hash = repo.createTree([
@@ -200,7 +201,7 @@ const patchResult = patchTree(repo.objects, tree2Hash, [
     op: "upsert",
     path: "CHANGELOG.md",
     mode: "100644",
-    hash: repo.writeBlob(Buffer.from("# Changelog\n")),
+    hash: repo.writeBlob(bytes("# Changelog\n")),
   },
 ]);
 

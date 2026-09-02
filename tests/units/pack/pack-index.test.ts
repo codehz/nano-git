@@ -4,6 +4,7 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { allocBytes, copyBytes, writeU32BE } from "../../helpers/bytes.ts";
 import { PackIndexError } from "@/errors.ts";
 import { IDX_V2_SIGNATURE, IDX_V2_HEADER_SIZE } from "@/pack/constants.ts";
 import { createPackIndexReader, createPackIndexWriter } from "@/pack/idx/pack-index.ts";
@@ -19,7 +20,7 @@ describe("索引文件读写", () => {
     writer.addEntry({ hash: hash1, offset: 12, crc32: 0x12345678 });
     writer.addEntry({ hash: hash2, offset: 100, crc32: 0x87654321 });
 
-    const packChecksum = Buffer.alloc(20, 0xaa);
+    const packChecksum = allocBytes(20, 0xaa);
     const idxData = writer.build(packChecksum);
 
     const reader = createPackIndexReader(idxData);
@@ -40,7 +41,7 @@ describe("索引文件读写", () => {
     const hash = sha1("1111111111111111111111111111111111111111");
     writer.addEntry({ hash, offset: 12, crc32: 0 });
 
-    const packChecksum = Buffer.alloc(20, 0);
+    const packChecksum = allocBytes(20, 0);
     const idxData = writer.build(packChecksum);
 
     const reader = createPackIndexReader(idxData);
@@ -53,7 +54,7 @@ describe("索引文件读写", () => {
     const hash = sha1("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
     writer.addEntry({ hash, offset: 42, crc32: 0xdeadbeef });
 
-    const idxData = writer.build(Buffer.alloc(20, 0xbb));
+    const idxData = writer.build(allocBytes(20, 0xbb));
     const reader = createPackIndexReader(idxData);
 
     expect(reader.has(hash)).toBe(true);
@@ -70,7 +71,7 @@ describe("索引文件读写", () => {
     writer.addEntry({ hash: hash2, offset: 20, crc32: 2 });
     writer.addEntry({ hash: hash3, offset: 30, crc32: 3 });
 
-    const idxData = writer.build(Buffer.alloc(20, 0xcc));
+    const idxData = writer.build(allocBytes(20, 0xcc));
     const reader = createPackIndexReader(idxData);
 
     const hashes = reader.listHashes();
@@ -89,7 +90,7 @@ describe("索引文件读写", () => {
     writer.addEntry({ hash: hash1, offset: 0x7fffffff, crc32: 0x12345678 }); // 接近边界
     writer.addEntry({ hash: hash2, offset: 0x80000001, crc32: 0x87654321 }); // 需要大偏移量表
 
-    const idxData = writer.build(Buffer.alloc(20, 0xdd));
+    const idxData = writer.build(allocBytes(20, 0xdd));
     const reader = createPackIndexReader(idxData);
 
     expect(reader.objectCount).toBe(2);
@@ -98,19 +99,19 @@ describe("索引文件读写", () => {
   });
 
   test("无效签名抛出 PackIndexError", () => {
-    const data = Buffer.alloc(100);
+    const data = allocBytes(100);
     expect(() => createPackIndexReader(data)).toThrow(PackIndexError);
   });
 
   test("不支持的 version 抛出 PackIndexError", () => {
-    const data = Buffer.alloc(IDX_V2_HEADER_SIZE + 256 * 4 + 100);
-    IDX_V2_SIGNATURE.copy(data, 0);
-    data.writeUInt32BE(3, 4); // version = 3（不支持）
+    const data = allocBytes(IDX_V2_HEADER_SIZE + 256 * 4 + 100);
+    copyBytes(data, 0, IDX_V2_SIGNATURE);
+    writeU32BE(data, 4, 3); // version = 3（不支持）
     expect(() => createPackIndexReader(data)).toThrow(PackIndexError);
   });
 
   test("idx 文件过小抛出 PackIndexError", () => {
-    const data = Buffer.alloc(4); // 比 IDX_V2_HEADER_SIZE (8) 小
+    const data = allocBytes(4); // 比 IDX_V2_HEADER_SIZE (8) 小
     expect(() => createPackIndexReader(data)).toThrow(PackIndexError);
   });
 });

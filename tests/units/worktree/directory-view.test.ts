@@ -5,6 +5,7 @@
  */
 import { describe, test, expect } from "bun:test";
 
+import { bytes } from "../../helpers/bytes.ts";
 import { VirtualNotDirectoryError } from "@/errors.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
 import {
@@ -85,7 +86,7 @@ describe("planAffectedDirectoryChildren()", () => {
 describe("observeDirectoryChildren()", () => {
   test("非目录节点抛 VirtualNotDirectoryError", () => {
     const repo = createMemoryRepository();
-    const blobHash = repo.writeBlob(Buffer.from("a"));
+    const blobHash = repo.writeBlob(bytes("a"));
     const store = createVirtualWorktreeMemoryStateStore(repo.createTree([]));
     const node = {
       id: "file:standalone" as import("@/worktree/model/ids.ts").NodeId,
@@ -107,14 +108,14 @@ describe("observeDirectoryChildren()", () => {
 
   test("同时归纳 overlay 新增和子目录脏项", () => {
     const repo = createMemoryRepository();
-    const childBlob = repo.writeBlob(Buffer.from("base"));
+    const childBlob = repo.writeBlob(bytes("base"));
     const childTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: childBlob }]);
     const baseTree = repo.createTree([{ mode: "040000", name: "src", hash: childTree }]);
     const store = createVirtualWorktreeMemoryStateStore(baseTree);
     const session = openVirtualWorktree(repo.objects, store);
 
-    session.writeFile("src/a.txt", Buffer.from("next"));
-    session.writeFile("new.txt", Buffer.from("created"));
+    session.writeFile("src/a.txt", bytes("next"));
+    session.writeFile("new.txt", bytes("created"));
 
     const root = store.getNode("root" as import("@/worktree/model/ids.ts").NodeId);
     if (root === null || root.state.kind !== "directory") {
@@ -142,7 +143,7 @@ describe("observeDirectoryChildren()", () => {
 describe("observeListedDirectoryChild()", () => {
   test("返回当前节点与完整子路径", () => {
     const repo = createMemoryRepository();
-    const blobHash = repo.writeBlob(Buffer.from("a"));
+    const blobHash = repo.writeBlob(bytes("a"));
     const baseTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]);
     const store = createVirtualWorktreeMemoryStateStore(baseTree);
     const root = store.getNode("root" as import("@/worktree/model/ids.ts").NodeId);
@@ -164,7 +165,7 @@ describe("observeListedDirectoryChild()", () => {
 
   test("节点缺失时返回 null", () => {
     const repo = createMemoryRepository();
-    const blobHash = repo.writeBlob(Buffer.from("a"));
+    const blobHash = repo.writeBlob(bytes("a"));
     const baseTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]);
     const store = createVirtualWorktreeMemoryStateStore(baseTree);
     const root = store.getNode("root" as import("@/worktree/model/ids.ts").NodeId);
@@ -189,7 +190,7 @@ describe("observeNamedDirectoryChild()", () => {
     const store = createVirtualWorktreeMemoryStateStore(repo.createTree([]));
     const session = openVirtualWorktree(repo.objects, store);
 
-    session.writeFile("a.txt", Buffer.from("a"));
+    session.writeFile("a.txt", bytes("a"));
     const root = store.getNode("root" as import("@/worktree/model/ids.ts").NodeId);
     if (root === null || root.state.kind !== "directory") {
       throw new Error("Expected root directory node");
@@ -207,7 +208,7 @@ describe("observeNamedDirectoryChild()", () => {
 
   test("目录节点被 tombstone 后返回 null", () => {
     const repo = createMemoryRepository();
-    const blobHash = repo.writeBlob(Buffer.from("a"));
+    const blobHash = repo.writeBlob(bytes("a"));
     const baseTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]);
     const store = createVirtualWorktreeMemoryStateStore(baseTree);
     const session = openVirtualWorktree(repo.objects, store);
@@ -231,7 +232,7 @@ describe("observeNamedDirectoryChild()", () => {
 
   test("按名称返回当前节点与完整子路径", () => {
     const repo = createMemoryRepository();
-    const blobHash = repo.writeBlob(Buffer.from("a"));
+    const blobHash = repo.writeBlob(bytes("a"));
     const baseTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]);
     const store = createVirtualWorktreeMemoryStateStore(baseTree);
     const root = store.getNode("root" as import("@/worktree/model/ids.ts").NodeId);
@@ -255,7 +256,7 @@ describe("observeNamedDirectoryChild()", () => {
 
   test("名称不可见时返回 null", () => {
     const repo = createMemoryRepository();
-    const blobHash = repo.writeBlob(Buffer.from("a"));
+    const blobHash = repo.writeBlob(bytes("a"));
     const baseTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]);
     const store = createVirtualWorktreeMemoryStateStore(baseTree);
     const root = store.getNode("root" as import("@/worktree/model/ids.ts").NodeId);
@@ -277,7 +278,7 @@ describe("observeNamedDirectoryChild()", () => {
 
   test("传入非目录节点时返回 null", () => {
     const repo = createMemoryRepository();
-    const blobHash = repo.writeBlob(Buffer.from("a"));
+    const blobHash = repo.writeBlob(bytes("a"));
     const node = {
       id: "file:standalone" as import("@/worktree/model/ids.ts").NodeId,
       origin: { kind: "repo-blob" as const, mode: "100644" as const, hash: blobHash },

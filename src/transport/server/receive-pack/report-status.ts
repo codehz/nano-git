@@ -5,6 +5,7 @@
  * 支持 side-band-64k 编码（progress 在 channel 2，report-status 在 channel 1）。
  */
 
+import { allocBytes, bytesToUtf8, concatBytes, copyBytes, utf8ToBytes } from "../../../bytes.ts";
 import { encodePktLine, encodeFlushPkt } from "../../protocol/pkt-line.ts";
 import { CHANNEL_PACKFILE, CHANNEL_PROGRESS } from "./types.ts";
 
@@ -13,10 +14,10 @@ import type { ReceivePackUpdateResult } from "./types.ts";
 /**
  * 编码 side-band 帧
  */
-function encodeSideBandFrame(channel: number, data: Buffer): Buffer {
-  const frame = Buffer.alloc(1 + data.length);
+function encodeSideBandFrame(channel: number, data: Uint8Array): Uint8Array {
+  const frame = allocBytes(1 + data.length);
   frame[0] = channel;
-  data.copy(frame, 1);
+  copyBytes(frame, 1, data);
   return encodePktLine(frame);
 }
 
@@ -50,34 +51,32 @@ export function generateReceivePackReport(
   unpackError: string | undefined,
   refResults: ReceivePackUpdateResult[],
   useSideBand: boolean,
-): Buffer {
-  const statusLines: Buffer[] = [];
+): Uint8Array {
+  const statusLines: Uint8Array[] = [];
 
   // unpack 状态行
   if (unpackOk) {
-    statusLines.push(Buffer.from("unpack ok\n", "utf-8"));
+    statusLines.push(utf8ToBytes("unpack ok\n"));
   } else {
-    statusLines.push(Buffer.from(`unpack ${unpackError ?? "unknown error"}\n`, "utf-8"));
+    statusLines.push(utf8ToBytes(`unpack ${unpackError ?? "unknown error"}\n`));
   }
 
   // ref 更新状态行
   for (const result of refResults) {
     if (result.success) {
-      statusLines.push(Buffer.from(`ok ${result.refName}\n`, "utf-8"));
+      statusLines.push(utf8ToBytes(`ok ${result.refName}\n`));
     } else {
-      statusLines.push(
-        Buffer.from(`ng ${result.refName} ${result.error ?? "unknown error"}\n`, "utf-8"),
-      );
+      statusLines.push(utf8ToBytes(`ng ${result.refName} ${result.error ?? "unknown error"}\n`));
     }
   }
 
-  const reportStatusData = Buffer.concat(statusLines);
+  const reportStatusData = concatBytes(...statusLines);
 
   // 构建 pkt-line 编码的 report-status 序列（无 side-band 时直接发送，有 side-band 时放在 channel 1 中）
-  const pktParts: Buffer[] = [];
+  const pktParts: Uint8Array[] = [];
 
   // 将 report-status 拆分为 pkt-line 帧
-  const lines = reportStatusData.toString("utf-8").split("\n");
+  const lines = bytesToUtf8(reportStatusData).split("\n");
   for (const line of lines) {
     if (line.length > 0) {
       pktParts.push(encodePktLine(line + "\n"));
@@ -85,18 +84,18 @@ export function generateReceivePackReport(
   }
 
   pktParts.push(encodeFlushPkt());
-  const reportPktSequence = Buffer.concat(pktParts);
+  const reportPktSequence = concatBytes(...pktParts);
 
   if (!useSideBand) {
     return reportPktSequence;
   }
 
   // 带 side-band-64k：progress 在 channel 2，report-status（pkt-line 编码）在 channel 1
-  const parts: Buffer[] = [];
+  const parts: Uint8Array[] = [];
 
   // progress 消息
   const progressMsg = `Unpacking objects: 100% (${refResults.length}/${refResults.length})\n`;
-  parts.push(encodeSideBandFrame(CHANNEL_PROGRESS, Buffer.from(progressMsg, "utf-8")));
+  parts.push(encodeSideBandFrame(CHANNEL_PROGRESS, utf8ToBytes(progressMsg)));
 
   // report-status 在 channel 1（内层已是 pkt-line 编码）
   parts.push(encodeSideBandFrame(CHANNEL_PACKFILE, reportPktSequence));
@@ -104,5 +103,5 @@ export function generateReceivePackReport(
   // 外层 flush（终止 side-band demultiplexer）
   parts.push(encodeFlushPkt());
 
-  return Buffer.concat(parts);
+  return concatBytes(...parts);
 }

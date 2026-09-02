@@ -4,6 +4,7 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { bytes } from "../../helpers/bytes.ts";
 import { MergeError } from "@/errors.ts";
 import { planTreeMerge } from "@/merge/three-way.ts";
 import { writeObject } from "@/objects/raw.ts";
@@ -12,7 +13,7 @@ import { createMemoryObjectStore } from "@/odb/memory.ts";
 import type { SHA1 } from "@/types/index.ts";
 
 function writeBlob(store: ReturnType<typeof createMemoryObjectStore>, text: string): SHA1 {
-  return writeObject(store, { type: "blob", content: Buffer.from(text) });
+  return writeObject(store, { type: "blob", content: bytes(text) });
 }
 
 function writeTree(

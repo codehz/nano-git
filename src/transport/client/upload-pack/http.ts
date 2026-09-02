@@ -11,6 +11,7 @@
  * @see https://git-scm.com/docs/protocol-v2#_initial_client_request
  */
 
+import { concatBytes, toUint8Array } from "../../../bytes.ts";
 import { GitError } from "../../../errors.ts";
 import { encodeDelimiterPkt, encodeFlushPkt, encodePktLine } from "../../protocol/pkt-line.ts";
 import { buildGitHttpAuthHeader } from "../http-auth.ts";
@@ -204,7 +205,7 @@ export function createV2HttpTransport(
       const contentType = response.headers.get("content-type") ?? "";
       assertContentType(contentType, ADVERTISE_CONTENT_TYPE, advertiseUrl);
 
-      const data = Buffer.from(await response.arrayBuffer());
+      const data = toUint8Array(await response.arrayBuffer());
       cachedAdvertisement = parseV2CapabilityAdvertisement(data);
       return cachedAdvertisement;
     })().finally(() => {
@@ -223,11 +224,11 @@ export function createV2HttpTransport(
       command: string,
       args?: string[],
       capabilities?: string[],
-      body?: Buffer,
-    ): Promise<Buffer> {
+      body?: Uint8Array,
+    ): Promise<Uint8Array> {
       await advertiseOnce();
 
-      const lines: Buffer[] = [];
+      const lines: Uint8Array[] = [];
       const advertisedObjectFormat = cachedAdvertisement?.capabilities["object-format"];
       const autoCapabilities: string[] = [];
 
@@ -273,7 +274,7 @@ export function createV2HttpTransport(
         lines.push(body);
       }
 
-      const requestBody = Buffer.concat(lines);
+      const requestBody = concatBytes(...lines);
 
       const commandUrl = `${baseUrl}${COMMAND_PATH}`;
       let response: Response;
@@ -297,7 +298,7 @@ export function createV2HttpTransport(
         );
       }
 
-      return Buffer.from(await response.arrayBuffer());
+      return toUint8Array(await response.arrayBuffer());
     },
   };
 }

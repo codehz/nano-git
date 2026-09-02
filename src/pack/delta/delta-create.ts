@@ -7,6 +7,7 @@
  * - 平均时间复杂度 O(B+T)，最坏 O(B×T×K)（K 为每桶候选数上限）
  */
 
+import { concatBytes, toUint8Array } from "../../bytes.ts";
 import { encodeVarint } from "../utils/utils.ts";
 
 interface Match {
@@ -25,13 +26,13 @@ interface Match {
  *
  * @example
  * ```ts
- * const base = Buffer.from("hello world");
- * const target = Buffer.from("hello git");
+ * const base = utf8ToBytes("hello world");
+ * const target = utf8ToBytes("hello git");
  * const delta = createDelta(base, target);
  * ```
  */
-export function createDelta(base: Buffer, target: Buffer): Buffer {
-  const parts: Buffer[] = [];
+export function createDelta(base: Uint8Array, target: Uint8Array): Uint8Array {
+  const parts: Uint8Array[] = [];
 
   parts.push(encodeVarint(base.length));
   parts.push(encodeVarint(target.length));
@@ -63,12 +64,12 @@ export function createDelta(base: Buffer, target: Buffer): Buffer {
     }
 
     const insertSize = insertEnd - targetOffset;
-    parts.push(Buffer.from([insertSize]));
+    parts.push(Uint8Array.from([insertSize]));
     parts.push(target.subarray(targetOffset, insertEnd));
     targetOffset = insertEnd;
   }
 
-  return Buffer.concat(parts);
+  return concatBytes(...parts);
 }
 
 // ============================================================================
@@ -84,7 +85,7 @@ const MAX_CANDIDATES_PER_HASH = 32;
  * 将 base 中每个 4 字节子串的精确值作为哈希键，
  * 映射到出现该子串的偏移量列表。
  */
-function buildHashTable(base: Buffer): Map<number, number[]> {
+function buildHashTable(base: Uint8Array): Map<number, number[]> {
   const table = new Map<number, number[]>();
 
   for (let i = 0; i <= base.length - 4; i++) {
@@ -107,7 +108,7 @@ function buildHashTable(base: Buffer): Map<number, number[]> {
  *
  * 使用精确的 4 字节值（大端序）作为哈希，保证相同 4 字节序列得到相同值。
  */
-function hash4(buf: Buffer, offset: number): number {
+function hash4(buf: Uint8Array, offset: number): number {
   return (
     ((buf[offset]! << 24) |
       (buf[offset + 1]! << 16) |
@@ -126,8 +127,8 @@ function hash4(buf: Buffer, offset: number): number {
  * @param hashTable - buildHashTable 构建的哈希表
  */
 function findBestMatch(
-  base: Buffer,
-  target: Buffer,
+  base: Uint8Array,
+  target: Uint8Array,
   targetOffset: number,
   hashTable: Map<number, number[]>,
 ): Match | null {
@@ -166,7 +167,7 @@ function findBestMatch(
   return bestMatch;
 }
 
-function encodeCopyInstruction(offset: number, size: number): Buffer {
+function encodeCopyInstruction(offset: number, size: number): Uint8Array {
   const bytes: number[] = [];
   let cmd = 0x80;
 
@@ -207,5 +208,5 @@ function encodeCopyInstruction(offset: number, size: number): Buffer {
   bytes.push(cmd);
   bytes.push(...offsetBytes, ...sizeBytes);
 
-  return Buffer.from(bytes);
+  return Uint8Array.from(bytes);
 }

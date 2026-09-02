@@ -15,6 +15,7 @@
  * @see https://git-scm.com/docs/protocol-v2#_request
  */
 
+import { bytesToUtf8 } from "../../../bytes.ts";
 import { parsePktLines } from "../../protocol/pkt-line.ts";
 
 /**
@@ -41,7 +42,7 @@ export interface ParsedCommandRequest {
  * console.log(cmd.command); // "ls-refs"
  * ```
  */
-export function parseCommandRequest(body: Buffer): ParsedCommandRequest {
+export function parseCommandRequest(body: Uint8Array): ParsedCommandRequest {
   const pktLines = parsePktLines(body);
   let command = "";
   const capabilities: string[] = [];
@@ -60,7 +61,7 @@ export function parseCommandRequest(body: Buffer): ParsedCommandRequest {
       continue;
     }
 
-    const text = pkt.payload.toString("utf-8").replace(/\n$/, "");
+    const text = bytesToUtf8(pkt.payload).replace(/\n$/, "");
 
     if (!afterDelimiter) {
       if (text.startsWith("command=")) {

@@ -32,7 +32,7 @@ describe("writeMultiPackIndex", () => {
     const hashes: string[] = [];
     for (let i = 0; i < 3; i++) {
       const builder = createPackBuilder(gitDir);
-      const blob: GitBlob = { type: "blob", content: Buffer.from(`write midx ${i}`) };
+      const blob: GitBlob = { type: "blob", content: Uint8Array.from(`write midx ${i}`) };
       const hash = builder.addRaw(encodeObject(blob));
       builder.build();
       hashes.push(hash);

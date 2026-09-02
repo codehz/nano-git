@@ -3,6 +3,7 @@
  */
 import { describe, expect, test } from "bun:test";
 
+import { bytes } from "../../../helpers/bytes.ts";
 import { objectDatabaseBackends } from "./contract.ts";
 import { encodeObject, readObject, writeObject } from "@/objects/raw.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
@@ -19,7 +20,7 @@ describe("ObjectDatabase contract: raw", () => {
       const raw: RawGitObject = {
         hash: sha1("95d09f2b10159347eece71399a7e2e907ea3df4f"),
         type: "blob",
-        content: Buffer.from("hello world"),
+        content: bytes("hello world"),
       };
 
       store.ingest(raw);
@@ -34,7 +35,7 @@ describe("ObjectDatabase contract: raw", () => {
       const invalidRaw: RawGitObject = {
         hash: sha1("0000000000000000000000000000000000000000"),
         type: "blob",
-        content: Buffer.from("mismatched content"),
+        content: bytes("mismatched content"),
       };
 
       expect(() => store.ingest(invalidRaw)).toThrow("hash mismatch");
@@ -48,7 +49,7 @@ describe("ObjectDatabase contract: raw", () => {
 
       const blob: GitBlob = {
         type: "blob",
-        content: Buffer.from("迁移测试内容"),
+        content: bytes("迁移测试内容"),
       };
       const blobHash = writeObject(memoryStore, blob);
       const tree: GitTree = {
@@ -77,8 +78,8 @@ describe("ObjectDatabase contract: raw", () => {
       const { store } = session;
 
       const raws = [
-        encodeObject({ type: "blob", content: Buffer.from("hello world") }),
-        encodeObject({ type: "blob", content: Buffer.from("hello") }),
+        encodeObject({ type: "blob", content: bytes("hello world") }),
+        encodeObject({ type: "blob", content: bytes("hello") }),
       ];
 
       store.ingestMany(raws);
@@ -94,11 +95,11 @@ describe("ObjectDatabase contract: raw", () => {
       using session = createStore();
       const { store } = session;
 
-      const validRaw = encodeObject({ type: "blob", content: Buffer.from("hello world") });
+      const validRaw = encodeObject({ type: "blob", content: bytes("hello world") });
       const invalidRaw: RawGitObject = {
         hash: sha1("0000000000000000000000000000000000000000"),
         type: "blob",
-        content: Buffer.from("mismatched content"),
+        content: bytes("mismatched content"),
       };
 
       expect(() => store.ingestMany([validRaw, invalidRaw])).toThrow("hash mismatch");

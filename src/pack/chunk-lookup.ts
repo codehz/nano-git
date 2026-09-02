@@ -17,6 +17,7 @@
  * ```
  */
 
+import { bytesToAscii, readU64BE } from "../bytes.ts";
 import { PackIndexError } from "../errors.ts";
 
 // ============================================================================
@@ -63,7 +64,7 @@ export interface ChunkLookupTable {
  * ```
  */
 export function parseChunkLookup(
-  data: Buffer,
+  data: Uint8Array,
   headerSize: number,
   chunkCount: number,
 ): ChunkLookupTable {
@@ -85,8 +86,8 @@ export function parseChunkLookup(
       break;
     }
 
-    const id = idBytes.toString("ascii");
-    const chunkOffset = Number(data.readBigUInt64BE(entryOffset + 4));
+    const id = bytesToAscii(idBytes);
+    const chunkOffset = Number(readU64BE(data, entryOffset + 4));
 
     if (chunkOffset > data.length) {
       throw new PackIndexError(`Chunk ${id} offset out of bounds: ${chunkOffset}`);

@@ -3,6 +3,7 @@
  */
 import { describe, expect, test } from "bun:test";
 
+import { bytes } from "../../helpers/bytes.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
 import { createChangeIndexPlanner } from "@/worktree/engine/change-index-plan.ts";
 import { createVirtualWorktreeMemoryStateStore } from "@/worktree/store/memory-backend.ts";
@@ -22,7 +23,7 @@ describe("createChangeIndexPlanner()", () => {
 
   test("目录路径不能按单路径增量刷新", () => {
     const repo = createMemoryRepository();
-    const fileHash = repo.writeBlob(Buffer.from("a"));
+    const fileHash = repo.writeBlob(bytes("a"));
     const childTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: fileHash }]);
     const baseTree = repo.createTree([{ mode: "040000", name: "src", hash: childTree }]);
     const store = createVirtualWorktreeMemoryStateStore(baseTree);
@@ -33,7 +34,7 @@ describe("createChangeIndexPlanner()", () => {
 
   test("删除目录时保持全量重建策略", () => {
     const repo = createMemoryRepository();
-    const fileHash = repo.writeBlob(Buffer.from("a"));
+    const fileHash = repo.writeBlob(bytes("a"));
     const childTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: fileHash }]);
     const baseTree = repo.createTree([{ mode: "040000", name: "src", hash: childTree }]);
     const store = createVirtualWorktreeMemoryStateStore(baseTree);
@@ -46,7 +47,7 @@ describe("createChangeIndexPlanner()", () => {
 
   test("从目录复制会回退到全量重建", () => {
     const repo = createMemoryRepository();
-    const fileHash = repo.writeBlob(Buffer.from("a"));
+    const fileHash = repo.writeBlob(bytes("a"));
     const childTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: fileHash }]);
     const baseTree = repo.createTree([{ mode: "040000", name: "src", hash: childTree }]);
     const store = createVirtualWorktreeMemoryStateStore(baseTree);

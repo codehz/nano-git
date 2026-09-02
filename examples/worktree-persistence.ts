@@ -19,11 +19,13 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { bytes, bytesToUtf8 } from "../tests/helpers/bytes.ts";
+
 import type { SqliteDatabase } from "nano-git/types/sqlite";
 
 function createFixture() {
   const repo = createMemoryRepository();
-  const readme = repo.writeBlob(Buffer.from("base\n"));
+  const readme = repo.writeBlob(bytes("base\n"));
   const baseTree = repo.createTree([{ mode: "100644", name: "README.md", hash: readme }]);
   return { repo, baseTree };
 }
@@ -36,16 +38,16 @@ function runFileDemo(): void {
     createFileVirtualWorktree(rootDir, { baseTree });
     const worktree = openFileVirtualWorktree(repo.objects, rootDir);
 
-    worktree.writeFile("README.md", Buffer.from("file backend\n"));
+    worktree.writeFile("README.md", bytes("file backend\n"));
     worktree.mkdir("src");
-    worktree.writeFile("src/index.ts", Buffer.from("export const answer = 42;\n"));
+    worktree.writeFile("src/index.ts", bytes("export const answer = 42;\n"));
 
     console.log("=== file worktree ===");
     console.log(`writeTree(): ${worktree.writeTree()}`);
 
     const reopened = openFileVirtualWorktree(repo.objects, rootDir);
-    console.log(`reopen README.md: ${reopened.readFile("README.md").toString().trim()}`);
-    console.log(`reopen src/index.ts: ${reopened.readFile("src/index.ts").toString().trim()}`);
+    console.log(`reopen README.md: ${bytesToUtf8(reopened.readFile("README.md")).trim()}`);
+    console.log(`reopen src/index.ts: ${bytesToUtf8(reopened.readFile("src/index.ts")).trim()}`);
 
     deleteFileVirtualWorktree(rootDir);
   } finally {
@@ -64,7 +66,7 @@ function runSqliteDemo(): void {
     db.createWorktree("demo", { baseTree });
     const worktree = db.openWorktree(repo.objects, "demo");
 
-    worktree.writeFile("README.md", Buffer.from("sqlite backend\n"));
+    worktree.writeFile("README.md", bytes("sqlite backend\n"));
     worktree.writeLink("current", "README.md");
 
     console.log("=== sqlite worktree ===");
@@ -72,7 +74,7 @@ function runSqliteDemo(): void {
     console.log(`keys: ${db.listWorktreeKeys().join(", ")}`);
 
     const reopened = db.openWorktree(repo.objects, "demo");
-    console.log(`reopen README.md: ${reopened.readFile("README.md").toString().trim()}`);
+    console.log(`reopen README.md: ${bytesToUtf8(reopened.readFile("README.md")).trim()}`);
     console.log(`reopen current -> ${reopened.readLink("current")}`);
 
     db.deleteWorktree("demo");

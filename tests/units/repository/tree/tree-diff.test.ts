@@ -4,6 +4,7 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { bytes } from "../../../helpers/bytes.ts";
 import { writeObject } from "@/objects/raw.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
@@ -139,7 +140,7 @@ describe("walkTree()", () => {
 describe("readTreeSnapshot()", () => {
   test("返回包含目录条目的完整快照", () => {
     const repo = createMemoryRepository();
-    const fileHash = repo.writeBlob(Buffer.from("hello"));
+    const fileHash = repo.writeBlob(bytes("hello"));
     const nestedTree = repo.createTree([{ mode: "100644", name: "main.ts", hash: fileHash }]);
     const rootTree = repo.createTree([{ mode: "040000", name: "src", hash: nestedTree }]);
 
@@ -167,11 +168,11 @@ describe("readTreeSnapshot()", () => {
 describe("diffTrees()", () => {
   test("支持 create / remove / update 混合 diff", () => {
     const repo = createMemoryRepository();
-    const beforeReadme = repo.writeBlob(Buffer.from("before"));
-    const afterReadme = repo.writeBlob(Buffer.from("after"));
-    const removedBlob = repo.writeBlob(Buffer.from("old"));
-    const keptBlob = repo.writeBlob(Buffer.from("same"));
-    const addedBlob = repo.writeBlob(Buffer.from("new"));
+    const beforeReadme = repo.writeBlob(bytes("before"));
+    const afterReadme = repo.writeBlob(bytes("after"));
+    const removedBlob = repo.writeBlob(bytes("old"));
+    const keptBlob = repo.writeBlob(bytes("same"));
+    const addedBlob = repo.writeBlob(bytes("new"));
     const oldDir = repo.createTree([{ mode: "100644", name: "keep.txt", hash: keptBlob }]);
     const newDir = repo.createTree([{ mode: "100644", name: "keep.txt", hash: keptBlob }]);
 
@@ -265,7 +266,7 @@ describe("diffTrees()", () => {
 
   test("同路径 mode 变化输出 update", () => {
     const repo = createMemoryRepository();
-    const blob = repo.writeBlob(Buffer.from("same"));
+    const blob = repo.writeBlob(bytes("same"));
     const previousTree = repo.createTree([{ mode: "100644", name: "run", hash: blob }]);
     const currentTree = repo.createTree([{ mode: "100755", name: "run", hash: blob }]);
 
@@ -294,7 +295,7 @@ describe("diffTrees()", () => {
 
   test("相同 tree diff 为空", () => {
     const repo = createMemoryRepository();
-    const fileHash = repo.writeBlob(Buffer.from("same"));
+    const fileHash = repo.writeBlob(bytes("same"));
     const tree = repo.createTree([{ mode: "100644", name: "same.txt", hash: fileHash }]);
 
     expect(diffTrees(repo.objects, tree, tree)).toEqual([]);

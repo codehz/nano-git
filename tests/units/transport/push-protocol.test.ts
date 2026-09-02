@@ -8,6 +8,7 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { allocBytes, concatBytes, utf8ToBytes } from "../../helpers/bytes.ts";
 import { writeObject } from "@/objects/raw.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
 import { createMemoryRefStore } from "@/refs/memory.ts";
@@ -20,23 +21,23 @@ import { sha1, type SHA1 } from "@/types/index.ts";
 
 import type { ReceivePackTransport, RemoteRef } from "@/transport/protocol/types.ts";
 
-function sideBandFrame(channel: number, data: string | Buffer): Buffer {
-  const payload = typeof data === "string" ? Buffer.from(data, "utf-8") : data;
-  return encodePktLine(Buffer.concat([Buffer.from([channel]), payload]));
+function sideBandFrame(channel: number, data: string | Uint8Array): Uint8Array {
+  const payload = typeof data === "string" ? utf8ToBytes(data) : data;
+  return encodePktLine(concatBytes(Uint8Array.from([channel]), payload));
 }
 
-function okReportStatus(refName: string): Buffer {
-  return Buffer.concat([
+function okReportStatus(refName: string): Uint8Array {
+  return concatBytes(
     encodePktLine("unpack ok\n"),
     encodePktLine(`ok ${refName}\n`),
     encodeFlushPkt(),
-  ]);
+  );
 }
 
 function mockTransport(
   caps: Record<string, string | true>,
   refs: RemoteRef[],
-  onRequest: () => Buffer | Promise<Buffer>,
+  onRequest: () => Uint8Array | Promise<Uint8Array>,
 ): ReceivePackTransport {
   return {
     advertise: async () => ({ capabilities: caps, refs }),
@@ -66,11 +67,11 @@ describe("push() 服务端响应完整性校验", () => {
       [{ name: "refs/heads/main", hash: commitHash }],
       () => {
         postCalled = true;
-        return Buffer.concat([
+        return concatBytes(
           encodePktLine("unpack ok\n"),
           encodePktLine("ok refs/heads/other\n"),
           encodeFlushPkt(),
-        ]);
+        );
       },
     );
     const adv = await transport.advertise();
@@ -109,11 +110,11 @@ describe("push() 服务端响应完整性校验", () => {
     let postCalled = false;
     const transport = mockTransport({ "report-status": true }, [], () => {
       postCalled = true;
-      return Buffer.concat([
+      return concatBytes(
         encodePktLine("unpack ok\n"),
         encodePktLine("ok refs/heads/feature-a\n"),
         encodeFlushPkt(),
-      ]);
+      );
     });
     const adv = await transport.advertise();
     const pushPromise = push(store, refStore, transport, adv, {
@@ -150,7 +151,7 @@ describe("push() 服务端响应完整性校验", () => {
       }),
       request: async () => {
         requestCalled = true;
-        return Buffer.alloc(0);
+        return allocBytes(0);
       },
     };
     const adv = await transport.advertise();
@@ -294,12 +295,12 @@ describe("push() 服务端 ng 响应处理", () => {
     let postCalled = false;
     const transport = mockTransport({ "report-status": true }, [], () => {
       postCalled = true;
-      return Buffer.concat([
+      return concatBytes(
         encodePktLine("unpack ok\n"),
         encodePktLine("ok refs/heads/main\n"),
         encodePktLine("ng refs/heads/feature non-fast-forward\n"),
         encodeFlushPkt(),
-      ]);
+      );
     });
     const adv = await transport.advertise();
     const pushPromise = push(store, refStore, transport, adv, {
@@ -327,11 +328,11 @@ describe("push() 服务端 ng 响应处理", () => {
     refStore.write("refs/heads/main", commitHash);
 
     const transport = mockTransport({ "report-status": true }, [], () =>
-      Buffer.concat([
+      concatBytes(
         encodePktLine("unpack ok\n"),
         encodePktLine("ng refs/heads/main hook declined\n"),
         encodeFlushPkt(),
-      ]),
+      ),
     );
     const adv = await transport.advertise();
     const pushPromise = push(store, refStore, transport, adv, {
@@ -362,13 +363,13 @@ describe("push() 服务端 ng 响应处理", () => {
         refs: [],
       }),
       request: async () => {
-        const reportInner = Buffer.concat([
+        const reportInner = concatBytes(
           encodePktLine("unpack ok\n"),
           encodePktLine("ok refs/heads/main\n"),
           encodePktLine("ng refs/heads/feature non-fast-forward\n"),
           encodeFlushPkt(),
-        ]);
-        return Buffer.concat([sideBandFrame(2, "remote: progress"), sideBandFrame(1, reportInner)]);
+        );
+        return concatBytes(sideBandFrame(2, "remote: progress"), sideBandFrame(1, reportInner));
       },
     };
     const adv = await transport.advertise();
@@ -529,7 +530,7 @@ describe("push() 对缺失 unpack 的非法响应处理", () => {
     refStore.write("refs/heads/main", hash);
 
     const transport = mockTransport({ "report-status": true }, [], () =>
-      Buffer.concat([encodePktLine("ok refs/heads/main\n"), encodeFlushPkt()]),
+      concatBytes(encodePktLine("ok refs/heads/main\n"), encodeFlushPkt()),
     );
     const adv = await transport.advertise();
     const pushPromise = push(store, refStore, transport, adv, {

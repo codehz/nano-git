@@ -16,6 +16,7 @@ import {
 import { join } from "node:path";
 import { deflateSync, inflateSync } from "node:zlib";
 
+import { bytesToUtf8, concatBytes, utf8ToBytes, toUint8Array } from "../bytes.ts";
 import { InvalidObjectError, ObjectNotFoundError } from "../errors.ts";
 import { hashToPath } from "../hash/index.ts";
 import { serialize, deserialize } from "../objects/index.ts";
@@ -163,7 +164,7 @@ export function writeRawLooseObject(objectsDir: string, raw: RawGitObject): void
   mkdirSync(dir, { recursive: true });
 
   const header = `${raw.type} ${raw.content.length}\0`;
-  const data = Buffer.concat([Buffer.from(header), raw.content]);
+  const data = concatBytes(utf8ToBytes(header), raw.content);
   writeFileSync(objectPath, deflateSync(data));
 }
 
@@ -197,7 +198,7 @@ export function readRawLooseObject(objectsDir: string, hash: SHA1): RawGitObject
     throw new InvalidObjectError("missing null byte in loose object");
   }
 
-  const header = data.subarray(0, nullIndex).toString("utf-8");
+  const header = bytesToUtf8(data.subarray(0, nullIndex));
   const match = header.match(/^(blob|tree|commit|tag) (\d+)$/);
   if (!match) {
     throw new InvalidObjectError(`invalid loose object header: ${header}`);

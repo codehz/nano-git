@@ -6,6 +6,7 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { bytes, utf8ToBytes } from "../../helpers/bytes.ts";
 import { hashData, hashObject } from "@/hash/digest.ts";
 import { sha1 } from "@/types/index.ts";
 
@@ -23,7 +24,7 @@ describe("hashData()", () => {
   });
 
   test("计算 Buffer 的 SHA-1", () => {
-    const buf = Buffer.from("buffer data");
+    const buf = bytes("buffer data");
     const result = hashData(buf);
     expect(result).toBe(sha1("aa0ad343ea72acb21a796416694b2895dc06e42d"));
   });
@@ -35,20 +36,20 @@ describe("hashData()", () => {
 
 describe("hashObject()", () => {
   test("计算 blob 对象的哈希", () => {
-    const content = Buffer.from("hello world");
+    const content = bytes("hello world");
     const hash = hashObject("blob", content);
     // git hash-object 标准值
     expect(hash).toBe(sha1("95d09f2b10159347eece71399a7e2e907ea3df4f"));
   });
 
   test("相同内容产生相同哈希", () => {
-    const h1 = hashObject("blob", Buffer.from("data"));
-    const h2 = hashObject("blob", Buffer.from("data"));
+    const h1 = hashObject("blob", bytes("data"));
+    const h2 = hashObject("blob", bytes("data"));
     expect(h1).toBe(h2);
   });
 
   test("commit 类型哈希", () => {
-    const content = Buffer.from(
+    const content = utf8ToBytes(
       "tree 4b825dc642cb6eb9a060e54bf899d153036d1e4d\nauthor A <a@a> 0 +0000\ncommitter A <a@a> 0 +0000\n\nmsg\n",
     );
     const hash = hashObject("commit", content);
@@ -57,14 +58,14 @@ describe("hashObject()", () => {
   });
 
   test("tree 类型哈希", () => {
-    const content = Buffer.from("");
+    const content = bytes("");
     const hash = hashObject("tree", content);
     expect(typeof hash).toBe("string");
     expect(hash).toMatch(/^[0-9a-f]{40}$/);
   });
 
   test("tag 类型哈希", () => {
-    const content = Buffer.from(
+    const content = utf8ToBytes(
       "object 95d09f2b10159347eece71399a7e2e907ea3df4f\ntype commit\ntag v1.0\ntagger A <a@a> 0 +0000\n\nmsg\n",
     );
     const hash = hashObject("tag", content);

@@ -153,9 +153,9 @@ function applyRefUpdates(
  */
 export function handleReceivePackRequest(
   backend: RepositoryBackend,
-  body: Buffer,
+  body: Uint8Array,
   options?: ReceivePackOptions,
-): Buffer {
+): Uint8Array {
   // 1. 解析请求
   let parsed: ParsedReceivePackRequest;
   try {

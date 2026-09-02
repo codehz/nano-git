@@ -3,6 +3,7 @@
  */
 import { describe, expect, test } from "bun:test";
 
+import { bytes, bytesToUtf8 } from "../../../helpers/bytes.ts";
 import { persistentVirtualWorktreeBackends } from "./contract.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
 
@@ -10,8 +11,8 @@ describe("VirtualWorktree contract: reopen", () => {
   describe.each(persistentVirtualWorktreeBackends)("$name", ({ createPersistentWorktree }) => {
     test("重新打开后保留未提交的 overlay 与 diff", () => {
       const repo = createMemoryRepository();
-      const trackedHash = repo.writeBlob(Buffer.from("tracked-base"));
-      const nestedHash = repo.writeBlob(Buffer.from("nested-base"));
+      const trackedHash = repo.writeBlob(bytes("tracked-base"));
+      const nestedHash = repo.writeBlob(bytes("nested-base"));
       const dirTree = repo.createTree([{ mode: "100644", name: "keep.txt", hash: nestedHash }]);
       const baseTree = repo.createTree([
         { mode: "100644", name: "tracked.txt", hash: trackedHash },
@@ -19,14 +20,14 @@ describe("VirtualWorktree contract: reopen", () => {
       ]);
       const { worktree, reopen } = createPersistentWorktree(repo, { baseTree });
 
-      worktree.writeFile("tracked.txt", Buffer.from("tracked-edited"));
-      worktree.writeFile("fresh.txt", Buffer.from("fresh"));
+      worktree.writeFile("tracked.txt", bytes("tracked-edited"));
+      worktree.writeFile("fresh.txt", bytes("fresh"));
       worktree.delete("dir");
 
       const reopened = reopen();
       expect(reopened.baseTree).toBe(baseTree);
-      expect(reopened.readFile("tracked.txt").toString()).toBe("tracked-edited");
-      expect(reopened.readFile("fresh.txt").toString()).toBe("fresh");
+      expect(bytesToUtf8(reopened.readFile("tracked.txt"))).toBe("tracked-edited");
+      expect(bytesToUtf8(reopened.readFile("fresh.txt"))).toBe("fresh");
       expect(reopened.exists("dir")).toBe(false);
       const diff = reopened.diff();
       expect(diff.find((entry) => entry.path === "dir")).toMatchObject({
@@ -63,14 +64,14 @@ describe("VirtualWorktree contract: reopen", () => {
         baseTree: repo.createTree([]),
       });
 
-      worktree.writeFile("a.txt", Buffer.from("moved"));
+      worktree.writeFile("a.txt", bytes("moved"));
       worktree.move("a.txt", "deep/nested/b.txt");
       worktree.mkdir("a.txt");
-      worktree.writeFile("a.txt/c.txt", Buffer.from("child"));
+      worktree.writeFile("a.txt/c.txt", bytes("child"));
 
       const reopened = reopen();
-      expect(reopened.readFile("deep/nested/b.txt").toString()).toBe("moved");
-      expect(reopened.readFile("a.txt/c.txt").toString()).toBe("child");
+      expect(bytesToUtf8(reopened.readFile("deep/nested/b.txt"))).toBe("moved");
+      expect(bytesToUtf8(reopened.readFile("a.txt/c.txt"))).toBe("child");
       expect(
         reopened
           .readdir()
@@ -88,8 +89,8 @@ describe("VirtualWorktree contract: reopen", () => {
       worktree.mkdir("a");
 
       const reopened = reopen();
-      expect(() => reopened.writeFile("a/x.txt", Buffer.from("x"))).not.toThrow();
-      expect(reopened.readFile("a/x.txt").toString()).toBe("x");
+      expect(() => reopened.writeFile("a/x.txt", bytes("x"))).not.toThrow();
+      expect(bytesToUtf8(reopened.readFile("a/x.txt"))).toBe("x");
     });
 
     test("重新打开后新建同级节点不会覆盖未访问的深层持久化节点", () => {
@@ -99,13 +100,13 @@ describe("VirtualWorktree contract: reopen", () => {
       });
 
       worktree.mkdir("a");
-      worktree.writeFile("a/b.txt", Buffer.from("nested"));
+      worktree.writeFile("a/b.txt", bytes("nested"));
 
       const reopened = reopen();
-      reopened.writeFile("c.txt", Buffer.from("root"));
+      reopened.writeFile("c.txt", bytes("root"));
 
-      expect(reopened.readFile("a/b.txt").toString()).toBe("nested");
-      expect(reopened.readFile("c.txt").toString()).toBe("root");
+      expect(bytesToUtf8(reopened.readFile("a/b.txt"))).toBe("nested");
+      expect(bytesToUtf8(reopened.readFile("c.txt"))).toBe("root");
     });
 
     test("writeTree 后重新打开仍保留当前 overlay，且 baseTree 不变", () => {
@@ -113,14 +114,14 @@ describe("VirtualWorktree contract: reopen", () => {
       const baseTree = repo.createTree([]);
       const { worktree, reopen } = createPersistentWorktree(repo, { baseTree });
 
-      worktree.writeFile("file.txt", Buffer.from("data"));
+      worktree.writeFile("file.txt", bytes("data"));
       const writtenTree = worktree.writeTree();
 
       expect(writtenTree).not.toBe(baseTree);
 
       const reopened = reopen();
       expect(reopened.baseTree).toBe(baseTree);
-      expect(reopened.readFile("file.txt").toString()).toBe("data");
+      expect(bytesToUtf8(reopened.readFile("file.txt"))).toBe("data");
       expect(reopened.diff()).toMatchObject([
         {
           kind: "create",
@@ -132,19 +133,19 @@ describe("VirtualWorktree contract: reopen", () => {
 
     test("reset 后重新打开反映新基线并清空旧 overlay", () => {
       const repo = createMemoryRepository();
-      const afterHash = repo.writeBlob(Buffer.from("after"));
+      const afterHash = repo.writeBlob(bytes("after"));
       const nextTree = repo.createTree([{ mode: "100644", name: "after.txt", hash: afterHash }]);
       const { worktree, reopen } = createPersistentWorktree(repo, {
         baseTree: repo.createTree([]),
       });
 
-      worktree.writeFile("before.txt", Buffer.from("before"));
+      worktree.writeFile("before.txt", bytes("before"));
       worktree.reset(nextTree);
 
       const reopened = reopen();
       expect(reopened.baseTree).toBe(nextTree);
       expect(reopened.exists("before.txt")).toBe(false);
-      expect(reopened.readFile("after.txt").toString()).toBe("after");
+      expect(bytesToUtf8(reopened.readFile("after.txt"))).toBe("after");
       expect(reopened.diff()).toEqual([]);
     });
   });

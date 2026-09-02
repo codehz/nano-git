@@ -7,6 +7,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { bytes, bytesToHex } from "../../helpers/bytes.ts";
 import { encodeObject } from "@/objects/raw.ts";
 import { createPackBuilder } from "@/pack/builder/pack-builder.ts";
 import { loadIncrementalMidxChain, tryLoadMidxChainTip } from "@/pack/midx/midx-chain.ts";
@@ -46,12 +47,12 @@ describe("loadIncrementalMidxChain", () => {
     mkdirSync(packDir, { recursive: true });
 
     const builder1 = createPackBuilder(gitDir);
-    const blob1: GitBlob = { type: "blob", content: Buffer.from("base layer") };
+    const blob1: GitBlob = { type: "blob", content: bytes("base layer") };
     const hash1 = builder1.addRaw(encodeObject(blob1));
     builder1.build();
 
     const builder2 = createPackBuilder(gitDir);
-    const blob2: GitBlob = { type: "blob", content: Buffer.from("tip layer only") };
+    const blob2: GitBlob = { type: "blob", content: bytes("tip layer only") };
     const hash2 = builder2.addRaw(encodeObject(blob2));
     builder2.build();
 
@@ -67,8 +68,8 @@ describe("loadIncrementalMidxChain", () => {
       { version: 2 },
     );
 
-    const baseId = baseMidx.subarray(baseMidx.length - 20).toString("hex");
-    const tipId = tipMidx.subarray(tipMidx.length - 20).toString("hex");
+    const baseId = bytesToHex(baseMidx.subarray(baseMidx.length - 20));
+    const tipId = bytesToHex(tipMidx.subarray(tipMidx.length - 20));
 
     const chainDir = join(packDir, "multi-pack-index.d");
     mkdirSync(chainDir, { recursive: true });
@@ -98,14 +99,14 @@ describe("loadIncrementalMidxChain", () => {
     mkdirSync(packDir, { recursive: true });
 
     const builder1 = createPackBuilder(gitDir);
-    const blob1: GitBlob = { type: "blob", content: Buffer.from("inc base") };
+    const blob1: GitBlob = { type: "blob", content: bytes("inc base") };
     const hash1 = builder1.addRaw(encodeObject(blob1));
     builder1.build();
 
     writeIncrementalMultiPackIndexFile(packDir, { version: 2 });
 
     const builder2 = createPackBuilder(gitDir);
-    const blob2: GitBlob = { type: "blob", content: Buffer.from("inc tip") };
+    const blob2: GitBlob = { type: "blob", content: bytes("inc tip") };
     const hash2 = builder2.addRaw(encodeObject(blob2));
     builder2.build();
 

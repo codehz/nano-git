@@ -9,6 +9,7 @@ import { existsSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { bytes, bytesToUtf8 } from "../../helpers/bytes.ts";
 import { openTestSqlite } from "../../helpers/sqlite.ts";
 import { createSqliteRepositoryBackend } from "@/backend/sqlite.ts";
 import { createRepository } from "@/repository/create.ts";
@@ -61,7 +62,7 @@ describe("createSqliteRepositoryBackend()", () => {
     const raw = {
       hash: sha1("95d09f2b10159347eece71399a7e2e907ea3df4f"),
       type: "blob" as const,
-      content: Buffer.from("hello world"),
+      content: bytes("hello world"),
     };
     ingest(raw);
     const result = read(raw.hash);
@@ -82,12 +83,12 @@ describe("createSqliteRepositoryBackend()", () => {
   test("通过 createRepository 可正常使用", () => {
     const repo = createRepository(backend);
 
-    const hash = repo.writeBlob(Buffer.from("hello repo"));
+    const hash = repo.writeBlob(bytes("hello repo"));
 
     const obj = repo.catFile(hash);
     expect(obj.type).toBe("blob");
     if (obj.type === "blob") {
-      expect(obj.content.toString("utf-8")).toBe("hello repo");
+      expect(bytesToUtf8(obj.content)).toBe("hello repo");
     }
   });
 
@@ -97,7 +98,7 @@ describe("createSqliteRepositoryBackend()", () => {
     backend.objects.ingest({
       hash: blobHash,
       type: "blob",
-      content: Buffer.from("hello world"),
+      content: bytes("hello world"),
     });
     db[Symbol.dispose]();
 

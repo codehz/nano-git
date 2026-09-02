@@ -13,6 +13,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 
+import { toUint8Array, utf8ToBytes } from "../../bytes.ts";
 import { VirtualWorktreeError } from "../../errors.ts";
 import { openVirtualWorktree } from "../engine/worktree.ts";
 import { createRootDirectoryNode, type WorktreeNode } from "../model/nodes.ts";
@@ -398,7 +399,7 @@ function serializeDirectoryNode(node: WorktreeNode): FileNodeRecord {
   };
 }
 
-function persistPayload(contentDir: string, nodeId: NodeId, payload: Buffer): string {
+function persistPayload(contentDir: string, nodeId: NodeId, payload: Uint8Array): string {
   mkdirSync(contentDir, { recursive: true });
   const payloadRef = `${nodeId}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
   writeBufferAtomic(getContentPath(contentDir, payloadRef), payload);
@@ -473,14 +474,14 @@ function restoreNode(record: FileNodeRecord, contentDir: string): WorktreeNode {
   };
 }
 
-function readPayload(contentDir: string, payloadRef: string): Buffer {
+function readPayload(contentDir: string, payloadRef: string): Uint8Array {
   const path = getContentPath(contentDir, payloadRef);
   if (!existsSync(path)) {
     throw new VirtualWorktreeError(`Virtual worktree payload not found: ${payloadRef}`, {
       path: payloadRef,
     });
   }
-  return readFileSync(path);
+  return toUint8Array(readFileSync(path));
 }
 
 function readJson<T>(path: string): T {
@@ -488,10 +489,10 @@ function readJson<T>(path: string): T {
 }
 
 function writeJsonAtomic(path: string, value: unknown): void {
-  writeBufferAtomic(path, Buffer.from(JSON.stringify(value), "utf-8"));
+  writeBufferAtomic(path, utf8ToBytes(JSON.stringify(value)));
 }
 
-function writeBufferAtomic(path: string, value: Buffer): void {
+function writeBufferAtomic(path: string, value: Uint8Array): void {
   mkdirSync(dirname(path), { recursive: true });
   const tempPath = `${path}.tmp`;
   writeFileSync(tempPath, value);

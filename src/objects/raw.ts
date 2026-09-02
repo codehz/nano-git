@@ -25,7 +25,7 @@ import type { ObjectDatabase, ObjectSource } from "../types/odb.ts";
  *
  * @example
  * ```ts
- * const blob: GitBlob = { type: "blob", content: Buffer.from("hello") };
+ * const blob: GitBlob = { type: "blob", content: Uint8Array.from("hello") };
  * const raw = encodeObject(blob);
  * console.log(raw.hash); // => SHA-1
  * console.log(raw.content); // => Buffer("hello")
@@ -47,7 +47,7 @@ export function encodeObject(obj: GitObject): RawGitObject {
  *
  * @example
  * ```ts
- * const raw: RawGitObject = { hash, type: "blob", content: Buffer.from("hello") };
+ * const raw: RawGitObject = { hash, type: "blob", content: Uint8Array.from("hello") };
  * const obj = decodeObject(raw);
  * console.log(obj.type); // => "blob"
  * ```
@@ -67,7 +67,7 @@ export function decodeObject(raw: RawGitObject): GitObject {
  *
  * @example
  * ```ts
- * const hash = writeObject(db, { type: "blob", content: Buffer.from("hello") });
+ * const hash = writeObject(db, { type: "blob", content: Uint8Array.from("hello") });
  * ```
  */
 export function writeObject(db: ObjectDatabase, obj: GitObject): SHA1 {

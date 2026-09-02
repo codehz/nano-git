@@ -12,10 +12,10 @@ let crc32Table: Uint32Array | null = null;
  *
  * @example
  * ```ts
- * const crc = crc32Value(Buffer.from("hello"));
+ * const crc = crc32Value(Uint8Array.from("hello"));
  * ```
  */
-export function crc32Value(data: Buffer): number {
+export function crc32Value(data: Uint8Array): number {
   const table = getCRC32Table();
 
   let crc = 0xffffffff;

@@ -12,6 +12,7 @@
  * @see https://git-scm.com/docs/git-receive-pack#_request
  */
 
+import { concatBytes } from "../../../bytes.ts";
 import { encodePktLine, encodeFlushPkt } from "../../protocol/pkt-line.ts";
 import { PushError } from "./push-error.ts";
 
@@ -61,14 +62,14 @@ export interface ReceivePackCommand {
  */
 export function buildReceivePackRequest(
   commands: ReceivePackCommand[],
-  packfile: Buffer,
+  packfile: Uint8Array,
   capabilities: string[],
-): Buffer {
+): Uint8Array {
   if (commands.length === 0) {
     throw new PushError("At least one command is required");
   }
 
-  const chunks: Buffer[] = [];
+  const chunks: Uint8Array[] = [];
 
   // 命令行：首行带 capabilities，后续不带
   for (let i = 0; i < commands.length; i++) {
@@ -90,5 +91,5 @@ export function buildReceivePackRequest(
     chunks.push(packfile);
   }
 
-  return Buffer.concat(chunks);
+  return concatBytes(...chunks);
 }

@@ -7,6 +7,7 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { allocBytes, bytes, bytesToUtf8, concatBytes } from "../../helpers/bytes.ts";
 import {
   buildReceivePackRequest,
   type ReceivePackCommand,
@@ -39,13 +40,13 @@ describe("buildReceivePackRequest", () => {
     const commands: ReceivePackCommand[] = [
       { oldHash: ZERO_HASH, newHash: HASH_A, refName: MAIN_REF },
     ];
-    const packfile = Buffer.from("PACKDATA");
+    const packfile = bytes("PACKDATA");
     const caps: string[] = [];
 
     const result = buildReceivePackRequest(commands, packfile, caps);
 
     // 结果尾部应为 packfile 数据
-    expect(result.subarray(result.length - 8).toString()).toBe("PACKDATA");
+    expect(bytesToUtf8(result.subarray(result.length - 8))).toBe("PACKDATA");
 
     // 解析 pkt-line 部分（截掉 packfile 后）
     const pktLinePortion = result.subarray(0, result.length - 8);
@@ -55,7 +56,7 @@ describe("buildReceivePackRequest", () => {
     expect(lines[0]!.type).toBe("data");
     expect(lines[1]!.type).toBe("flush");
 
-    const cmdLine = (lines[0] as PktLineData).payload.toString("utf-8");
+    const cmdLine = bytesToUtf8((lines[0] as PktLineData).payload);
     expect(cmdLine).toBe(`${ZERO_HASH} ${HASH_A} ${MAIN_REF}\n`);
   });
 
@@ -63,7 +64,7 @@ describe("buildReceivePackRequest", () => {
     const commands: ReceivePackCommand[] = [
       { oldHash: ZERO_HASH, newHash: HASH_A, refName: MAIN_REF },
     ];
-    const packfile = Buffer.alloc(0);
+    const packfile = allocBytes(0);
     const caps = ["report-status", "side-band-64k"];
 
     const result = buildReceivePackRequest(commands, packfile, caps);
@@ -72,7 +73,7 @@ describe("buildReceivePackRequest", () => {
     expect(lines.length).toBe(2);
     expect(lines[0]!.type).toBe("data");
 
-    const cmdLine = (lines[0] as PktLineData).payload.toString("utf-8");
+    const cmdLine = bytesToUtf8((lines[0] as PktLineData).payload);
     // capabilities 应跟在 NUL 之后
     expect(cmdLine).toBe(`${ZERO_HASH} ${HASH_A} ${MAIN_REF}\0report-status side-band-64k\n`);
   });
@@ -82,7 +83,7 @@ describe("buildReceivePackRequest", () => {
       { oldHash: ZERO_HASH, newHash: HASH_A, refName: MAIN_REF },
       { oldHash: HASH_A, newHash: HASH_B, refName: FEATURE_REF },
     ];
-    const packfile = Buffer.alloc(0);
+    const packfile = allocBytes(0);
     const caps: string[] = [];
 
     const result = buildReceivePackRequest(commands, packfile, caps);
@@ -93,8 +94,8 @@ describe("buildReceivePackRequest", () => {
     expect(lines[1]!.type).toBe("data");
     expect(lines[2]!.type).toBe("flush");
 
-    const line0 = (lines[0] as PktLineData).payload.toString("utf-8");
-    const line1 = (lines[1] as PktLineData).payload.toString("utf-8");
+    const line0 = bytesToUtf8((lines[0] as PktLineData).payload);
+    const line1 = bytesToUtf8((lines[1] as PktLineData).payload);
     expect(line0).toBe(`${ZERO_HASH} ${HASH_A} ${MAIN_REF}\n`);
     expect(line1).toBe(`${HASH_A} ${HASH_B} ${FEATURE_REF}\n`);
   });
@@ -103,7 +104,7 @@ describe("buildReceivePackRequest", () => {
     const commands: ReceivePackCommand[] = [
       { oldHash: HASH_A, newHash: ZERO_HASH, refName: MAIN_REF },
     ];
-    const packfile = Buffer.alloc(0);
+    const packfile = allocBytes(0);
     const caps: string[] = [];
 
     const result = buildReceivePackRequest(commands, packfile, caps);
@@ -114,13 +115,13 @@ describe("buildReceivePackRequest", () => {
     expect(lines[0]!.type).toBe("data");
     expect(lines[1]!.type).toBe("flush");
 
-    const cmdLine = (lines[0] as PktLineData).payload.toString("utf-8");
+    const cmdLine = bytesToUtf8((lines[0] as PktLineData).payload);
     expect(cmdLine).toBe(`${HASH_A} ${ZERO_HASH} ${MAIN_REF}\n`);
   });
 
   test("至少一条命令（空命令列表抛错）", () => {
     expect(() => {
-      buildReceivePackRequest([], Buffer.alloc(0), []);
+      buildReceivePackRequest([], allocBytes(0), []);
     }).toThrow("At least one command is required");
   });
 });
@@ -131,11 +132,11 @@ describe("buildReceivePackRequest", () => {
 
 describe("parseReceivePackResult", () => {
   test("解析 ok 行", () => {
-    const data = Buffer.concat([
+    const data = concatBytes(
       encodePktLine("unpack ok\n"),
       encodePktLine("ok refs/heads/main\n"),
       encodeFlushPkt(),
-    ]);
+    );
 
     const result = parseReceivePackResult(data);
     expect(result).toHaveLength(1);
@@ -145,11 +146,11 @@ describe("parseReceivePackResult", () => {
   });
 
   test("解析 ng 行", () => {
-    const data = Buffer.concat([
+    const data = concatBytes(
       encodePktLine("unpack ok\n"),
       encodePktLine("ng refs/heads/main non-fast-forward\n"),
       encodeFlushPkt(),
-    ]);
+    );
 
     const result = parseReceivePackResult(data);
     expect(result).toHaveLength(1);
@@ -159,11 +160,11 @@ describe("parseReceivePackResult", () => {
   });
 
   test("unpack ok 行被跳过", () => {
-    const data = Buffer.concat([
+    const data = concatBytes(
       encodePktLine("unpack ok\n"),
       encodePktLine("ok refs/heads/main\n"),
       encodeFlushPkt(),
-    ]);
+    );
 
     const result = parseReceivePackResult(data);
     expect(result).toHaveLength(1);
@@ -172,30 +173,30 @@ describe("parseReceivePackResult", () => {
   });
 
   test("unpack error 行导致报错", () => {
-    const data = Buffer.concat([encodePktLine("unpack index error\n"), encodeFlushPkt()]);
+    const data = concatBytes(encodePktLine("unpack index error\n"), encodeFlushPkt());
 
     expect(() => parseReceivePackResult(data)).toThrow(ReceivePackResultError);
     expect(() => parseReceivePackResult(data)).toThrow("index error");
   });
 
   test("unpack error 后跟随 ng 行仍应先报 unpack 错误", () => {
-    const data = Buffer.concat([
+    const data = concatBytes(
       encodePktLine("unpack index error\n"),
       encodePktLine("ng refs/heads/main unpack fail\n"),
       encodeFlushPkt(),
-    ]);
+    );
 
     expect(() => parseReceivePackResult(data)).toThrow(ReceivePackResultError);
   });
 
   test("多行混合", () => {
-    const data = Buffer.concat([
+    const data = concatBytes(
       encodePktLine("unpack ok\n"),
       encodePktLine("ok refs/heads/main\n"),
       encodePktLine("ok refs/heads/feature\n"),
       encodePktLine("ng refs/heads/broken some error\n"),
       encodeFlushPkt(),
-    ]);
+    );
 
     const result = parseReceivePackResult(data);
     expect(result).toHaveLength(3);
@@ -212,7 +213,7 @@ describe("parseReceivePackResult", () => {
   });
 
   test("空数据返回空列表", () => {
-    const result = parseReceivePackResult(Buffer.alloc(0));
+    const result = parseReceivePackResult(allocBytes(0));
     expect(result).toHaveLength(0);
   });
 
@@ -222,40 +223,37 @@ describe("parseReceivePackResult", () => {
   });
 
   test("ng 行缺少错误消息时抛错", () => {
-    const data = Buffer.concat([encodePktLine("ng refs/heads/main\n"), encodeFlushPkt()]);
+    const data = concatBytes(encodePktLine("ng refs/heads/main\n"), encodeFlushPkt());
 
     expect(() => parseReceivePackResult(data)).toThrow(ReceivePackResultError);
   });
 
   test("未知状态行抛错", () => {
-    const data = Buffer.concat([encodePktLine("unknown data\n"), encodeFlushPkt()]);
+    const data = concatBytes(encodePktLine("unknown data\n"), encodeFlushPkt());
 
     expect(() => parseReceivePackResult(data)).toThrow(ReceivePackResultError);
   });
 
   test("缺少 unpack 行时以 ok 开头应报错", () => {
-    const data = Buffer.concat([encodePktLine("ok refs/heads/main\n"), encodeFlushPkt()]);
+    const data = concatBytes(encodePktLine("ok refs/heads/main\n"), encodeFlushPkt());
 
     expect(() => parseReceivePackResult(data)).toThrow(ReceivePackResultError);
     expect(() => parseReceivePackResult(data)).toThrow(/missing unpack/i);
   });
 
   test("缺少 unpack 行时以 ng 开头应报错", () => {
-    const data = Buffer.concat([
-      encodePktLine("ng refs/heads/main some error\n"),
-      encodeFlushPkt(),
-    ]);
+    const data = concatBytes(encodePktLine("ng refs/heads/main some error\n"), encodeFlushPkt());
 
     expect(() => parseReceivePackResult(data)).toThrow(ReceivePackResultError);
     expect(() => parseReceivePackResult(data)).toThrow(/missing unpack/i);
   });
 
   test("ok 出现在 unpack 之前应报错", () => {
-    const data = Buffer.concat([
+    const data = concatBytes(
       encodePktLine("ok refs/heads/main\n"),
       encodePktLine("unpack ok\n"),
       encodeFlushPkt(),
-    ]);
+    );
 
     expect(() => parseReceivePackResult(data)).toThrow(ReceivePackResultError);
     expect(() => parseReceivePackResult(data)).toThrow(/missing unpack/i);

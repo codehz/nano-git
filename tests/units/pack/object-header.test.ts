@@ -4,6 +4,7 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { allocBytes, toUint8Array } from "../../helpers/bytes.ts";
 import { InvalidPackError } from "@/errors.ts";
 import { decodeObjectHeader, encodeObjectHeader } from "@/pack/utils/object-header.ts";
 
@@ -11,7 +12,7 @@ describe("decodeObjectHeader()", () => {
   test("解码单字节头部（小对象）", () => {
     // type=1 (commit), size=7
     // 0001_0111 = 0x17
-    const buf = Buffer.from([0b0001_0111]);
+    const buf = Uint8Array.from([0b0001_0111]);
     const [type, size, bytesRead] = decodeObjectHeader(buf, 0);
     expect(type).toBe(1);
     expect(size).toBe(7);
@@ -23,7 +24,7 @@ describe("decodeObjectHeader()", () => {
     // first byte: type=3 << 4 | size & 0xf = 0x30 | 0x00 = 0x30, with continue bit
     // size >>= 4 = 9
     // second byte: 0x09
-    const buf = Buffer.from([0b0011_0000 | 0b1000_0000, 0b0000_1001]);
+    const buf = Uint8Array.from([0b0011_0000 | 0b1000_0000, 0b0000_1001]);
     const [type, size, bytesRead] = decodeObjectHeader(buf, 0);
     expect(type).toBe(3);
     expect(size).toBe(144);
@@ -36,7 +37,11 @@ describe("decodeObjectHeader()", () => {
     // byte1: 0x30 | 0x80 = 0xb0 (type=3, size=0x00, continue)
     // byte2: 0x00 | 0x80 = 0x80 (size=0x200, continue)
     // byte3: 0x04 (size=0x04, no continue)
-    const buf = Buffer.from([0b0011_0000 | 0b1000_0000, 0b0000_0000 | 0b1000_0000, 0b0000_0100]);
+    const buf = Uint8Array.from([
+      0b0011_0000 | 0b1000_0000,
+      0b0000_0000 | 0b1000_0000,
+      0b0000_0100,
+    ]);
     const [type, size, bytesRead] = decodeObjectHeader(buf, 0);
     expect(type).toBe(3);
     expect(size).toBe(0x2000);
@@ -44,13 +49,13 @@ describe("decodeObjectHeader()", () => {
   });
 
   test("空缓冲区抛出异常", () => {
-    const buf = Buffer.from([]);
+    const buf = allocBytes(0);
     expect(() => decodeObjectHeader(buf, 0)).toThrow(InvalidPackError);
   });
 
   test("不完整的变长整数抛出异常", () => {
     // 只有 continue bit 但没有后续字节
-    const buf = Buffer.from([0b1000_0000]);
+    const buf = Uint8Array.from([0b1000_0000]);
     expect(() => decodeObjectHeader(buf, 0)).toThrow(InvalidPackError);
   });
 });
@@ -58,7 +63,7 @@ describe("decodeObjectHeader()", () => {
 describe("encodeObjectHeader()", () => {
   test("编码小对象（单字节）", () => {
     const header = encodeObjectHeader(1, 7);
-    expect(header).toEqual(Buffer.from([0b0001_0111]));
+    expect(header).toEqual(Uint8Array.from([0b0001_0111]));
   });
 
   test("编码需要双字节的对象", () => {

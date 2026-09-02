@@ -2,6 +2,7 @@
  * Packfile ofs_delta 偏移量编码/解码
  */
 
+import { toUint8Array } from "../../bytes.ts";
 import { InvalidPackError } from "../../errors.ts";
 
 /**
@@ -21,7 +22,7 @@ import { InvalidPackError } from "../../errors.ts";
  * ```
  */
 export function decodeOfsDeltaOffset(
-  buf: Buffer,
+  buf: Uint8Array,
   offset: number,
 ): [offsetValue: number, bytesRead: number] {
   if (offset >= buf.length) {
@@ -55,7 +56,7 @@ export function decodeOfsDeltaOffset(
  * const encoded = encodeOfsDeltaOffset(123);
  * ```
  */
-export function encodeOfsDeltaOffset(offsetValue: number): Buffer {
+export function encodeOfsDeltaOffset(offsetValue: number): Uint8Array {
   const bytes: number[] = [];
 
   let value = offsetValue;
@@ -68,5 +69,5 @@ export function encodeOfsDeltaOffset(offsetValue: number): Buffer {
     value >>>= 7;
   }
 
-  return Buffer.from(bytes);
+  return Uint8Array.from(bytes);
 }

@@ -4,12 +4,13 @@
 
 import { createHash } from "node:crypto";
 
+import { bytesEqual, bytesToHex, readU16BE, readU32BE, readU8, utf8ToBytes } from "../../bytes.ts";
 import { PackIndexError } from "../../errors.ts";
 import { decodeEwahBitmap, xorUnpackedBitmaps } from "./ewah-bitmap.ts";
 
 import type { UnpackedBitmap } from "./ewah-bitmap.ts";
 
-const BITMAP_SIGNATURE = Buffer.from("BITM");
+const BITMAP_SIGNATURE = utf8ToBytes("BITM");
 const BITMAP_HEADER_SIZE = 32;
 const SHA1_OID_LEN = 20;
 
@@ -61,28 +62,28 @@ export interface PackBitmapReader {
  *
  * @param data - 完整文件内容
  */
-export function createPackBitmapReader(data: Buffer): PackBitmapReader {
+export function createPackBitmapReader(data: Uint8Array): PackBitmapReader {
   if (data.length < BITMAP_HEADER_SIZE + SHA1_OID_LEN) {
     throw new PackIndexError("Bitmap file too small");
   }
 
   const signature = data.subarray(0, 4);
-  if (!signature.equals(BITMAP_SIGNATURE)) {
-    throw new PackIndexError(`Invalid bitmap signature: ${signature.toString("hex")}`);
+  if (!bytesEqual(signature, BITMAP_SIGNATURE)) {
+    throw new PackIndexError(`Invalid bitmap signature: ${bytesToHex(signature)}`);
   }
 
-  const version = data.readUInt16BE(4);
+  const version = readU16BE(data, 4);
   if (version !== 1) {
     throw new PackIndexError(`Unsupported bitmap version: ${version}`);
   }
 
-  const flags = data.readUInt16BE(6);
+  const flags = readU16BE(data, 6);
   if ((flags & BITMAP_OPT_FULL_DAG) === 0) {
     throw new PackIndexError("Bitmap missing required BITMAP_OPT_FULL_DAG flag");
   }
 
-  const entryCount = data.readUInt32BE(8);
-  const checksumHex = data.subarray(12, 12 + SHA1_OID_LEN).toString("hex");
+  const entryCount = readU32BE(data, 8);
+  const checksumHex = bytesToHex(data.subarray(12, 12 + SHA1_OID_LEN));
 
   let cursor = BITMAP_HEADER_SIZE;
 
@@ -100,9 +101,9 @@ export function createPackBitmapReader(data: Buffer): PackBitmapReader {
     if (cursor + 6 > data.length) {
       throw new PackIndexError("Bitmap commit entry truncated");
     }
-    const commitPosition = data.readUInt32BE(cursor);
-    const xorOffset = data.readUInt8(cursor + 4);
-    const entryFlags = data.readUInt8(cursor + 5);
+    const commitPosition = readU32BE(data, cursor);
+    const xorOffset = readU8(data, cursor + 4);
+    const entryFlags = readU8(data, cursor + 5);
     cursor += 6;
 
     const ewahStart = cursor;
@@ -149,7 +150,7 @@ export function createPackBitmapReader(data: Buffer): PackBitmapReader {
   const body = data.subarray(0, trailerStart);
   const expectedTrailer = createHash("sha1").update(body).digest();
   const actualTrailer = data.subarray(trailerStart);
-  if (!actualTrailer.equals(expectedTrailer)) {
+  if (!bytesEqual(actualTrailer, expectedTrailer)) {
     throw new PackIndexError("Bitmap checksum mismatch");
   }
 

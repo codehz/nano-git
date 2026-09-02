@@ -4,6 +4,7 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { bytes } from "../../../helpers/bytes.ts";
 import { createMemoryRepositoryBackend } from "@/backend/memory.ts";
 import { writeObject, readObject } from "@/objects/raw.ts";
 import { createRefRepositoryOperations } from "@/repository/ops/ref-operations.ts";
@@ -50,7 +51,7 @@ describe("createRefRepositoryOperations()", () => {
   test("createBranch() 不指定哈希时引用 HEAD 指向的目标", () => {
     const { ops, backend } = createOps();
     // 直接通过 backend 创建一个 commit 让 HEAD 可以解析
-    const blob: import("@/types/index.ts").GitBlob = { type: "blob", content: Buffer.from("c") };
+    const blob: import("@/types/index.ts").GitBlob = { type: "blob", content: bytes("c") };
     const blobHash = writeObject(backend.objects, blob);
     const treeHash = writeObject(backend.objects, {
       type: "tree",
@@ -146,7 +147,7 @@ describe("createRefRepositoryOperations()", () => {
     // 先写入一个对象作为标签目标
     const blob: import("@/types/index.ts").GitBlob = {
       type: "blob",
-      content: Buffer.from("content"),
+      content: bytes("content"),
     };
     const target = writeObject(backend.objects, blob);
 
@@ -170,7 +171,7 @@ describe("createRefRepositoryOperations()", () => {
 
   test("createAnnotatedTag() 重复标签抛出异常", () => {
     const { ops, backend } = createOps();
-    const target = writeObject(backend.objects, { type: "blob", content: Buffer.from("c") });
+    const target = writeObject(backend.objects, { type: "blob", content: bytes("c") });
     ops.createAnnotatedTag("v1.0", target, "msg", testAuthor);
     expect(() => ops.createAnnotatedTag("v1.0", target, "msg", testAuthor)).toThrow(
       "Tag already exists",

@@ -30,7 +30,7 @@ export {
   encodeDelimiterPkt,
   encodeResponseEndPkt,
   parsePktLines,
-  splitPktLinesFromBuffer,
+  splitPktLinesFromBytes,
   PktLineError,
 } from "./protocol/pkt-line.ts";
 export type {

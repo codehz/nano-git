@@ -6,6 +6,7 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { bytes } from "../../../helpers/bytes.ts";
 import { ObjectNotFoundError } from "@/errors.ts";
 import { writeObject } from "@/objects/raw.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
@@ -30,7 +31,7 @@ function makeCommit(
 }
 
 function makeBlob(store: ReturnType<typeof createMemoryObjectStore>, content: string): SHA1 {
-  return writeObject(store, { type: "blob", content: Buffer.from(content) });
+  return writeObject(store, { type: "blob", content: bytes(content) });
 }
 
 function makeTree(

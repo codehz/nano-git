@@ -4,13 +4,14 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { bytes } from "../../helpers/bytes.ts";
 import { encodeObject } from "@/objects/raw.ts";
 import { toEncodedPackObject, buildEncodedPack } from "@/pack/writer/pack-encoding.ts";
 import { sha1, type GitBlob } from "@/types/index.ts";
 
 describe("toEncodedPackObject()", () => {
   test("将 blob 对象转换为编码条目", () => {
-    const blob: GitBlob = { type: "blob", content: Buffer.from("hello world") };
+    const blob: GitBlob = { type: "blob", content: bytes("hello world") };
     const entry = toEncodedPackObject(encodeObject(blob));
 
     expect(entry.type).toBe("blob");
@@ -22,7 +23,7 @@ describe("toEncodedPackObject()", () => {
 
 describe("buildEncodedPack()", () => {
   test("构建包含单个对象的 packfile", () => {
-    const blob: GitBlob = { type: "blob", content: Buffer.from("hello world") };
+    const blob: GitBlob = { type: "blob", content: bytes("hello world") };
     const entry = toEncodedPackObject(encodeObject(blob));
     const result = buildEncodedPack([entry]);
 
@@ -39,9 +40,9 @@ describe("buildEncodedPack()", () => {
 
   test("构建包含多个对象的 packfile", () => {
     const objects: GitBlob[] = [
-      { type: "blob", content: Buffer.from("first") },
-      { type: "blob", content: Buffer.from("second") },
-      { type: "blob", content: Buffer.from("third") },
+      { type: "blob", content: bytes("first") },
+      { type: "blob", content: bytes("second") },
+      { type: "blob", content: bytes("third") },
     ];
     const entries = objects.map((o) => toEncodedPackObject(encodeObject(o)));
     const result = buildEncodedPack(entries);

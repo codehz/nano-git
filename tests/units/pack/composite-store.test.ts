@@ -7,6 +7,7 @@ import { mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { bytes, bytesToUtf8 } from "../../helpers/bytes.ts";
 import { encodeObject, writeObject } from "@/objects/raw.ts";
 import { createFileObjectStore } from "@/odb/file.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
@@ -22,13 +23,13 @@ describe("CompositeObjectDatabase", () => {
     const secondary = createMemoryObjectStore();
     const composite = createCompositeObjectDatabase(primary, secondary);
 
-    const blob: GitBlob = { type: "blob", content: Buffer.from("primary") };
+    const blob: GitBlob = { type: "blob", content: bytes("primary") };
     const hash = writeObject(primary, blob);
 
     const obj = composite.read(hash);
     expect(obj.type).toBe("blob");
     if (obj.type === "blob") {
-      expect(obj.content.toString("utf-8")).toBe("primary");
+      expect(bytesToUtf8(obj.content)).toBe("primary");
     }
   });
 
@@ -37,13 +38,13 @@ describe("CompositeObjectDatabase", () => {
     const secondary = createMemoryObjectStore();
     const composite = createCompositeObjectDatabase(primary, secondary);
 
-    const blob: GitBlob = { type: "blob", content: Buffer.from("secondary") };
+    const blob: GitBlob = { type: "blob", content: bytes("secondary") };
     const hash = writeObject(secondary, blob);
 
     const obj = composite.read(hash);
     expect(obj.type).toBe("blob");
     if (obj.type === "blob") {
-      expect(obj.content.toString("utf-8")).toBe("secondary");
+      expect(bytesToUtf8(obj.content)).toBe("secondary");
     }
   });
 
@@ -52,7 +53,7 @@ describe("CompositeObjectDatabase", () => {
     const secondary = createMemoryObjectStore();
     const composite = createCompositeObjectDatabase(primary, secondary);
 
-    const blob: GitBlob = { type: "blob", content: Buffer.from("new") };
+    const blob: GitBlob = { type: "blob", content: bytes("new") };
     const hash = writeObject(composite, blob);
 
     expect(primary.exists(hash)).toBe(true);
@@ -64,8 +65,8 @@ describe("CompositeObjectDatabase", () => {
     const secondary = createMemoryObjectStore();
     const composite = createCompositeObjectDatabase(primary, secondary);
 
-    const blob1: GitBlob = { type: "blob", content: Buffer.from("primary version") };
-    const blob2: GitBlob = { type: "blob", content: Buffer.from("secondary version") };
+    const blob1: GitBlob = { type: "blob", content: bytes("primary version") };
+    const blob2: GitBlob = { type: "blob", content: bytes("secondary version") };
 
     const hash = writeObject(primary, blob1);
     writeObject(secondary, blob2); // 相同内容会产生相同哈希，但这里内容不同
@@ -74,7 +75,7 @@ describe("CompositeObjectDatabase", () => {
     const obj = composite.read(hash);
     expect(obj.type).toBe("blob");
     if (obj.type === "blob") {
-      expect(obj.content.toString("utf-8")).toBe("primary version");
+      expect(bytesToUtf8(obj.content)).toBe("primary version");
     }
   });
 
@@ -89,7 +90,7 @@ describe("CompositeObjectDatabase", () => {
     const packedHash = packBuilder.addRaw(
       encodeObject({
         type: "blob",
-        content: Buffer.from("packed version"),
+        content: bytes("packed version"),
       }),
     );
     packBuilder.build();
@@ -97,7 +98,7 @@ describe("CompositeObjectDatabase", () => {
     const fileStore = createFileObjectStore(gitDir);
     const looseHash = writeObject(fileStore, {
       type: "blob",
-      content: Buffer.from("loose version"),
+      content: bytes("loose version"),
     });
 
     const composite = createCompositeObjectDatabase(fileStore, createPackObjectStore(gitDir));
@@ -107,10 +108,10 @@ describe("CompositeObjectDatabase", () => {
     expect(looseObj.type).toBe("blob");
     expect(packedObj.type).toBe("blob");
     if (looseObj.type === "blob") {
-      expect(looseObj.content.toString("utf-8")).toBe("loose version");
+      expect(bytesToUtf8(looseObj.content)).toBe("loose version");
     }
     if (packedObj.type === "blob") {
-      expect(packedObj.content.toString("utf-8")).toBe("packed version");
+      expect(bytesToUtf8(packedObj.content)).toBe("packed version");
     }
 
     rmSync(gitDir, { recursive: true });

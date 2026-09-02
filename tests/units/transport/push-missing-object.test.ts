@@ -8,6 +8,7 @@
 import { describe, test, expect } from "bun:test";
 import { createHash } from "node:crypto";
 
+import { bytes, concatBytes } from "../../helpers/bytes.ts";
 import { writeObject } from "@/objects/raw.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
 import { createMemoryRefStore } from "@/refs/memory.ts";
@@ -27,7 +28,7 @@ import type { ReceivePackTransport } from "@/transport/protocol/types.ts";
  * 避免导入循环或内部 API 依赖）
  */
 function blobBHash(): SHA1 {
-  const data = Buffer.concat([Buffer.from("blob 9\0"), Buffer.from("content B")]);
+  const data = concatBytes(bytes("blob 9\0"), bytes("content B"));
   return sha1(createHash("sha1").update(data).digest("hex"));
 }
 
@@ -43,10 +44,10 @@ function buildCommitWithTwoBlobs(
   store: ReturnType<typeof createMemoryObjectStore>,
   writeBlobB: boolean,
 ): { commitHash: SHA1; blobBHash: SHA1 } {
-  const blobA: GitBlob = { type: "blob", content: Buffer.from("content A") };
+  const blobA: GitBlob = { type: "blob", content: bytes("content A") };
   const hashA = writeObject(store, blobA);
 
-  const blobBContent = Buffer.from("content B");
+  const blobBContent = bytes("content B");
   const hashB = blobBHash();
   if (writeBlobB) {
     const blobB: GitBlob = { type: "blob", content: blobBContent };
@@ -327,20 +328,20 @@ describe('collectReachable(missing="skip-commit-parents")', () => {
 // ============================================================================
 function createPushMockTransport(
   remoteRefs: Array<{ name: string; hash: SHA1 }>,
-  onPost?: (body: Buffer) => void,
+  onPost?: (body: Uint8Array) => void,
 ): ReceivePackTransport {
-  const reportStatus = Buffer.concat([
+  const reportStatus = concatBytes(
     encodePktLine("unpack ok\n"),
     ...remoteRefs.map((r) => encodePktLine(`ok ${r.name}\n`)),
     encodeFlushPkt(),
-  ]);
+  );
 
   return {
     advertise: async () => ({
       capabilities: { "report-status": true, "side-band-64k": true },
       refs: remoteRefs,
     }),
-    request: async (body: Buffer) => {
+    request: async (body: Uint8Array) => {
       onPost?.(body);
       return reportStatus;
     },

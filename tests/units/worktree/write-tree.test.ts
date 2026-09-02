@@ -3,6 +3,7 @@
  */
 import { describe, test, expect } from "bun:test";
 
+import { bytes } from "../../helpers/bytes.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
 import { createVirtualWorktree } from "@/worktree/engine/worktree.ts";
 import { openVirtualWorktree } from "@/worktree/engine/worktree.ts";
@@ -64,16 +65,16 @@ function createCountingObjectDatabase(source: ObjectDatabase): {
 describe("writeTree object reuse", () => {
   test("修改兄弟文件时复用未改动子树 hash", () => {
     const repo = createMemoryRepository();
-    const nestedHash = repo.writeBlob(Buffer.from("nested"));
+    const nestedHash = repo.writeBlob(bytes("nested"));
     const subTreeHash = repo.createTree([{ mode: "100644", name: "child.txt", hash: nestedHash }]);
-    const rootBlobHash = repo.writeBlob(Buffer.from("root"));
+    const rootBlobHash = repo.writeBlob(bytes("root"));
     const baseTree = repo.createTree([
       { mode: "040000", name: "dir", hash: subTreeHash },
       { mode: "100644", name: "root.txt", hash: rootBlobHash },
     ]);
     const session = createVirtualWorktree(repo.objects, { baseTree });
 
-    session.writeFile("root.txt", Buffer.from("changed"));
+    session.writeFile("root.txt", bytes("changed"));
     const nextTree = session.writeTree();
     const root = readTree(repo, nextTree);
     const dirEntry = root.entries.find((entry) => entry.name === "dir");
@@ -83,7 +84,7 @@ describe("writeTree object reuse", () => {
 
   test("复制未 materialize 的 repo-backed 文件时复用同一 blob hash", () => {
     const repo = createMemoryRepository();
-    const blobHash = repo.writeBlob(Buffer.from("shared"));
+    const blobHash = repo.writeBlob(bytes("shared"));
     const baseTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]);
     const session = createVirtualWorktree(repo.objects, { baseTree });
 
@@ -97,8 +98,8 @@ describe("writeTree object reuse", () => {
 
   test("dirty summary 允许 writeTree 跳过未脏 repo-backed 子树", () => {
     const repo = createMemoryRepository();
-    const leftBlob = repo.writeBlob(Buffer.from("left"));
-    const rightBlob = repo.writeBlob(Buffer.from("right"));
+    const leftBlob = repo.writeBlob(bytes("left"));
+    const rightBlob = repo.writeBlob(bytes("right"));
     const leftTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: leftBlob }]);
     const rightTree = repo.createTree([{ mode: "100644", name: "b.txt", hash: rightBlob }]);
     const baseTree = repo.createTree([
@@ -108,7 +109,7 @@ describe("writeTree object reuse", () => {
 
     const store = createVirtualWorktreeMemoryStateStore(baseTree);
     const session = openVirtualWorktree(repo.objects, store);
-    session.writeFile("left/a.txt", Buffer.from("left-2"));
+    session.writeFile("left/a.txt", bytes("left-2"));
 
     const nextTree = session.writeTree();
     const root = readTree(repo, nextTree);
@@ -117,12 +118,12 @@ describe("writeTree object reuse", () => {
 
   test("dirty summary 驱动 repo-backed 目录中的新增条目写出", () => {
     const repo = createMemoryRepository();
-    const baseBlob = repo.writeBlob(Buffer.from("base"));
+    const baseBlob = repo.writeBlob(bytes("base"));
     const baseTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: baseBlob }]);
     const store = createVirtualWorktreeMemoryStateStore(baseTree);
     const session = openVirtualWorktree(repo.objects, store);
 
-    session.writeFile("b.txt", Buffer.from("next"));
+    session.writeFile("b.txt", bytes("next"));
     const nextTree = session.writeTree();
     const root = readTree(repo, nextTree);
 
@@ -131,9 +132,9 @@ describe("writeTree object reuse", () => {
 
   test("dirty summary 只解析受影响名字，未受影响 origin 子项不被懒注册", () => {
     const repo = createMemoryRepository();
-    const leftBlob = repo.writeBlob(Buffer.from("left"));
-    const rightBlob = repo.writeBlob(Buffer.from("right"));
-    const keepBlob = repo.writeBlob(Buffer.from("keep"));
+    const leftBlob = repo.writeBlob(bytes("left"));
+    const rightBlob = repo.writeBlob(bytes("right"));
+    const keepBlob = repo.writeBlob(bytes("keep"));
     const baseTree = repo.createTree([
       { mode: "100644", name: "left.txt", hash: leftBlob },
       { mode: "100644", name: "right.txt", hash: rightBlob },
@@ -151,7 +152,7 @@ describe("writeTree object reuse", () => {
     expect(store.getNode(rightNodeId)).toBeNull();
     expect(store.getNode(keepNodeId)).toBeNull();
 
-    session.writeFile("left.txt", Buffer.from("left-2"));
+    session.writeFile("left.txt", bytes("left-2"));
     store.deleteNode(rightNodeId);
     store.deleteNode(keepNodeId);
 
@@ -165,13 +166,13 @@ describe("writeTree object reuse", () => {
 
   test("重复 writeTree 会重新编译但产出相同 hash（无 DirtyDirSummary 缓存）", () => {
     const repo = createMemoryRepository();
-    const baseBlob = repo.writeBlob(Buffer.from("base"));
+    const baseBlob = repo.writeBlob(bytes("base"));
     const baseTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: baseBlob }]);
     const store = createVirtualWorktreeMemoryStateStore(baseTree);
     const counting = createCountingObjectDatabase(repo.objects);
     const session = openVirtualWorktree(counting.objects, store);
 
-    session.writeFile("a.txt", Buffer.from("next"));
+    session.writeFile("a.txt", bytes("next"));
     const firstTree = session.writeTree();
     const secondTree = session.writeTree();
 
@@ -186,7 +187,7 @@ describe("writeTree object reuse", () => {
     const session = openVirtualWorktree(repo.objects, store);
 
     session.mkdir("src");
-    session.writeFile("src/a.ts", Buffer.from("export const a = 1;\n"));
+    session.writeFile("src/a.ts", bytes("export const a = 1;\n"));
 
     const treeHash = session.writeTree();
     const root = readTree(repo, treeHash);

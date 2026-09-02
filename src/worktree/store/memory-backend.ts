@@ -161,7 +161,7 @@ function cloneWorktreeNode(node: WorktreeNode): WorktreeNode {
       state:
         node.state.content === undefined
           ? { kind: "file", mode: node.state.mode }
-          : { kind: "file", mode: node.state.mode, content: Buffer.from(node.state.content) },
+          : { kind: "file", mode: node.state.mode, content: Uint8Array.from(node.state.content) },
     };
   }
 
@@ -171,6 +171,6 @@ function cloneWorktreeNode(node: WorktreeNode): WorktreeNode {
     state:
       node.state.target === undefined
         ? { kind: "symlink", mode: "120000" }
-        : { kind: "symlink", mode: "120000", target: Buffer.from(node.state.target) },
+        : { kind: "symlink", mode: "120000", target: Uint8Array.from(node.state.target) },
   };
 }

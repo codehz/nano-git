@@ -4,6 +4,7 @@
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 
+import { bytes } from "../../helpers/bytes.ts";
 import { openTestSqlite } from "../../helpers/sqlite.ts";
 import { ObjectNotFoundError } from "@/errors.ts";
 import { encodeObject, writeObject } from "@/objects/raw.ts";
@@ -39,13 +40,13 @@ describe("createSqliteObjectStore()", () => {
     const validRaw: RawGitObject = {
       hash: sha1("95d09f2b10159347eece71399a7e2e907ea3df4f"),
       type: "blob",
-      content: Buffer.from("hello world"),
+      content: bytes("hello world"),
     };
     // hash 与内容不匹配的对象，应触发校验失败
     const invalidRaw: RawGitObject = {
       hash: sha1("0000000000000000000000000000000000000000"),
       type: "blob",
-      content: Buffer.from("mismatched content"),
+      content: bytes("mismatched content"),
     };
 
     expect(() => store.ingestMany([validRaw, invalidRaw])).toThrow("hash mismatch");
@@ -56,7 +57,7 @@ describe("createSqliteObjectStore()", () => {
   test("大数据量：ingest 1000 个对象 + list 完整性", () => {
     const raws: RawGitObject[] = [];
     for (let i = 0; i < 1000; i++) {
-      raws.push(encodeObject({ type: "blob", content: Buffer.from(`large-data-${i}`) }));
+      raws.push(encodeObject({ type: "blob", content: Uint8Array.from(`large-data-${i}`) }));
     }
 
     store.ingestMany(raws);
@@ -77,7 +78,7 @@ describe("createSqliteObjectStore()", () => {
   test("SQLite 可与 writeObject 互操作", () => {
     const hash = writeObject(store, {
       type: "blob",
-      content: Buffer.from("sqlite-write-object"),
+      content: bytes("sqlite-write-object"),
     });
 
     expect(store.exists(hash)).toBe(true);

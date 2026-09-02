@@ -4,6 +4,7 @@
  * 负责组装 VirtualWorktree 的读写、结构变更与导出行为。
  */
 
+import { bytesToUtf8, utf8ToBytes } from "../../bytes.ts";
 import {
   VirtualNotDirectoryError,
   VirtualNotFileError,
@@ -207,7 +208,7 @@ export function openVirtualWorktree(
       );
     },
 
-    readFile(path: string): Buffer {
+    readFile(path: string): Uint8Array {
       assertValidVirtualPath(path);
       const resolved = resolvePath(source, state, path);
       if (!resolved.found || resolved.node === null) {
@@ -240,11 +241,11 @@ export function openVirtualWorktree(
         throw new VirtualNotSymlinkError(path);
       }
       if (node.state.target !== undefined) {
-        return node.state.target.toString("utf-8");
+        return bytesToUtf8(node.state.target);
       }
       if (node.origin.kind === "repo-blob") {
         const buf = readRepoBlobContent(source, node.origin.hash, path);
-        return buf.toString("utf-8");
+        return bytesToUtf8(buf);
       }
       throw new VirtualPathNotFoundError(path);
     },
@@ -271,7 +272,7 @@ export function openVirtualWorktree(
 
     writeFile(
       path: string,
-      content: Buffer,
+      content: Uint8Array,
       options?: { readonly mode?: "100644" | "100755" },
     ): void {
       runInWriteTransaction(
@@ -323,7 +324,7 @@ export function openVirtualWorktree(
             id: nodeId,
             origin:
               writeTarget.existing !== null ? writeTarget.existing.node.origin : { kind: "none" },
-            state: { kind: "symlink", mode: "120000", target: Buffer.from(target) },
+            state: { kind: "symlink", mode: "120000", target: utf8ToBytes(target) },
           };
           state.setNode(linkNode);
           if (

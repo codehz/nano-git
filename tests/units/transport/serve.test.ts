@@ -7,6 +7,7 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { bytes, bytesToHex, bytesToUtf8, concatBytes } from "../../helpers/bytes.ts";
 import { createMemoryRepositoryBackend } from "@/backend/memory.ts";
 import { writeObject } from "@/objects/raw.ts";
 import { parseV2FetchResponse } from "@/transport/client/upload-pack/fetch.ts";
@@ -50,7 +51,7 @@ function createTestRepo(): TestRepoFixtures {
   // blob
   const blobHash = writeObject(backend.objects, {
     type: "blob" as const,
-    content: Buffer.from("hello world"),
+    content: bytes("hello world"),
   });
 
   // tree
@@ -122,7 +123,7 @@ function createMergeShallowRepo(): MergeShallowRepoFixtures {
 
   const blobHash = writeObject(backend.objects, {
     type: "blob" as const,
-    content: Buffer.from("merge shallow"),
+    content: bytes("merge shallow"),
   });
   const treeHash = writeObject(backend.objects, {
     type: "tree" as const,
@@ -196,7 +197,7 @@ function createShallowSourceRepo(): ShallowSourceRepoFixtures {
 
   const blobHash = writeObject(backend.objects, {
     type: "blob" as const,
-    content: Buffer.from("shallow source"),
+    content: bytes("shallow source"),
   });
   const treeHash = writeObject(backend.objects, {
     type: "tree" as const,
@@ -233,14 +234,14 @@ function createShallowSourceRepo(): ShallowSourceRepoFixtures {
 
 describe("parseCommandRequest", () => {
   test("解析 ls-refs 命令请求", () => {
-    const body = Buffer.concat([
+    const body = concatBytes(
       encodePktLine("command=ls-refs\n"),
       encodePktLine("agent=nano-git/0.1\n"),
       encodeDelimiterPkt(),
       encodePktLine("symrefs\n"),
       encodePktLine("peel\n"),
       encodeFlushPkt(),
-    ]);
+    );
 
     const cmd = parseCommandRequest(body);
     expect(cmd.command).toBe("ls-refs");
@@ -250,14 +251,14 @@ describe("parseCommandRequest", () => {
 
   test("解析 fetch 命令（带 want + done）", () => {
     const hash = sha1("95d09f2b10159347eece71399a7e2e907ea3df4f");
-    const body = Buffer.concat([
+    const body = concatBytes(
       encodePktLine("command=fetch\n"),
       encodePktLine("agent=nano-git/0.1\n"),
       encodeDelimiterPkt(),
       encodePktLine(`want ${hash}\n`),
       encodePktLine("done\n"),
       encodeFlushPkt(),
-    ]);
+    );
 
     const cmd = parseCommandRequest(body);
     expect(cmd.command).toBe("fetch");
@@ -267,13 +268,13 @@ describe("parseCommandRequest", () => {
   test("解析 fetch 命令（带 want + have 无 done）", () => {
     const wantHash = sha1("95d09f2b10159347eece71399a7e2e907ea3df4f");
     const haveHash = sha1("0000000000000000000000000000000000000001");
-    const body = Buffer.concat([
+    const body = concatBytes(
       encodePktLine("command=fetch\n"),
       encodeDelimiterPkt(),
       encodePktLine(`want ${wantHash}\n`),
       encodePktLine(`have ${haveHash}\n`),
       encodeFlushPkt(),
-    ]);
+    );
 
     const cmd = parseCommandRequest(body);
     expect(cmd.command).toBe("fetch");
@@ -281,13 +282,13 @@ describe("parseCommandRequest", () => {
   });
 
   test("解析带 want-ref 的 fetch 命令", () => {
-    const body = Buffer.concat([
+    const body = concatBytes(
       encodePktLine("command=fetch\n"),
       encodeDelimiterPkt(),
       encodePktLine("want-ref refs/heads/main\n"),
       encodePktLine("done\n"),
       encodeFlushPkt(),
-    ]);
+    );
 
     const cmd = parseCommandRequest(body);
     expect(cmd.command).toBe("fetch");
@@ -297,11 +298,11 @@ describe("parseCommandRequest", () => {
 
   test("解析 inline args（无 delimiter）", () => {
     // 没有 delimiter 时，首行之后的所有行都是 capabilities
-    const body = Buffer.concat([
+    const body = concatBytes(
       encodePktLine("command=ls-refs\n"),
       encodePktLine("symrefs\n"),
       encodeFlushPkt(),
-    ]);
+    );
 
     const cmd = parseCommandRequest(body);
     expect(cmd.command).toBe("ls-refs");
@@ -438,7 +439,7 @@ describe("parseFetchArgs", () => {
 describe("advertiseUploadPack", () => {
   test("upload-pack 广告包含 version 2、ls-refs、fetch", () => {
     const buf = advertiseUploadPack();
-    const text = buf.toString("utf-8");
+    const text = bytesToUtf8(buf);
 
     expect(text).toContain("version 2");
     expect(text).toContain("ls-refs=unborn");
@@ -463,7 +464,7 @@ describe("generateLsRefsResponse", () => {
       refPrefixes: [],
     });
 
-    const text = buf.toString("utf-8");
+    const text = bytesToUtf8(buf);
     // 应包含 refs/heads/main
     expect(text).toContain(`refs/heads/main`);
     expect(text).toContain(mainCommit);
@@ -483,7 +484,7 @@ describe("generateLsRefsResponse", () => {
       refPrefixes: ["refs/heads/"],
     });
 
-    const text = buf.toString("utf-8");
+    const text = bytesToUtf8(buf);
     expect(text).toContain("refs/heads/main");
     expect(text).toContain("refs/heads/develop");
     // refs/tags/ 不应出现
@@ -499,7 +500,7 @@ describe("generateLsRefsResponse", () => {
       refPrefixes: [],
     });
 
-    const text = buf.toString("utf-8");
+    const text = bytesToUtf8(buf);
     expect(text).toMatch(/HEAD.*symref-target:refs\/heads\/main/);
   });
 
@@ -524,7 +525,7 @@ describe("generateLsRefsResponse", () => {
       refPrefixes: [],
     });
 
-    const text = buf.toString("utf-8");
+    const text = bytesToUtf8(buf);
     // 应包含 peeled: 信息
     expect(text).toContain(`peeled:${mainCommit}`);
   });
@@ -538,7 +539,7 @@ describe("generateLsRefsResponse", () => {
       refPrefixes: ["refs/tags/"],
     });
 
-    const text = buf.toString("utf-8");
+    const text = bytesToUtf8(buf);
     expect(text).not.toContain("refs/heads/");
   });
 });
@@ -754,7 +755,7 @@ describe("generateFetchResponse — clone", () => {
       deepenNot: [],
     });
 
-    const text = buf.toString("utf-8");
+    const text = bytesToUtf8(buf);
     // 应包含 packfile 节
     expect(text).toContain("packfile");
     // 不应有 acknowledgments 节
@@ -780,7 +781,7 @@ describe("generateFetchResponse — clone", () => {
     });
 
     // packfile 节后的 side-band 数据应包含 "PACK"
-    const fullText = buf.toString("hex");
+    const fullText = bytesToHex(buf);
     expect(fullText).toContain("5041434b"); // "PACK" in hex
   });
 
@@ -800,7 +801,7 @@ describe("generateFetchResponse — clone", () => {
       deepenNot: [],
     });
 
-    const text = buf.toString("utf-8");
+    const text = bytesToUtf8(buf);
     expect(text).toContain(`want ${fakeHash} not found`);
   });
 
@@ -838,7 +839,7 @@ describe("generateFetchResponse — clone", () => {
     });
 
     // 应返回 packfile
-    const text = buf.toString("utf-8");
+    const text = bytesToUtf8(buf);
     expect(text).toContain("packfile");
   });
 });
@@ -1136,7 +1137,7 @@ describe("generateFetchResponse — incremental fetch", () => {
       deepenNot: [],
     });
 
-    const text = buf.toString("utf-8");
+    const text = bytesToUtf8(buf);
     expect(text).toContain("packfile");
   });
 
@@ -1155,7 +1156,7 @@ describe("generateFetchResponse — incremental fetch", () => {
       deepenNot: [],
     });
 
-    const text = buf.toString("utf-8");
+    const text = bytesToUtf8(buf);
     expect(text).toContain("acknowledgments");
     expect(text).toContain("NAK");
   });
@@ -1175,7 +1176,7 @@ describe("generateFetchResponse — incremental fetch", () => {
       deepenNot: [],
     });
 
-    const text = buf.toString("utf-8");
+    const text = bytesToUtf8(buf);
     expect(text).toContain("acknowledgments");
     expect(text).toContain("ACK");
     expect(text).toContain("ready");
@@ -1241,7 +1242,7 @@ describe("generateFetchResponse — incremental fetch", () => {
       deepenNot: [],
     });
 
-    const text = buf.toString("utf-8");
+    const text = bytesToUtf8(buf);
     expect(text).toContain("acknowledgments");
     expect(text).toContain("ACK");
     expect(text).not.toContain("ready");
@@ -1299,7 +1300,7 @@ describe("generateFetchResponse — incremental fetch", () => {
       deepenNot: [],
     });
 
-    const text = buf.toString("utf-8");
+    const text = bytesToUtf8(buf);
     expect(text).toContain("acknowledgments");
     expect(text).toContain("ACK");
     expect(text).not.toContain("ready");
@@ -1323,13 +1324,11 @@ describe("generateFetchResponse — incremental fetch", () => {
       deepenNot: [],
     });
 
-    const text = buf.toString("hex");
+    const text = bytesToHex(buf);
     expect(text).toContain(
-      Buffer.from([0x01]).toString("hex") + Buffer.from("acknowledgments\n").toString("hex"),
+      bytesToHex(Uint8Array.from([0x01])) + bytesToHex(bytes("acknowledgments\n")),
     );
-    expect(text).toContain(
-      Buffer.from([0x01]).toString("hex") + Buffer.from("packfile\n").toString("hex"),
-    );
+    expect(text).toContain(bytesToHex(Uint8Array.from([0x01])) + bytesToHex(bytes("packfile\n")));
   });
 
   test("want-ref + done 时在 packfile 前回送 wanted-refs 节且无前导 delimiter", () => {
@@ -1347,7 +1346,7 @@ describe("generateFetchResponse — incremental fetch", () => {
       deepenNot: [],
     });
 
-    const text = buf.toString("utf-8");
+    const text = bytesToUtf8(buf);
     // 必须回送 wanted-refs 映射（git 通过 want-ref 克隆时必需）
     expect(text).toContain("wanted-refs");
     expect(text).toContain(`${mainCommit} refs/heads/main`);
@@ -1355,7 +1354,7 @@ describe("generateFetchResponse — incremental fetch", () => {
     // wanted-refs 必须在 packfile 之前
     expect(text.indexOf("wanted-refs")).toBeLessThan(text.indexOf("packfile"));
     // 首节不能以 delimiter (0001) 开头——否则 git 报 "fatal: expected 'packfile'"
-    expect(buf.subarray(0, 4).toString("utf-8")).not.toBe("0001");
+    expect(bytesToUtf8(buf.subarray(0, 4))).not.toBe("0001");
   });
 });
 
@@ -1369,7 +1368,7 @@ describe("createUploadPackService", () => {
     const service = createUploadPackService(backend);
 
     const buf = service.advertise();
-    const text = buf.toString("utf-8");
+    const text = bytesToUtf8(buf);
     expect(text).toContain("version 2");
     expect(text).toContain("ls-refs");
     expect(text).toContain("fetch");
@@ -1379,15 +1378,15 @@ describe("createUploadPackService", () => {
     const { backend, mainCommit } = createTestRepo();
     const service = createUploadPackService(backend);
 
-    const body = Buffer.concat([
+    const body = concatBytes(
       encodePktLine("command=ls-refs\n"),
       encodeDelimiterPkt(),
       encodePktLine("symrefs\n"),
       encodeFlushPkt(),
-    ]);
+    );
 
     const buf = service.handleRequest(body);
-    const text = buf.toString("utf-8");
+    const text = bytesToUtf8(buf);
     expect(text).toContain(mainCommit);
     expect(text).toContain("refs/heads/main");
   });
@@ -1396,16 +1395,16 @@ describe("createUploadPackService", () => {
     const { backend, mainCommit } = createTestRepo();
     const service = createUploadPackService(backend);
 
-    const body = Buffer.concat([
+    const body = concatBytes(
       encodePktLine("command=fetch\n"),
       encodeDelimiterPkt(),
       encodePktLine(`want ${mainCommit}\n`),
       encodePktLine("done\n"),
       encodeFlushPkt(),
-    ]);
+    );
 
     const buf = service.handleRequest(body);
-    const text = buf.toString("utf-8");
+    const text = bytesToUtf8(buf);
     expect(text).toContain("packfile");
   });
 
@@ -1413,11 +1412,11 @@ describe("createUploadPackService", () => {
     const { backend } = createTestRepo();
     const service = createUploadPackService(backend);
 
-    const body = Buffer.concat([
+    const body = concatBytes(
       encodePktLine("command=unknown\n"),
       encodeDelimiterPkt(),
       encodeFlushPkt(),
-    ]);
+    );
 
     expect(() => service.handleRequest(body)).toThrow("unknown command");
   });

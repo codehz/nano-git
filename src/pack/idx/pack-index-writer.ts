@@ -5,6 +5,14 @@
 import { createHash } from "node:crypto";
 
 import {
+  allocBytes,
+  concatBytes,
+  copyBytes,
+  hexToBytes,
+  writeU32BE,
+  writeU64BE,
+} from "../../bytes.ts";
+import {
   IDX_V2_FANOUT_SIZE,
   IDX_V2_HEADER_SIZE,
   IDX_V2_SIGNATURE,
@@ -44,7 +52,7 @@ export interface PackIndexWriter {
    * const idxData = writer.build(packChecksum);
    * ```
    */
-  build(packChecksum: Buffer): Buffer;
+  build(packChecksum: Uint8Array): Uint8Array;
 }
 
 // ============================================================================
@@ -68,25 +76,25 @@ export function createPackIndexWriter(): PackIndexWriter {
   /**
    * 构建头部
    */
-  function createHeader(): Buffer {
-    const header = Buffer.alloc(IDX_V2_HEADER_SIZE);
-    IDX_V2_SIGNATURE.copy(header, 0);
-    header.writeUInt32BE(IDX_V2_VERSION, 4);
+  function createHeader(): Uint8Array {
+    const header = allocBytes(IDX_V2_HEADER_SIZE);
+    copyBytes(header, 0, IDX_V2_SIGNATURE);
+    writeU32BE(header, 4, IDX_V2_VERSION);
     return header;
   }
 
   /**
    * 构建扇出表
    */
-  function createFanoutTable(entries: PackIndexEntry[]): Buffer {
-    const fanout = Buffer.alloc(IDX_V2_FANOUT_SIZE);
+  function createFanoutTable(entries: PackIndexEntry[]): Uint8Array {
+    const fanout = allocBytes(IDX_V2_FANOUT_SIZE);
     let count = 0;
 
     for (let i = 0; i < 256; i++) {
       while (count < entries.length && parseInt(entries[count]!.hash.slice(0, 2), 16) <= i) {
         count++;
       }
-      fanout.writeUInt32BE(count, i * 4);
+      writeU32BE(fanout, i * 4, count);
     }
 
     return fanout;
@@ -95,10 +103,10 @@ export function createPackIndexWriter(): PackIndexWriter {
   /**
    * 构建 SHA-1 表
    */
-  function createSha1Table(entries: PackIndexEntry[]): Buffer {
-    const sha1Table = Buffer.alloc(entries.length * 20);
+  function createSha1Table(entries: PackIndexEntry[]): Uint8Array {
+    const sha1Table = allocBytes(entries.length * 20);
     for (let i = 0; i < entries.length; i++) {
-      Buffer.from(entries[i]!.hash, "hex").copy(sha1Table, i * 20);
+      copyBytes(sha1Table, i * 20, hexToBytes(entries[i]!.hash));
     }
     return sha1Table;
   }
@@ -106,10 +114,10 @@ export function createPackIndexWriter(): PackIndexWriter {
   /**
    * 构建 CRC32 表
    */
-  function createCrc32Table(entries: PackIndexEntry[]): Buffer {
-    const crc32Table = Buffer.alloc(entries.length * 4);
+  function createCrc32Table(entries: PackIndexEntry[]): Uint8Array {
+    const crc32Table = allocBytes(entries.length * 4);
     for (let i = 0; i < entries.length; i++) {
-      crc32Table.writeUInt32BE(entries[i]!.crc32 >>> 0, i * 4);
+      writeU32BE(crc32Table, i * 4, entries[i]!.crc32 >>> 0);
     }
     return crc32Table;
   }
@@ -118,10 +126,10 @@ export function createPackIndexWriter(): PackIndexWriter {
    * 构建偏移量表与大偏移量列表
    */
   function createOffsetTables(entries: PackIndexEntry[]): {
-    offsetTable: Buffer;
+    offsetTable: Uint8Array;
     largeOffsets: number[];
   } {
-    const offsetTable = Buffer.alloc(entries.length * 4);
+    const offsetTable = allocBytes(entries.length * 4);
     const largeOffsets: number[] = [];
 
     for (let i = 0; i < entries.length; i++) {
@@ -129,9 +137,9 @@ export function createPackIndexWriter(): PackIndexWriter {
       if (offset >= 0x80000000) {
         const largeIndex = largeOffsets.length;
         largeOffsets.push(offset);
-        offsetTable.writeUInt32BE((0x80000000 | largeIndex) >>> 0, i * 4);
+        writeU32BE(offsetTable, i * 4, (0x80000000 | largeIndex) >>> 0);
       } else {
-        offsetTable.writeUInt32BE(offset, i * 4);
+        writeU32BE(offsetTable, i * 4, offset);
       }
     }
 
@@ -141,10 +149,10 @@ export function createPackIndexWriter(): PackIndexWriter {
   /**
    * 构建大偏移量表
    */
-  function createLargeOffsetTable(largeOffsets: number[]): Buffer {
-    const largeOffsetTable = Buffer.alloc(largeOffsets.length * 8);
+  function createLargeOffsetTable(largeOffsets: number[]): Uint8Array {
+    const largeOffsetTable = allocBytes(largeOffsets.length * 8);
     for (let i = 0; i < largeOffsets.length; i++) {
-      largeOffsetTable.writeBigUInt64BE(BigInt(largeOffsets[i]!), i * 8);
+      writeU64BE(largeOffsetTable, i * 8, BigInt(largeOffsets[i]!));
     }
     return largeOffsetTable;
   }
@@ -154,9 +162,9 @@ export function createPackIndexWriter(): PackIndexWriter {
       entries.push(entry);
     },
 
-    build(packChecksum: Buffer): Buffer {
+    build(packChecksum: Uint8Array): Uint8Array {
       const sorted = [...entries].sort((a, b) => a.hash.localeCompare(b.hash));
-      const parts: Buffer[] = [];
+      const parts: Uint8Array[] = [];
 
       parts.push(createHeader());
       parts.push(createFanoutTable(sorted));
@@ -172,9 +180,9 @@ export function createPackIndexWriter(): PackIndexWriter {
 
       parts.push(packChecksum);
 
-      const idxWithoutChecksum = Buffer.concat(parts);
+      const idxWithoutChecksum = concatBytes(...parts);
       const idxChecksum = createHash("sha1").update(idxWithoutChecksum).digest();
-      return Buffer.concat([idxWithoutChecksum, idxChecksum]);
+      return concatBytes(idxWithoutChecksum, idxChecksum);
     },
   };
 }

@@ -4,6 +4,7 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { bytesToUtf8, concatBytes, toUint8Array } from "../../../helpers/bytes.ts";
 import { createMemoryRepositoryBackend } from "@/backend/memory.ts";
 import { writeObject } from "@/objects/raw.ts";
 import { createFetchRepositoryOperations } from "@/repository/ops/fetch-operations.ts";
@@ -52,10 +53,10 @@ describe("createFetchRepositoryOperations()", () => {
         });
       }
 
-      const body = Buffer.from(await new Response(init?.body).arrayBuffer());
+      const body = toUint8Array(await new Response(init?.body).arrayBuffer());
       const requestLines = parsePktLines(body)
         .filter((line) => line.type === "data")
-        .map((line) => line.payload.toString("utf-8").trimEnd());
+        .map((line) => bytesToUtf8(line.payload).trimEnd());
 
       const command = requestLines[0];
       if (command === "command=ls-refs") {
@@ -66,7 +67,7 @@ describe("createFetchRepositoryOperations()", () => {
         expect(requestLines).toContain("ref-prefix refs/tags/");
 
         return new Response(
-          Buffer.concat([encodePktLine(`${commitHash} refs/heads/master\n`), encodeFlushPkt()]),
+          concatBytes(encodePktLine(`${commitHash} refs/heads/master\n`), encodeFlushPkt()),
           {
             status: 200,
             headers: { "Content-Type": "application/x-git-upload-pack-result" },
@@ -104,19 +105,15 @@ describe("createFetchRepositoryOperations()", () => {
   });
 });
 
-function encodeV2CapabilityAdvertisement(): Buffer {
-  return Buffer.concat([
+function encodeV2CapabilityAdvertisement(): Uint8Array {
+  return concatBytes(
     encodePktLine("version 2\n"),
     encodePktLine("ls-refs\n"),
     encodePktLine("fetch=shallow sideband-all\n"),
     encodeFlushPkt(),
-  ]);
+  );
 }
 
-function encodeFetchNegotiationDone(): Buffer {
-  return Buffer.concat([
-    encodePktLine("acknowledgments\n"),
-    encodePktLine("NAK\n"),
-    encodeFlushPkt(),
-  ]);
+function encodeFetchNegotiationDone(): Uint8Array {
+  return concatBytes(encodePktLine("acknowledgments\n"), encodePktLine("NAK\n"), encodeFlushPkt());
 }

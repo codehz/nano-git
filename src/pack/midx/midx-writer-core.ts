@@ -6,6 +6,17 @@
 
 import { createHash } from "node:crypto";
 
+import {
+  allocBytes,
+  asciiToBytes,
+  concatBytes,
+  copyBytes,
+  hexToBytes,
+  utf8ToBytes,
+  writeU32BE,
+  writeU64BE,
+  writeU8,
+} from "../../bytes.ts";
 import { PackIndexError } from "../../errors.ts";
 
 import type { SHA1 } from "../../types/index.ts";
@@ -33,7 +44,7 @@ export interface WriteMultiPackIndexOptions {
   excludeHashes?: ReadonlySet<SHA1>;
 }
 
-const MIDX_SIGNATURE = Buffer.from("MIDX");
+const MIDX_SIGNATURE = utf8ToBytes("MIDX");
 const MIDX_HEADER_SIZE = 12;
 const SHA1_OID_LEN = 20;
 const OID_VERSION_SHA1 = 1;
@@ -64,7 +75,7 @@ interface MidxObjectRow {
 export function writeMultiPackIndex(
   packs: MidxPackSource[],
   options?: WriteMultiPackIndexOptions,
-): Buffer {
+): Uint8Array {
   if (packs.length === 0) {
     throw new PackIndexError("writeMultiPackIndex requires at least one pack");
   }
@@ -107,7 +118,7 @@ export function writeMultiPackIndex(
   }
 
   const rows = Array.from(rowsByHash.values()).sort((a, b) => a.hash.localeCompare(b.hash));
-  const chunkBodies: { id: string; data: Buffer }[] = [
+  const chunkBodies: { id: string; data: Uint8Array }[] = [
     { id: CHUNK_PNAM, data: buildPnamChunk(sortedSources.map(resolvePackIndexFileName)) },
     { id: CHUNK_OIDF, data: buildOidfChunk(rows) },
     { id: CHUNK_OIDL, data: buildOidLChunk(rows) },
@@ -119,18 +130,18 @@ export function writeMultiPackIndex(
   }
 
   const firstChunkOffset = MIDX_HEADER_SIZE + (chunkBodies.length + 1) * 12;
-  const header = Buffer.alloc(MIDX_HEADER_SIZE);
-  MIDX_SIGNATURE.copy(header, 0);
-  header.writeUInt8(version, 4);
-  header.writeUInt8(OID_VERSION_SHA1, 5);
-  header.writeUInt8(chunkBodies.length, 6);
-  header.writeUInt8(baseMidxCount, 7);
-  header.writeUInt32BE(sortedSources.length, 8);
+  const header = allocBytes(MIDX_HEADER_SIZE);
+  copyBytes(header, 0, MIDX_SIGNATURE);
+  writeU8(header, 4, version);
+  writeU8(header, 5, OID_VERSION_SHA1);
+  writeU8(header, 6, chunkBodies.length);
+  writeU8(header, 7, baseMidxCount);
+  writeU32BE(header, 8, sortedSources.length);
 
   const lookup = buildChunkLookupTable(chunkBodies, firstChunkOffset);
-  const body = Buffer.concat([header, lookup, ...chunkBodies.map((chunk) => chunk.data)]);
+  const body = concatBytes(header, lookup, ...chunkBodies.map((chunk) => chunk.data));
   const checksum = createHash("sha1").update(body).digest();
-  return Buffer.concat([body, checksum]);
+  return concatBytes(body, checksum);
 }
 
 function resolvePackIndexFileName(source: MidxPackSource): string {
@@ -153,38 +164,41 @@ function pickDuplicateWinner(
   return candidate.packId > existing.packId ? candidate : existing;
 }
 
-function buildPnamChunk(packNames: string[]): Buffer {
-  const parts: Buffer[] = [];
+function buildPnamChunk(packNames: string[]): Uint8Array {
+  const parts: Uint8Array[] = [];
   for (const name of packNames) {
-    parts.push(Buffer.from(name, "ascii"), Buffer.from([0]));
+    parts.push(asciiToBytes(name), Uint8Array.from([0]));
   }
-  const raw = Buffer.concat(parts);
+  const raw = concatBytes(...parts);
   const padding = (4 - (raw.length % 4)) % 4;
-  return padding === 0 ? raw : Buffer.concat([raw, Buffer.alloc(padding)]);
+  return padding === 0 ? raw : concatBytes(raw, allocBytes(padding));
 }
 
-function buildOidfChunk(rows: MidxObjectRow[]): Buffer {
-  const fanout = Buffer.alloc(256 * 4);
+function buildOidfChunk(rows: MidxObjectRow[]): Uint8Array {
+  const fanout = allocBytes(256 * 4);
   let count = 0;
   for (let index = 0; index < 256; index++) {
     while (count < rows.length && parseInt(rows[count]!.hash.slice(0, 2), 16) <= index) {
       count++;
     }
-    fanout.writeUInt32BE(count, index * 4);
+    writeU32BE(fanout, index * 4, count);
   }
   return fanout;
 }
 
-function buildOidLChunk(rows: MidxObjectRow[]): Buffer {
-  const table = Buffer.alloc(rows.length * SHA1_OID_LEN);
+function buildOidLChunk(rows: MidxObjectRow[]): Uint8Array {
+  const table = allocBytes(rows.length * SHA1_OID_LEN);
   for (let index = 0; index < rows.length; index++) {
-    Buffer.from(rows[index]!.hash, "hex").copy(table, index * SHA1_OID_LEN);
+    copyBytes(table, index * SHA1_OID_LEN, hexToBytes(rows[index]!.hash));
   }
   return table;
 }
 
-function buildOffsetChunks(rows: MidxObjectRow[]): { ooffChunk: Buffer; loffChunk: Buffer } {
-  const ooffChunk = Buffer.alloc(rows.length * 8);
+function buildOffsetChunks(rows: MidxObjectRow[]): {
+  ooffChunk: Uint8Array;
+  loffChunk: Uint8Array;
+} {
+  const ooffChunk = allocBytes(rows.length * 8);
   const largeOffsets: number[] = [];
   for (let index = 0; index < rows.length; index++) {
     const row = rows[index]!;
@@ -195,30 +209,30 @@ function buildOffsetChunks(rows: MidxObjectRow[]): { ooffChunk: Buffer; loffChun
       offset = 0x80000000 | largeIndex;
     }
     const entryOffset = index * 8;
-    ooffChunk.writeUInt32BE(row.packId, entryOffset);
-    ooffChunk.writeUInt32BE(offset, entryOffset + 4);
+    writeU32BE(ooffChunk, entryOffset, row.packId);
+    writeU32BE(ooffChunk, entryOffset + 4, offset);
   }
-  const loffChunk = Buffer.alloc(largeOffsets.length * 8);
+  const loffChunk = allocBytes(largeOffsets.length * 8);
   for (let index = 0; index < largeOffsets.length; index++) {
-    loffChunk.writeBigUInt64BE(BigInt(largeOffsets[index]!), index * 8);
+    writeU64BE(loffChunk, index * 8, BigInt(largeOffsets[index]!));
   }
   return { ooffChunk, loffChunk };
 }
 
 function buildChunkLookupTable(
-  chunks: { id: string; data: Buffer }[],
+  chunks: { id: string; data: Uint8Array }[],
   firstChunkOffset: number,
-): Buffer {
-  const lookup = Buffer.alloc((chunks.length + 1) * 12);
+): Uint8Array {
+  const lookup = allocBytes((chunks.length + 1) * 12);
   let offset = firstChunkOffset;
   for (let index = 0; index < chunks.length; index++) {
     const entryOffset = index * 12;
-    lookup.write(chunks[index]!.id, entryOffset, 4, "ascii");
-    lookup.writeBigUInt64BE(BigInt(offset), entryOffset + 4);
+    copyBytes(lookup, entryOffset, asciiToBytes(chunks[index]!.id));
+    writeU64BE(lookup, entryOffset + 4, BigInt(offset));
     offset += chunks[index]!.data.length;
   }
   const terminatorOffset = chunks.length * 12;
-  lookup.writeUInt32BE(0, terminatorOffset);
-  lookup.writeBigUInt64BE(BigInt(offset), terminatorOffset + 4);
+  writeU32BE(lookup, terminatorOffset, 0);
+  writeU64BE(lookup, terminatorOffset + 4, BigInt(offset));
   return lookup;
 }

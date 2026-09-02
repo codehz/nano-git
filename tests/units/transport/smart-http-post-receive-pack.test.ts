@@ -6,6 +6,7 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { bytes } from "../../helpers/bytes.ts";
 import { createReceivePackHttpClient } from "@/transport/client/receive-pack/http.ts";
 import { decodeReceivePackResponse } from "@/transport/client/receive-pack/response.ts";
 
@@ -14,7 +15,7 @@ describe("decodeReceivePackResponse 错误传播", () => {
     const originalFetch = globalThis.fetch;
 
     globalThis.fetch = (async () => {
-      return new Response(Buffer.from("invalid pkt-line data"), {
+      return new Response(bytes("invalid pkt-line data"), {
         status: 200,
         headers: { "content-type": "application/x-git-receive-pack-result" },
       });
@@ -22,7 +23,7 @@ describe("decodeReceivePackResponse 错误传播", () => {
     }) as any as typeof globalThis.fetch;
 
     const client = createReceivePackHttpClient("http://dummy.example.com/repo");
-    const body = Buffer.from("test body");
+    const body = bytes("test body");
     const raw = await client.request(body);
 
     expect(() => decodeReceivePackResponse(raw)).toThrow();

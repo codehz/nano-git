@@ -4,6 +4,7 @@
  * 生成 upload-pack 的 v2 能力广告。
  */
 
+import { concatBytes } from "../../../bytes.ts";
 import { encodePktLine, encodeFlushPkt } from "../../protocol/pkt-line.ts";
 import { SERVER_AGENT, SERVER_OBJECT_FORMAT } from "./types.ts";
 
@@ -18,8 +19,8 @@ import { SERVER_AGENT, SERVER_OBJECT_FORMAT } from "./types.ts";
  * // "000eversion 2\n000bls-refs\n...0000"
  * ```
  */
-export function advertiseUploadPack(): Buffer {
-  const parts: Buffer[] = [];
+export function advertiseUploadPack(): Uint8Array {
+  const parts: Uint8Array[] = [];
 
   parts.push(encodePktLine("version 2\n"));
   // 与官方 git-http-backend 的默认广告保持接近：
@@ -33,5 +34,5 @@ export function advertiseUploadPack(): Buffer {
   parts.push(encodePktLine(`agent=${SERVER_AGENT}\n`));
   parts.push(encodeFlushPkt());
 
-  return Buffer.concat(parts);
+  return concatBytes(...parts);
 }

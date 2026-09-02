@@ -6,6 +6,7 @@
  */
 import { describe, expect, test } from "bun:test";
 
+import { bytes, bytesToUtf8, toUint8Array } from "../../../helpers/bytes.ts";
 import { virtualWorktreeBackends } from "./contract.ts";
 import { readBlob, readTree } from "./test-utils.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
@@ -18,10 +19,10 @@ describe("VirtualWorktree contract: repeated path", () => {
       const session = createWorktree(repo, { baseTree });
 
       for (let i = 0; i < 10; i++) {
-        session.writeFile("f.txt", Buffer.from(`v${i}`));
+        session.writeFile("f.txt", bytes(`v${i}`));
         session.delete("f.txt");
       }
-      session.writeFile("f.txt", Buffer.from("final"));
+      session.writeFile("f.txt", bytes("final"));
 
       expect(session.diff()).toHaveLength(1);
       expect(session.diff()[0]).toMatchObject({
@@ -32,7 +33,7 @@ describe("VirtualWorktree contract: repeated path", () => {
       const rootHash = session.writeTree();
       const root = readTree(repo, rootHash);
       expect(root.entries).toHaveLength(1);
-      expect(readBlob(repo, root.entries[0]!.hash).toString()).toBe("final");
+      expect(bytesToUtf8(readBlob(repo, root.entries[0]!.hash))).toBe("final");
     });
 
     test("同路径反复 mkdir → delete → mkdir 三次不报错", () => {
@@ -41,13 +42,13 @@ describe("VirtualWorktree contract: repeated path", () => {
 
       for (let i = 0; i < 3; i++) {
         session.mkdir("d");
-        session.writeFile("d/f.txt", Buffer.from(`v${i}`));
+        session.writeFile("d/f.txt", bytes(`v${i}`));
         session.delete("d");
       }
       session.mkdir("d");
-      session.writeFile("d/f.txt", Buffer.from("v3"));
+      session.writeFile("d/f.txt", bytes("v3"));
 
-      expect(session.readFile("d/f.txt").toString()).toBe("v3");
+      expect(bytesToUtf8(session.readFile("d/f.txt"))).toBe("v3");
     });
   });
 });

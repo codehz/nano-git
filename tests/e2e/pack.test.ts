@@ -9,6 +9,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { existsSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
+import { bytes, bytesToUtf8 } from "../helpers/bytes.ts";
 import {
   gitInit,
   gitInitBare,
@@ -61,7 +62,7 @@ describe("Packfile 兼容性: nano-git → git", () => {
   test("nano-git 创建的 packfile 能被 git verify-pack 验证", () => {
     const builder = createPackBuilder(tempDir);
 
-    const blob: GitBlob = { type: "blob", content: Buffer.from("hello from nano-git pack") };
+    const blob: GitBlob = { type: "blob", content: bytes("hello from nano-git pack") };
     builder.addRaw(encodeObject(blob));
 
     const result = builder.build();
@@ -76,7 +77,7 @@ describe("Packfile 兼容性: nano-git → git", () => {
     const builder = createPackBuilder(tempDir);
 
     const content = "packed blob content";
-    const blob: GitBlob = { type: "blob", content: Buffer.from(content) };
+    const blob: GitBlob = { type: "blob", content: bytes(content) };
     const hash = builder.addRaw(encodeObject(blob));
     builder.build();
 
@@ -87,7 +88,7 @@ describe("Packfile 兼容性: nano-git → git", () => {
   test("nano-git 打包的 tree 能被 git cat-file 读取", () => {
     const builder = createPackBuilder(tempDir);
 
-    const blob: GitBlob = { type: "blob", content: Buffer.from("file content") };
+    const blob: GitBlob = { type: "blob", content: bytes("file content") };
     const blobHash = builder.addRaw(encodeObject(blob));
 
     const tree: GitTree = {
@@ -214,7 +215,7 @@ describe("Packfile 兼容性: git → nano-git", () => {
       const obj = store.read(hash as ReturnType<typeof gitRevParse>);
       expect(obj.type).toBe("blob");
       if (obj.type === "blob") {
-        expect(obj.content.toString("utf-8")).toBe(content);
+        expect(bytesToUtf8(obj.content)).toBe(content);
       }
     }
   });

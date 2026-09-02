@@ -4,6 +4,7 @@
  * @see Documentation/technical/bitmap-format.adoc — Appendix A
  */
 
+import { readU32BE, readU64BE } from "../../bytes.ts";
 import { PackIndexError } from "../../errors.ts";
 
 /**
@@ -26,15 +27,15 @@ export interface UnpackedBitmap {
  * @returns 解压位图与消费的字节数
  */
 export function decodeEwahBitmap(
-  data: Buffer,
+  data: Uint8Array,
   offset: number,
 ): { bitmap: UnpackedBitmap; bytesRead: number } {
   if (offset + 12 > data.length) {
     throw new PackIndexError("EWAH bitmap truncated");
   }
 
-  const bitCount = data.readUInt32BE(offset);
-  const wordCount = data.readUInt32BE(offset + 4);
+  const bitCount = readU32BE(data, offset);
+  const wordCount = readU32BE(data, offset + 4);
   const wordsStart = offset + 8;
   const wordsEnd = wordsStart + wordCount * 8;
 
@@ -42,14 +43,14 @@ export function decodeEwahBitmap(
     throw new PackIndexError("EWAH bitmap words truncated");
   }
 
-  const rlwPosition = data.readUInt32BE(wordsEnd);
+  const rlwPosition = readU32BE(data, wordsEnd);
   if (rlwPosition > wordCount) {
     throw new PackIndexError(`EWAH invalid RLW position: ${rlwPosition}`);
   }
 
   const words: bigint[] = [];
   for (let i = 0; i < wordCount; i++) {
-    words.push(data.readBigUInt64BE(wordsStart + i * 8));
+    words.push(readU64BE(data, wordsStart + i * 8));
   }
 
   const bits = unpackEwahWords(words, bitCount);

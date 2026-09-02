@@ -15,8 +15,9 @@
  * @see https://git-scm.com/docs/pack-protocol#_git_gt_transport
  */
 
+import { bytesToUtf8 } from "../../../bytes.ts";
 import { sha1 } from "../../../types/index.ts";
-import { splitPktLinesFromBuffer } from "../../protocol/pkt-line.ts";
+import { splitPktLinesFromBytes } from "../../protocol/pkt-line.ts";
 import { ReceivePackServiceError } from "./types.ts";
 
 import type { ReceivePackCommand, ParsedReceivePackRequest } from "./types.ts";
@@ -56,10 +57,12 @@ function parseCommandLine(text: string): ReceivePackCommand | null {
  * const { commands, capabilities, packfile } = parseReceivePackRequest(body);
  * ```
  */
-export function parseReceivePackRequest(body: Buffer): ParsedReceivePackRequest {
-  const { lines, trailing } = splitPktLinesFromBuffer(body);
+export function parseReceivePackRequest(body: Uint8Array): ParsedReceivePackRequest {
+  const { lines, trailing } = splitPktLinesFromBytes(body);
 
-  const dataLines = lines.filter((l): l is { type: "data"; payload: Buffer } => l.type === "data");
+  const dataLines = lines.filter(
+    (l): l is { type: "data"; payload: Uint8Array } => l.type === "data",
+  );
 
   if (dataLines.length === 0) {
     throw new ReceivePackServiceError("No commands in receive-pack request");
@@ -70,7 +73,7 @@ export function parseReceivePackRequest(body: Buffer): ParsedReceivePackRequest 
 
   for (let i = 0; i < dataLines.length; i++) {
     const payload = dataLines[i]!.payload;
-    const text = payload.toString("utf-8").replace(/\n$/, "");
+    const text = bytesToUtf8(payload).replace(/\n$/, "");
 
     // 首行可能包含 NUL 分隔的 capabilities
     if (i === 0) {

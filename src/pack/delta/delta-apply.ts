@@ -2,6 +2,8 @@
  * Delta 应用（解码）
  */
 
+import { copyBytes } from "../../bytes.ts";
+import { allocBytes } from "../../bytes.ts";
 import { DeltaError } from "../../errors.ts";
 import { decodeVarint } from "../utils/utils.ts";
 
@@ -14,12 +16,12 @@ import { decodeVarint } from "../utils/utils.ts";
  *
  * @example
  * ```ts
- * const base = Buffer.from("hello world");
- * const delta = createDelta(base, Buffer.from("hello git"));
+ * const base = utf8ToBytes("hello world");
+ * const delta = createDelta(base, Uint8Array.from("hello git"));
  * const result = applyDelta(base, delta);
  * ```
  */
-export function applyDelta(base: Buffer, delta: Buffer): Buffer {
+export function applyDelta(base: Uint8Array, delta: Uint8Array): Uint8Array {
   let offset = 0;
 
   const [_srcSize, srcBytes] = decodeVarint(delta, offset);
@@ -28,7 +30,7 @@ export function applyDelta(base: Buffer, delta: Buffer): Buffer {
   const [destSize, destBytes] = decodeVarint(delta, offset);
   offset += destBytes;
 
-  const result = Buffer.alloc(destSize);
+  const result = allocBytes(destSize);
   let destOffset = 0;
 
   while (offset < delta.length) {
@@ -52,7 +54,7 @@ export function applyDelta(base: Buffer, delta: Buffer): Buffer {
         );
       }
 
-      base.copy(result, destOffset, copy.offset, copy.offset + copy.size);
+      copyBytes(result, destOffset, base, copy.offset, copy.size);
       destOffset += copy.size;
       continue;
     }
@@ -65,7 +67,7 @@ export function applyDelta(base: Buffer, delta: Buffer): Buffer {
         });
       }
 
-      delta.copy(result, destOffset, offset, offset + cmd);
+      copyBytes(result, destOffset, delta, offset, cmd);
       destOffset += cmd;
       offset += cmd;
       continue;
@@ -89,7 +91,7 @@ export function applyDelta(base: Buffer, delta: Buffer): Buffer {
 }
 
 function decodeCopyInstruction(
-  delta: Buffer,
+  delta: Uint8Array,
   offset: number,
   cmd: number,
 ): { offset: number; size: number; bytesRead: number } {

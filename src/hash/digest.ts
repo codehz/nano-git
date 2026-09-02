@@ -22,7 +22,7 @@ import type { ObjectType, SHA1 } from "../types/index.ts";
  * console.log(hash);
  * ```
  */
-export function hashData(data: Buffer | string): SHA1 {
+export function hashData(data: Uint8Array | string): SHA1 {
   const hash = createHash("sha1");
   hash.update(data);
   return sha1(hash.digest("hex"));
@@ -40,11 +40,11 @@ export function hashData(data: Buffer | string): SHA1 {
  *
  * @example
  * ```ts
- * const hash = hashObject("blob", Buffer.from("hello world"));
+ * const hash = hashObject("blob", new TextEncoder().encode("hello world"));
  * console.log(hash);
  * ```
  */
-export function hashObject(type: ObjectType, content: Buffer): SHA1 {
+export function hashObject(type: ObjectType, content: Uint8Array): SHA1 {
   const header = `${type} ${content.length}\0`;
   const hash = createHash("sha1");
   hash.update(header);

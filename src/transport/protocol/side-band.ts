@@ -12,8 +12,9 @@
  * @see https://git-scm.com/docs/pack-protocol#_side_channel
  */
 
+import { bytesToUtf8, concatBytes } from "../../bytes.ts";
 import { GitError } from "../../errors.ts";
-import { parsePktLines, splitPktLinesFromBuffer } from "./pkt-line.ts";
+import { parsePktLines, splitPktLinesFromBytes } from "./pkt-line.ts";
 
 import type { GitErrorOptions } from "../../errors.ts";
 
@@ -60,8 +61,8 @@ export class SideBandError extends GitError {
  * const reader = createPackReader(packfile);
  * ```
  */
-export function extractPackfile(data: Buffer): Buffer {
-  const chunks: Buffer[] = [];
+export function extractPackfile(data: Uint8Array): Uint8Array {
+  const chunks: Uint8Array[] = [];
 
   processSideBand(data, {
     onPackfile(chunk) {
@@ -79,7 +80,7 @@ export function extractPackfile(data: Buffer): Buffer {
     throw new SideBandError("No packfile data found in side-band stream");
   }
 
-  return Buffer.concat(chunks);
+  return concatBytes(...chunks);
 }
 
 /**
@@ -97,7 +98,7 @@ export function extractPackfile(data: Buffer): Buffer {
  * // [ "Receiving objects:  10% (1/10)", ... ]
  * ```
  */
-export function extractProgress(data: Buffer): string[] {
+export function extractProgress(data: Uint8Array): string[] {
   const messages: string[] = [];
 
   processSideBand(data, {
@@ -128,15 +129,15 @@ export function extractProgress(data: Buffer): string[] {
  *
  * @example
  * ```ts
- * const response = Buffer.concat([
+ * const response = concatBytes([
  *   encodePktLine("NAK\n"),
  *   rawPackfileData,
  * ]);
  * const packfile = extractRawPackfile(response);
  * ```
  */
-export function extractRawPackfile(data: Buffer): Buffer {
-  const { trailing } = splitPktLinesFromBuffer(data);
+export function extractRawPackfile(data: Uint8Array): Uint8Array {
+  const { trailing } = splitPktLinesFromBytes(data);
 
   if (trailing.length === 0) {
     throw new SideBandError("No packfile data found in non-side-band response");
@@ -163,14 +164,14 @@ export function extractRawPackfile(data: Buffer): Buffer {
  * }
  * ```
  */
-export function extractSideBandFatal(data: Buffer): string | null {
-  const { lines: pktLines } = splitPktLinesFromBuffer(data);
+export function extractSideBandFatal(data: Uint8Array): string | null {
+  const { lines: pktLines } = splitPktLinesFromBytes(data);
 
   for (const line of pktLines) {
     if (line.type !== "data") continue;
     const payload = line.payload;
     if (payload.length >= 2 && payload[0] === CHANNEL_FATAL) {
-      return payload.subarray(1).toString("utf-8");
+      return bytesToUtf8(payload.subarray(1));
     }
   }
 
@@ -183,7 +184,7 @@ export function extractSideBandFatal(data: Buffer): string | null {
 
 /** side-band 处理回调 */
 interface SideBandHandlers {
-  onPackfile(chunk: Buffer): void;
+  onPackfile(chunk: Uint8Array): void;
   onProgress(msg: string): void;
   onFatal(msg: string): void;
 }
@@ -193,7 +194,7 @@ interface SideBandHandlers {
  *
  * 遍历所有 pkt-line 帧，根据 channel 编号分发到对应回调。
  */
-function processSideBand(data: Buffer, handlers: SideBandHandlers): void {
+function processSideBand(data: Uint8Array, handlers: SideBandHandlers): void {
   const pktLines = parsePktLines(data);
 
   for (const line of pktLines) {
@@ -222,10 +223,10 @@ function processSideBand(data: Buffer, handlers: SideBandHandlers): void {
         handlers.onPackfile(content);
         break;
       case CHANNEL_PROGRESS:
-        handlers.onProgress(content.toString("utf-8"));
+        handlers.onProgress(bytesToUtf8(content));
         break;
       case CHANNEL_FATAL:
-        handlers.onFatal(content.toString("utf-8"));
+        handlers.onFatal(bytesToUtf8(content));
         break;
       default:
         // 未知 channel，忽略

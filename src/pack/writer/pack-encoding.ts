@@ -5,6 +5,7 @@
 import { createHash } from "node:crypto";
 import { deflateSync } from "node:zlib";
 
+import { allocBytes, concatBytes, copyBytes, writeU32BE } from "../../bytes.ts";
 import { PACK_SIGNATURE, PACK_VERSION, objectTypeToNumber } from "../constants.ts";
 import { crc32Value } from "../crc32.ts";
 import { encodeObjectHeader } from "../utils/utils.ts";
@@ -17,7 +18,7 @@ import type { RawGitObject, SHA1 } from "../../types/index.ts";
 export interface EncodedPackObject {
   type: RawGitObject["type"];
   hash: SHA1;
-  data: Buffer;
+  data: Uint8Array;
 }
 
 /**
@@ -33,9 +34,9 @@ export interface IndexedPackEntry {
  * Pack 编码结果
  */
 export interface EncodedPackResult {
-  packWithoutChecksum: Buffer;
-  packChecksum: Buffer;
-  packData: Buffer;
+  packWithoutChecksum: Uint8Array;
+  packChecksum: Uint8Array;
+  packData: Uint8Array;
   entries: IndexedPackEntry[];
 }
 
@@ -73,7 +74,7 @@ export function toEncodedPackObject(raw: RawGitObject): EncodedPackObject {
  * ```
  */
 export function buildEncodedPack(objects: EncodedPackObject[]): EncodedPackResult {
-  const packParts: Buffer[] = [];
+  const packParts: Uint8Array[] = [];
   const entries: IndexedPackEntry[] = [];
 
   packParts.push(createPackHeader(objects.length));
@@ -83,7 +84,7 @@ export function buildEncodedPack(objects: EncodedPackObject[]): EncodedPackResul
     const typeNum = objectTypeToNumber(object.type);
     const objectHeader = encodeObjectHeader(typeNum, object.data.length);
     const compressed = deflateSync(object.data);
-    const objectData = Buffer.concat([objectHeader, compressed]);
+    const objectData = concatBytes(objectHeader, compressed);
 
     entries.push({
       hash: object.hash,
@@ -94,9 +95,9 @@ export function buildEncodedPack(objects: EncodedPackObject[]): EncodedPackResul
     currentOffset += objectData.length;
   }
 
-  const packWithoutChecksum = Buffer.concat(packParts);
+  const packWithoutChecksum = concatBytes(...packParts);
   const packChecksum = createHash("sha1").update(packWithoutChecksum).digest();
-  const packData = Buffer.concat([packWithoutChecksum, packChecksum]);
+  const packData = concatBytes(packWithoutChecksum, packChecksum);
 
   return {
     packWithoutChecksum,
@@ -106,10 +107,10 @@ export function buildEncodedPack(objects: EncodedPackObject[]): EncodedPackResul
   };
 }
 
-function createPackHeader(objectCount: number): Buffer {
-  const header = Buffer.alloc(12);
-  PACK_SIGNATURE.copy(header, 0);
-  header.writeUInt32BE(PACK_VERSION, 4);
-  header.writeUInt32BE(objectCount, 8);
+function createPackHeader(objectCount: number): Uint8Array {
+  const header = allocBytes(12);
+  copyBytes(header, 0, PACK_SIGNATURE);
+  writeU32BE(header, 4, PACK_VERSION);
+  writeU32BE(header, 8, objectCount);
   return header;
 }

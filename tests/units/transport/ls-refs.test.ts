@@ -13,6 +13,7 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { concatBytes, utf8ToBytes } from "../../helpers/bytes.ts";
 import {
   parseLsRefsResponse,
   lsRefsToRefAdvertisement,
@@ -27,7 +28,7 @@ import type { LsRefsEntry } from "@/transport/client/upload-pack/types.ts";
 // ============================================================================
 
 /** 构造 ls-refs 响应行 */
-function refLine(content: string): Buffer {
+function refLine(content: string): Uint8Array {
   return encodePktLine(content);
 }
 
@@ -37,7 +38,7 @@ function refLine(content: string): Buffer {
 
 describe("parseLsRefsResponse()", () => {
   test("解析多条 ref（含 symref 和 peel）", () => {
-    const data = Buffer.concat([
+    const data = concatBytes(
       refLine("95d09f2b10159347eece71399a7e2e907ea3df4f HEAD symref-target:refs/heads/main\n"),
       refLine("95d09f2b10159347eece71399a7e2e907ea3df4f refs/heads/main\n"),
       refLine("b8c7d5e7c8e7c8e7c8e7c8e7c8e7c8e7c8e7c8e7 refs/tags/v1.0\n"),
@@ -45,7 +46,7 @@ describe("parseLsRefsResponse()", () => {
         "f3a2b1c0d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0 refs/tags/v1.0^{} peeled:f3a2b1c0d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0\n",
       ),
       encodeFlushPkt(),
-    ]);
+    );
 
     const entries = parseLsRefsResponse(data);
 
@@ -70,10 +71,10 @@ describe("parseLsRefsResponse()", () => {
   });
 
   test("解析单条 ref（无属性）", () => {
-    const data = Buffer.concat([
+    const data = concatBytes(
       refLine("95d09f2b10159347eece71399a7e2e907ea3df4f refs/heads/main\n"),
       encodeFlushPkt(),
-    ]);
+    );
 
     const entries = parseLsRefsResponse(data);
 
@@ -84,10 +85,10 @@ describe("parseLsRefsResponse()", () => {
   });
 
   test("解析 unborn HEAD", () => {
-    const data = Buffer.concat([
+    const data = concatBytes(
       refLine("unborn HEAD symref-target:refs/heads/main\n"),
       encodeFlushPkt(),
-    ]);
+    );
 
     const entries = parseLsRefsResponse(data);
 
@@ -98,13 +99,13 @@ describe("parseLsRefsResponse()", () => {
   });
 
   test("空响应返回空列表", () => {
-    const data = Buffer.concat([encodeFlushPkt()]);
+    const data = concatBytes(encodeFlushPkt());
     const entries = parseLsRefsResponse(data);
     expect(entries).toHaveLength(0);
   });
 
   test("只有 flush 的响应返回空列表", () => {
-    const entries = parseLsRefsResponse(Buffer.from("0000", "utf-8"));
+    const entries = parseLsRefsResponse(utf8ToBytes("0000"));
     expect(entries).toHaveLength(0);
   });
 });

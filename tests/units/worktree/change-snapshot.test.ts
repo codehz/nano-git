@@ -3,6 +3,7 @@
  */
 import { describe, expect, test } from "bun:test";
 
+import { bytes } from "../../helpers/bytes.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
 import {
   getBaseSnapshotView,
@@ -18,7 +19,7 @@ describe("change-snapshot", () => {
     const store = createVirtualWorktreeMemoryStateStore(baseTree);
     const session = openVirtualWorktree(repo.objects, store);
 
-    session.writeFile("hello.txt", Buffer.from("hi"));
+    session.writeFile("hello.txt", bytes("hi"));
 
     const entries = listCurrentSnapshotEntries(repo.objects, store);
     const hello = entries.find((entry) => entry.path === "hello.txt");
@@ -29,7 +30,7 @@ describe("change-snapshot", () => {
 
   test("getBaseSnapshotView() 与 baseTree 条目一致", () => {
     const repo = createMemoryRepository();
-    const blobHash = repo.writeBlob(Buffer.from("base"));
+    const blobHash = repo.writeBlob(bytes("base"));
     const baseTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]);
     const store = createVirtualWorktreeMemoryStateStore(baseTree);
 

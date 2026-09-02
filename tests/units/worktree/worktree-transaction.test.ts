@@ -3,6 +3,7 @@
  */
 import { describe, expect, test } from "bun:test";
 
+import { bytes } from "../../helpers/bytes.ts";
 import { VirtualOriginUnavailableError } from "@/errors.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
 import { sha1 } from "@/types/index.ts";
@@ -120,7 +121,7 @@ describe("updateParentOverlay()", () => {
     store.setNode({
       id: fileId,
       origin: { kind: "none" },
-      state: { kind: "file", mode: "100644", content: Buffer.from("x") },
+      state: { kind: "file", mode: "100644", content: bytes("x") },
     });
 
     expect(() => updateParentOverlay(store, fileId, rootOverlay(tree))).toThrow(
@@ -132,7 +133,7 @@ describe("updateParentOverlay()", () => {
 describe("statNode()", () => {
   test("repo-backed 文件未 materialize 时从 origin 读取 size/hash", () => {
     const repo = createMemoryRepository();
-    const blobHash = repo.writeBlob(Buffer.from("hello"));
+    const blobHash = repo.writeBlob(bytes("hello"));
     const node = {
       id: createNodeId(),
       origin: { kind: "repo-blob" as const, mode: "100644" as const, hash: blobHash },
@@ -149,7 +150,7 @@ describe("statNode()", () => {
 
   test("repo-backed 符号链接未 materialize 时从 origin 读取 size/hash", () => {
     const repo = createMemoryRepository();
-    const linkHash = repo.writeBlob(Buffer.from("target/path"));
+    const linkHash = repo.writeBlob(bytes("target/path"));
     const node = {
       id: createNodeId(),
       origin: { kind: "repo-blob" as const, mode: "120000" as const, hash: linkHash },
@@ -196,7 +197,7 @@ describe("cloneNodeGraphForCopy()", () => {
     const store = createVirtualWorktreeMemoryStateStore(baseTree);
     const session = openVirtualWorktree(repo.objects, store);
     session.mkdir("src/lib", { recursive: true });
-    session.writeFile("src/lib/a.txt", Buffer.from("content"));
+    session.writeFile("src/lib/a.txt", bytes("content"));
 
     const root = store.getNode(VIRTUAL_ROOT_NODE_ID);
     if (root === null || root.state.kind !== "directory") {
@@ -250,7 +251,7 @@ describe("cloneNodeGraphForCopy()", () => {
 
   test("复制叶子文件时只创建一个新节点", () => {
     const repo = createMemoryRepository();
-    const blobHash = repo.writeBlob(Buffer.from("content"));
+    const blobHash = repo.writeBlob(bytes("content"));
     const store = createVirtualWorktreeMemoryStateStore(repo.createTree([]));
     const node = {
       id: createNodeId(),

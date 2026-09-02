@@ -7,6 +7,7 @@
 
 import { describe, test, expect, beforeEach } from "bun:test";
 
+import { bytes } from "../../helpers/bytes.ts";
 import { writeObject } from "@/objects/raw.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
 import { PushError } from "@/transport/client/receive-pack/push-error.ts";
@@ -608,7 +609,7 @@ describe("checkFastForward()", () => {
   test("自定义命名空间 non-commit（同 blob, 不同 tag）应拒绝", () => {
     const blobHash = writeObject(store, {
       type: "blob",
-      content: Buffer.from("same blob"),
+      content: bytes("same blob"),
     });
     const t1Hash = writeObject(store, {
       type: "tag",
@@ -643,7 +644,7 @@ describe("checkFastForward()", () => {
   test("自定义命名空间 non-commit（同 blob, 不同 tag）设 force 可通过", () => {
     const blobHash = writeObject(store, {
       type: "blob",
-      content: Buffer.from("same blob"),
+      content: bytes("same blob"),
     });
     const t1Hash = writeObject(store, {
       type: "tag",
@@ -675,7 +676,7 @@ describe("checkFastForward()", () => {
   });
 
   test("自定义命名空间 non-commit（轻量 blob→blob）应拒绝", () => {
-    const blobA = writeObject(store, { type: "blob", content: Buffer.from("blob A") });
+    const blobA = writeObject(store, { type: "blob", content: bytes("blob A") });
 
     const items = [
       {
@@ -691,8 +692,8 @@ describe("checkFastForward()", () => {
   });
 
   test("自定义命名空间 non-commit（不同 blob）应拒绝", () => {
-    const blobA = writeObject(store, { type: "blob", content: Buffer.from("blob A") });
-    const blobB = writeObject(store, { type: "blob", content: Buffer.from("blob B") });
+    const blobA = writeObject(store, { type: "blob", content: bytes("blob A") });
+    const blobB = writeObject(store, { type: "blob", content: bytes("blob B") });
 
     const items = [
       {
@@ -707,8 +708,8 @@ describe("checkFastForward()", () => {
   });
 
   test("自定义命名空间 non-commit（不同 blob）设 force 可通过", () => {
-    const blobA = writeObject(store, { type: "blob", content: Buffer.from("blob A") });
-    const blobB = writeObject(store, { type: "blob", content: Buffer.from("blob B") });
+    const blobA = writeObject(store, { type: "blob", content: bytes("blob A") });
+    const blobB = writeObject(store, { type: "blob", content: bytes("blob B") });
 
     const items = [
       {

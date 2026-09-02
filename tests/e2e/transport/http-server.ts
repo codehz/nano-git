@@ -5,8 +5,21 @@
  * 用于传输层端到端测试。
  */
 
-import { Buffer } from "node:buffer";
 import { spawnSync } from "node:child_process";
+
+import { allocBytes, bytesToUtf8, toUint8Array, utf8ToBytes } from "../../helpers/bytes.ts";
+
+/** 在字节数组中查找子序列 */
+function indexOfBytes(haystack: Uint8Array, needle: Uint8Array): number {
+  if (needle.length === 0) return 0;
+  outer: for (let i = 0; i <= haystack.length - needle.length; i++) {
+    for (let j = 0; j < needle.length; j++) {
+      if (haystack[i + j] !== needle[j]) continue outer;
+    }
+    return i;
+  }
+  return -1;
+}
 
 /** CGI 响应解析结果 */
 export interface GitHttpBackendResponse {
@@ -15,7 +28,7 @@ export interface GitHttpBackendResponse {
   /** 响应头 */
   headers: Record<string, string>;
   /** 响应体 */
-  body: Buffer;
+  body: Uint8Array;
 }
 
 /** 后端执行失败时返回的诊断头 */
@@ -32,7 +45,7 @@ export interface GitHttpRequestRecord {
   /** 请求头（全部转为小写） */
   headers: Record<string, string>;
   /** 原始请求体 */
-  body: Buffer;
+  body: Uint8Array;
 }
 
 /**
@@ -111,20 +124,20 @@ const GIT_ENV: Record<string, string> = {
 /**
  * 解析 git http-backend CGI 输出
  */
-function parseCgiResponse(stdout: Buffer): GitHttpBackendResponse {
-  let headerEndIndex = stdout.indexOf("\r\n\r\n");
+function parseCgiResponse(stdout: Uint8Array): GitHttpBackendResponse {
+  let headerEndIndex = indexOfBytes(stdout, utf8ToBytes("\r\n\r\n"));
   let separatorLength = 4;
 
   if (headerEndIndex === -1) {
-    headerEndIndex = stdout.indexOf("\n\n");
+    headerEndIndex = indexOfBytes(stdout, utf8ToBytes("\n\n"));
     separatorLength = 2;
   }
 
   if (headerEndIndex === -1) {
-    throw new Error(`CGI output has no header/body separator:\n${stdout.toString("utf-8")}`);
+    throw new Error(`CGI output has no header/body separator:\n${bytesToUtf8(stdout)}`);
   }
 
-  const headerSection = stdout.subarray(0, headerEndIndex).toString("utf-8");
+  const headerSection = bytesToUtf8(stdout.subarray(0, headerEndIndex));
   const body = stdout.subarray(headerEndIndex + separatorLength);
   const headers: Record<string, string> = {};
   let status = 200;
@@ -204,7 +217,7 @@ export function startGitHttpBackendServer(
     explicitService?: "git-upload-pack" | "git-receive-pack",
   ): Promise<Response> {
     const url = new URL(req.url);
-    const body = req.method === "POST" ? Buffer.from(await req.arrayBuffer()) : Buffer.alloc(0);
+    const body = req.method === "POST" ? toUint8Array(await req.arrayBuffer()) : allocBytes(0);
     const requestHeaders = toHeaderRecord(req.headers);
     const service = explicitService ?? url.searchParams.get("service");
 
@@ -250,7 +263,7 @@ export function startGitHttpBackendServer(
       throw new Error(`git http-backend failed (exit ${result.status}): ${stderr}`);
     }
 
-    const cgiResponse = parseCgiResponse(result.stdout ?? Buffer.alloc(0));
+    const cgiResponse = parseCgiResponse(result.stdout ?? allocBytes(0));
     const finalResponse = options?.transformResponse
       ? options.transformResponse(cgiResponse, requests[requests.length - 1]!)
       : cgiResponse;

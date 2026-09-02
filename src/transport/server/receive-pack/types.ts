@@ -71,7 +71,7 @@ export interface ParsedReceivePackRequest {
   /** ref 更新命令列表 */
   readonly commands: ReceivePackCommand[];
   /** packfile 数据（可能为空） */
-  readonly packfile: Buffer;
+  readonly packfile: Uint8Array;
 }
 
 /**

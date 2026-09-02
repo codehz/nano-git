@@ -15,6 +15,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { bytesToHex, toUint8Array } from "../../bytes.ts";
 import { PackIndexError } from "../../errors.ts";
 import { loadPackPairs } from "../store/pack-store-loader.ts";
 import { loadIncrementalMidxChain } from "./midx-chain.ts";
@@ -40,7 +41,7 @@ import type { MidxPackSource, WriteMultiPackIndexOptions } from "./midx-writer-c
 export function writeMultiPackIndexFile(
   packDir: string,
   options?: WriteMultiPackIndexOptions,
-): Buffer {
+): Uint8Array {
   const { pairs } = loadPackPairs(packDir);
   if (pairs.length === 0) {
     throw new PackIndexError(`No pack pairs found in ${packDir}`, { path: packDir });
@@ -68,7 +69,7 @@ export function writeMultiPackIndexFile(
 export function writeIncrementalMultiPackIndexFile(
   packDir: string,
   options?: WriteMultiPackIndexOptions,
-): { data: Buffer; checksumHex: string } {
+): { data: Uint8Array; checksumHex: string } {
   const { pairs } = loadPackPairs(packDir);
   if (pairs.length === 0) {
     throw new PackIndexError(`No pack pairs found in ${packDir}`, { path: packDir });
@@ -110,7 +111,7 @@ export function writeIncrementalMultiPackIndexFile(
   };
 
   const data = writeMultiPackIndex(newSources, layerOptions);
-  const checksumHex = data.subarray(data.length - 20).toString("hex");
+  const checksumHex = bytesToHex(data.subarray(data.length - 20));
 
   const chainDir = join(packDir, "multi-pack-index.d");
   mkdirSync(chainDir, { recursive: true });

@@ -7,6 +7,7 @@ import { mkdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { allocBytes } from "../../helpers/bytes.ts";
 import { createPackIndexWriter } from "@/pack/idx/pack-index.ts";
 import { loadPackPairs } from "@/pack/store/pack-store-loader.ts";
 import { sha1 } from "@/types/index.ts";
@@ -61,7 +62,7 @@ describe("loadPackPairs()", () => {
       offset: 12,
       crc32: 12345,
     });
-    const idxData = writer.build(Buffer.alloc(20)); // packChecksum = 20 zero bytes
+    const idxData = writer.build(allocBytes(20)); // packChecksum = 20 zero bytes
 
     writeFileSync(join(packDir, `pack-${checksum}.idx`), idxData);
     writeFileSync(join(packDir, `pack-${checksum}.pack`), "fake pack");

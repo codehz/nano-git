@@ -6,6 +6,7 @@ import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
 
+import { bytesToUtf8 } from "../../helpers/bytes.ts";
 import { git, gitInit, createFile } from "../helpers.ts";
 import { parsePktLines } from "@/transport/protocol/pkt-line.ts";
 
@@ -57,12 +58,12 @@ export function createServerRepo(
 /**
  * 解析 upload-pack 请求中的命令文本
  */
-export function decodeUploadPackCommands(body: Buffer): string[] {
+export function decodeUploadPackCommands(body: Uint8Array): string[] {
   const decodedBody = body[0] === 0x1f && body[1] === 0x8b ? gunzipSync(body) : body;
 
   return parsePktLines(decodedBody)
     .filter((line) => line.type === "data")
-    .map((line) => line.payload.toString("utf-8").trimEnd());
+    .map((line) => bytesToUtf8(line.payload).trimEnd());
 }
 
 /**
@@ -77,7 +78,7 @@ export function normalizeUploadPackCommands(commands: readonly string[]): string
 /**
  * 统计 upload-pack 请求中的 flush 数量
  */
-export function countFlushPackets(body: Buffer): number {
+export function countFlushPackets(body: Uint8Array): number {
   return parsePktLines(body).filter((line) => line.type === "flush").length;
 }
 

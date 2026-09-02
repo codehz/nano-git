@@ -2,6 +2,7 @@
  * Packfile 索引读取
  */
 
+import { bytesEqual, bytesToHex, readU32BE, readU64BE } from "../../bytes.ts";
 import { PackIndexError } from "../../errors.ts";
 import { sha1 } from "../../types/index.ts";
 import {
@@ -76,7 +77,7 @@ export interface PackIndexReader {
  * console.log(index.objectCount);
  * ```
  */
-export function createPackIndexReader(data: Buffer): PackIndexReader {
+export function createPackIndexReader(data: Uint8Array): PackIndexReader {
   // === 解析头部 ===
 
   if (data.length < IDX_V2_HEADER_SIZE) {
@@ -84,11 +85,11 @@ export function createPackIndexReader(data: Buffer): PackIndexReader {
   }
 
   const signature = data.subarray(0, 4);
-  if (!signature.equals(IDX_V2_SIGNATURE)) {
-    throw new PackIndexError(`Invalid signature: ${signature.toString("hex")}`);
+  if (!bytesEqual(signature, IDX_V2_SIGNATURE)) {
+    throw new PackIndexError(`Invalid signature: ${bytesToHex(signature)}`);
   }
 
-  const version = data.readUInt32BE(4);
+  const version = readU32BE(data, 4);
   if (version !== IDX_V2_VERSION) {
     throw new PackIndexError(`Unsupported version: ${version}`);
   }
@@ -98,7 +99,7 @@ export function createPackIndexReader(data: Buffer): PackIndexReader {
   const fanout: number[] = [];
   const fanoutStart = IDX_V2_HEADER_SIZE;
   for (let i = 0; i < 256; i++) {
-    fanout.push(data.readUInt32BE(fanoutStart + i * 4));
+    fanout.push(readU32BE(data, fanoutStart + i * 4));
   }
 
   const _objectCount = fanout[255]!;
@@ -117,7 +118,7 @@ export function createPackIndexReader(data: Buffer): PackIndexReader {
    */
   function getHashAt(index: number): string {
     const offset = sha1TableOffset + index * 20;
-    return data.subarray(offset, offset + 20).toString("hex");
+    return bytesToHex(data.subarray(offset, offset + 20));
   }
 
   /**
@@ -125,12 +126,12 @@ export function createPackIndexReader(data: Buffer): PackIndexReader {
    */
   function getEntryAt(index: number): PackIndexEntry {
     const hash = sha1(getHashAt(index));
-    const crc32 = data.readUInt32BE(crc32TableOffset + index * 4);
+    const crc32 = readU32BE(data, crc32TableOffset + index * 4);
 
-    let offset = data.readUInt32BE(offsetTableOffset + index * 4);
+    let offset = readU32BE(data, offsetTableOffset + index * 4);
     if (offset & 0x80000000) {
       const largeIndex = offset & 0x7fffffff;
-      offset = Number(data.readBigUInt64BE(largeOffsetTable + largeIndex * 8));
+      offset = Number(readU64BE(data, largeOffsetTable + largeIndex * 8));
     }
 
     return { hash, offset, crc32 };

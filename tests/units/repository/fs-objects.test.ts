@@ -7,6 +7,7 @@ import { mkdirSync, rmSync, existsSync, writeFileSync, symlinkSync, chmodSync } 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { bytes, bytesToUtf8 } from "../../helpers/bytes.ts";
 import { hashToPath } from "@/hash/index.ts";
 import { encodeObject } from "@/objects/raw.ts";
 import { createPackBuilder } from "@/pack/builder/pack-builder.ts";
@@ -40,11 +41,11 @@ describe("文件系统仓库的对象操作", () => {
   });
 
   test("writeBlob() 和 catFile() 配合工作", () => {
-    const hash = repo.writeBlob(Buffer.from("test content"));
+    const hash = repo.writeBlob(bytes("test content"));
     const obj = repo.catFile(hash);
     expect(obj.type).toBe("blob");
     if (obj.type === "blob") {
-      expect(obj.content.toString("utf-8")).toBe("test content");
+      expect(bytesToUtf8(obj.content)).toBe("test content");
     }
   });
 
@@ -56,7 +57,7 @@ describe("文件系统仓库的对象操作", () => {
     const obj = repo.catFile(hash);
     expect(obj.type).toBe("blob");
     if (obj.type === "blob") {
-      expect(obj.content.toString("utf-8")).toBe("file content");
+      expect(bytesToUtf8(obj.content)).toBe("file content");
     }
   });
 
@@ -120,7 +121,7 @@ describe("文件系统仓库的对象操作", () => {
       const blob = repo.catFile(linkEntry!.hash);
       expect(blob.type).toBe("blob");
       if (blob.type === "blob") {
-        expect(blob.content.toString("utf-8")).toBe(target);
+        expect(bytesToUtf8(blob.content)).toBe(target);
       }
     }
   });
@@ -142,7 +143,7 @@ describe("文件系统仓库的对象操作", () => {
       const blob = repo.catFile(linkEntry!.hash);
       expect(blob.type).toBe("blob");
       if (blob.type === "blob") {
-        expect(blob.content.toString("utf-8")).toBe("./relative-target.txt");
+        expect(bytesToUtf8(blob.content)).toBe("./relative-target.txt");
       }
     }
   });
@@ -166,7 +167,7 @@ describe("文件系统仓库的对象操作", () => {
       const blob = repo.catFile(linkEntry!.hash);
       expect(blob.type).toBe("blob");
       if (blob.type === "blob") {
-        expect(blob.content.toString("utf-8")).toBe("real-dir");
+        expect(bytesToUtf8(blob.content)).toBe("real-dir");
       }
 
       const dirEntry = tree.entries.find((e: TreeEntry) => e.name === "real-dir");
@@ -192,7 +193,7 @@ describe("文件系统仓库的对象操作", () => {
       const blob = repo.catFile(linkEntry!.hash);
       expect(blob.type).toBe("blob");
       if (blob.type === "blob") {
-        expect(blob.content.toString("utf-8")).toBe("/nonexistent/path");
+        expect(bytesToUtf8(blob.content)).toBe("/nonexistent/path");
       }
     }
   });
@@ -225,7 +226,7 @@ describe("文件系统仓库的对象操作", () => {
         const blob = repo.catFile(linkEntry!.hash);
         expect(blob.type).toBe("blob");
         if (blob.type === "blob") {
-          expect(blob.content.toString("utf-8")).toBe("/any/target");
+          expect(bytesToUtf8(blob.content)).toBe("/any/target");
         }
 
         const regularEntry = subtree.entries.find((e: TreeEntry) => e.name === "regular.txt");
@@ -270,7 +271,7 @@ describe("文件系统仓库的对象操作", () => {
     const hash = builder.addRaw(
       encodeObject({
         type: "blob",
-        content: Buffer.from("packed-only content"),
+        content: bytes("packed-only content"),
       }),
     );
     builder.build();
@@ -280,18 +281,18 @@ describe("文件系统仓库的对象操作", () => {
 
     expect(obj.type).toBe("blob");
     if (obj.type === "blob") {
-      expect(obj.content.toString("utf-8")).toBe("packed-only content");
+      expect(bytesToUtf8(obj.content)).toBe("packed-only content");
     }
   });
 
   test("listObjects() 同时返回 loose 和 packed objects", () => {
-    const looseHash = repo.writeBlob(Buffer.from("loose"));
+    const looseHash = repo.writeBlob(bytes("loose"));
 
     const builder = createPackBuilder(tempDir);
     const packedHash = builder.addRaw(
       encodeObject({
         type: "blob",
-        content: Buffer.from("packed"),
+        content: bytes("packed"),
       }),
     );
     builder.build();
@@ -301,7 +302,7 @@ describe("文件系统仓库的对象操作", () => {
   });
 
   test("writePack() 将对象写入新的 packfile", () => {
-    const hash = repo.writeBlob(Buffer.from("pack me"));
+    const hash = repo.writeBlob(bytes("pack me"));
     const result = repo.writePack([hash]);
 
     expect(result.objectCount).toBe(1);
@@ -315,10 +316,10 @@ describe("文件系统仓库的对象操作", () => {
   });
 
   test("repack() 默认替换旧 pack 文件", () => {
-    repo.writeBlob(Buffer.from("first"));
+    repo.writeBlob(bytes("first"));
     repo.writePack();
 
-    repo.writeBlob(Buffer.from("second"));
+    repo.writeBlob(bytes("second"));
     const result = repo.repack();
 
     expect(repo.packs!.source.packCount).toBe(1);
@@ -327,7 +328,7 @@ describe("文件系统仓库的对象操作", () => {
   });
 
   test("repack({ pruneLoose: true }) 会删除已打包的 loose object 文件", () => {
-    const hash = repo.writeBlob(Buffer.from("packed and pruned"));
+    const hash = repo.writeBlob(bytes("packed and pruned"));
     const objectPath = join(tempDir, "objects", hashToPath(hash));
 
     expect(existsSync(objectPath)).toBe(true);
@@ -340,14 +341,14 @@ describe("文件系统仓库的对象操作", () => {
   });
 
   test("listReachableObjects() 只返回从 refs/HEAD 可达的对象", () => {
-    const reachableBlob = repo.writeBlob(Buffer.from("reachable"));
+    const reachableBlob = repo.writeBlob(bytes("reachable"));
     const reachableTree = repo.createTree([
       { mode: "100644", name: "file.txt", hash: reachableBlob },
     ]);
     const reachableCommit = repo.createCommit(reachableTree, [], "reachable", testAuthor);
     repo.updateRef("refs/heads/main", reachableCommit);
 
-    const unreachableBlob = repo.writeBlob(Buffer.from("unreachable"));
+    const unreachableBlob = repo.writeBlob(bytes("unreachable"));
     const reachable = repo.listReachableObjects();
 
     expect(reachable).toContain(reachableBlob);
@@ -357,7 +358,7 @@ describe("文件系统仓库的对象操作", () => {
   });
 
   test("listReachableObjects() 会跟随 annotated tag", () => {
-    const blobHash = repo.writeBlob(Buffer.from("tag target"));
+    const blobHash = repo.writeBlob(bytes("tag target"));
     const tagHash = repo.createAnnotatedTag("v1.0.0", blobHash, "release", testAuthor, "blob");
 
     const reachable = repo.listReachableObjects();
@@ -366,14 +367,14 @@ describe("文件系统仓库的对象操作", () => {
   });
 
   test("gc() 只保留可达对象", () => {
-    const reachableBlob = repo.writeBlob(Buffer.from("reachable after gc"));
+    const reachableBlob = repo.writeBlob(bytes("reachable after gc"));
     const reachableTree = repo.createTree([
       { mode: "100644", name: "keep.txt", hash: reachableBlob },
     ]);
     const reachableCommit = repo.createCommit(reachableTree, [], "keep", testAuthor);
     repo.updateRef("refs/heads/main", reachableCommit);
 
-    const danglingBlob = repo.writeBlob(Buffer.from("dangling"));
+    const danglingBlob = repo.writeBlob(bytes("dangling"));
     const danglingPath = join(tempDir, "objects", hashToPath(danglingBlob));
 
     expect(existsSync(danglingPath)).toBe(true);

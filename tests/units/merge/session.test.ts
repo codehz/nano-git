@@ -4,6 +4,7 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { bytes, bytesToUtf8 } from "../../helpers/bytes.ts";
 import { MergeBaseError, MergeError, UnresolvedConflictsError } from "@/errors.ts";
 import { planCommitMerge } from "@/merge/commit-merge.ts";
 import { createMergeSession } from "@/merge/session.ts";
@@ -22,7 +23,7 @@ const author: GitAuthor = {
 };
 
 function writeBlob(store: ReturnType<typeof createMemoryObjectStore>, text: string): SHA1 {
-  return writeObject(store, { type: "blob", content: Buffer.from(text) });
+  return writeObject(store, { type: "blob", content: bytes(text) });
 }
 
 function writeTree(
@@ -206,7 +207,7 @@ describe("createMergeSession() 冲突决议", () => {
     session.resolve("f.txt", {
       take: "custom",
       mode: "100644",
-      content: Buffer.from("merged!"),
+      content: bytes("merged!"),
     });
     const { tree } = session.finalize();
     const obj = readObject(store, tree);
@@ -216,7 +217,7 @@ describe("createMergeSession() 冲突决议", () => {
       const blob = readObject(store, obj.entries[0]!.hash);
       expect(blob.type).toBe("blob");
       if (blob.type === "blob") {
-        expect(blob.content.toString()).toBe("merged!");
+        expect(bytesToUtf8(blob.content)).toBe("merged!");
       }
     }
   });

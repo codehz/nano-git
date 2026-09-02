@@ -33,6 +33,8 @@ import type { GitErrorOptions } from "../../../errors.ts";
 import type { V2GitServiceTransport } from "./types.ts";
 import type { LsRefsEntry } from "./types.ts";
 export type { LsRefsEntry };
+import { bytesToUtf8 } from "../../../bytes.ts";
+
 import type { RemoteRef } from "../../protocol/types.ts";
 import type { RefAdvertisement } from "../../protocol/types.ts";
 
@@ -128,14 +130,14 @@ export async function lsRefs(
  * console.log(entries[0].refname); // "refs/heads/main"
  * ```
  */
-export function parseLsRefsResponse(data: Buffer): LsRefsEntry[] {
+export function parseLsRefsResponse(data: Uint8Array): LsRefsEntry[] {
   const lines = parsePktLines(data);
   const entries: LsRefsEntry[] = [];
 
   for (const line of lines) {
     if (line.type !== "data") continue;
 
-    const text = line.payload.toString("utf-8").trim();
+    const text = bytesToUtf8(line.payload).trim();
     if (text.length === 0) continue;
 
     // 格式: <obj-id-or-unborn> SP <refname> [SP <attr>...] LF

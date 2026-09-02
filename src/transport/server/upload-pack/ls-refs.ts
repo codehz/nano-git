@@ -6,6 +6,7 @@
  * @see https://git-scm.com/docs/protocol-v2#_ls_refs
  */
 
+import { concatBytes } from "../../../bytes.ts";
 import { tryReadObject } from "../../../objects/raw.ts";
 import { resolveRefHash } from "../../../refs/resolve.ts";
 import { sha1 } from "../../../types/index.ts";
@@ -118,10 +119,10 @@ function filterRefsByPrefix(refs: Map<string, string>, prefixes: string[]): Map<
 export function generateLsRefsResponse(
   backend: RepositoryBackend,
   options: LsRefsServerOptions,
-): Buffer {
+): Uint8Array {
   const rawRefs = readAllRefs(backend);
   const filtered = filterRefsByPrefix(rawRefs, options.refPrefixes);
-  const lines: Buffer[] = [];
+  const lines: Uint8Array[] = [];
 
   for (const [refName, content] of filtered) {
     if (content === null || content.length === 0) continue;
@@ -165,5 +166,5 @@ export function generateLsRefsResponse(
   }
 
   lines.push(encodeFlushPkt());
-  return Buffer.concat(lines);
+  return concatBytes(...lines);
 }

@@ -4,6 +4,7 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { bytes } from "../../helpers/bytes.ts";
 import { writeObject } from "@/objects/raw.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
 import { createMemoryRefStore } from "@/refs/memory.ts";
@@ -23,7 +24,7 @@ describe("listReachableObjects", () => {
     const refs = createMemoryRefStore();
 
     // 构造对象图：commit → tree → blob
-    const blobHash = writeObject(objects, { type: "blob", content: Buffer.from("hello") });
+    const blobHash = writeObject(objects, { type: "blob", content: bytes("hello") });
 
     const treeHash = writeObject(objects, {
       type: "tree",
@@ -54,7 +55,7 @@ describe("listReachableObjects", () => {
     const refs = createMemoryRefStore();
 
     // 存储一个 blob 但无 refs 指向它
-    const orphanHash = writeObject(objects, { type: "blob", content: Buffer.from("orphan") });
+    const orphanHash = writeObject(objects, { type: "blob", content: bytes("orphan") });
 
     const result = listReachableObjects(objects, refs);
     expect(result).not.toContain(orphanHash);
@@ -66,7 +67,7 @@ describe("listReachableObjects", () => {
     const refs = createMemoryRefStore();
 
     // 分支 A 的对象
-    const blobA = writeObject(objects, { type: "blob", content: Buffer.from("a") });
+    const blobA = writeObject(objects, { type: "blob", content: bytes("a") });
     const treeA = writeObject(objects, {
       type: "tree",
       entries: [{ mode: "100644", name: "a", hash: blobA }],
@@ -81,7 +82,7 @@ describe("listReachableObjects", () => {
     });
 
     // 分支 B 的对象
-    const blobB = writeObject(objects, { type: "blob", content: Buffer.from("b") });
+    const blobB = writeObject(objects, { type: "blob", content: bytes("b") });
     const treeB = writeObject(objects, {
       type: "tree",
       entries: [{ mode: "100644", name: "b", hash: blobB }],

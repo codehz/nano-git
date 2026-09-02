@@ -3,6 +3,7 @@
  */
 import { describe, test, expect } from "bun:test";
 
+import { bytes } from "../../helpers/bytes.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
 import { openVirtualWorktree } from "@/worktree/engine/worktree.ts";
 import { createVirtualWorktreeMemoryStateStore } from "@/worktree/store/memory-backend.ts";
@@ -58,7 +59,7 @@ describe("writeFile", () => {
 
     const session = openVirtualWorktree(repo.objects, store);
 
-    expect(() => session.writeFile("broken.txt", Buffer.from("data"))).toThrow(/setNode failed/);
+    expect(() => session.writeFile("broken.txt", bytes("data"))).toThrow(/setNode failed/);
     expect(session.exists("broken.txt")).toBe(false);
     expect(session.diff()).toEqual([]);
     expect(inner.readBaseTree()).toBe(baseTree);

@@ -3,6 +3,7 @@
  */
 import { describe, expect, test } from "bun:test";
 
+import { bytes, bytesToUtf8 } from "../../../helpers/bytes.ts";
 import { virtualWorktreeBackends } from "./contract.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
 
@@ -16,7 +17,7 @@ function readTree(repo: ReturnType<typeof createMemoryRepository>, hash: string)
 }
 
 /** 读取 blob 内容（类型断言辅助） */
-function readBlob(repo: ReturnType<typeof createMemoryRepository>, hash: string): Buffer {
+function readBlob(repo: ReturnType<typeof createMemoryRepository>, hash: string): Uint8Array {
   const obj = repo.catFile(hash as SHA1);
   if (obj.type !== "blob") throw new Error(`Expected blob, got ${obj.type}`);
   return obj.content;
@@ -28,7 +29,7 @@ describe("VirtualWorktree contract: writeTree", () => {
       const repo = createMemoryRepository();
       const session = createWorktree(repo, { baseTree: repo.createTree([]) });
 
-      session.writeFile("file.txt", Buffer.from("stable"));
+      session.writeFile("file.txt", bytes("stable"));
       const hash1 = session.writeTree();
       const hash2 = session.writeTree();
 
@@ -39,15 +40,15 @@ describe("VirtualWorktree contract: writeTree", () => {
       const repo = createMemoryRepository();
       const session = createWorktree(repo, { baseTree: repo.createTree([]) });
 
-      session.writeFile("a.txt", Buffer.from("alpha"));
+      session.writeFile("a.txt", bytes("alpha"));
       session.mkdir("dir");
-      session.writeFile("dir/b.txt", Buffer.from("beta"));
+      session.writeFile("dir/b.txt", bytes("beta"));
 
       const tree = session.writeTree();
       const reopened = createWorktree(repo, { baseTree: tree as SHA1 });
 
-      expect(reopened.readFile("a.txt").toString()).toBe("alpha");
-      expect(reopened.readFile("dir/b.txt").toString()).toBe("beta");
+      expect(bytesToUtf8(reopened.readFile("a.txt"))).toBe("alpha");
+      expect(bytesToUtf8(reopened.readFile("dir/b.txt"))).toBe("beta");
     });
 
     test("空 worktree writeTree 返回 baseTree", () => {
@@ -63,20 +64,20 @@ describe("VirtualWorktree contract: writeTree", () => {
       const baseTree = repo.createTree([]);
       const session = createWorktree(repo, { baseTree });
 
-      session.writeFile("file.txt", Buffer.from("data"));
+      session.writeFile("file.txt", bytes("data"));
       session.writeTree();
 
       expect(session.baseTree).toBe(baseTree);
-      expect(session.readFile("file.txt").toString()).toBe("data");
+      expect(bytesToUtf8(session.readFile("file.txt"))).toBe("data");
     });
 
     test("writeTree 复用未修改路径的原始 blob hash", () => {
       const repo = createMemoryRepository();
-      const blobHash = repo.writeBlob(Buffer.from("unchanged"));
+      const blobHash = repo.writeBlob(bytes("unchanged"));
       const baseTree = repo.createTree([{ mode: "100644", name: "old.txt", hash: blobHash }]);
       const session = createWorktree(repo, { baseTree });
 
-      session.writeFile("new.txt", Buffer.from("new"));
+      session.writeFile("new.txt", bytes("new"));
       const tree = readTree(repo, session.writeTree());
       const oldEntry = tree.entries.find((entry) => entry.name === "old.txt");
 
@@ -89,14 +90,14 @@ describe("VirtualWorktree contract: writeTree", () => {
       const session = createWorktree(repo, { baseTree: repo.createTree([]) });
 
       session.mkdir("manuscript");
-      session.writeFile("manuscript/a.md", Buffer.from("a"));
+      session.writeFile("manuscript/a.md", bytes("a"));
       session.delete("manuscript", { force: true });
-      session.writeFile("manuscript", Buffer.from("file-now"));
+      session.writeFile("manuscript", bytes("file-now"));
 
       const root = readTree(repo, session.writeTree());
       expect(root.entries).toHaveLength(1);
       expect(root.entries[0]).toMatchObject({ mode: "100644", name: "manuscript" });
-      expect(readBlob(repo, root.entries[0]!.hash).toString()).toBe("file-now");
+      expect(bytesToUtf8(readBlob(repo, root.entries[0]!.hash))).toBe("file-now");
     });
 
     // ====== 以下测试由单后端 worktree-write-tree / worktree-reset 转换而来 ======
@@ -106,7 +107,7 @@ describe("VirtualWorktree contract: writeTree", () => {
       const baseTree = repo.createTree([]);
       const session = createWorktree(repo, { baseTree });
 
-      session.writeFile("a.txt", Buffer.from("hello"));
+      session.writeFile("a.txt", bytes("hello"));
       const newTree = session.writeTree();
       expect(newTree).not.toBe(baseTree);
 
@@ -116,16 +117,16 @@ describe("VirtualWorktree contract: writeTree", () => {
       expect(tree.entries[0]!.mode).toBe("100644");
 
       const blob = readBlob(repo, tree.entries[0]!.hash);
-      expect(blob.toString()).toBe("hello");
+      expect(bytesToUtf8(blob)).toBe("hello");
     });
 
     test("writeTree 不破坏 overlay，新建文件后可继续读取", () => {
       const repo = createMemoryRepository();
       const session = createWorktree(repo, { baseTree: repo.createTree([]) });
 
-      session.writeFile("f.txt", Buffer.from("data"));
+      session.writeFile("f.txt", bytes("data"));
       session.writeTree();
-      expect(session.readFile("f.txt").toString()).toBe("data");
+      expect(bytesToUtf8(session.readFile("f.txt"))).toBe("data");
     });
 
     test("嵌套目录+多文件 writeTree", () => {
@@ -133,9 +134,9 @@ describe("VirtualWorktree contract: writeTree", () => {
       const session = createWorktree(repo, { baseTree: repo.createTree([]) });
 
       session.mkdir("src");
-      session.writeFile("src/main.ts", Buffer.from("console.log(1)"));
-      session.writeFile("src/lib.ts", Buffer.from("export {}"));
-      session.writeFile("README.md", Buffer.from("# Project"));
+      session.writeFile("src/main.ts", bytes("console.log(1)"));
+      session.writeFile("src/lib.ts", bytes("export {}"));
+      session.writeFile("README.md", bytes("# Project"));
 
       const newTree = session.writeTree();
       const tree = readTree(repo, newTree);
@@ -155,9 +156,9 @@ describe("VirtualWorktree contract: writeTree", () => {
       const session = createWorktree(repo, { baseTree: repo.createTree([]) });
 
       session.mkdir("src");
-      session.writeFile("src/a.ts", Buffer.from("a1"));
-      session.writeFile("src/b.ts", Buffer.from("b1"));
-      session.writeFile("src/a.ts", Buffer.from("a2"));
+      session.writeFile("src/a.ts", bytes("a1"));
+      session.writeFile("src/b.ts", bytes("b1"));
+      session.writeFile("src/a.ts", bytes("a2"));
 
       const treeHash = session.writeTree();
       const root = readTree(repo, treeHash);

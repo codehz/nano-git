@@ -3,6 +3,7 @@
  */
 import { describe, expect, test } from "bun:test";
 
+import { bytes, bytesToUtf8 } from "../../../helpers/bytes.ts";
 import { virtualWorktreeBackends } from "./contract.ts";
 import {
   VirtualNotDirectoryError,
@@ -21,7 +22,7 @@ function readTree(repo: ReturnType<typeof createMemoryRepository>, hash: string)
 }
 
 /** 读取 blob 内容（类型断言辅助） */
-function readBlob(repo: ReturnType<typeof createMemoryRepository>, hash: string): Buffer {
+function readBlob(repo: ReturnType<typeof createMemoryRepository>, hash: string): Uint8Array {
   const obj = repo.catFile(hash as SHA1);
   if (obj.type !== "blob") throw new Error(`Expected blob, got ${obj.type}`);
   return obj.content;
@@ -31,7 +32,7 @@ describe("VirtualWorktree contract: structure", () => {
   describe.each(virtualWorktreeBackends)("$name", ({ createWorktree }) => {
     test("删除路径后不可见", () => {
       const repo = createMemoryRepository();
-      const fileHash = repo.writeBlob(Buffer.from("gone"));
+      const fileHash = repo.writeBlob(bytes("gone"));
       const session = createWorktree(repo, {
         baseTree: repo.createTree([{ mode: "100644", name: "file.txt", hash: fileHash }]),
       });
@@ -53,7 +54,7 @@ describe("VirtualWorktree contract: structure", () => {
       const session = createWorktree(repo, { baseTree: repo.createTree([]) });
 
       expect(() => session.delete("missing", { force: true })).not.toThrow();
-      session.writeFile("file.txt", Buffer.from("data"));
+      session.writeFile("file.txt", bytes("data"));
       session.delete("file.txt");
       expect(() => session.delete("file.txt", { force: true })).not.toThrow();
     });
@@ -63,9 +64,9 @@ describe("VirtualWorktree contract: structure", () => {
       const session = createWorktree(repo, { baseTree: repo.createTree([]) });
 
       session.mkdir("manuscript");
-      session.writeFile("manuscript/a.md", Buffer.from("a"));
+      session.writeFile("manuscript/a.md", bytes("a"));
       session.delete("manuscript", { force: true });
-      session.writeFile("manuscript", Buffer.from("file-now"));
+      session.writeFile("manuscript", bytes("file-now"));
 
       expect(session.stat("manuscript")).toMatchObject({ kind: "blob", mode: "100644", size: 8 });
       expect(session.diff()).toMatchObject([
@@ -82,31 +83,31 @@ describe("VirtualWorktree contract: structure", () => {
       const session = createWorktree(repo, { baseTree: repo.createTree([]) });
 
       session.mkdir("src");
-      session.writeFile("src/main.ts", Buffer.from("code"));
+      session.writeFile("src/main.ts", bytes("code"));
       session.move("src/main.ts", "src/index.ts");
       session.move("src", "lib");
 
       expect(session.exists("src")).toBe(false);
-      expect(session.readFile("lib/index.ts").toString()).toBe("code");
+      expect(bytesToUtf8(session.readFile("lib/index.ts"))).toBe("code");
     });
 
     test("move 可自动创建目标父目录", () => {
       const repo = createMemoryRepository();
       const session = createWorktree(repo, { baseTree: repo.createTree([]) });
 
-      session.writeFile("a.txt", Buffer.from("nested"));
+      session.writeFile("a.txt", bytes("nested"));
       session.move("a.txt", "other/deep/b.txt");
 
       expect(session.exists("a.txt")).toBe(false);
-      expect(session.readFile("other/deep/b.txt").toString()).toBe("nested");
+      expect(bytesToUtf8(session.readFile("other/deep/b.txt"))).toBe("nested");
     });
 
     test("move 到文件父路径下时报 VirtualNotDirectoryError", () => {
       const repo = createMemoryRepository();
       const session = createWorktree(repo, { baseTree: repo.createTree([]) });
 
-      session.writeFile("from.txt", Buffer.from("data"));
-      session.writeFile("target", Buffer.from("blocking parent"));
+      session.writeFile("from.txt", bytes("data"));
+      session.writeFile("target", bytes("blocking parent"));
 
       expect(() => session.move("from.txt", "target/child.txt")).toThrow(VirtualNotDirectoryError);
     });
@@ -116,7 +117,7 @@ describe("VirtualWorktree contract: structure", () => {
       const session = createWorktree(repo, { baseTree: repo.createTree([]) });
 
       session.mkdir("src");
-      session.writeFile("src/main.ts", Buffer.from("code"));
+      session.writeFile("src/main.ts", bytes("code"));
 
       expect(() => session.move("src", "src/nested")).toThrow(
         /destination is a subdirectory of source/,
@@ -127,8 +128,8 @@ describe("VirtualWorktree contract: structure", () => {
       const repo = createMemoryRepository();
       const session = createWorktree(repo, { baseTree: repo.createTree([]) });
 
-      session.writeFile("a.txt", Buffer.from("a"));
-      session.writeFile("b.txt", Buffer.from("b"));
+      session.writeFile("a.txt", bytes("a"));
+      session.writeFile("b.txt", bytes("b"));
 
       expect(() => session.move("a.txt", "b.txt")).toThrow(VirtualPathAlreadyExistsError);
     });
@@ -138,20 +139,20 @@ describe("VirtualWorktree contract: structure", () => {
       const session = createWorktree(repo, { baseTree: repo.createTree([]) });
 
       session.mkdir("src");
-      session.writeFile("src/main.ts", Buffer.from("v1"));
+      session.writeFile("src/main.ts", bytes("v1"));
       session.copy("src", "src-copy");
-      session.writeFile("src/main.ts", Buffer.from("v2"));
+      session.writeFile("src/main.ts", bytes("v2"));
 
-      expect(session.readFile("src/main.ts").toString()).toBe("v2");
-      expect(session.readFile("src-copy/main.ts").toString()).toBe("v1");
+      expect(bytesToUtf8(session.readFile("src/main.ts"))).toBe("v2");
+      expect(bytesToUtf8(session.readFile("src-copy/main.ts"))).toBe("v1");
     });
 
     test("copy 到文件父路径下时报 VirtualNotDirectoryError", () => {
       const repo = createMemoryRepository();
       const session = createWorktree(repo, { baseTree: repo.createTree([]) });
 
-      session.writeFile("from.txt", Buffer.from("data"));
-      session.writeFile("target", Buffer.from("blocking parent"));
+      session.writeFile("from.txt", bytes("data"));
+      session.writeFile("target", bytes("blocking parent"));
 
       expect(() => session.copy("from.txt", "target/child.txt")).toThrow(VirtualNotDirectoryError);
     });
@@ -161,19 +162,19 @@ describe("VirtualWorktree contract: structure", () => {
       const session = createWorktree(repo, { baseTree: repo.createTree([]) });
 
       session.mkdir("src");
-      session.writeFile("src/main.ts", Buffer.from("code"));
+      session.writeFile("src/main.ts", bytes("code"));
       session.copy("src", "src/nested");
 
-      expect(session.readFile("src/main.ts").toString()).toBe("code");
-      expect(session.readFile("src/nested/main.ts").toString()).toBe("code");
+      expect(bytesToUtf8(session.readFile("src/main.ts"))).toBe("code");
+      expect(bytesToUtf8(session.readFile("src/nested/main.ts"))).toBe("code");
     });
 
     test("copy 到已存在路径时报 VirtualPathAlreadyExistsError", () => {
       const repo = createMemoryRepository();
       const session = createWorktree(repo, { baseTree: repo.createTree([]) });
 
-      session.writeFile("a.txt", Buffer.from("a"));
-      session.writeFile("b.txt", Buffer.from("b"));
+      session.writeFile("a.txt", bytes("a"));
+      session.writeFile("b.txt", bytes("b"));
 
       expect(() => session.copy("a.txt", "b.txt")).toThrow(VirtualPathAlreadyExistsError);
     });
@@ -206,25 +207,25 @@ describe("VirtualWorktree contract: structure", () => {
       const repo = createMemoryRepository();
       const session = createWorktree(repo, { baseTree: repo.createTree([]) });
 
-      session.writeFile("old.txt", Buffer.from("content"));
+      session.writeFile("old.txt", bytes("content"));
       session.move("old.txt", "new.txt");
       const tree = session.writeTree();
 
       const treeObj = readTree(repo, tree);
       expect(treeObj.entries).toHaveLength(1);
       expect(treeObj.entries[0]!.name).toBe("new.txt");
-      expect(readBlob(repo, treeObj.entries[0]!.hash).toString()).toBe("content");
+      expect(bytesToUtf8(readBlob(repo, treeObj.entries[0]!.hash))).toBe("content");
     });
 
     test("move 后修改内容仍表现为 remove + create", () => {
       const repo = createMemoryRepository();
-      const blobHash = repo.writeBlob(Buffer.from("data"));
+      const blobHash = repo.writeBlob(bytes("data"));
       const session = createWorktree(repo, {
         baseTree: repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]),
       });
 
       session.move("a.txt", "b.txt");
-      session.writeFile("b.txt", Buffer.from("changed"));
+      session.writeFile("b.txt", bytes("changed"));
 
       const diff = session.diff();
       expect(diff.find((entry) => entry.path === "a.txt")).toMatchObject({
@@ -241,7 +242,7 @@ describe("VirtualWorktree contract: structure", () => {
 
     test("删除 move 目标仍保持全量语义正确", () => {
       const repo = createMemoryRepository();
-      const blobHash = repo.writeBlob(Buffer.from("data"));
+      const blobHash = repo.writeBlob(bytes("data"));
       const session = createWorktree(repo, {
         baseTree: repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]),
       });
@@ -262,10 +263,10 @@ describe("VirtualWorktree contract: structure", () => {
       const repo = createMemoryRepository();
       const session = createWorktree(repo, { baseTree: repo.createTree([]) });
 
-      session.writeFile("f.txt", Buffer.from("data"));
+      session.writeFile("f.txt", bytes("data"));
       session.move("f.txt", "f.txt");
       expect(session.exists("f.txt")).toBe(true);
-      expect(session.readFile("f.txt").toString()).toBe("data");
+      expect(bytesToUtf8(session.readFile("f.txt"))).toBe("data");
       expect(session.diff()).toMatchObject([
         {
           kind: "create",
@@ -279,7 +280,7 @@ describe("VirtualWorktree contract: structure", () => {
       const repo = createMemoryRepository();
       const session = createWorktree(repo, { baseTree: repo.createTree([]) });
 
-      session.writeFile("a.txt", Buffer.from("data"));
+      session.writeFile("a.txt", bytes("data"));
       session.copy("a.txt", "b.txt");
       const tree = session.writeTree();
 

@@ -7,6 +7,7 @@ import { mkdirSync, writeFileSync, rmSync, existsSync, symlinkSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { bytesToUtf8 } from "../../../helpers/bytes.ts";
 import { readObject } from "@/objects/raw.ts";
 import { createMemoryObjectStore } from "@/odb/memory.ts";
 import { writeTreeRecursive } from "@/repository/tree/tree-writer.ts";
@@ -113,7 +114,7 @@ describe("writeTreeRecursive()", () => {
       const linkBlob = readObject(store, link!.hash);
       expect(linkBlob.type).toBe("blob");
       if (linkBlob.type === "blob") {
-        expect(linkBlob.content.toString()).toBe("target.txt");
+        expect(bytesToUtf8(linkBlob.content)).toBe("target.txt");
       }
     }
   });

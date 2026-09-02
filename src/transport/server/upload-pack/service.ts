@@ -32,7 +32,7 @@ export interface UploadPackService {
   /**
    * 生成能力广告
    */
-  advertise(): Buffer;
+  advertise(): Uint8Array;
 
   /**
    * 处理请求
@@ -41,7 +41,7 @@ export interface UploadPackService {
    * @returns 服务端响应（pkt-line 编码）
    * @throws {UploadPackServiceError} 命令不支持或参数不合法
    */
-  handleRequest(body: Buffer): Buffer;
+  handleRequest(body: Uint8Array): Uint8Array;
 }
 
 // ============================================================================
@@ -63,11 +63,11 @@ export interface UploadPackService {
  */
 export function createUploadPackService(backend: RepositoryBackend): UploadPackService {
   return {
-    advertise(): Buffer {
+    advertise(): Uint8Array {
       return advertiseUploadPack();
     },
 
-    handleRequest(body: Buffer): Buffer {
+    handleRequest(body: Uint8Array): Uint8Array {
       const parsed = parseCommandRequest(body);
 
       try {

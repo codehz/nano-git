@@ -170,7 +170,7 @@ export interface PlanCommitMergeInput {
 export type MergeDecision =
   | { readonly take: "ours" | "theirs" | "base" }
   | { readonly take: "custom"; readonly mode: string; readonly hash: SHA1 }
-  | { readonly take: "custom"; readonly mode: string; readonly content: Buffer };
+  | { readonly take: "custom"; readonly mode: string; readonly content: Uint8Array };
 
 /**
  * 批量决议条目

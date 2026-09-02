@@ -57,7 +57,7 @@ export interface FileNodeState {
   readonly kind: "file";
   readonly mode: "100644" | "100755";
   /** 未设置时表示未 materialize，可读 origin */
-  readonly content?: Buffer;
+  readonly content?: Uint8Array;
 }
 
 /**
@@ -66,7 +66,7 @@ export interface FileNodeState {
 export interface SymlinkNodeState {
   readonly kind: "symlink";
   readonly mode: "120000";
-  readonly target?: Buffer;
+  readonly target?: Uint8Array;
 }
 
 export type WorktreeNodeState = DirectoryNodeState | FileNodeState | SymlinkNodeState;
@@ -160,7 +160,7 @@ export function cloneWorktreeNodeForCopy(source: WorktreeNode, newId: NodeId): W
       state:
         content === undefined
           ? { kind: "file", mode: source.state.mode }
-          : { kind: "file", mode: source.state.mode, content: Buffer.from(content) },
+          : { kind: "file", mode: source.state.mode, content: Uint8Array.from(content) },
     };
   }
 
@@ -171,6 +171,6 @@ export function cloneWorktreeNodeForCopy(source: WorktreeNode, newId: NodeId): W
     state:
       target === undefined
         ? { kind: "symlink", mode: "120000" }
-        : { kind: "symlink", mode: "120000", target: Buffer.from(target) },
+        : { kind: "symlink", mode: "120000", target: Uint8Array.from(target) },
   };
 }

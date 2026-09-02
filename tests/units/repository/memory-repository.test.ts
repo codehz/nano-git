@@ -4,6 +4,7 @@
 
 import { describe, test, expect, beforeEach } from "bun:test";
 
+import { bytes, bytesToUtf8 } from "../../helpers/bytes.ts";
 import { createMemoryRepository } from "@/repository/memory.ts";
 import { resolveEffectivePushBoundaries } from "@/repository/ops/push-resolution.ts";
 import { sha1, type SHA1 } from "@/types/index.ts";
@@ -31,25 +32,25 @@ describe("createMemoryRepository()", () => {
   });
 
   test("hashObject() 计算 blob 哈希（不写入存储）", () => {
-    const hash = repo.hashObject(Buffer.from("hello world"));
+    const hash = repo.hashObject(bytes("hello world"));
     expect(hash).toBe(sha1("95d09f2b10159347eece71399a7e2e907ea3df4f"));
     // hashObject 不写入存储，所以 catFile 应该抛出异常
     expect(() => repo.catFile(hash)).toThrow("Object not found");
   });
 
   test("writeBlob() 写入并返回哈希", () => {
-    const hash = repo.writeBlob(Buffer.from("hello world"));
+    const hash = repo.writeBlob(bytes("hello world"));
     expect(hash).toBe(sha1("95d09f2b10159347eece71399a7e2e907ea3df4f"));
 
     const obj = repo.catFile(hash);
     expect(obj.type).toBe("blob");
     if (obj.type === "blob") {
-      expect(obj.content.toString("utf-8")).toBe("hello world");
+      expect(bytesToUtf8(obj.content)).toBe("hello world");
     }
   });
 
   test("catFileType() 返回正确的对象类型", () => {
-    const blobHash = repo.writeBlob(Buffer.from("test"));
+    const blobHash = repo.writeBlob(bytes("test"));
     expect(repo.catFileType(blobHash)).toBe("blob");
 
     const treeHash = repo.createTree([]);
@@ -57,7 +58,7 @@ describe("createMemoryRepository()", () => {
   });
 
   test("createTree() 创建 tree 对象", () => {
-    const fileHash = repo.writeBlob(Buffer.from("content"));
+    const fileHash = repo.writeBlob(bytes("content"));
     const treeHash = repo.createTree([{ mode: "100644", name: "file.txt", hash: fileHash }]);
 
     const tree = repo.catFile(treeHash);
@@ -71,7 +72,7 @@ describe("createMemoryRepository()", () => {
   });
 
   test("readTreeSnapshot() 返回完整 tree 快照", () => {
-    const fileHash = repo.writeBlob(Buffer.from("content"));
+    const fileHash = repo.writeBlob(bytes("content"));
     const nestedTree = repo.createTree([{ mode: "100644", name: "main.ts", hash: fileHash }]);
     const rootTree = repo.createTree([{ mode: "040000", name: "src", hash: nestedTree }]);
 
@@ -96,8 +97,8 @@ describe("createMemoryRepository()", () => {
   });
 
   test("diffTrees() 比较两个 tree 快照", () => {
-    const beforeBlob = repo.writeBlob(Buffer.from("before"));
-    const afterBlob = repo.writeBlob(Buffer.from("after"));
+    const beforeBlob = repo.writeBlob(bytes("before"));
+    const afterBlob = repo.writeBlob(bytes("after"));
     const previousTree = repo.createTree([{ mode: "100644", name: "README.md", hash: beforeBlob }]);
     const currentTree = repo.createTree([{ mode: "100644", name: "README.md", hash: afterBlob }]);
 
@@ -213,7 +214,7 @@ describe("createMemoryRepository()", () => {
   });
 
   test("createAnnotatedTag() 创建 tag 对象并更新 tag ref", () => {
-    const blobHash = repo.writeBlob(Buffer.from("release"));
+    const blobHash = repo.writeBlob(bytes("release"));
     const tagHash = repo.createAnnotatedTag("v2.0.0", blobHash, "Release v2.0.0\n", testAuthor);
 
     expect(repo.readTag("v2.0.0")).toBe(tagHash);

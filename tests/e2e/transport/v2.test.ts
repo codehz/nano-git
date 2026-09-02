@@ -12,6 +12,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
+import { bytesToUtf8, concatBytes, toUint8Array } from "../../helpers/bytes.ts";
 import {
   cleanupDir,
   createTempDir,
@@ -411,7 +412,7 @@ describe("v2 协议 - fetch 命令", () => {
     expect(fetchResult.packfile).toBeDefined();
     expect(fetchResult.packfile!.length).toBeGreaterThan(40);
     // packfile 以 "PACK" 开头
-    expect(fetchResult.packfile!.subarray(0, 4).toString("utf-8")).toBe("PACK");
+    expect(bytesToUtf8(fetchResult.packfile!.subarray(0, 4))).toBe("PACK");
   });
 
   test("v2 fetch 没有 want 时应在 v2Fetch 内部抛出错误", async () => {
@@ -1101,7 +1102,7 @@ describe("v2 协议 - git-http-backend ready cut-point", () => {
   });
 
   test("当 have 的祖先已覆盖 want 切点时，git-http-backend 会直接返回 ready + packfile", async () => {
-    const body = Buffer.concat([
+    const body = concatBytes(
       encodePktLine("command=fetch\n"),
       encodePktLine("agent=nano-git-test\n"),
       encodePktLine("object-format=sha1\n"),
@@ -1109,7 +1110,7 @@ describe("v2 协议 - git-http-backend ready cut-point", () => {
       encodePktLine(`want ${latestMainCommitHash}\n`),
       encodePktLine(`have ${featureCommitHash}\n`),
       encodeFlushPkt(),
-    ]);
+    );
 
     const response = await fetch(`${url}/git-upload-pack`, {
       method: "POST",
@@ -1121,7 +1122,7 @@ describe("v2 协议 - git-http-backend ready cut-point", () => {
     });
 
     expect(response.status).toBe(200);
-    const parsed = parseV2FetchResponse(Buffer.from(await response.arrayBuffer()), false, false);
+    const parsed = parseV2FetchResponse(toUint8Array(await response.arrayBuffer()), false, false);
     expect(parsed.acknowledgments?.acks).toEqual([featureCommitHash]);
     expect(parsed.acknowledgments?.ready).toBe(true);
     expect(parsed.packfile).toBeDefined();
@@ -1130,7 +1131,7 @@ describe("v2 协议 - git-http-backend ready cut-point", () => {
 
   test("同一轮 have 的祖先/后代顺序只影响 ACK 去冗余形态，不影响 ready 与 packfile 结果", async () => {
     async function requestWithHaves(haves: readonly string[]) {
-      const body = Buffer.concat([
+      const body = concatBytes(
         encodePktLine("command=fetch\n"),
         encodePktLine("agent=nano-git-test\n"),
         encodePktLine("object-format=sha1\n"),
@@ -1138,7 +1139,7 @@ describe("v2 协议 - git-http-backend ready cut-point", () => {
         encodePktLine(`want ${latestMainCommitHash}\n`),
         ...haves.map((have) => encodePktLine(`have ${have}\n`)),
         encodeFlushPkt(),
-      ]);
+      );
 
       const response = await fetch(`${url}/git-upload-pack`, {
         method: "POST",
@@ -1150,7 +1151,7 @@ describe("v2 协议 - git-http-backend ready cut-point", () => {
       });
 
       expect(response.status).toBe(200);
-      return parseV2FetchResponse(Buffer.from(await response.arrayBuffer()), false, false);
+      return parseV2FetchResponse(toUint8Array(await response.arrayBuffer()), false, false);
     }
 
     const ancestorFirst = await requestWithHaves([mainCommitHash, latestMainCommitHash]);

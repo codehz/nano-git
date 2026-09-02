@@ -77,8 +77,8 @@ export function buildPushCommands(pushRefs: PushRefItem[]): ReceivePackCommand[]
  */
 export function buildPushRequestBody(
   commands: ReceivePackCommand[],
-  packfile: Buffer,
+  packfile: Uint8Array,
   capabilities: string[],
-): Buffer {
+): Uint8Array {
   return buildReceivePackRequest(commands, packfile, capabilities);
 }

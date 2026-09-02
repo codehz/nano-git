@@ -5,6 +5,7 @@
  */
 import { describe, test, expect } from "bun:test";
 
+import { bytes } from "../../helpers/bytes.ts";
 import {
   VirtualNotDirectoryError,
   VirtualNotFileError,
@@ -39,13 +40,13 @@ describe("joinChildPath()", () => {
 describe("resolvePathByParentLookup()", () => {
   test("按父目录定向解析最终条目", () => {
     const repo = createMemoryRepository();
-    const blobHash = repo.writeBlob(Buffer.from("a"));
+    const blobHash = repo.writeBlob(bytes("a"));
     const subTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]);
     const baseTree = repo.createTree([{ mode: "040000", name: "src", hash: subTree }]);
     const store = createVirtualWorktreeMemoryStateStore(baseTree);
     const session = openVirtualWorktree(repo.objects, store);
 
-    session.writeFile("src/b.txt", Buffer.from("b"));
+    session.writeFile("src/b.txt", bytes("b"));
 
     const resolved = resolvePathByParentLookup(repo.objects, store, "src/b.txt");
     const missing = resolvePathByParentLookup(repo.objects, store, "src/missing.txt");
@@ -83,7 +84,7 @@ describe("resolveWriteParentDirectory()", () => {
 
   test("父路径不是目录时抛 VirtualNotDirectoryError", () => {
     const repo = createMemoryRepository();
-    const blobHash = repo.writeBlob(Buffer.from("data"));
+    const blobHash = repo.writeBlob(bytes("data"));
     const baseTree = repo.createTree([{ mode: "100644", name: "file", hash: blobHash }]);
     const store = createVirtualWorktreeMemoryStateStore(baseTree);
 
@@ -96,7 +97,7 @@ describe("resolveWriteParentDirectory()", () => {
 describe("resolveWriteTargetInParent()", () => {
   test("同时返回父目录与现有目标子项", () => {
     const repo = createMemoryRepository();
-    const blobHash = repo.writeBlob(Buffer.from("base"));
+    const blobHash = repo.writeBlob(bytes("base"));
     const baseTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]);
     const store = createVirtualWorktreeMemoryStateStore(baseTree);
 
@@ -123,7 +124,7 @@ describe("resolveWriteTargetInParent()", () => {
 describe("requireExistingWriteTarget()", () => {
   test("要求目标存在并返回现有子项", () => {
     const repo = createMemoryRepository();
-    const blobHash = repo.writeBlob(Buffer.from("base"));
+    const blobHash = repo.writeBlob(bytes("base"));
     const baseTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]);
     const store = createVirtualWorktreeMemoryStateStore(baseTree);
 
@@ -159,7 +160,7 @@ describe("requireMissingWriteTarget()", () => {
 
   test("目标已存在时抛 VirtualPathAlreadyExistsError", () => {
     const repo = createMemoryRepository();
-    const blobHash = repo.writeBlob(Buffer.from("base"));
+    const blobHash = repo.writeBlob(bytes("base"));
     const baseTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]);
     const store = createVirtualWorktreeMemoryStateStore(baseTree);
 
@@ -172,7 +173,7 @@ describe("requireMissingWriteTarget()", () => {
 describe("resolveLeafWriteTarget()", () => {
   test("允许覆盖已有文件并返回叶子子项", () => {
     const repo = createMemoryRepository();
-    const blobHash = repo.writeBlob(Buffer.from("base"));
+    const blobHash = repo.writeBlob(bytes("base"));
     const baseTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]);
     const store = createVirtualWorktreeMemoryStateStore(baseTree);
 
@@ -197,7 +198,7 @@ describe("resolveLeafWriteTarget()", () => {
 describe("resolveCurrentLeafAtPath()", () => {
   test("返回当前文件叶子节点", () => {
     const repo = createMemoryRepository();
-    const blobHash = repo.writeBlob(Buffer.from("base"));
+    const blobHash = repo.writeBlob(bytes("base"));
     const baseTree = repo.createTree([{ mode: "100644", name: "a.txt", hash: blobHash }]);
     const store = createVirtualWorktreeMemoryStateStore(baseTree);
 
@@ -227,7 +228,7 @@ describe("resolveCurrentLeafAtPath()", () => {
 describe("resolveWriteTransfer()", () => {
   test("同时返回已存在源与目标上下文", () => {
     const repo = createMemoryRepository();
-    const blobHash = repo.writeBlob(Buffer.from("base"));
+    const blobHash = repo.writeBlob(bytes("base"));
     const dirTree = repo.createTree([]);
     const baseTree = repo.createTree([
       { mode: "100644", name: "a.txt", hash: blobHash },

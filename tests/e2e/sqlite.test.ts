@@ -7,6 +7,7 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { join } from "node:path";
 
+import { bytes, toUint8Array } from "../helpers/bytes.ts";
 import { openTestSqlite } from "../helpers/sqlite.ts";
 import { createTempDir, cleanupDir, gitWithTimeout, FIXED_AUTHOR } from "./helpers.ts";
 import { createDefaultBackend, startNanoGitServer } from "./transport/nano-git-server.ts";
@@ -35,7 +36,7 @@ function slugifyFileName(message: string): string {
 }
 
 function appendCommit(repo: Repository, message: string, parents: SHA1[] = []): SHA1 {
-  const blobHash = repo.writeBlob(Buffer.from(`${message}\n`));
+  const blobHash = repo.writeBlob(bytes(`${message}\n`));
   const treeHash = repo.createTree([
     {
       mode: "100644",
@@ -73,7 +74,7 @@ describe("SQLite 仓库持久化", () => {
       tagHash = repo.createAnnotatedTag("v1.0.0", commitHash, "SQLite release", testAuthor);
       repo.shallow.write([commitHash]);
 
-      danglingBlobHash = repo.writeBlob(Buffer.from("dangling object"));
+      danglingBlobHash = repo.writeBlob(bytes("dangling object"));
       const reachable = repo.listReachableObjects();
       expect(reachable).toContain(commitHash);
       expect(reachable).not.toContain(danglingBlobHash);
